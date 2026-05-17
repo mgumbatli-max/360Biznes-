@@ -174,7 +174,8 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
           Məhsullar <span className="ml-2 text-xs font-normal text-muted-foreground">{total} qeyd</span>
         </h3>
         <div className="flex items-center gap-1.5">
-          {cols.render()}
+          {/* Sütun toggle yalnız desktop-da görsənir */}
+          <div className="hidden md:block">{cols.render()}</div>
           <a
             href={`/api/anbar/mehsullar/export?${sp.toString()}`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:text-foreground"
@@ -185,7 +186,128 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
           </a>
         </div>
       </div>
-      <div className="overflow-x-auto">
+
+      {/* MOBİL KART GÖRÜNÜŞÜ (md altı) */}
+      <div className="md:hidden divide-y divide-border/30">
+        {sorted.map((p) => {
+          const margin = p.alish_qiymeti > 0 ? ((p.satis_qiymeti - p.alish_qiymeti) / p.alish_qiymeti) * 100 : 0;
+          const lowStock = p.kritik_stok != null && p.stok_miqdari > 0 && p.stok_miqdari <= p.kritik_stok;
+          const outStock = p.stok_miqdari <= 0;
+          const isSel = selected.has(p.id);
+          return (
+            <div key={`m-${p.id}`} className={cn("flex gap-3 p-3", isSel && "bg-primary/5")}>
+              <label className="shrink-0 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={isSel}
+                  onChange={() => toggle(p.id)}
+                  aria-label={`${p.ad} seç`}
+                  className="h-4 w-4 cursor-pointer rounded border-border accent-primary"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setQuickViewId(p.id)}
+                className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border/40 bg-secondary"
+                aria-label="Sürətli baxış"
+              >
+                {p.sekil_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.sekil_url} alt={p.ad} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="grid h-full w-full place-items-center">
+                    <Package className="h-5 w-5 text-muted-foreground opacity-50" />
+                  </div>
+                )}
+              </button>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="font-medium text-sm leading-tight line-clamp-2" title={p.ad}>{p.ad}</h4>
+                  {!p.aktiv && <Badge variant="outline" className="shrink-0 text-[9px]">passiv</Badge>}
+                </div>
+
+                <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
+                  {p.kateqoriya_ad ?? "—"}
+                  {p.marka_ad && <span> · {p.marka_ad}</span>}
+                </div>
+
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <div className="tabular-nums font-semibold">{formatMoney(p.satis_qiymeti)}</div>
+                  {p.alish_qiymeti > 0 && (
+                    <div className={cn(
+                      "tabular-nums",
+                      margin < 0 ? "text-danger" : margin < 10 ? "text-warning" : "text-success"
+                    )}>
+                      {margin.toFixed(0)}% marja
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <span className={cn(
+                      "tabular-nums font-medium",
+                      outStock ? "text-danger" : lowStock ? "text-warning" : "text-muted-foreground"
+                    )}>
+                      Stok: {formatNumber(p.stok_miqdari, 0)}
+                    </span>
+                    {outStock && <Badge variant="destructive" className="h-4 text-[9px] px-1">bitib</Badge>}
+                    {lowStock && !outStock && <Badge variant="secondary" className="h-4 bg-warning/15 text-warning text-[9px] px-1">az</Badge>}
+                  </div>
+                </div>
+
+                <div className="mt-2 flex items-center gap-1">
+                  <Link
+                    href={`/anbar/mehsullar/${p.id}`}
+                    className="inline-flex h-8 flex-1 items-center justify-center gap-1 rounded-md border border-border bg-secondary/30 text-xs font-medium hover:bg-secondary"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" /> Aç
+                  </Link>
+                  <ProductDialog
+                    categories={categories}
+                    brands={brands}
+                    units={units}
+                    initial={{
+                      id: p.id,
+                      ad: p.ad,
+                      kod: p.kod,
+                      barkod: p.barkod,
+                      kateqoriya_id: p.kateqoriya_id,
+                      kateqoriya_ad: p.kateqoriya_ad,
+                      marka_id: p.marka_id,
+                      marka_ad: p.marka_ad,
+                      olcu_id: p.olcu_id,
+                      sekil_url: p.sekil_url,
+                      aciqlamaq: p.aciqlamaq,
+                      alish_qiymeti: p.alish_qiymeti,
+                      satis_qiymeti: p.satis_qiymeti,
+                      min_satis_qiymeti: p.min_satis_qiymeti,
+                      topdan_qiymeti: p.topdan_qiymeti,
+                      partnyor_qiymeti: p.partnyor_qiymeti,
+                      vip_qiymeti: p.vip_qiymeti,
+                      kritik_stok: p.kritik_stok,
+                      aktiv: p.aktiv,
+                    }}
+                    trigger="edit"
+                  />
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    title="Sil"
+                    disabled={pending}
+                    onClick={() => onDelete(p.id, p.ad)}
+                    className="h-8 w-8"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* DESKTOP CƏDVƏL GÖRÜNÜŞÜ (md+) */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-border/60 bg-card/40 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
             <tr>
