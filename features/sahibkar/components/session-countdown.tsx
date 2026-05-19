@@ -6,18 +6,18 @@ import { Clock, ShieldOff, MousePointer2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { lockSahibkar, refreshSahibkarSession } from "../actions";
 
-const ACTIVITY_REFRESH_INTERVAL_MS = 30_000; // sliding TTL — server-i ən çox 30 saniyədən bir yenilə
+const LOCAL_BUMP_THROTTLE_MS = 1_000;   // hər saniyədə bir lokal deadline-ı uzat
+const SERVER_REFRESH_INTERVAL_MS = 30_000; // server cookie-sini ən çox 30 sn-də bir yenilə
 
 /**
  * Activity-aware session countdown with server-synced sliding TTL.
  *
  * - `expiresAt` (unix saniyə) cookie-dən gələn absolut deadline.
- * - Sayğac (expiresAt − now) əsasında işləyir; alt-səhifəyə girib çıxsa belə
- *   layout-da hosted olduğu üçün re-mount olmur, olsa belə server-prop sinxron qalır.
- * - İstifadəçi aktivliyi (mouse/keydown/touch) 30 saniyədən bir
- *   `refreshSahibkarSession` action-ını çağırır — cookie yenilənir, yeni exp
- *   client state-inə yazılır.
- * - Deadline-a çatanda lockSahibkar() çağırılır və /dashboard-a yönləndirir.
+ * - Hər aktivlikdə (mouse/keydown/touch) lokal deadline saniyədə bir uzanır
+ *   ki, görünən sayğac aktiv istifadəçi üçün hər zaman tam ttl-də qalsın.
+ * - Server cookie-si ən çox 30 saniyədən bir `refreshSahibkarSession` ilə
+ *   yenilənir — sliding TTL bütün cihazlar arası persistent.
+ * - Aktivlik olmazsa sayğac azalır; 0-a çatanda lockSahibkar() çağırılır.
  */
 export function SessionCountdown({
   expiresAt: initialExpiresAt,
@@ -31,7 +31,11 @@ export function SessionCountdown({
   const [lockTriggered, setLockTriggered] = useState(false);
   const [expiresAt, setExpiresAt] = useState(initialExpiresAt);
   const [now, setNow] = useState<number | null>(null);
-  const lastRefreshRef = useRef(0);
+  const lastLocalBumpRef = useRef(0);
+  const lastServerRefreshRef = useRef(0);
+  const ttlSecRef = useRef(ttlSec);
+
+  useEffect(() => { ttlSecRef.current = ttlSec; }, [ttlSec]);
 
   // Server-prop dəyişəndə (layout re-render) local state-i sinxronlaşdır
   useEffect(() => {
@@ -44,16 +48,22 @@ export function SessionCountdown({
 
     const onActivity = () => {
       const t = Date.now();
-      if (t - lastRefreshRef.current < ACTIVITY_REFRESH_INTERVAL_MS) return;
-      lastRefreshRef.current = t;
-      // Background-da cookie-ni yenilə, yeni exp gələndə state-i yenilə
-      refreshSahibkarSession()
-        .then((res) => {
-          if (res?.expiresAt) setExpiresAt(res.expiresAt);
-        })
-        .catch(() => {
-          /* silent — tick davam edir, deadline-da kilid bağlanır */
-        });
+      // 1) Local bump — görünən sayğac dərhal təzələnsin (kilidsiz, smooth)
+      if (t - lastLocalBumpRef.current >= LOCAL_BUMP_THROTTLE_MS) {
+        lastLocalBumpRef.current = t;
+        setExpiresAt(Math.floor(t / 1000) + ttlSecRef.current);
+      }
+      // 2) Server refresh — cookie-ni 30 sn-də bir uzat, response-dakı exp ilə dəqiqləşdir
+      if (t - lastServerRefreshRef.current >= SERVER_REFRESH_INTERVAL_MS) {
+        lastServerRefreshRef.current = t;
+        refreshSahibkarSession()
+          .then((res) => {
+            if (res?.expiresAt) setExpiresAt(res.expiresAt);
+          })
+          .catch(() => {
+            /* silent — tick davam edir, deadline-da kilid bağlanır */
+          });
+      }
     };
 
     const events: (keyof DocumentEventMap)[] = ["mousedown", "keydown", "touchstart", "scroll", "wheel"];

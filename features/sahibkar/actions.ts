@@ -32,19 +32,33 @@ export async function setupPin(input: FormData): Promise<ActionResult> {
 
     const hash = await bcrypt.hash(parsed.data.pin, 12);
 
-    // Upsert sahibkar_ayar row
+    // Upsert sahibkar_ayar row. Setup zamanı sessiya_muddet boşdursa standart 15
+    // dəqiqə yazılır — sonra sahibkar/ayarlar bölməsindən dəyişdirilə bilər.
     const existing = await prisma.sahibkar_ayar.findFirst();
     if (existing) {
       await prisma.sahibkar_ayar.update({
         where: { id: existing.id },
-        data: { sifre_hash: hash, sifre_nov: "pin", aktiv: true, qoruma_aktiv: true },
+        data: {
+          sifre_hash: hash,
+          sifre_nov: "pin",
+          aktiv: true,
+          qoruma_aktiv: true,
+          // Əgər əvvəlcədən boş idisə, 15-i yaz; varsa, dəyişmə
+          ...(existing.sessiya_muddet == null ? { sessiya_muddet: 15 } : {}),
+        },
       });
     } else {
       await prisma.sahibkar_ayar.create({
-        data: { sahibkar_id: sahibkarId, sifre_hash: hash, sifre_nov: "pin", aktiv: true, qoruma_aktiv: true },
+        data: {
+          sahibkar_id: sahibkarId,
+          sifre_hash: hash,
+          sifre_nov: "pin",
+          aktiv: true,
+          qoruma_aktiv: true,
+          sessiya_muddet: 15, // standart, sonra dəyişdirilə bilər
+        },
       });
     }
-    // Yeni qurulan PIN üçün də user-ın konfiqurasiya etdiyi sessiya müddətini tətbiq et
     const cfgTtl = (existing?.sessiya_muddet ?? 15) || 15;
     await setPinSession(sahibkarId, istifadeciId, cfgTtl);
     return { ok: true };
