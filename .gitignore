@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# claude code local settings
+.claude/
+
+# user-uploaded media (runtime artifacts, not source)
+/public/uploads/
+
+# local screenshot scratch folder (note: trailing space in name)
+/screenerp /

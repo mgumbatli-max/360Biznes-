@@ -347,3 +347,25 @@ html.embed-mode [data-app-breadcrumb] {
 html.embed-mode [data-app-shell] { min-height: 100vh; }
 html.embed-mode main { padding: 16px !important; }
 html.embed-mode body { background: hsl(var(--background)) !important; }
+
+/* ─────────────────────────────────────────────
+   Table — sticky thead utility
+   Add `data-sticky-head` to any <table>; its <thead>
+   stays pinned below the topbar while body scrolls.
+   ───────────────────────────────────────────── */
+table[data-sticky-head] thead {
+  position: sticky;
+  /* Topbar h-14 (56px) — pin just below it */
+  top: 56px;
+  z-index: 5;
+  background: hsl(var(--background));
+  /* Soft separator so scrolled content visibly slides under */
+  box-shadow: inset 0 -1px 0 hsl(var(--border) / 0.6);
+  backdrop-filter: blur(6px);
+}
+/* When the table itself is inside an internal scroll container,
+   override top so the header sticks to the container top instead. */
+[data-table-scroll] table[data-sticky-head] thead {
+  top: 0;
+}
+html.embed-mode table[data-sticky-head] thead { top: 0; }
