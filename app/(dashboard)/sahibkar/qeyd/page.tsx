@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { StickyNote } from "lucide-react";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerNotes } from "@/features/sahibkar/owner-queries";
 import { NoteDialog } from "@/features/sahibkar/components/note-dialog";
 import { StickyNotesGrid } from "@/features/sahibkar/components/sticky-notes-grid";
 import { ViewToggle, type ViewMode } from "@/components/ui/view-toggle";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 
 export const metadata: Metadata = { title: "Sahibkar qeydləri" };
 export const dynamic = "force-dynamic";
@@ -28,6 +30,17 @@ export default async function SahibkarQeydPage({ searchParams }: { searchParams:
           <NoteDialog />
         </div>
       </header>
+
+      <SectionExplainer
+        icon={StickyNote}
+        description="Yalnız sahibkarın görüb idarə etdiyi şəxsi qeydlər — rəng kodlu sticker formada və ya kompakt list görünüşündə. Pin ilə vacibləri yuxarıya sabitləyə, axtarış xanasından tez tapa bilərsiniz."
+        bullets={[
+          { label: "Görünüş", text: "yuxarı sağdan kart/list seç" },
+          { label: "Pin", text: "vacib qeydləri sabitlə" },
+          { label: "Rəng", text: "7 rəng — kateqoriya/prioritet üçün" },
+        ]}
+        tone="amber"
+      />
 
       <StickyNotesGrid notes={notes} view={view} />
     </div>

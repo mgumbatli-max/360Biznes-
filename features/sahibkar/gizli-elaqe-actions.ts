@@ -33,7 +33,7 @@ const Schema = z.object({
   telefon: z.string().trim().max(50).optional().or(z.literal("")),
   email: z.string().trim().max(150).optional().or(z.literal("")),
   sirket: z.string().trim().max(200).optional().or(z.literal("")),
-  olke: z.string().trim().max(50).optional().or(z.literal("")),
+  olke: z.string().trim().min(1, "Ölkə məcburidir — filter üçün istifadə olunur").max(50),
   unvan: z.string().trim().max(500).optional().or(z.literal("")),
   qeyd: z.string().trim().max(2000).optional().or(z.literal("")),
 });

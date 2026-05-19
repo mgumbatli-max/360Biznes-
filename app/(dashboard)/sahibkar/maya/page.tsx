@@ -14,6 +14,8 @@ import {
   KateqoriyaBreakdown,
   MayaTrendChart,
 } from "@/features/sahibkar/maya/components/product-margin-breakdown";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
+import { Wallet } from "lucide-react";
 
 export const metadata: Metadata = { title: "Maya analizi" };
 export const dynamic = "force-dynamic";
@@ -33,6 +35,18 @@ export default async function MayaPage() {
         <h1 className="text-2xl font-bold tracking-tight">Maya analizi</h1>
         <p className="mt-1 text-sm text-muted-foreground">İdxal maya hesablama (Excel) + bu ayın xərc/mənfəət strukturu, məhsul və kateqoriya marja breakdown-ı.</p>
       </header>
+
+      <SectionExplainer
+        icon={Wallet}
+        title="Maya analizi nə üçündür?"
+        tone="emerald"
+        description="İki şey: (1) yeni gələn idxal partiyasının real mayasını Excel ilə hesablayırsan (kurs, daşınma, gömrük, toplama, defekt ehtiyatı paylanır); (2) bu ay artıq satılmış mallar üzrə marja və mənfəət strukturuna baxırsan — hansı kateqoriya gəlirli, hansı zərərli, hansı məhsul lider, hansı geri qalır."
+        bullets={[
+          { label: "İdxal", text: "şablon endir → doldur → yüklə" },
+          { label: "Marja", text: "məhsul və kateqoriya üzrə" },
+          { label: "Trend", text: "son 6 ay COGS/mənfəət" },
+        ]}
+      />
 
       <CostCalculatorUploader />
 

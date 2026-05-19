@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Truck } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerPartiyas } from "@/features/sahibkar/owner-queries";
 import { PartiyaDialog } from "@/features/sahibkar/components/partiya-dialog";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Idxal partiyaları" };
@@ -23,6 +23,18 @@ export default async function SahibkarPartiyaPage() {
         </div>
         <PartiyaDialog />
       </header>
+
+      <SectionExplainer
+        icon={Truck}
+        title="Partiya nədir?"
+        tone="amber"
+        description="Hər idxal/topdan alış bir partiyadır. Daşınma, gömrük, toplama xərcləri partiya səviyyəsində saxlanır, sonra bu partiyadan satılan məhsulun real mayası (AZN-də) hesablanır. ROI = (satışdan gələn mənfəət) / (partiya maya + xərclər)."
+        bullets={[
+          { label: "İzlə", text: "valyuta kursu, ölkə, təchizatçı" },
+          { label: "Hesabla", text: "real maya AZN-də, paylanmış xərclər" },
+          { label: "Bağla", text: "alış qaiməsi, məhsul, sənəd (DB migration sonra)" },
+        ]}
+      />
 
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">

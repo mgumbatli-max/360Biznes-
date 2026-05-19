@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { listGizliElaqe, createGizliElaqe, deleteGizliElaqe, type GizliElaqe } from "@/features/sahibkar/gizli-elaqe-actions";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 
 export const metadata: Metadata = { title: "Gizli əlaqələr — Sahibkar" };
 export const dynamic = "force-dynamic";
@@ -78,6 +79,18 @@ export default async function GizliElaqePage({ searchParams }: { searchParams: P
           </p>
         </div>
       </header>
+
+      <SectionExplainer
+        icon={Lock}
+        title="Gizli əlaqələr nəyə yarayır?"
+        tone="violet"
+        description="Sistemin ümumi müştəri/təchizatçı bazasında görünməsini istəmədiyiniz şəxsi əlaqələri burada saxlayın — qiymət sırrı, məxfi təchizatçı, VIP müştəri kanalı və s. Ölkə sahəsi məcburi doldurulur ki, kontaktları sürətli filter edə biləsiniz."
+        bullets={[
+          { label: "Məxfi", text: "yalnız sahibkar görür, sistem üzərindən sızmır" },
+          { label: "Filtr", text: "ölkə + ad/telefon/email üzrə tez tap" },
+          { label: "Növ", text: "təchizatçı / alıcı / hər ikisi / digər" },
+        ]}
+      />
 
       {/* Stats strip */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
@@ -187,8 +200,19 @@ export default async function GizliElaqePage({ searchParams }: { searchParams: P
               <input name="email" type="email" maxLength={150} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3" />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Ölkə</label>
-              <input name="olke" maxLength={50} className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3" placeholder="Çin, Türkiyə..." />
+              <label className="text-xs text-muted-foreground">Ölkə <span className="text-rose-500">*</span></label>
+              <input
+                name="olke"
+                required
+                maxLength={50}
+                className="mt-1 h-10 w-full rounded-md border border-border bg-background px-3"
+                placeholder="Çin, Türkiyə, BƏƏ..."
+                list="olke-formsuggest"
+              />
+              <datalist id="olke-formsuggest">
+                {topOlkeler.map(([o]) => <option key={o} value={o} />)}
+              </datalist>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">Filtrdə istifadə olunur — məcburi sahə.</p>
             </div>
             <div className="md:col-span-2 lg:col-span-3">
               <label className="text-xs text-muted-foreground">Ünvan</label>

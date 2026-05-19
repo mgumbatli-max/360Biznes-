@@ -5,6 +5,7 @@ import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerSnapshots, getSnapshotCronAktiv } from "@/features/sahibkar/owner-queries";
 import { SnapshotButton } from "@/features/sahibkar/components/snapshot-button";
 import { SnapshotCronToggle } from "@/features/sahibkar/components/snapshot-cron-toggle";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Gündəlik snapshot" };
@@ -21,13 +22,25 @@ export default async function SahibkarSnapshotPage() {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Gündəlik snapshot</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Hər günün şəkli: gəlir, sifariş, açıq tapşırıq.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Hər günün biznes şəkli: gəlir, sifariş, açıq tapşırıq.</p>
         </div>
         <div className="flex items-center gap-2">
           <SnapshotCronToggle initial={cronAktiv} />
           <SnapshotButton />
         </div>
       </header>
+
+      <SectionExplainer
+        icon={Camera}
+        title="Snapshot nədir, nəyə yarayır?"
+        tone="violet"
+        description="Snapshot — hər günün sonunda biznesin əsas göstəricilərinin (gəlir, sifariş sayı, açıq tapşırıq, kassa qalığı) avtomatik şəkillənməsidir. Sonradan günləri yan-yana qoyub trendləri görmək, ay sonu hesabatlar üçün etibarlı arxiv saxlamaq və data dəyişikliklərini izləmək üçündür."
+        bullets={[
+          { label: "Avto", text: "günlük cron ilə özü işləyir (sağ üstdən söndür/yandır)" },
+          { label: "Manual", text: "\"Snapshot al\" düyməsi ilə dərhal götürülür" },
+          { label: "Saxlanma", text: "60 gün arxiv altında qalır, fərq analizi üçün istifadə olunur" },
+        ]}
+      />
 
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
