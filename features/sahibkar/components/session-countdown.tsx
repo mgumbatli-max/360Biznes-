@@ -1,51 +1,61 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Clock, ShieldOff, MousePointer2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { lockSahibkar } from "../actions";
+import { lockSahibkar, refreshSahibkarSession } from "../actions";
+
+const ACTIVITY_REFRESH_INTERVAL_MS = 30_000; // sliding TTL — server-i ən çox 30 saniyədən bir yenilə
 
 /**
- * Activity-aware session countdown.
+ * Activity-aware session countdown with server-synced sliding TTL.
  *
- * - Listens to mouse / keyboard / touch events
- * - Each interaction resets the deadline to now + `totalSec`
- * - On true idle the timer ticks down; at 0 → locks session
- * - At 30 seconds remaining a warning indicator appears
- * - Throttled so rapid events don't flood state updates
+ * - `expiresAt` (unix saniyə) cookie-dən gələn absolut deadline.
+ * - Sayğac (expiresAt − now) əsasında işləyir; alt-səhifəyə girib çıxsa belə
+ *   layout-da hosted olduğu üçün re-mount olmur, olsa belə server-prop sinxron qalır.
+ * - İstifadəçi aktivliyi (mouse/keydown/touch) 30 saniyədən bir
+ *   `refreshSahibkarSession` action-ını çağırır — cookie yenilənir, yeni exp
+ *   client state-inə yazılır.
+ * - Deadline-a çatanda lockSahibkar() çağırılır və /dashboard-a yönləndirir.
  */
-export function SessionCountdown({ totalSec }: { totalSec: number }) {
+export function SessionCountdown({
+  expiresAt: initialExpiresAt,
+  ttlSec,
+}: {
+  expiresAt: number; // unix saniyə
+  ttlSec: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [lockTriggered, setLockTriggered] = useState(false);
-  const [deadline, setDeadline] = useState<number | null>(null);
+  const [expiresAt, setExpiresAt] = useState(initialExpiresAt);
   const [now, setNow] = useState<number | null>(null);
-  // Qoruma: DB-də 0 və ya kiçik dəyər varsa minimum 5 dəqiqə tətbiq
-  const safeTotalSec = totalSec < 300 ? 900 : totalSec;
+  const lastRefreshRef = useRef(0);
+
+  // Server-prop dəyişəndə (layout re-render) local state-i sinxronlaşdır
+  useEffect(() => {
+    setExpiresAt(initialExpiresAt);
+  }, [initialExpiresAt]);
 
   useEffect(() => {
-    const start = Date.now();
-    let currentDeadline = start + safeTotalSec * 1000;
-    // Both states updated together at mount sync — not a cascading render.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDeadline(currentDeadline);
-    setNow(start);
+    setNow(Math.floor(Date.now() / 1000));
+    const tickId = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
 
-    const tickId = setInterval(() => setNow(Date.now()), 1000);
-
-    // Activity → push the deadline forward. Throttled to once per second
-    // to avoid excessive re-renders during rapid mouse moves.
-    let lastReset = 0;
     const onActivity = () => {
       const t = Date.now();
-      if (t - lastReset < 1000) return;
-      lastReset = t;
-      currentDeadline = t + safeTotalSec * 1000;
-      setDeadline(currentDeadline);
+      if (t - lastRefreshRef.current < ACTIVITY_REFRESH_INTERVAL_MS) return;
+      lastRefreshRef.current = t;
+      // Background-da cookie-ni yenilə, yeni exp gələndə state-i yenilə
+      refreshSahibkarSession()
+        .then((res) => {
+          if (res?.expiresAt) setExpiresAt(res.expiresAt);
+        })
+        .catch(() => {
+          /* silent — tick davam edir, deadline-da kilid bağlanır */
+        });
     };
 
-    // mousemove fires very frequently, so use mousedown/move-throttled
     const events: (keyof DocumentEventMap)[] = ["mousedown", "keydown", "touchstart", "scroll", "wheel"];
     events.forEach((e) => document.addEventListener(e, onActivity, { passive: true }));
 
@@ -53,16 +63,13 @@ export function SessionCountdown({ totalSec }: { totalSec: number }) {
       clearInterval(tickId);
       events.forEach((e) => document.removeEventListener(e, onActivity));
     };
-  }, [safeTotalSec]);
+  }, []);
 
-  const remaining = deadline != null && now != null
-    ? Math.max(0, Math.floor((deadline - now) / 1000))
-    : safeTotalSec;
+  const remaining = now != null ? Math.max(0, expiresAt - now) : ttlSec;
 
   useEffect(() => {
-    if (deadline == null || now == null) return;
+    if (now == null) return;
     if (remaining !== 0 || lockTriggered) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLockTriggered(true);
     startTransition(async () => {
       try {
@@ -72,19 +79,19 @@ export function SessionCountdown({ totalSec }: { totalSec: number }) {
       }
       router.push("/dashboard");
     });
-  }, [remaining, lockTriggered, deadline, now, router]);
+  }, [remaining, lockTriggered, now, router]);
 
   const min = Math.floor(remaining / 60);
   const sec = remaining % 60;
   const fmt = `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 
-  const pct = (remaining / safeTotalSec) * 100;
+  const pct = ttlSec > 0 ? (remaining / ttlSec) * 100 : 0;
   const color =
     pct > 50 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500"
     : pct > 20 ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
     : "border-rose-500/40 bg-rose-500/10 text-rose-500";
 
-  const isLocked = deadline != null && now != null && remaining === 0;
+  const isLocked = now != null && remaining === 0;
   const isWarning = remaining > 0 && remaining <= 30;
 
   return (
@@ -94,7 +101,7 @@ export function SessionCountdown({ totalSec }: { totalSec: number }) {
         color,
         isWarning && "animate-pulse"
       )}
-      title={isWarning ? "Diqqət — yaxında kilidlənəcək. Klik və ya yaz, sessiya yenilənəcək" : "Boş qalanda avto-kilid. Hər kliklə yenilənir."}
+      title={isWarning ? "Diqqət — yaxında kilidlənəcək. Klik və ya yaz, sessiya yenilənəcək" : "Boş qalanda avto-kilid. Aktivlik gördükdə server-də yenilənir."}
     >
       {isLocked ? (
         <ShieldOff className="h-3 w-3" />

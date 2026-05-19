@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 
 const COOKIE = "sahibkar_pin_session";
-const TTL_MIN = 15;
+const DEFAULT_TTL_MIN = 15;
 
 type PinPayload = {
   sahibkar_id: string;
@@ -37,17 +37,24 @@ function verify(token: string): PinPayload | null {
   }
 }
 
-export async function setPinSession(sahibkar_id: string, istifadeci_id: string) {
-  const exp = Math.floor(Date.now() / 1000) + TTL_MIN * 60;
-  const token = sign({ sahibkar_id, istifadeci_id, exp });
+export async function setPinSession(
+  sahibkar_id: string,
+  istifadeci_id: string,
+  ttlMin: number = DEFAULT_TTL_MIN
+): Promise<PinPayload> {
+  const safeTtl = ttlMin >= 1 ? ttlMin : DEFAULT_TTL_MIN;
+  const exp = Math.floor(Date.now() / 1000) + safeTtl * 60;
+  const payload: PinPayload = { sahibkar_id, istifadeci_id, exp };
+  const token = sign(payload);
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: TTL_MIN * 60,
+    maxAge: safeTtl * 60,
     path: "/",
   });
+  return payload;
 }
 
 export async function clearPinSession() {
@@ -66,16 +73,18 @@ export async function getPinSession(): Promise<PinPayload | null> {
  * Refresh sliding TTL on access. Returns the (renewed) payload or null.
  *
  * Next.js 16-da cookies yalnız Server Action və ya Route Handler-də dəyişdirilə bilir.
- * Server component-dən çağırılanda set() xəta atır — onu səssizcə tutub yalnız read
- * davranışına düşürük (TTL refresh keçən action çağırışına qədər təxirə düşür).
+ * Server component-dən çağırılanda set() xəta atır — onu səssizcə tutub mövcud
+ * payload-u qaytarırıq (TTL refresh ilk action çağırışında baş verir).
+ *
+ * @param ttlMin — yeni TTL (dəqiqə). Verilməsə cookie öz mövcud exp-i ilə qalır.
  */
-export async function touchPinSession(): Promise<PinPayload | null> {
+export async function touchPinSession(ttlMin?: number): Promise<PinPayload | null> {
   const current = await getPinSession();
   if (!current) return null;
   try {
-    await setPinSession(current.sahibkar_id, current.istifadeci_id);
+    return await setPinSession(current.sahibkar_id, current.istifadeci_id, ttlMin ?? DEFAULT_TTL_MIN);
   } catch {
-    // Server component context — cookie dəyişdirmək mümkün deyil, yalnız oxu
+    // Server component context — cookie dəyişdirilə bilmir, mövcud exp qaytar
+    return current;
   }
-  return current;
 }

@@ -1,19 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Lock, TrendingUp, Boxes, Users, Building2, ArrowRight, ShieldOff, Wallet, ClipboardList,
+  Lock, TrendingUp, Boxes, Users, Building2, ArrowRight, Wallet, ClipboardList,
   StickyNote, Camera, Truck, FileText, Activity, GitCompare, Smartphone, History,
-  Sparkles, AlertTriangle, Calendar, Pin, FolderArchive, EyeOff, Database,
+  Sparkles, AlertTriangle, Calendar, Pin, FolderArchive, EyeOff, Database, Settings,
 } from "lucide-react";
-import { Settings } from "lucide-react";
 import { auth } from "@/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
-import { lockSahibkar } from "@/features/sahibkar/actions";
-import { SessionCountdown } from "@/features/sahibkar/components/session-countdown";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getOwnerDashboard } from "@/features/sahibkar/queries";
@@ -75,24 +71,6 @@ export default async function SahibkarHomePage() {
               Salam, {session?.user.ad_soyad}. Sessiya {sessionMin} dəqiqə aktiv qalır.
             </p>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SessionCountdown totalSec={sessionMin * 60} />
-          <Link href="/sahibkar/ayarlar">
-            <Button variant="outline" size="sm">
-              <Settings className="h-3.5 w-3.5" /> Ayarlar
-            </Button>
-          </Link>
-          <form
-            action={async () => {
-              "use server";
-              await lockSahibkar();
-            }}
-          >
-            <Button type="submit" variant="outline" size="sm">
-              <ShieldOff className="h-3.5 w-3.5" /> Kilidlə
-            </Button>
-          </form>
         </div>
       </header>
 
