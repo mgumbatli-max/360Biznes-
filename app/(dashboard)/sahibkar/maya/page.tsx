@@ -1,22 +1,37 @@
 import type { Metadata } from "next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
-import { getCostAnalysis } from "@/features/sahibkar/queries";
+import {
+  getCostAnalysis,
+  getMayaProductBreakdown,
+  getMayaKateqoriyaBreakdown,
+  getMayaTrend6Months,
+} from "@/features/sahibkar/queries";
 import { formatMoney } from "@/lib/utils";
 import { CostCalculatorUploader } from "@/features/sahibkar/maya/components/cost-calculator-uploader";
+import {
+  ProductMarginBreakdown,
+  KateqoriyaBreakdown,
+  MayaTrendChart,
+} from "@/features/sahibkar/maya/components/product-margin-breakdown";
 
 export const metadata: Metadata = { title: "Maya analizi" };
 export const dynamic = "force-dynamic";
 
 export default async function MayaPage() {
   await requireSahibkarSession();
-  const a = await getCostAnalysis();
+  const [a, productBreakdown, kateqoriya, trend] = await Promise.all([
+    getCostAnalysis(),
+    getMayaProductBreakdown(5).catch(() => ({ top: [], bottom: [] })),
+    getMayaKateqoriyaBreakdown().catch(() => []),
+    getMayaTrend6Months().catch(() => []),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <header>
         <h1 className="text-2xl font-bold tracking-tight">Maya analizi</h1>
-        <p className="mt-1 text-sm text-muted-foreground">İdxal maya hesablama (Excel) və bu ayın xərc/mənfəət strukturu.</p>
+        <p className="mt-1 text-sm text-muted-foreground">İdxal maya hesablama (Excel) + bu ayın xərc/mənfəət strukturu, məhsul və kateqoriya marja breakdown-ı.</p>
       </header>
 
       <CostCalculatorUploader />
@@ -36,6 +51,10 @@ export default async function MayaPage() {
           <Row label="Net mənfəət (− OPEX − maaş)" value={formatMoney(a.net_profit)} tone={a.net_profit >= 0 ? "success" : "danger"} bold big />
         </CardContent>
       </Card>
+
+      <ProductMarginBreakdown top={productBreakdown.top} bottom={productBreakdown.bottom} />
+      <KateqoriyaBreakdown items={kateqoriya} />
+      <MayaTrendChart items={trend} />
     </div>
   );
 }

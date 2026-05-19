@@ -91,6 +91,167 @@ export async function getCostAnalysis() {
   });
 }
 
+/**
+ * Bu ay ərzində ən gəlirli və ən az gəlirli (zərərli) məhsulları qaytarır.
+ * Marja = (satış məbləği − COGS) / satış məbləği × 100
+ */
+export async function getMayaProductBreakdown(limit = 5) {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+    const rows = await prisma.$queryRaw<Array<{
+      mehsul_id: string;
+      ad: string;
+      satilan_say: number;
+      revenue: number;
+      cogs: number;
+      margin_pct: number;
+    }>>`
+      SELECT m.id::text AS mehsul_id,
+             m.ad,
+             COALESCE(SUM(sls.miqdar), 0)::float AS satilan_say,
+             COALESCE(SUM(sls.miqdar * sls.qiymet), 0)::float AS revenue,
+             COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs,
+             CASE WHEN COALESCE(SUM(sls.miqdar * sls.qiymet), 0) > 0
+                  THEN ((COALESCE(SUM(sls.miqdar * sls.qiymet), 0)
+                         - COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0))
+                        / COALESCE(SUM(sls.miqdar * sls.qiymet), 0) * 100)::float
+                  ELSE 0::float
+             END AS margin_pct
+        FROM satis_sifaris_satirlari sls
+        JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
+        JOIN mehsullar m ON m.id = sls.mehsul_id
+       WHERE sls.sahibkar_id = ${sahibkarId}::uuid
+         AND ss.tarix >= ${monthStart}
+         AND ss.status != 'legv'
+       GROUP BY m.id, m.ad
+       HAVING COALESCE(SUM(sls.miqdar * sls.qiymet), 0) > 0
+       ORDER BY margin_pct DESC NULLS LAST
+    `;
+
+    const stealth = await getStealthState();
+    const s = stealth.aktiv ? stealth.scale : 1;
+    const scale = (n: number) => n * s;
+
+    const all = rows.map((r) => ({
+      mehsul_id: r.mehsul_id,
+      ad: r.ad,
+      satilan_say: Number(r.satilan_say) * s,
+      revenue: scale(Number(r.revenue)),
+      cogs: scale(Number(r.cogs)),
+      profit: scale(Number(r.revenue) - Number(r.cogs)),
+      margin_pct: Number(r.margin_pct),
+    }));
+
+    return {
+      top: all.slice(0, limit),
+      bottom: all.slice(-limit).reverse(),
+    };
+  });
+}
+
+/**
+ * Bu ay ərzində kateqoriya üzrə satış/maya/marja breakdown-ı.
+ */
+export async function getMayaKateqoriyaBreakdown() {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+    const rows = await prisma.$queryRaw<Array<{
+      kateqoriya_id: string | null;
+      kateqoriya_ad: string | null;
+      revenue: number;
+      cogs: number;
+      mehsul_sayi: number;
+    }>>`
+      SELECT k.id::text AS kateqoriya_id,
+             COALESCE(k.ad, 'Kateqoriyasız') AS kateqoriya_ad,
+             COALESCE(SUM(sls.miqdar * sls.qiymet), 0)::float AS revenue,
+             COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs,
+             COUNT(DISTINCT m.id)::int AS mehsul_sayi
+        FROM satis_sifaris_satirlari sls
+        JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
+        JOIN mehsullar m ON m.id = sls.mehsul_id
+        LEFT JOIN kateqoriyalar k ON k.id = m.kateqoriya_id
+       WHERE sls.sahibkar_id = ${sahibkarId}::uuid
+         AND ss.tarix >= ${monthStart}
+         AND ss.status != 'legv'
+       GROUP BY k.id, k.ad
+       ORDER BY revenue DESC
+    `;
+
+    const stealth = await getStealthState();
+    const s = stealth.aktiv ? stealth.scale : 1;
+
+    return rows.map((r) => {
+      const revenue = Number(r.revenue) * s;
+      const cogs = Number(r.cogs) * s;
+      const profit = revenue - cogs;
+      return {
+        kateqoriya_id: r.kateqoriya_id,
+        kateqoriya_ad: r.kateqoriya_ad ?? "Kateqoriyasız",
+        revenue,
+        cogs,
+        profit,
+        margin_pct: revenue > 0 ? (profit / revenue) * 100 : 0,
+        mehsul_sayi: Number(r.mehsul_sayi),
+      };
+    });
+  });
+}
+
+/**
+ * Son 6 ay (bu ay daxil olmaqla) üzrə revenue/COGS/profit trendi.
+ */
+export async function getMayaTrend6Months() {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const now = new Date();
+    const startMonth = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+    const rows = await prisma.$queryRaw<Array<{
+      ay: string;
+      revenue: number;
+      cogs: number;
+    }>>`
+      SELECT to_char(date_trunc('month', ss.tarix), 'YYYY-MM') AS ay,
+             COALESCE(SUM(sls.miqdar * sls.qiymet), 0)::float AS revenue,
+             COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs
+        FROM satis_sifaris_satirlari sls
+        JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
+        JOIN mehsullar m ON m.id = sls.mehsul_id
+       WHERE sls.sahibkar_id = ${sahibkarId}::uuid
+         AND ss.tarix >= ${startMonth}
+         AND ss.status != 'legv'
+       GROUP BY date_trunc('month', ss.tarix)
+       ORDER BY date_trunc('month', ss.tarix) ASC
+    `;
+
+    const stealth = await getStealthState();
+    const s = stealth.aktiv ? stealth.scale : 1;
+
+    // Boş ayları doldur — vizual trend üçün
+    const result: Array<{ ay: string; revenue: number; cogs: number; profit: number; margin_pct: number }> = [];
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const found = rows.find((r) => r.ay === key);
+      const revenue = (Number(found?.revenue ?? 0)) * s;
+      const cogs = (Number(found?.cogs ?? 0)) * s;
+      result.push({
+        ay: key,
+        revenue,
+        cogs,
+        profit: revenue - cogs,
+        margin_pct: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : 0,
+      });
+    }
+    return result;
+  });
+}
+
 export async function getBranchPerformance() {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
