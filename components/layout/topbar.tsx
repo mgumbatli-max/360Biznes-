@@ -1,0 +1,62 @@
+"use client";
+
+import { Menu } from "lucide-react";
+import { useSidebar } from "@/stores/sidebar";
+import { UserMenu } from "./user-menu";
+import { Breadcrumb } from "./breadcrumb";
+import { Clock } from "./clock";
+import { CommandPaletteTrigger } from "./command-palette";
+import { ThemeToggle } from "./theme-toggle";
+import { NotificationBell, type NotificationItem } from "./notification-bell";
+import { MyWork, type MyWorkData } from "./my-work";
+import type { SessionUser } from "@/lib/auth/types";
+
+type Props = {
+  user: SessionUser;
+  alerts?: NotificationItem[];
+  unreadCount?: number;
+  myWork?: MyWorkData;
+};
+
+const EMPTY_MY_WORK: MyWorkData = {
+  myTasks: [],
+  todayReminders: [],
+  pendingApprovals: [],
+  canSeeApprovals: false,
+  totals: { tasks: 0, reminders: 0, approvals: 0 },
+};
+
+export function Topbar({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK }: Props) {
+  const setMobileOpen = useSidebar((s) => s.setMobileOpen);
+
+  return (
+    <header className="glass sticky top-0 z-20 border-b border-border/60">
+      <div className="flex h-14 items-center gap-2 px-4 md:px-6">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground md:hidden"
+          aria-label="Naviqasiya menyusu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
+        <div className="hidden lg:block">
+          <Breadcrumb />
+        </div>
+        <div className="lg:hidden">
+          <Breadcrumb compact />
+        </div>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          <CommandPaletteTrigger />
+          <ThemeToggle />
+          <MyWork data={myWork} />
+          <NotificationBell items={alerts} unreadCount={unreadCount} />
+          <Clock />
+          <UserMenu user={user} />
+        </div>
+      </div>
+    </header>
+  );
+}
