@@ -297,7 +297,11 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
         setError(res.error);
         toast.error(res.error);
       } else {
-        toast.success("Məhsul yaradıldı");
+        if (res.data?.pending_approval) {
+          toast.info(res.data.message ?? "Məhsul təsdiqə göndərildi");
+        } else {
+          toast.success("Məhsul yaradıldı");
+        }
         handleOpenChange(false);
         router.refresh();
       }

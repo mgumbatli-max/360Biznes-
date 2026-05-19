@@ -3,17 +3,21 @@
 import { useTransition, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Package, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink } from "lucide-react";
+import { Package, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProductDialog } from "./product-dialog";
 import { QuickViewDialog } from "./quick-view-dialog";
+import { StockAdjustDialog } from "./stock-adjust-dialog";
 import { BulkActionsBar } from "./bulk-actions-bar";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { deleteProduct } from "../actions";
 import { Inspect } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
+import { MiniBarcode } from "@/components/ui/barcode";
+import { BarcodeScanDialog } from "@/components/ui/barcode-scan-dialog";
+import { AnbarBreakdownCell, AnbarHoverBadge } from "./anbar-breakdown-cell";
 import { cn, formatMoney, formatNumber } from "@/lib/utils";
 import type { ProductListRow } from "../queries";
 
@@ -54,7 +58,8 @@ const COLUMN_DEFS: ColumnDef[] = [
   { key: "valyuta",     label: "Valyuta" },
   { key: "edv",         label: "ƏDV statusu" },
   { key: "marja",       label: "Marja" },
-  { key: "stok",        label: "Stok" },
+  { key: "stok",        label: "Stok (say)" },
+  { key: "anbar",       label: "Anbar üzrə" },
   { key: "kritik",      label: "Kritik / Min / Max" },
   { key: "anbar_sayi",  label: "Anbar sayı" },
   { key: "zemanet",     label: "Zəmanət (ay)" },
@@ -67,25 +72,65 @@ const COLUMN_DEFS: ColumnDef[] = [
   { key: "etiketsiz",   label: "Etiketsiz" },
   { key: "status",      label: "Status" },
 ];
-const DEFAULT_ORDER = COLUMN_DEFS.map((c) => c.key);
+// İstifadəçinin istəyinə görə default sütun ardıcıllığı:
+//   Şəkil → Ad → Say (stok) → Qiymət (satış) → Maya → Anbar üzrə breakdown
+// Görünməyən sütunlar default order-də arxada qalır (toggle ilə açılır).
+const DEFAULT_ORDER = [
+  // Default göstərilən 6 sütun — bu sıra ilə
+  "sekil",
+  "mehsul",
+  "stok",
+  "satis",
+  "alish",
+  "anbar",
+  // Default gizli — toggle ilə açıla bilər
+  "kod",
+  "barkod",
+  "kateqoriya",
+  "topdan",
+  "marja",
+  "status",
+  "alt_kateq",
+  "model",
+  "rang",
+  "istehsalci",
+  "olcu",
+  "cheki",
+  "hecm",
+  "olculer",
+  "qutu",
+  "endirim",
+  "min_satis",
+  "partnyor",
+  "komissiya",
+  "valyuta",
+  "edv",
+  "kritik",
+  "anbar_sayi",
+  "zemanet",
+  "serial",
+  "aciqlama",
+  "qisa_tesvir",
+  "servis",
+  "yaradildi",
+  "son_satis",
+  "etiketsiz",
+];
 
-// Yeni istifadəçi üçün default 8 əsas sütun (qalanlar "Sütunlar" menyusundan açılır)
 const DEFAULT_VISIBLE = [
   "sekil",
   "mehsul",
-  "kateqoriya",
-  "alish",
-  "satis",
-  "marja",
   "stok",
-  "status",
+  "satis",
+  "alish",
+  "anbar",
 ];
 
-export function ProductTable({ items, total, categories, brands, units = [] }: Props) {
+export function ProductTable({ items, total, categories, brands, units = [], anbarlar = [] }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
-  const cols = useColumnToggle("anbar-mehsullar-cols-v4", COLUMN_DEFS, DEFAULT_ORDER, DEFAULT_VISIBLE);
+  const cols = useColumnToggle("anbar-mehsullar-cols-v6", COLUMN_DEFS, DEFAULT_ORDER, DEFAULT_VISIBLE);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -250,6 +295,9 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                     )}>
                       Stok: {formatNumber(p.stok_miqdari, 0)}
                     </span>
+                    {p.anbar_breakdown.length > 0 && (
+                      <AnbarHoverBadge items={p.anbar_breakdown} vahid={p.olcu_ad} />
+                    )}
                     {outStock && <Badge variant="destructive" className="h-4 text-[9px] px-1">bitib</Badge>}
                     {lowStock && !outStock && <Badge variant="secondary" className="h-4 bg-warning/15 text-warning text-[9px] px-1">az</Badge>}
                   </div>
@@ -289,6 +337,22 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                     }}
                     trigger="edit"
                   />
+                  <StockAdjustDialog
+                    mehsulId={p.id}
+                    mehsulAd={p.ad}
+                    anbarlar={anbarlar}
+                    currentStock={p.stok_miqdari}
+                    trigger={
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        title="Stok düzəlt (mədaxil / məxaric / inventar)"
+                        className="h-8 w-8 text-primary-light hover:bg-primary/10"
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                      </Button>
+                    }
+                  />
                   <Button
                     size="icon-sm"
                     variant="ghost"
@@ -308,10 +372,10 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
 
       {/* DESKTOP CƏDVƏL GÖRÜNÜŞÜ (md+) */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" data-sticky-head>
           <thead className="border-b border-border/60 bg-card/40 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="sticky left-0 z-20 bg-card/95 px-3 py-2.5 w-8 backdrop-blur">
+              <th className="px-3 py-2.5 w-8">
                 <input
                   type="checkbox"
                   checked={allSelected}
@@ -324,11 +388,7 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                 if (!cols.isVisible(key)) return null;
                 switch (key) {
                   case "sekil":      return <th key={key} className="px-3 py-2.5 w-12">Şəkil</th>;
-                  case "mehsul":     return (
-                    <th key={key} className="sticky left-8 z-20 bg-card/95 px-3 py-2.5 min-w-[220px] backdrop-blur border-r border-border/40">
-                      <SortableThInner label="Ad" current={sortBy} sortKey="ad" dir={sortDir} onClick={setSort} />
-                    </th>
-                  );
+                  case "mehsul":     return <SortableTh key={key} label="Ad" current={sortBy} sortKey="ad" dir={sortDir} onClick={setSort} />;
                   case "kod":        return <th key={key} className="px-3 py-2.5">Kod (SKU)</th>;
                   case "barkod":     return <th key={key} className="px-3 py-2.5">Barkod</th>;
                   case "alt_kateq":  return <th key={key} className="px-3 py-2.5">Alt kataloq</th>;
@@ -352,6 +412,7 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                   case "edv":        return <th key={key} className="px-3 py-2.5">ƏDV</th>;
                   case "marja":      return <SortableTh key={key} label="Margin" current={sortBy} sortKey="margin" dir={sortDir} onClick={setSort} align="right" />;
                   case "stok":       return <SortableTh key={key} label="Stok" current={sortBy} sortKey="stok_miqdari" dir={sortDir} onClick={setSort} align="right" />;
+                  case "anbar":      return <th key={key} className="px-3 py-2.5">Anbar üzrə</th>;
                   case "kritik":     return <th key={key} className="px-3 py-2.5 text-right">Kritik/Min/Max</th>;
                   case "anbar_sayi": return <th key={key} className="px-3 py-2.5 text-right">Anbar sayı</th>;
                   case "zemanet":    return <th key={key} className="px-3 py-2.5 text-right">Zəmanət</th>;
@@ -366,7 +427,7 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                   default: return null;
                 }
               })}
-              <th className="px-3 py-2.5 text-right w-28">Əməl</th>
+              <th className="px-3 py-2.5 text-right w-36">Əməl</th>
             </tr>
           </thead>
           <tbody>
@@ -388,11 +449,15 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                   </td>
                 ),
                 mehsul: (
-                  <td key="mehsul" className="sticky left-8 z-10 bg-background px-3 py-2.5 min-w-[220px] border-r border-border/40 group-hover:bg-secondary/40">
+                  <td key="mehsul" className="px-3 py-2.5 min-w-[220px]">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <span className="truncate font-medium" title={p.ad}>{p.ad}</span>
                         <CopyButton value={p.ad} title="Adı kopya et" size="xs" />
+                        {/* Anbar üzrə tez baxış — Anbar sütunu görünməyəndə ad-ın yanında ikon */}
+                        {!cols.isVisible("anbar") && p.anbar_breakdown.length > 0 && (
+                          <AnbarHoverBadge items={p.anbar_breakdown} vahid={p.olcu_ad} />
+                        )}
                         <button
                           type="button"
                           onClick={() => setQuickViewId(p.id)}
@@ -426,9 +491,11 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                 barkod: (
                   <td key="barkod" className="px-3 py-2.5 text-xs text-muted-foreground">
                     {p.barkod ? (
-                      <span className="inline-flex items-center gap-0.5">
+                      <span className="inline-flex items-center gap-1">
+                        <MiniBarcode value={p.barkod} className="opacity-80" />
                         <span className="font-mono">{p.barkod}</span>
                         <CopyButton value={p.barkod} title="Barkodu kopya et" size="xs" />
+                        <BarcodeScanDialog value={p.barkod} productName={p.ad} />
                       </span>
                     ) : (
                       <span className="text-muted-foreground/50">—</span>
@@ -535,6 +602,11 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                     </div>
                   </td>
                 ),
+                anbar: (
+                  <td key="anbar" className="px-3 py-2.5">
+                    <AnbarBreakdownCell items={p.anbar_breakdown} vahid={p.olcu_ad} compact />
+                  </td>
+                ),
                 kod: (
                   <td key="kod" className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
                     {p.kod ? <span className="inline-flex items-center gap-0.5">{p.kod}<CopyButton value={p.kod} title="Kod" size="xs" /></span> : "—"}
@@ -632,7 +704,7 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
               };
               return (
                 <tr key={p.id} className="group border-b border-border/30 transition hover:bg-secondary/40">
-                  <td className="sticky left-0 z-10 bg-background px-3 py-2.5 w-8 group-hover:bg-secondary/40">
+                  <td className="px-3 py-2.5 w-8">
                     <input
                       type="checkbox"
                       checked={selected.has(p.id)}
@@ -677,6 +749,22 @@ export function ProductTable({ items, total, categories, brands, units = [] }: P
                           aktiv: p.aktiv,
                         }}
                         trigger="edit"
+                      />
+                      <StockAdjustDialog
+                        mehsulId={p.id}
+                        mehsulAd={p.ad}
+                        anbarlar={anbarlar}
+                        currentStock={p.stok_miqdari}
+                        trigger={
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            title="Stok düzəlt (mədaxil / məxaric / inventar)"
+                            className="text-primary-light hover:bg-primary/10"
+                          >
+                            <SlidersHorizontal className="h-3.5 w-3.5" />
+                          </Button>
+                        }
                       />
                       <Button size="icon-sm" variant="ghost" title="Sil" disabled={pending} onClick={() => onDelete(p.id, p.ad)}>
                         <Trash2 className="h-3.5 w-3.5" />
