@@ -1,0 +1,131 @@
+import "server-only";
+import { prisma } from "@/lib/db/prisma";
+import { withTenant } from "@/lib/db/with-tenant";
+
+export type PurchaseListItem = {
+  id: string;
+  nomre: string;
+  tarix: Date;
+  status: string;
+  techizatci_id: string | null;
+  techizatci_ad: string | null;
+  techizatci_telefon: string | null;
+  anbar_ad: string | null;
+  filial_ad: string | null;
+  menecer_ad: string | null;
+  yaradan_ad: string | null;
+  qaime_nomre: string | null;
+  umumi_mebleg: number;
+  odenilmis: number;
+  elave_xerc: number;
+  satir_say: number;
+  qeyd: string | null;
+  xerc_qeyd: string | null;
+  yaradildi: Date | null;
+  yenilendi: Date | null;
+};
+
+export type PurchaseFilter = {
+  search?: string;
+  status?: string[];
+  from?: Date;
+  to?: Date;
+  techizatci_id?: string;
+  anbar_id?: number;
+};
+
+export async function getPurchases(
+  filter: PurchaseFilter,
+  page = 1,
+  pageSize = 50
+): Promise<{ items: PurchaseListItem[]; total: number }> {
+  return withTenant(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {};
+    if (filter.status?.length) where.status = { in: filter.status };
+    if (filter.from || filter.to) {
+      where.tarix = {};
+      if (filter.from) where.tarix.gte = filter.from;
+      if (filter.to) where.tarix.lte = filter.to;
+    }
+    if (filter.search) {
+      const q = filter.search.trim();
+      where.OR = [
+        { nomre: { contains: q, mode: "insensitive" } },
+        { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
+      ];
+    }
+    if (filter.techizatci_id) where.techiazatci_id = filter.techizatci_id;
+    if (filter.anbar_id) where.anbar_id = filter.anbar_id;
+
+    const [items, total] = await Promise.all([
+      prisma.alis_sifarisleri.findMany({
+        where,
+        orderBy: [{ tarix: "desc" }, { yaradildi: "desc" }],
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        include: {
+          kontragentler: { select: { id: true, ad: true, telefon: true } },
+          anbarlar: { select: { ad: true } },
+          istifadeciler_alis_sifarisleri_menecer_idToistifadeciler: { select: { ad_soyad: true } },
+          istifadeciler_alis_sifarisleri_yaradan_idToistifadeciler: { select: { ad_soyad: true } },
+          _count: { select: { alis_sifaris_satirlari: true } },
+        },
+      }),
+      prisma.alis_sifarisleri.count({ where }),
+    ]);
+
+    return {
+      items: items.map((a) => ({
+        id: a.id,
+        nomre: a.nomre,
+        tarix: a.tarix,
+        status: a.status ?? "gozlemede",
+        techizatci_id: a.kontragentler?.id ?? null,
+        techizatci_ad: a.kontragentler?.ad ?? null,
+        techizatci_telefon: a.kontragentler?.telefon ?? null,
+        anbar_ad: a.anbarlar?.ad ?? null,
+        filial_ad: null,
+        menecer_ad: a.istifadeciler_alis_sifarisleri_menecer_idToistifadeciler?.ad_soyad ?? null,
+        yaradan_ad: a.istifadeciler_alis_sifarisleri_yaradan_idToistifadeciler?.ad_soyad ?? null,
+        qaime_nomre: a.qaime_nomre ?? null,
+        umumi_mebleg: Number(a.umumi_mebleg ?? 0),
+        odenilmis: Number(a.odenilmis ?? 0),
+        elave_xerc: Number(a.elave_xerc ?? 0),
+        satir_say: a._count.alis_sifaris_satirlari,
+        qeyd: a.qeyd ?? null,
+        xerc_qeyd: a.xerc_qeyd ?? null,
+        yaradildi: a.yaradildi ?? null,
+        yenilendi: a.yenilendi ?? null,
+      })),
+      total,
+    };
+  });
+}
+
+export async function getSuppliers() {
+  return withTenant(async () => {
+    return prisma.kontragentler.findMany({
+      where: { aktiv: true, nov: { in: ["techizatci", "her_ikisi"] } },
+      orderBy: { ad: "asc" },
+      select: { id: true, ad: true, telefon: true, borc: true },
+    });
+  });
+}
+
+export async function getProductsForPurchase() {
+  return withTenant(async () => {
+    const rows = await prisma.mehsullar.findMany({
+      where: { aktiv: true },
+      orderBy: { ad: "asc" },
+      select: { id: true, ad: true, kod: true, alish_qiymeti: true },
+      take: 200,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      ad: r.ad,
+      kod: r.kod,
+      alish_qiymeti: Number(r.alish_qiymeti ?? 0),
+    }));
+  });
+}

@@ -1,0 +1,175 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { auth } from "@/auth";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EmployeeDialog } from "@/features/iscilier/components/employee-dialog";
+import { EmployeeDetailTabs } from "@/features/iscilier/components/employee-detail-tabs";
+import { getRoleOptions, getFilialOptions } from "@/features/iscilier/queries";
+import {
+  getEmployeeFullDetail,
+  getEmployeeSales,
+  getEmployeeAttendance,
+  getEmployeeBordroHistory,
+  getEmployeeLeaves,
+  getEmployeeTasks,
+  getEmployeeAuditLog,
+  getEmployeeBonusEvents,
+} from "@/features/iscilier/detail-queries";
+import { getEmployeeDocuments, getEmployeeSchedule } from "@/features/iscilier/documents-queries";
+import { getBonusProfil } from "@/features/iscilier/bonus-profile";
+import { calculateMonthlyBonus } from "@/features/iscilier/bonus-calc";
+import { getCommissionForUser } from "@/features/ticaret/commission-queries";
+import { getEmployeeExtras } from "@/features/iscilier/hr-queries";
+import type { EmployeeRow } from "@/features/iscilier/types";
+
+export const metadata: Metadata = { title: "İşçi profili" };
+export const dynamic = "force-dynamic";
+
+export default async function EmployeeDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ tab?: string }>;
+}) {
+  const { id } = await params;
+  const sp = (await searchParams) ?? {};
+  const now = new Date();
+  // İcazə yoxlanışı — kim bonus profili dəyişdirə bilər
+  const session = await auth();
+  const icazeler = await getRequestPermissions();
+  const currentUserId = session?.user?.id ?? "";
+  const currentRol = session?.user?.rol_id ?? 0;
+  const canEditBonus =
+    currentRol === 1 || currentRol === 9 ||
+    icazeler.includes("isci.bonus_idare") ||
+    icazeler.includes("istifadeci.idare") ||
+    icazeler.includes("sahibkar.access");
+  const isViewingSelf = currentUserId === id;
+  const [e, sales, attendance, bordro, leaves, tasks, audit, roles, filiallar, bonusEvents, commission, documents, schedule, extras, bonusProfil, bonusCalc] = await Promise.all([
+    getEmployeeFullDetail(id),
+    getEmployeeSales(id),
+    getEmployeeAttendance(id),
+    getEmployeeBordroHistory(id),
+    getEmployeeLeaves(id),
+    getEmployeeTasks(id),
+    getEmployeeAuditLog(id),
+    getRoleOptions(),
+    getFilialOptions(),
+    getEmployeeBonusEvents(id),
+    getCommissionForUser(id, now.getFullYear(), now.getMonth() + 1),
+    getEmployeeDocuments(id),
+    getEmployeeSchedule(id),
+    getEmployeeExtras(id),
+    getBonusProfil(id),
+    calculateMonthlyBonus(id, now.getFullYear(), now.getMonth() + 1),
+  ]);
+  if (!e) notFound();
+
+  const initials = e.ad_soyad.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+
+  const employeeRow: EmployeeRow = {
+    id: e.id,
+    ad_soyad: e.ad_soyad,
+    email: e.email,
+    telefon: e.telefon,
+    rol_id: e.rol_id ?? 0,
+    rol_ad: e.roles?.ad ?? "",
+    vezife: e.vezife,
+    aylik_maas: Number(e.aylik_maas ?? 0),
+    ise_baslama: e.ise_baslama,
+    aktiv: e.aktiv ?? true,
+    son_giris: e.son_giris,
+    isden_cixdi: e.isden_cixdi,
+    fin_kod: e.fin_kod,
+    dogum_tarixi: e.dogum_tarixi,
+    unvan: e.unvan,
+    bank_hesab: e.bank_hesab,
+    bank_ad: e.bank_ad,
+    default_filial_id: e.default_filial_id,
+    default_filial_ad: e.filiallar_istifadeciler_default_filial_idTofiliallar?.ad ?? null,
+    profil_sekil: e.profil_sekil,
+    status: e.isden_cixdi ? "cixib" : !e.aktiv ? "passiv" : "aktiv",
+  };
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-5">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <Link
+            href="/iscilier"
+            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div className="flex items-center gap-3">
+            <Avatar className="h-14 w-14">
+              <AvatarFallback
+                className="text-lg font-semibold"
+                style={{ background: "var(--brand-gradient)", color: "#fff" }}
+              >
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">{e.ad_soyad}</h1>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                <Badge variant="outline">{e.roles?.ad ?? "—"}</Badge>
+                {e.vezife && <Badge variant="outline">{e.vezife}</Badge>}
+                {e.isden_cixdi ? (
+                  <Badge variant="outline" className="border-danger/30 text-danger">İşdən çıxıb</Badge>
+                ) : !e.aktiv ? (
+                  <Badge variant="outline">passiv</Badge>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+        <EmployeeDialog roles={roles} filiallar={filiallar} initial={employeeRow} trigger="edit" />
+      </header>
+
+      <EmployeeDetailTabs
+        detail={{
+          id: e.id,
+          ad_soyad: e.ad_soyad,
+          email: e.email,
+          telefon: e.telefon,
+          vezife: e.vezife,
+          rol_ad: e.roles?.ad ?? "—",
+          ise_baslama: e.ise_baslama,
+          son_giris: e.son_giris,
+          aktiv: e.aktiv ?? true,
+          aylik_maas: Number(e.aylik_maas ?? 0),
+          fin_kod: e.fin_kod,
+          dogum_tarixi: e.dogum_tarixi,
+          unvan: e.unvan,
+          bank_ad: e.bank_ad,
+          bank_hesab: e.bank_hesab,
+          default_filial_ad: e.filiallar_istifadeciler_default_filial_idTofiliallar?.ad ?? null,
+          profil_sekil: e.profil_sekil,
+          isden_cixdi: e.isden_cixdi,
+        }}
+        sales={sales}
+        attendance={attendance}
+        bordro={bordro}
+        leaves={leaves}
+        tasks={tasks}
+        audit={audit}
+        initialTab={sp.tab}
+        bonusEvents={bonusEvents}
+        commission={commission}
+        documents={documents}
+        schedule={schedule}
+        extras={extras}
+        bonusProfil={bonusProfil}
+        bonusCalc={bonusCalc}
+        canEditBonus={canEditBonus}
+        isViewingSelf={isViewingSelf}
+      />
+    </div>
+  );
+}

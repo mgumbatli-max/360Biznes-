@@ -1,0 +1,35 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowLeft, Users, Wallet, TrendingUp } from "lucide-react";
+import { KpiCard } from "@/features/dashboard/components/kpi-card";
+import { BudcePanel } from "@/features/iscilier/components/budce-panel";
+import { getBudce } from "@/features/iscilier/budce-queries";
+import { formatMoney } from "@/lib/utils";
+
+export const metadata: Metadata = { title: "Büdcə və headcount" };
+export const dynamic = "force-dynamic";
+
+export default async function BudcePage() {
+  const data = await getBudce();
+  return (
+    <div className="mx-auto max-w-7xl space-y-5">
+      <header className="flex items-start gap-3">
+        <Link href="/iscilier" className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Büdcə və headcount</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Şöbə üzrə cari işçi heyəti, büdcə və planlama.</p>
+        </div>
+      </header>
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <KpiCard icon={Users} label="Cəmi işçi" value={String(data.total_headcount)} subline="Aktiv heyət" />
+        <KpiCard icon={Wallet} label="Aylıq büdcə" value={formatMoney(data.total_budget)} subline="Cari maaş cəmi" />
+        <KpiCard icon={TrendingUp} label="Planlanan" value={String(data.total_planned)} subline="Yeni + əvəzləmə" tone="info" />
+      </section>
+
+      <BudcePanel sobeler={data.sobeler} />
+    </div>
+  );
+}
