@@ -3,12 +3,15 @@ import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerNotes } from "@/features/sahibkar/owner-queries";
 import { NoteDialog } from "@/features/sahibkar/components/note-dialog";
 import { StickyNotesGrid } from "@/features/sahibkar/components/sticky-notes-grid";
+import { ViewToggle, type ViewMode } from "@/components/ui/view-toggle";
 
 export const metadata: Metadata = { title: "Sahibkar qeydləri" };
 export const dynamic = "force-dynamic";
 
-export default async function SahibkarQeydPage() {
+export default async function SahibkarQeydPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   await requireSahibkarSession();
+  const sp = await searchParams;
+  const view: ViewMode = sp.view === "list" ? "list" : "card";
   const notes = await getOwnerNotes(200);
 
   return (
@@ -20,10 +23,13 @@ export default async function SahibkarQeydPage() {
             Rəngli sticker qeydlər — sabitləyin, axtarın, sıralayın.
           </p>
         </div>
-        <NoteDialog />
+        <div className="flex items-center gap-2">
+          <ViewToggle modes={["card", "list"]} defaultMode="card" size="sm" />
+          <NoteDialog />
+        </div>
       </header>
 
-      <StickyNotesGrid notes={notes} />
+      <StickyNotesGrid notes={notes} view={view} />
     </div>
   );
 }
