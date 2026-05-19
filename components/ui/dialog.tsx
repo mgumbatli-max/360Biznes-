@@ -47,6 +47,20 @@ function DialogOverlay({
   )
 }
 
+function hasDialogDescription(children: React.ReactNode): boolean {
+  let found = false
+  React.Children.forEach(children, (child) => {
+    if (found || !React.isValidElement(child)) return
+    if (child.type === DialogDescription) {
+      found = true
+      return
+    }
+    const nested = (child.props as { children?: React.ReactNode })?.children
+    if (nested && hasDialogDescription(nested)) found = true
+  })
+  return found
+}
+
 function DialogContent({
   className,
   children,
@@ -55,6 +69,14 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  // Radix warns when DialogContent has neither a <DialogDescription> child nor
+  // an explicit aria-describedby. For dialogs that genuinely don't need one,
+  // pass aria-describedby={undefined} to opt out — but only if the consumer
+  // didn't already set it AND no DialogDescription is rendered as a descendant.
+  const ariaDescribedByOptOut =
+    !("aria-describedby" in props) && !hasDialogDescription(children)
+      ? { "aria-describedby": undefined }
+      : {}
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -64,6 +86,7 @@ function DialogContent({
           "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
           className
         )}
+        {...ariaDescribedByOptOut}
         {...props}
       >
         {children}
