@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getCostAnalysis } from "@/features/sahibkar/queries";
 import { formatMoney } from "@/lib/utils";
+import { CostCalculatorUploader } from "@/features/sahibkar/maya/components/cost-calculator-uploader";
 
 export const metadata: Metadata = { title: "Maya analizi" };
 export const dynamic = "force-dynamic";
@@ -12,15 +13,17 @@ export default async function MayaPage() {
   const a = await getCostAnalysis();
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-5xl space-y-5">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Maya analizi (bu ay)</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Gəlirin xərclər üzrə paylanması və net mənfəət.</p>
+        <h1 className="text-2xl font-bold tracking-tight">Maya analizi</h1>
+        <p className="mt-1 text-sm text-muted-foreground">İdxal maya hesablama (Excel) və bu ayın xərc/mənfəət strukturu.</p>
       </header>
+
+      <CostCalculatorUploader />
 
       <Card className="glass">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Gəlir → Xərclər → Mənfəət</CardTitle>
+          <CardTitle className="text-base">Bu ay: Gəlir → Xərclər → Mənfəət</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <Row label="Ümumi gəlir" value={formatMoney(a.revenue)} tone="success" />
