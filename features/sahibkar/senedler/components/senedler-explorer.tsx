@@ -20,6 +20,7 @@ import {
 } from "@/features/sahibkar/senedler/actions";
 import type { SenedTree, SenedFayl, QovluqColor } from "@/features/sahibkar/senedler/types";
 import { QOVLUQ_COLOR_CLASSES } from "@/features/sahibkar/senedler/types";
+import { EntityLinkPicker, LinkBadge } from "./entity-link-picker";
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
@@ -205,6 +206,7 @@ export function SenedlerExplorer({
                   </Link>
                   <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
                     <FolderColorButton currentColor={colorKey} onPick={(col) => handleColorChange(f.id, col)} />
+                    <EntityLinkPicker target="folder" itemId={f.id} currentLink={f.link ?? null} onDone={() => router.refresh()} />
                     <button
                       type="button"
                       onClick={() => handleRenameFolder(f.id, f.name)}
@@ -223,6 +225,11 @@ export function SenedlerExplorer({
                     </button>
                   </div>
                 </CardContent>
+                {f.link && (
+                  <div className="border-t border-border/30 px-3 py-1.5">
+                    <LinkBadge link={f.link} />
+                  </div>
+                )}
               </Card>
             );
           })}
@@ -247,8 +254,9 @@ export function SenedlerExplorer({
                   >
                     <div className="truncate text-sm font-medium">{f.name}</div>
                     {f.qeyd && <div className="truncate text-[10.5px] text-muted-foreground">{f.qeyd}</div>}
-                    {f.tags.length > 0 && (
-                      <div className="mt-0.5 flex flex-wrap gap-1">
+                    {(f.tags.length > 0 || f.link) && (
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                        {f.link && <LinkBadge link={f.link} />}
                         {f.tags.map((t, i) => (
                           <Badge key={i} variant="outline" className="text-[9px]">{t}</Badge>
                         ))}
@@ -267,14 +275,17 @@ export function SenedlerExplorer({
                   <div className="text-[10px] text-muted-foreground">
                     {new Date(f.yaradildi).toLocaleDateString("az-AZ")}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteSened(f)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-500"
-                    title="Sil"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
+                  <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                    <EntityLinkPicker target="file" itemId={f.id} currentLink={f.link ?? null} onDone={() => router.refresh()} />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSened(f)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500"
+                      title="Sil"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
