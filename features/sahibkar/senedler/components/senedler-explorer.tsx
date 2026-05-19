@@ -16,9 +16,10 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  createFolder, renameFolder, deleteFolder, addLinkSened, deleteSened, updateSenedMeta,
+  createFolder, renameFolder, deleteFolder, addLinkSened, deleteSened, updateSenedMeta, setFolderColor,
 } from "@/features/sahibkar/senedler/actions";
-import type { SenedTree, SenedFayl } from "@/features/sahibkar/senedler/types";
+import type { SenedTree, SenedFayl, QovluqColor } from "@/features/sahibkar/senedler/types";
+import { QOVLUQ_COLOR_CLASSES } from "@/features/sahibkar/senedler/types";
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
@@ -90,6 +91,16 @@ export function SenedlerExplorer({
       const res = await deleteFolder({ id });
       if (res.ok) {
         toast.success("Qovluq silindi");
+        router.refresh();
+      } else toast.error(res.error);
+    });
+  }
+
+  function handleColorChange(id: string, color: QovluqColor) {
+    startTransition(async () => {
+      const res = await setFolderColor({ id, color });
+      if (res.ok) {
+        toast.success("Rəng dəyişdirildi");
         router.refresh();
       } else toast.error(res.error);
     });
@@ -179,37 +190,42 @@ export function SenedlerExplorer({
       {/* Qovluqlar grid */}
       {filteredFolders.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {filteredFolders.map((f) => (
-            <Card key={f.id} className="glass group hover:border-primary/30">
-              <CardContent className="flex items-center gap-2 px-3 py-3">
-                <Link
-                  href={`?folder=${f.id}`}
-                  className="flex min-w-0 flex-1 items-center gap-2 hover:text-primary"
-                >
-                  <Folder className="h-5 w-5 shrink-0 text-amber-500" />
-                  <span className="truncate text-sm font-semibold">{f.name}</span>
-                </Link>
-                <div className="opacity-0 transition group-hover:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => handleRenameFolder(f.id, f.name)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary"
-                    title="Adı dəyiş"
+          {filteredFolders.map((f) => {
+            const colorKey: QovluqColor = (f.color && QOVLUQ_COLOR_CLASSES[f.color] ? f.color : "default") as QovluqColor;
+            const c = QOVLUQ_COLOR_CLASSES[colorKey];
+            return (
+              <Card key={f.id} className={`group ${c.border} ${c.bg} hover:border-primary/30`}>
+                <CardContent className="flex items-center gap-2 px-3 py-3">
+                  <Link
+                    href={`?folder=${f.id}`}
+                    className="flex min-w-0 flex-1 items-center gap-2 hover:text-primary"
                   >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteFolder(f.id, f.name)}
-                    className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500"
-                    title="Sil"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                    <Folder className={`h-5 w-5 shrink-0 ${c.icon}`} />
+                    <span className="truncate text-sm font-semibold">{f.name}</span>
+                  </Link>
+                  <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                    <FolderColorButton currentColor={colorKey} onPick={(col) => handleColorChange(f.id, col)} />
+                    <button
+                      type="button"
+                      onClick={() => handleRenameFolder(f.id, f.name)}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary"
+                      title="Adı dəyiş"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFolder(f.id, f.name)}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500"
+                      title="Sil"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -437,5 +453,49 @@ function LinkButton({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Kiçik popover-stil button: 9 rəng nöqtəsi göstərir, klik etdikdə qovluq rəngini dəyişir.
+ */
+function FolderColorButton({
+  currentColor,
+  onPick,
+}: {
+  currentColor: QovluqColor;
+  onPick: (color: QovluqColor) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const colors: QovluqColor[] = ["default", "indigo", "emerald", "sky", "amber", "rose", "violet", "pink", "slate"];
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary"
+        title="Rəngi dəyiş"
+        aria-label="Qovluq rəngini dəyiş"
+      >
+        <span className={`inline-block h-3 w-3 rounded-full border border-border ${QOVLUQ_COLOR_CLASSES[currentColor].dot}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-7 z-30 grid grid-cols-3 gap-1 rounded-md border border-border bg-popover p-2 shadow-md">
+            {colors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => { onPick(c); setOpen(false); }}
+                className={`h-6 w-6 rounded-full border border-border ${QOVLUQ_COLOR_CLASSES[c].dot} ${currentColor === c ? "ring-2 ring-foreground/40" : ""}`}
+                title={QOVLUQ_COLOR_CLASSES[c].label}
+                aria-label={QOVLUQ_COLOR_CLASSES[c].label}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

@@ -6,7 +6,7 @@ import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { auth } from "@/auth";
 import { getSenedTree, saveSenedTree } from "./queries";
-import type { SenedQovluq, SenedFayl } from "./types";
+import type { SenedQovluq, SenedFayl, QovluqColor, SenedLink } from "./types";
 
 type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -17,8 +17,32 @@ async function requireSahibkar(): Promise<{ ok: true } | { ok: false; error: str
   return { ok: true };
 }
 
+const VALID_COLORS: ReadonlySet<QovluqColor> = new Set<QovluqColor>([
+  "default", "indigo", "emerald", "sky", "amber", "rose", "violet", "pink", "slate",
+]);
+
+const VALID_LINK_NOV: ReadonlySet<SenedLink["nov"]> = new Set<SenedLink["nov"]>([
+  "satinalma", "satis", "mehsul", "musteri", "techizatci", "partiya", "tapshiriq", "qaime", "diger",
+]);
+
+function sanitizeLink(input: { nov?: string; id?: string; label?: string } | null | undefined): SenedLink | null {
+  if (!input || !input.nov || !input.id) return null;
+  const nov = input.nov as SenedLink["nov"];
+  if (!VALID_LINK_NOV.has(nov)) return null;
+  return {
+    nov,
+    id: input.id.trim().slice(0, 100),
+    label: (input.label ?? "").trim().slice(0, 200),
+  };
+}
+
 // ───────────── Qovluq ────────────────────────────────────────
-export async function createFolder(input: { name: string; parent_id: string | null }): Promise<Result<{ id: string }>> {
+export async function createFolder(input: {
+  name: string;
+  parent_id: string | null;
+  color?: QovluqColor;
+  link?: SenedLink | null;
+}): Promise<Result<{ id: string }>> {
   const guard = await requireSahibkar();
   if (!guard.ok) return guard;
   const name = input.name.trim().slice(0, 80);
@@ -30,6 +54,8 @@ export async function createFolder(input: { name: string; parent_id: string | nu
     name,
     parent_id: input.parent_id,
     yaradildi: new Date().toISOString(),
+    color: input.color && VALID_COLORS.has(input.color) ? input.color : "default",
+    link: sanitizeLink(input.link),
   };
   tree.folders.push(folder);
   await saveSenedTree(tree);
@@ -47,6 +73,44 @@ export async function renameFolder(input: { id: string; name: string }): Promise
   const f = tree.folders.find((x) => x.id === input.id);
   if (!f) return { ok: false, error: "Qovluq tapılmadı" };
   f.name = name;
+  await saveSenedTree(tree);
+  revalidatePath("/sahibkar/senedler");
+  return { ok: true };
+}
+
+/** Qovluğun rəngini dəyişdirir. */
+export async function setFolderColor(input: { id: string; color: QovluqColor }): Promise<Result> {
+  const guard = await requireSahibkar();
+  if (!guard.ok) return guard;
+  if (!VALID_COLORS.has(input.color)) return { ok: false, error: "Yanlış rəng" };
+
+  const tree = await getSenedTree();
+  const f = tree.folders.find((x) => x.id === input.id);
+  if (!f) return { ok: false, error: "Qovluq tapılmadı" };
+  f.color = input.color;
+  await saveSenedTree(tree);
+  revalidatePath("/sahibkar/senedler");
+  return { ok: true };
+}
+
+/** Qovluğu və ya sənədi başqa bölmənin entity-sinə bağlayır. */
+export async function setSenedLink(input: {
+  id: string;
+  target: "folder" | "file";
+  link: { nov: string; id: string; label?: string } | null;
+}): Promise<Result> {
+  const guard = await requireSahibkar();
+  if (!guard.ok) return guard;
+  const tree = await getSenedTree();
+  if (input.target === "folder") {
+    const f = tree.folders.find((x) => x.id === input.id);
+    if (!f) return { ok: false, error: "Qovluq tapılmadı" };
+    f.link = sanitizeLink(input.link);
+  } else {
+    const f = tree.files.find((x) => x.id === input.id);
+    if (!f) return { ok: false, error: "Sənəd tapılmadı" };
+    f.link = sanitizeLink(input.link);
+  }
   await saveSenedTree(tree);
   revalidatePath("/sahibkar/senedler");
   return { ok: true };
