@@ -2,11 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   Package,
-  CheckCircle,
+  CheckCircle2,
   XCircle,
   AlertCircle,
   Bookmark,
-  DollarSign,
   Wallet,
   TrendingUp,
   Clock,
@@ -16,6 +15,9 @@ import {
   Coins,
   Tag,
   Circle,
+  Sparkles,
+  ClipboardCheck,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import { AnbarSubNav } from "@/components/anbar-subnav";
@@ -32,7 +34,8 @@ import {
 } from "@/features/anbar/queries";
 import { getLowStockProducts } from "@/features/anbar/attention-queries";
 import { AttentionWidget } from "@/features/anbar/components/attention-widget";
-import { formatNumber } from "@/lib/utils";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { formatNumber, formatCompactMoney, formatCompactNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Anbar" };
 export const dynamic = "force-dynamic";
@@ -49,9 +52,30 @@ export default async function AnbarDashboardPage() {
     getLowStockProducts(5),
   ]);
 
+  // Sürətli problem qiymətləndirməsi — hansı problemlər var, badge üçün
+  const problems = [
+    { key: "sekilsiz",   label: "Şəkilsiz",   value: kpis.sekilsiz,   icon: ImageIcon,    href: "/anbar/hesabat?mod=sekilsiz" },
+    { key: "barkodsuz",  label: "Barkodsuz",  value: kpis.barkodsuz,  icon: ScanBarcode,  href: "/anbar/hesabat?mod=barkodsuz" },
+    { key: "mayasiz",    label: "Mayasız",    value: kpis.mayasiz,    icon: Coins,        href: "/anbar/hesabat?mod=mayasiz" },
+    { key: "qiymetsiz",  label: "Qiymətsiz",  value: kpis.qiymetsiz,  icon: Circle,       href: "/anbar/hesabat?mod=qiymetsiz" },
+  ];
+  const activeProblems = problems.filter((p) => p.value > 0);
+  const allClean = activeProblems.length === 0;
+
+  // Ən kritik problem — hero strip-də göstərmək üçün
+  const topProblem = [...problems].sort((a, b) => b.value - a.value)[0];
+  const heroInsight =
+    kpis.zero_stok > 0
+      ? { tone: "danger" as const, text: `${kpis.zero_stok} məhsulun stoku bitib — təcili sifariş tələb olunur`, href: "/anbar/satinalma" }
+      : kpis.low_stok > 0
+      ? { tone: "warning" as const, text: `${kpis.low_stok} məhsul aşağı stok səviyyəsindədir`, href: "/anbar/mehsullar?stok_status=az" }
+      : topProblem && topProblem.value > 50
+      ? { tone: "warning" as const, text: `${topProblem.value} məhsul ${topProblem.label.toLowerCase()} — diqqət lazım`, href: topProblem.href }
+      : null;
+
   return (
-    <div className="mx-auto max-w-7xl">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="mx-auto max-w-7xl space-y-5">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Anbar</h1>
         <div className="flex items-center gap-1.5">
           <RefreshButton />
@@ -61,66 +85,235 @@ export default async function AnbarDashboardPage() {
 
       <AnbarSubNav active="/anbar" />
 
-      <h3 className="mt-6 mb-3 text-sm font-semibold tracking-tight">Ümumi göstəricilər</h3>
-      <div className="grid grid-cols-2 gap-6 border-y border-border py-5 md:grid-cols-3 lg:grid-cols-5">
-        <Kpi label="Cəmi məhsul" icon={Package} value={kpis.toplam_mehsul} sub={`${kpis.toplam_mehsul} aktiv`} href="/anbar/mehsullar" />
-        <Kpi label="Stokda" icon={CheckCircle} tone="success" value={kpis.toplam_mehsul - kpis.zero_stok} sub={`${formatNumber(kpis.toplam_stok_vahid, 0)} ədəd`} href="/anbar/mehsullar?stok_status=var" />
-        <Kpi label="Stok yoxdur" icon={XCircle} tone="danger" value={kpis.zero_stok} href="/anbar/mehsullar?stok_status=yox" />
-        <Kpi label="Az stok" icon={AlertCircle} tone="warning" value={kpis.low_stok} href="/anbar/mehsullar?stok_status=az" />
-        <Kpi label="Bron" icon={Bookmark} value={vals.bron_aktiv} sub="aktiv" href="/anbar/bron" />
+      {/* ── AI Insight Strip ── */}
+      {heroInsight && (
+        <Link
+          href={heroInsight.href}
+          className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm transition hover:opacity-90 ${
+            heroInsight.tone === "danger"
+              ? "border-rose-500/30 bg-rose-500/5 text-rose-600 dark:text-rose-400"
+              : "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400"
+          }`}
+        >
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <span className="flex-1 font-medium">{heroInsight.text}</span>
+          <ArrowRight className="h-4 w-4 shrink-0" />
+        </Link>
+      )}
+
+      {/* ── HERO: Anbar dəyəri ── */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="lg:col-span-2 rounded-2xl border border-border bg-gradient-to-br from-primary/5 via-transparent to-transparent p-5">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Anbarın canlı dəyəri (satış qiymətində)
+          </div>
+          <div
+            className="mt-2 text-4xl font-bold tracking-tight text-foreground"
+            title={`${formatNumber(vals.satis_deyeri, 2)} ₼`}
+          >
+            {formatCompactMoney(vals.satis_deyeri)}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+            <SubStat
+              label="Maya dəyəri"
+              value={formatCompactMoney(vals.maya_deyeri)}
+              fullValue={`${formatNumber(vals.maya_deyeri, 2)} ₼`}
+              icon={Wallet}
+            />
+            <SubStat
+              label="Potensial mənfəət"
+              value={"+" + formatCompactMoney(vals.potensial_menfeet)}
+              fullValue={`${formatNumber(vals.potensial_menfeet, 2)} ₼`}
+              icon={TrendingUp}
+              tone="success"
+            />
+            <SubStat
+              label="Cəmi məhsul"
+              value={formatCompactNumber(kpis.toplam_mehsul)}
+              fullValue={`${formatNumber(kpis.toplam_mehsul, 0)} ədəd`}
+              icon={Package}
+            />
+          </div>
+        </div>
+
+        {/* Quick actions */}
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Sürətli əməliyyat
+          </div>
+          <div className="space-y-1.5">
+            {kpis.sekilsiz > 0 && (
+              <QuickAction
+                icon={Sparkles}
+                title="AI ilə şəkil yarat"
+                desc={`${kpis.sekilsiz} məhsul şəkilsizdir`}
+                href="/anbar/anomali/bulk-fix"
+                tone="primary"
+              />
+            )}
+            <QuickAction
+              icon={ClipboardCheck}
+              title="Sayım başlat"
+              desc="Faktiki stoku yoxla"
+              href="/anbar/inventar"
+            />
+            <QuickAction
+              icon={AlertCircle}
+              title="Aşağı stoku gör"
+              desc={`${kpis.low_stok + kpis.zero_stok} məhsul diqqət tələb edir`}
+              href="/anbar/satinalma"
+              tone={kpis.zero_stok > 0 ? "danger" : kpis.low_stok > 0 ? "warning" : "default"}
+            />
+          </div>
+        </div>
       </div>
 
-      <h3 className="mt-6 mb-3 text-sm font-semibold tracking-tight">Stok dəyəri</h3>
-      <div className="grid grid-cols-2 gap-6 border-y border-border py-5 md:grid-cols-3 lg:grid-cols-5">
-        <Kpi label="Satış dəyəri" icon={DollarSign} tone="success" value={formatNumber(vals.satis_deyeri)} suffix="₼" />
-        <Kpi label="Maya dəyəri" icon={Wallet} value={formatNumber(vals.maya_deyeri)} suffix="₼" />
-        <Kpi label="Potensial mənfəət" icon={TrendingUp} tone="success" value={"+" + formatNumber(vals.potensial_menfeet)} suffix="₼" />
-        <Kpi label="60 gündür satılmır" icon={Clock} tone="warning" value={vals.satilmayan_60} sub="siyahını gör" />
-        <Kpi label="Ölü stok (90+)" icon={AlertTriangle} tone="danger" value={vals.olu_stok} sub="siyahını gör" />
+      {/* ── Stok status row ── */}
+      <div>
+        <h3 className="mb-2 text-sm font-semibold tracking-tight">Stok vəziyyəti</h3>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatusCard
+            label="Stokda var"
+            icon={CheckCircle2}
+            value={kpis.toplam_mehsul - kpis.zero_stok}
+            sub={`${formatCompactNumber(kpis.toplam_stok_vahid)} ədəd`}
+            tone="success"
+            href="/anbar/mehsullar?stok_status=var"
+          />
+          <StatusCard
+            label="Az stok"
+            icon={AlertCircle}
+            value={kpis.low_stok}
+            sub={kpis.low_stok > 0 ? "diqqət lazım" : "hamı qaydadır"}
+            tone={kpis.low_stok > 0 ? "warning" : "neutral"}
+            href="/anbar/mehsullar?stok_status=az"
+          />
+          <StatusCard
+            label="Stok yoxdur"
+            icon={XCircle}
+            value={kpis.zero_stok}
+            sub={kpis.zero_stok > 0 ? "sifariş tələbli" : "yoxdur"}
+            tone={kpis.zero_stok > 0 ? "danger" : "neutral"}
+            href="/anbar/mehsullar?stok_status=yox"
+          />
+          <StatusCard
+            label="Aktiv bron"
+            icon={Bookmark}
+            value={vals.bron_aktiv}
+            sub={vals.bron_aktiv > 0 ? "müştəri saxlanışı" : "bron yoxdur"}
+            tone={vals.bron_aktiv > 0 ? "info" : "neutral"}
+            href="/anbar/bron"
+          />
+        </div>
       </div>
 
-      <h3 className="mt-6 mb-3 text-sm font-semibold tracking-tight">⚠️ Problemli məhsullar</h3>
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-        <ProblemCard icon={ImageIcon} label="Şəkilsiz" value={kpis.sekilsiz} href="/anbar/hesabat?mod=sekilsiz" />
-        <ProblemCard icon={ScanBarcode} label="Barkodsuz" value={kpis.barkodsuz} href="/anbar/hesabat?mod=barkodsuz" />
-        <ProblemCard icon={Coins} label="Mayasız" value={kpis.mayasiz} href="/anbar/hesabat?mod=mayasiz" />
-        <ProblemCard icon={Circle} label="Qiymətsiz" value={kpis.qiymetsiz} href="/anbar/hesabat?mod=qiymetsiz" />
+      {/* ── Aging (ölü stok) ── */}
+      {(vals.satilmayan_60 > 0 || vals.olu_stok > 0) && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold tracking-tight">Stok yaşlanması</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <StatusCard
+              label="60+ gündür satılmır"
+              icon={Clock}
+              value={vals.satilmayan_60}
+              sub="hesabatı aç"
+              tone={vals.satilmayan_60 > 20 ? "warning" : "info"}
+              href="/anbar/hesabat?mod=60gun"
+            />
+            <StatusCard
+              label="Ölü stok (90+ gün)"
+              icon={AlertTriangle}
+              value={vals.olu_stok}
+              sub="dondurulmuş kapital"
+              tone="danger"
+              href="/anbar/hesabat?mod=olu"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Data sağlamlığı ── */}
+      <div>
+        <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+          Data sağlamlığı
+          {allClean && <StatusBadge tone="success" size="sm">Hamı qaydadır</StatusBadge>}
+        </h3>
+        {allClean ? (
+          <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>Bütün məhsullar şəkil, barkod, maya və qiymət ilə tam doldurulub.</span>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+            {activeProblems.map((p) => (
+              <Link
+                key={p.key}
+                href={p.href}
+                className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 transition hover:border-amber-500/40 hover:bg-amber-500/10"
+              >
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                  <p.icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold">{p.label}</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">Diqqət lazımdır →</div>
+                </div>
+                <div className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400" title={String(p.value)}>
+                  {formatCompactNumber(p.value)}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="mt-5">
-        <AttentionWidget items={lowStock} mode="anbar" />
-      </div>
+      <AttentionWidget items={lowStock} mode="anbar" />
 
-      <div className="mt-5 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+      {/* ── Anbar / Marka breakdown ── */}
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-4">
-          <h4 className="mb-3 text-sm font-semibold tracking-tight">Anbar üzrə</h4>
+          <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+            <Package className="h-3.5 w-3.5 text-muted-foreground" /> Anbar üzrə
+          </h4>
           <ul className="space-y-0">
             {byWh.length === 0 && <li className="py-2 text-sm text-muted-foreground">Anbar yoxdur</li>}
             {byWh.map((w) => (
-              <li key={w.id} className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0">
+              <li
+                key={w.id}
+                className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0"
+              >
                 <span className="min-w-0 flex-1 truncate">
-                  📦 {w.ad}
-                  <small className="ml-1 text-muted-foreground">({w.mehsul_say} məhsul, {formatNumber(w.umumi_miqdar, 0)} ədəd)</small>
+                  <span className="font-medium">{w.ad}</span>
+                  <small className="ml-1.5 text-muted-foreground">
+                    {w.mehsul_say} məhsul · {formatCompactNumber(w.umumi_miqdar)} ədəd
+                  </small>
                 </span>
-                <span className="font-semibold tabular-nums">{formatNumber(w.satis_deyeri)}₼</span>
+                <span className="font-semibold tabular-nums" title={`${formatNumber(w.satis_deyeri, 2)} ₼`}>
+                  {formatCompactMoney(w.satis_deyeri)}
+                </span>
               </li>
             ))}
           </ul>
         </div>
 
         <div className="rounded-xl border border-border bg-card p-4">
-          <h4 className="mb-3 flex items-center gap-1 text-sm font-semibold tracking-tight">
-            <Tag className="h-3.5 w-3.5" /> Marka üzrə
+          <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+            <Tag className="h-3.5 w-3.5 text-muted-foreground" /> Marka üzrə
           </h4>
           <ul className="space-y-0">
             {byBr.length === 0 && <li className="py-2 text-sm text-muted-foreground">Marka yoxdur</li>}
             {byBr.map((b) => (
-              <li key={b.id} className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0">
+              <li
+                key={b.id}
+                className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0"
+              >
                 <span className="min-w-0 flex-1 truncate">
-                  🏷️ {b.ad}
-                  <small className="ml-1 text-muted-foreground">({b.mehsul_say})</small>
+                  <span className="font-medium">{b.ad}</span>
+                  <small className="ml-1.5 text-muted-foreground">{b.mehsul_say} məhsul</small>
                 </span>
-                <span className="font-semibold tabular-nums">{formatNumber(b.deyer)}₼</span>
+                <span className="font-semibold tabular-nums" title={`${formatNumber(b.deyer, 2)} ₼`}>
+                  {formatCompactMoney(b.deyer)}
+                </span>
               </li>
             ))}
           </ul>
@@ -130,62 +323,103 @@ export default async function AnbarDashboardPage() {
   );
 }
 
-function Kpi({
+function SubStat({
+  label,
+  value,
+  fullValue,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  fullValue?: string;
+  icon: LucideIcon;
+  tone?: "success" | "warning" | "danger";
+}) {
+  const cls = tone === "success" ? "text-emerald-600 dark:text-emerald-400" : tone === "danger" ? "text-rose-500" : "text-foreground";
+  return (
+    <div title={fullValue}>
+      <div className="flex items-center gap-1 text-[10.5px] font-medium text-muted-foreground">
+        <Icon className="h-3 w-3" /> {label}
+      </div>
+      <div className={`mt-1 text-lg font-bold tabular-nums tracking-tight ${cls}`}>{value}</div>
+    </div>
+  );
+}
+
+function StatusCard({
   label,
   icon: Icon,
   value,
-  suffix,
   sub,
   tone,
   href,
 }: {
   label: string;
   icon: LucideIcon;
-  value: number | string;
-  suffix?: string;
-  sub?: string;
-  tone?: "success" | "warning" | "danger";
-  href?: string;
-}) {
-  const cls =
-    tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : tone === "danger" ? "text-danger" : "text-foreground";
-
-  const body = (
-    <div className="cursor-pointer transition hover:opacity-70">
-      <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-        <Icon className="h-3 w-3" /> {label}
-      </div>
-      <div className={`mt-2 text-[22px] font-semibold leading-none tabular-nums tracking-tight ${cls}`}>
-        {value}
-        {suffix && <small className="ml-1 text-xs font-medium text-muted-foreground">{suffix}</small>}
-      </div>
-      {sub && <div className="mt-1.5 text-[11px] text-muted-foreground">{sub}</div>}
-    </div>
-  );
-  return href ? <Link href={href}>{body}</Link> : body;
-}
-
-function ProblemCard({
-  icon: Icon,
-  label,
-  value,
-  href,
-}: {
-  icon: LucideIcon;
-  label: string;
   value: number;
+  sub?: string;
+  tone: "success" | "warning" | "danger" | "info" | "neutral";
   href: string;
 }) {
+  const palette = {
+    success: { wrap: "border-emerald-500/25 bg-emerald-500/5", text: "text-emerald-600 dark:text-emerald-400", iconBg: "bg-emerald-500/15" },
+    warning: { wrap: "border-amber-500/30 bg-amber-500/5",     text: "text-amber-600 dark:text-amber-400",     iconBg: "bg-amber-500/15" },
+    danger:  { wrap: "border-rose-500/30 bg-rose-500/5",       text: "text-rose-600 dark:text-rose-400",       iconBg: "bg-rose-500/15" },
+    info:    { wrap: "border-sky-500/25 bg-sky-500/5",         text: "text-sky-600 dark:text-sky-400",         iconBg: "bg-sky-500/15" },
+    neutral: { wrap: "border-border bg-card",                  text: "text-muted-foreground",                  iconBg: "bg-secondary" },
+  }[tone];
   return (
-    <Link href={href} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 transition hover:border-border-hi hover:bg-secondary/40">
-      <div className="grid h-9 w-9 place-items-center rounded-lg bg-warning/15 text-warning">
-        <Icon className="h-4.5 w-4.5" />
+    <Link
+      href={href}
+      className={`flex items-center gap-3 rounded-xl border p-3.5 transition hover:shadow-sm ${palette.wrap}`}
+    >
+      <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${palette.iconBg} ${palette.text}`}>
+        <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium">{label}</div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">Diqqət lazımdır</div>
+        <div className="text-xs font-medium">{label}</div>
+        {sub && <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>}
       </div>
-      <div className="text-2xl font-semibold tabular-nums text-warning">{value}</div>
+      <div className={`text-2xl font-bold tabular-nums ${palette.text}`} title={String(value)}>
+        {formatCompactNumber(value)}
+      </div>
+    </Link>
+  );
+}
+
+function QuickAction({
+  icon: Icon,
+  title,
+  desc,
+  href,
+  tone = "default",
+}: {
+  icon: LucideIcon;
+  title: string;
+  desc: string;
+  href: string;
+  tone?: "primary" | "danger" | "warning" | "default";
+}) {
+  const iconCls = {
+    primary: "bg-primary/15 text-primary",
+    danger:  "bg-rose-500/15 text-rose-600",
+    warning: "bg-amber-500/15 text-amber-600",
+    default: "bg-secondary text-muted-foreground",
+  }[tone];
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-secondary/60"
+    >
+      <div className={`grid h-8 w-8 place-items-center rounded-md ${iconCls}`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-semibold">{title}</div>
+        <div className="truncate text-[10.5px] text-muted-foreground">{desc}</div>
+      </div>
+      <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
     </Link>
   );
 }
