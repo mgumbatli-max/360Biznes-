@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { chatCompletion, type ChatMessage } from "@/lib/ai/anthropic";
+import { getBusinessContext } from "./queries";
 
 const SendSchema = z.object({
   message: z.string().min(1).max(4000),
@@ -37,7 +38,13 @@ export async function sendMessage(message: string): Promise<SendResult> {
     }
     history.push({ role: "user", content: parsed.data.message });
 
-    const result = await chatCompletion(history);
+    // Real biznes KPI-larını system prompt-a inject — AI konkret rəqəmlərlə cavab versin
+    const businessCtx = await getBusinessContext().catch(() => "");
+    const system = businessCtx
+      ? `Sən 360Biznes ERP sistemində biznes sahibinə kömək edən AI köməkçisən. Cavablarını Azərbaycan dilində ver. Aşağıdakı real biznes data-sından istifadə edib konkret rəqəmlərlə cavab ver. Heç vaxt "məlumatım yoxdur" demə — kontekst aşağıdadır.\n\n${businessCtx}\n\nQısa ol (3-4 abzas maksimum). Markdown bullet siyahıları işlət. JSON/HTML qaytarma — yalnız sadə mətn.`
+      : undefined;
+
+    const result = await chatCompletion(history, system ? { system } : undefined);
 
     await prisma.ai_sohbet_loq.create({
       data: {
