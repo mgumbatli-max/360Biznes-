@@ -6,7 +6,7 @@ import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerTasks, getStaffOptions } from "@/features/sahibkar/owner-queries";
 import { TaskDialog, TaskStatusSelect } from "@/features/sahibkar/components/task-dialog";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
-import { EntityLinkBadge, type EntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
+import { EntityLinkBadge, toEntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sahibkar tapşırıqları" };
@@ -116,7 +116,7 @@ export default async function SahibkarTapshiriqPage() {
                           {t.tesvir ? <p className="line-clamp-2 text-xs text-muted-foreground">{t.tesvir}</p> : null}
                           {t.link_nov && t.link_id && (
                             <div className="pt-0.5">
-                              <EntityLinkBadge nov={t.link_nov as EntityLinkNov} id={t.link_id} label={t.link_label} withHref size="xs" />
+                              <EntityLinkBadge nov={toEntityLinkNov(t.link_nov)} id={t.link_id} label={t.link_label} withHref size="xs" />
                             </div>
                           )}
                           <div className="flex items-center justify-between text-[10.5px] text-muted-foreground">

@@ -51,15 +51,20 @@ const NOV_HREF: Record<EntityLinkNov, (id: string) => string> = {
   musteri:    (id) => `/elaqe/musteriler/${id}`,
   techizatci: (id) => `/elaqe/techizatcilar/${id}`,
   partiya:    (id) => `/sahibkar/partiya/${id}`,
-  tapshiriq:  (id) => `/sahibkar/tapshiriq?focus=${id}`,
+  tapshiriq:  () => `/sahibkar/tapshiriq`, // focus query yox — list səhifəsinə aparır
   qaime:      (id) => `/ticaret/satislar/${id}`,
-  qeyd:       (id) => `/sahibkar/qeyd?focus=${id}`,
-  diger:      (id) => `#${id}`,
+  qeyd:       () => `/sahibkar/qeyd`,
+  diger:      () => `#`,
 };
 
 export function entityLinkHref(nov: EntityLinkNov, id: string): string {
   const fn = NOV_HREF[nov];
   return fn ? fn(id) : "#";
+}
+
+/** Validates a string from DB; falls back to "diger" if invalid. */
+export function toEntityLinkNov(s: string | null | undefined): EntityLinkNov {
+  return s && s in ENTITY_NOV_LABELS ? (s as EntityLinkNov) : "diger";
 }
 
 export function EntityLinkBadge({

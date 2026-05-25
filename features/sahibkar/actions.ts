@@ -59,7 +59,7 @@ export async function setupPin(input: FormData): Promise<ActionResult> {
         },
       });
     }
-    const cfgTtl = (existing?.sessiya_muddet ?? 15) || 15;
+    const cfgTtl = existing?.sessiya_muddet && existing.sessiya_muddet >= 1 ? existing.sessiya_muddet : 15;
     await setPinSession(sahibkarId, istifadeciId, cfgTtl);
     return { ok: true };
   });
@@ -111,7 +111,7 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
       return { ok: false, error: `PIN səhvdir (${failed.count}/${limit} cəhd).` };
     }
 
-    const ttl = (cfg.sessiya_muddet ?? 15) || 15;
+    const ttl = cfg.sessiya_muddet && cfg.sessiya_muddet >= 1 ? cfg.sessiya_muddet : 15;
     await setPinSession(sahibkarId, istifadeciId, ttl);
     await resetAttempts();
     return { ok: true };

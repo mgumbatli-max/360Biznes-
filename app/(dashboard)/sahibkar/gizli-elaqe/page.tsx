@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { listGizliElaqe, createGizliElaqe, deleteGizliElaqe, type GizliElaqe } from "@/features/sahibkar/gizli-elaqe-actions";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
-import { EntityLinkInput, EntityLinkBadge, type EntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
+import { EntityLinkInput, EntityLinkBadge, toEntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
 
 export const metadata: Metadata = { title: "Gizli əlaqələr — Sahibkar" };
 export const dynamic = "force-dynamic";
@@ -289,7 +289,7 @@ export default async function GizliElaqePage({ searchParams }: { searchParams: P
                   )}
                   {c.link_nov && c.link_id && (
                     <div>
-                      <EntityLinkBadge nov={c.link_nov as EntityLinkNov} id={c.link_id} label={c.link_label} withHref />
+                      <EntityLinkBadge nov={toEntityLinkNov(c.link_nov)} id={c.link_id} label={c.link_label} withHref />
                     </div>
                   )}
                   <div className="flex items-center justify-between border-t border-border/30 pt-2 text-[10px] text-muted-foreground">

@@ -5,7 +5,7 @@ import { Pin, Search, StickyNote } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NoteDialog, DeleteNoteButton } from "./note-dialog";
-import { EntityLinkBadge, type EntityLinkNov } from "./entity-link-input";
+import { EntityLinkBadge, toEntityLinkNov } from "./entity-link-input";
 import { formatDate } from "@/lib/utils";
 import type { ViewMode } from "@/components/ui/view-toggle";
 
@@ -124,7 +124,7 @@ function NotesCardView({ notes }: { notes: Note[] }) {
             ) : null}
             {n.link_nov && n.link_id && (
               <div className="mt-2">
-                <EntityLinkBadge nov={n.link_nov as EntityLinkNov} id={n.link_id} label={n.link_label} withHref />
+                <EntityLinkBadge nov={toEntityLinkNov(n.link_nov)} id={n.link_id} label={n.link_label} withHref />
               </div>
             )}
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-current/10 pt-2 text-[10.5px] font-medium opacity-70">
@@ -178,7 +178,7 @@ function NotesListView({ notes }: { notes: Note[] }) {
                 </td>
                 <td className="px-3 py-2">
                   {n.link_nov && n.link_id ? (
-                    <EntityLinkBadge nov={n.link_nov as EntityLinkNov} id={n.link_id} label={n.link_label} withHref size="xs" />
+                    <EntityLinkBadge nov={toEntityLinkNov(n.link_nov)} id={n.link_id} label={n.link_label} withHref size="xs" />
                   ) : (
                     <span className="text-[10px] text-muted-foreground">—</span>
                   )}
@@ -203,6 +203,9 @@ function NotesListView({ notes }: { notes: Note[] }) {
                         metn: n.metn,
                         reng: n.reng,
                         pinned: n.pinned,
+                        link_nov: n.link_nov,
+                        link_id: n.link_id,
+                        link_label: n.link_label,
                       }}
                     />
                     <DeleteNoteButton id={n.id} />
