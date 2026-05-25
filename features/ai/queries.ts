@@ -4,11 +4,13 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { isMockMode } from "@/lib/ai/anthropic";
 
-export async function getChatHistory(limit = 50) {
+export async function getChatHistory(limit = 50, mode: "owner" | "employee" = "employee") {
   return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
+    const { istifadeciId, rolId } = requireTenant();
+    const effective = mode === "owner" && rolId === 9 ? "owner" : "employee";
+    const kanal = effective === "owner" ? "sahibkar" : "panel";
     const rows = await prisma.ai_sohbet_loq.findMany({
-      where: { istifadeci_id: istifadeciId },
+      where: { istifadeci_id: istifadeciId, kanal },
       orderBy: { yaradildi: "asc" },
       take: limit,
     });
@@ -33,13 +35,22 @@ export function getMockStatus(): boolean {
  */
 /**
  * Cari istifadəçi üçün biznes kontekstini AI prompt-una yığır.
- * Rol əsaslı: rol 9 (sahibkar) tam göstərici alır (gəlir, mənfəət, borc, maya);
- * adi əməkdaş yalnız öz tapşırıq və satışını görür — sahibkar-yalnız datalar gizlənir.
+ *
+ * Mode:
+ *  - "owner" — yalnız sahibkar rolu üçün (/sahibkar/ai). Tam KPI, kassa,
+ *    mənfəət, maaş, məxfi qeydlər kontekstə qoşulur.
+ *  - "employee" — hər istifadəçi (/ai). Yalnız öz performansı + ümumi modul
+ *    göstəriciləri. Sahibkar rolunda da bu mode-da öz şəxsi datasını və
+ *    ümumi məhsul/anbar/müştəri sayını görür — gəlir/mənfəət YOX.
+ *
+ * Sahibkar rolu olub "employee" mode çağırsa (məs. /ai-yə girəndə),
+ * yenə də sahibkar-yalnız bloklar gizlənir.
  */
-export async function getBusinessContext(): Promise<string> {
+export async function getBusinessContext(mode: "owner" | "employee" = "employee"): Promise<string> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    const isOwner = rolId === 9;
+    // owner mode yalnız rol 9 üçün; başqa hər kəs avtomatik employee düşür
+    const isOwner = mode === "owner" && rolId === 9;
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -145,30 +156,80 @@ export async function getBusinessContext(): Promise<string> {
         `İCAZƏ: Tam sahibkar görüşü — bütün gəlir/xərc/maya/borc/məxfi qeyd və əməkdaş datalarını müzakirə edə bilərsən.`,
       );
     } else {
-      // ─── ƏMƏKDAƏ — yalnız öz performansı və ümumi modul göstəriciləri
-      const [mySales, openTasksMine, products, customers, lowStock] = await Promise.all([
+      // ─── ƏMƏKDAŞ (və ya əməkdaş rejimindəki sahibkar) — şəxsi performans + ümumi modul
+      const [me, mySalesM, mySalesPrev, mySalesToday, doneThisMonth, openTasksMine, products, lowStock] = await Promise.all([
+        prisma.istifadeciler.findUnique({
+          where: { id: istifadeciId },
+          select: { ad_soyad: true, vezife: true, aylik_maas: true, son_giris: true, roles: { select: { ad: true } } },
+        }).catch(() => null),
         prisma.satis_sifarisleri.aggregate({
           where: { yaradan_id: istifadeciId, tarix: { gte: monthStart }, status: { not: "legv" } },
           _sum: { son_mebleg: true }, _count: { _all: true },
         }).catch(() => ({ _sum: { son_mebleg: 0 }, _count: { _all: 0 } })),
-        prisma.tapshiriqlar.count({ where: { mesul_id: istifadeciId, status: { in: ["yeni", "icrada"] } } }).catch(() => 0),
+        prisma.satis_sifarisleri.aggregate({
+          where: { yaradan_id: istifadeciId, tarix: { gte: prevMonthStart, lte: prevMonthEnd }, status: { not: "legv" } },
+          _sum: { son_mebleg: true }, _count: { _all: true },
+        }).catch(() => ({ _sum: { son_mebleg: 0 }, _count: { _all: 0 } })),
+        prisma.satis_sifarisleri.aggregate({
+          where: { yaradan_id: istifadeciId, tarix: { gte: dayStart }, status: { not: "legv" } },
+          _sum: { son_mebleg: true }, _count: { _all: true },
+        }).catch(() => ({ _sum: { son_mebleg: 0 }, _count: { _all: 0 } })),
+        prisma.tapshiriqlar.count({
+          where: { mesul_id: istifadeciId, status: "tamamlandi", yenilendi: { gte: monthStart } },
+        }).catch(() => 0),
+        prisma.tapshiriqlar.count({
+          where: { mesul_id: istifadeciId, status: { in: ["yeni", "icrada"] } },
+        }).catch(() => 0),
         prisma.mehsullar.count({ where: { aktiv: true } }).catch(() => 0),
-        prisma.kontragentler.count().catch(() => 0),
         prisma.$queryRaw<{ c: number }[]>`
           SELECT COUNT(*)::int AS c FROM mehsullar m
           LEFT JOIN stok st ON st.mehsul_id = m.id
           WHERE m.aktiv = true AND m.kritik_stok IS NOT NULL AND COALESCE(st.miqdar, 0) <= m.kritik_stok
         `.catch(() => [{ c: 0 }]),
       ]);
-      const my = Number(mySales._sum.son_mebleg ?? 0);
+      const myMonth = Number(mySalesM._sum.son_mebleg ?? 0);
+      const myPrev = Number(mySalesPrev._sum.son_mebleg ?? 0);
+      const myToday = Number(mySalesToday._sum.son_mebleg ?? 0);
+      const myMonthDelta = myPrev > 0 ? ((myMonth - myPrev) / myPrev) * 100 : 0;
+      const maas = Number(me?.aylik_maas ?? 0);
 
       lines.push(
-        `Sənin bu aydakı satışın: ${fmt(my)} ${valyuta} (${mySales._count._all} sifariş)`,
-        `Sənin açıq tapşırıqlarının sayı: ${openTasksMine}`,
-        `Aktiv məhsul: ${fmt(products)} · Müştəri: ${fmt(customers)} kontragent`,
-        `Kritik stok: ${lowStock[0]?.c ?? 0} məhsul`,
+        `Sənin adın: ${me?.ad_soyad ?? "—"}${me?.vezife ? `, vəzifə: ${me.vezife}` : ""}${me?.roles?.ad ? ` (${me.roles.ad})` : ""}`,
         ``,
-        `İCAZƏ: Sən əməkdaş rolundasan. Yalnız öz performansın, anbar və ümumi məhsul/müştəri datasına aiddir cavabların. Sahibkar-yalnız mövzular (ümumi gəlir/mənfəət, kassa qalığı, işçi maaşları, məxfi qeydlər, gizli əlaqələr, partiya/maya analizi, debitor borclar) HAQQINDA cavab verə bilmərsən — "Bu məlumat yalnız sahibkar görüşündə əlçatandır" deyə bildir.`,
+        `=== ŞƏXSİ PERFORMANS ===`,
+        `Bu günkü satışın: ${fmt(myToday)} ${valyuta} (${mySalesToday._count._all} sifariş)`,
+        `Bu ayın satışı: ${fmt(myMonth)} ${valyuta} (${mySalesM._count._all} sifariş)`,
+        myPrev > 0
+          ? `Keçən ayla müqayisədə: ${myMonthDelta >= 0 ? "+" : ""}${myMonthDelta.toFixed(1)}%`
+          : `Keçən ay satış yox idi`,
+        `Bu ay tamamladığın tapşırıq: ${doneThisMonth}`,
+        `Açıq tapşırığın sayı: ${openTasksMine}`,
+        maas > 0 ? `Aylıq əmək haqqın: ${fmt(maas)} ${valyuta}` : `Aylıq maaş təyin edilməyib`,
+        ``,
+        `=== ÜMUMI MODUL GÖSTƏRİCİLƏRİ ===`,
+        `Aktiv məhsul kataloqu: ${fmt(products)} ədəd`,
+        `Kritik stoka düşmüş məhsul: ${lowStock[0]?.c ?? 0}`,
+        ``,
+        `=== İCAZƏ QAYDALARI ===`,
+        `Sən əməkdaş rejimindəsən. Cavablandıra bildiyin mövzular:`,
+        `  ✓ Şəxsi satış performansın, hədəfləri, müqayisə`,
+        `  ✓ Öz aylıq əmək haqqın və hesablama (əgər soruşulsa)`,
+        `  ✓ Açıq və tamamlanmış tapşırıqlar (yalnız sənə təyin olunanlar)`,
+        `  ✓ Anbar/məhsul katalogu — ümumi sayı, kritik stok, axtarış kömək`,
+        `  ✓ Müştəri xidməti və satış texnikaları üzrə məsləhət`,
+        `  ✓ Vəzifən üzrə inkişaf və karyera tövsiyələri`,
+        `  ✓ Sistemin istifadəsi (POS, qaimə, sifariş vermə)`,
+        ``,
+        `Cavablandıra BİLMƏDİYİN sahibkar-yalnız mövzular:`,
+        `  ✗ Şirkətin ümumi gəliri, mənfəəti, P&L`,
+        `  ✗ Kassa qalığı və maliyyə vəziyyəti`,
+        `  ✗ Başqa işçilərin maaşı və ya performansı`,
+        `  ✗ Maya/marja analizi, idxal partiyaları`,
+        `  ✗ Borclu müştərilər və debitor analizi`,
+        `  ✗ Məxfi sahibkar qeydləri, gizli əlaqələr`,
+        `  ✗ Filial müqayisəsi və ümumi şəbəkə göstəriciləri`,
+        ``,
+        `Sahibkar-yalnız sual gəlsə nəzakətlə bildir: "Bu məlumat yalnız sahibkar rejimində əlçatandır. Sahibkar bölməsindən AI-ya soruş."`,
       );
     }
 

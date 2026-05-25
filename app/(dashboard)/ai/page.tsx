@@ -70,7 +70,9 @@ const INSIGHT_TONE: Record<string, string> = {
 };
 
 export default async function AiPage() {
-  const [history, insights] = await Promise.all([getChatHistory(50), getDailyInsights()]);
+  // Bu səhifə hər kəs üçündür — sahibkar belə "employee" rejimində gəlir
+  // (sahibkar-tam giriş üçün ayrıca /sahibkar/ai səhifəsi var)
+  const [history, insights] = await Promise.all([getChatHistory(50, "employee"), getDailyInsights()]);
   const isMockMode = getMockStatus();
 
   const turns: ChatTurn[] = [];
@@ -163,7 +165,13 @@ export default async function AiPage() {
           <MessageSquare className="h-4 w-4 text-primary-light" />
           <h2 className="text-base font-semibold">Claude Lab — sual-cavab</h2>
         </div>
-        <ChatClient initial={turns} isMockMode={isMockMode} />
+        <ChatClient
+          initial={turns}
+          isMockMode={isMockMode}
+          mode="employee"
+          emptyHeading="AI Köməkçi — Əməkdaş rejimi"
+          emptySubtext="Şəxsi performans, satış, tapşırıq, anbar və vəzifə inkişafı haqqında sual ver. Şirkətin ümumi gəlir/mənfəət/kassa məlumatları yalnız Sahibkar bölməsindədir."
+        />
       </section>
     </div>
   );

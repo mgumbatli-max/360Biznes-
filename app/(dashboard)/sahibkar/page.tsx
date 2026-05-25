@@ -105,11 +105,11 @@ export default async function SahibkarHomePage() {
           <div className="absolute inset-x-0 top-0 h-1" style={{ background: "var(--brand-gradient)" }} />
           <CardContent className="space-y-2 py-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-400" /> AI Köməkçi
+              <Sparkles className="h-3.5 w-3.5 text-indigo-400" /> Sahibkar AI
             </div>
             <div className="text-sm font-medium">Diqqətli olun — bu ayın gəliri keçən aya nəzərən {hesabat.yoy_growth_pct.toFixed(1)}% dəyişib.</div>
-            <Link href="/ai" className="inline-flex items-center gap-1 text-xs text-primary-light hover:underline">
-              Tam analizə bax <ArrowRight className="h-3 w-3" />
+            <Link href="/sahibkar/ai" className="inline-flex items-center gap-1 text-xs text-primary-light hover:underline">
+              Sahibkar AI-ya sual ver <ArrowRight className="h-3 w-3" />
             </Link>
           </CardContent>
         </Card>

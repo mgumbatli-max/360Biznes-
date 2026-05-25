@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight, ClipboardList, StickyNote, Building2, FileText, Camera, Activity,
-  Settings, Check, RotateCcw, Truck, Wallet, Lock, FolderArchive, GitCompare, EyeOff, Database, Smartphone,
+  Settings, Check, RotateCcw, Truck, Wallet, Lock, FolderArchive, GitCompare, EyeOff, Database, Smartphone, Sparkles,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ type Hub = {
 type WidgetKey =
   | "revenue" | "cash" | "customers" | "tasks" | "staff" | "avg_ticket" | "orders"
   | "tapshiriq" | "qeyd" | "filiallar" | "snapshot" | "hesabat" | "data" | "partiya"
-  | "maya" | "gizli" | "senedler" | "filial_muqayise" | "gizli_mod" | "backup";
+  | "maya" | "gizli" | "senedler" | "filial_muqayise" | "gizli_mod" | "backup" | "ai";
 
 type WidgetDef = {
   key: WidgetKey;
@@ -54,11 +54,12 @@ const ALL_WIDGETS: WidgetDef[] = [
   { key: "data", label: "Data sağlamlığı", kind: "link", href: "/sahibkar/data-saglamligi", icon: Activity },
   { key: "gizli_mod", label: "Gizli mod", kind: "link", href: "/sahibkar/gizli-mod", icon: EyeOff },
   { key: "backup", label: "Backup", kind: "link", href: "/sahibkar/backup", icon: Database },
+  { key: "ai", label: "Sahibkar AI", kind: "link", href: "/sahibkar/ai", icon: Sparkles },
 ];
 
 const DEFAULT_KEYS: WidgetKey[] = [
   "revenue", "cash", "orders", "avg_ticket", "tasks", "staff",
-  "tapshiriq", "qeyd", "filiallar", "snapshot", "hesabat", "maya", "data",
+  "ai", "tapshiriq", "qeyd", "filiallar", "snapshot", "hesabat", "maya", "data",
 ];
 
 const STORAGE_KEY = "sahibkar-mobile-widgets-v1";

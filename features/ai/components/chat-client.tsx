@@ -14,9 +14,35 @@ import type { ChatTurn } from "../types";
 type Props = {
   initial: ChatTurn[];
   isMockMode: boolean;
+  mode?: "owner" | "employee";
+  suggestions?: string[];
+  emptyHeading?: string;
+  emptySubtext?: string;
 };
 
-export function ChatClient({ initial, isMockMode }: Props) {
+const DEFAULT_EMPLOYEE_SUGGESTIONS = [
+  "Bu ay nə qədər satmışam?",
+  "Açıq tapşırıqlarım hansılardır?",
+  "Mənim aylıq maaşım nə qədərdir?",
+  "Satış texnikalarını necə yaxşılaşdırım?",
+];
+
+const DEFAULT_OWNER_SUGGESTIONS = [
+  "Bu ayın ümumi gəliri necədir?",
+  "TOP 5 satılan məhsulum hansılardır?",
+  "Borclu müştərilərim varmı?",
+  "Kassa qalığım nə qədərdir?",
+];
+
+export function ChatClient({
+  initial,
+  isMockMode,
+  mode = "employee",
+  suggestions,
+  emptyHeading = "AI Köməkçi",
+  emptySubtext = "Anbar, satış, vəzifə və şəxsi performans haqqında sual ver.",
+}: Props) {
+  const chips = suggestions ?? (mode === "owner" ? DEFAULT_OWNER_SUGGESTIONS : DEFAULT_EMPLOYEE_SUGGESTIONS);
   const router = useRouter();
   const [messages, setMessages] = useState<ChatTurn[]>(initial);
   const [input, setInput] = useState("");
@@ -37,7 +63,7 @@ export function ChatClient({ initial, isMockMode }: Props) {
     setMessages((prev) => [...prev, userTurn]);
 
     startTransition(async () => {
-      const res = await sendMessage(text);
+      const res = await sendMessage(text, mode);
       if (!res.ok) {
         toast.error(res.error);
         setMessages((prev) => prev.filter((m) => m.id !== userTurn.id));
@@ -57,7 +83,7 @@ export function ChatClient({ initial, isMockMode }: Props) {
   function onClear() {
     if (!confirm("Söhbət tarixçəsi silinsin?")) return;
     startTransition(async () => {
-      await clearHistory();
+      await clearHistory(mode);
       setMessages([]);
       toast.success("Tarixçə təmizləndi");
       router.refresh();
@@ -92,16 +118,13 @@ export function ChatClient({ initial, isMockMode }: Props) {
               <Sparkles className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold">AI Köməkçi</h3>
-              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
-                Anbar, satış, maliyyə və müştərilər haqqında suallar verin.
-              </p>
+              <h3 className="font-semibold">{emptyHeading}</h3>
+              <p className="mt-1 max-w-xs text-xs text-muted-foreground">{emptySubtext}</p>
             </div>
             <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2">
-              <SuggestChip onClick={(t) => setInput(t)}>Bu ayın satışı necədir?</SuggestChip>
-              <SuggestChip onClick={(t) => setInput(t)}>Ölü stokum varmı?</SuggestChip>
-              <SuggestChip onClick={(t) => setInput(t)}>Marjını necə artıra bilərəm?</SuggestChip>
-              <SuggestChip onClick={(t) => setInput(t)}>Borclu müştərilərə nə etmək lazımdır?</SuggestChip>
+              {chips.map((c) => (
+                <SuggestChip key={c} onClick={(t) => setInput(t)}>{c}</SuggestChip>
+              ))}
             </div>
           </div>
         ) : (
