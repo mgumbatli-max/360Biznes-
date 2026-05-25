@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { listGizliElaqe, createGizliElaqe, deleteGizliElaqe, type GizliElaqe } from "@/features/sahibkar/gizli-elaqe-actions";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
+import { EntityLinkInput, EntityLinkBadge, type EntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
 
 export const metadata: Metadata = { title: "Gizli əlaqələr — Sahibkar" };
 export const dynamic = "force-dynamic";
@@ -223,6 +224,9 @@ export default async function GizliElaqePage({ searchParams }: { searchParams: P
               <textarea name="qeyd" maxLength={2000} rows={2} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2" placeholder="WhatsApp nömrəsi, ünvan detalları, məxfi xidmət şərtləri..." />
             </div>
             <div className="md:col-span-2 lg:col-span-3">
+              <EntityLinkInput />
+            </div>
+            <div className="md:col-span-2 lg:col-span-3">
               <Button type="submit">
                 <Plus className="h-3.5 w-3.5" />
                 Kontaktı saxla
@@ -282,6 +286,11 @@ export default async function GizliElaqePage({ searchParams }: { searchParams: P
                   </div>
                   {c.qeyd && (
                     <p className="rounded-md bg-secondary/30 px-2 py-1.5 text-[11px] italic text-muted-foreground">{c.qeyd}</p>
+                  )}
+                  {c.link_nov && c.link_id && (
+                    <div>
+                      <EntityLinkBadge nov={c.link_nov as EntityLinkNov} id={c.link_id} label={c.link_label} withHref />
+                    </div>
                   )}
                   <div className="flex items-center justify-between border-t border-border/30 pt-2 text-[10px] text-muted-foreground">
                     <span>{c.yaradildi ? new Date(c.yaradildi).toLocaleDateString("az-AZ", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>

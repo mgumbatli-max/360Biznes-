@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getTasksForObject } from "../cross-module";
 import { CreateTaskForButton } from "./create-task-for-button";
-import type { LinkableModul } from "../cross-module";
+import type { LinkableModul } from "../cross-module-constants";
 import { cn, formatDate } from "@/lib/utils";
 
 const STATUS_META: Record<string, { label: string; cls: string; icon: typeof Clock }> = {

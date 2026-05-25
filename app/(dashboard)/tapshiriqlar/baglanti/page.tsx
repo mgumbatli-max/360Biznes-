@@ -7,7 +7,8 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TaskSectionTabs } from "@/features/tapshiriqlar/components/section-tabs";
-import { getModuleTaskCounts, LINKABLE_MODULES } from "@/features/tapshiriqlar/cross-module";
+import { getModuleTaskCounts } from "@/features/tapshiriqlar/cross-module";
+import { LINKABLE_MODULES } from "@/features/tapshiriqlar/cross-module-constants";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { formatDate, cn } from "@/lib/utils";

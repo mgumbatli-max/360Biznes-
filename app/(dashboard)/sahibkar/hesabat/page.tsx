@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerHesabatSummary } from "@/features/sahibkar/owner-queries";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sahibkar hesabatı" };
@@ -20,6 +21,18 @@ export default async function SahibkarHesabatPage() {
         <h1 className="text-2xl font-bold tracking-tight">Sahibkar hesabatı</h1>
         <p className="mt-1 text-sm text-muted-foreground">Aylıq, rüblük və illik xülasə + il-üstü il artımı.</p>
       </header>
+
+      <SectionExplainer
+        icon={BarChart3}
+        title="Bu hesabat nəyə yarayır?"
+        tone="indigo"
+        description="Tam sahibkar görünüşü — biznesin müxtəlif zaman dilimlərində nə qədər gəlir etdiyi, sifariş sayı və il-üstü il (YoY) artımı. Strateji qərarlar üçün baza."
+        bullets={[
+          { label: "Ay", text: "cari ay vs keçən ay" },
+          { label: "Rüb", text: "3 aylıq trend" },
+          { label: "İl", text: "tam il + YoY %" },
+        ]}
+      />
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SumCard title="Bu ay" revenue={s.month.revenue} orders={s.month.orders} />

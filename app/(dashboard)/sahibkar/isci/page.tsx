@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerEmployees } from "@/features/sahibkar/owner-queries";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İşçi baxışı" };
@@ -20,6 +21,13 @@ export default async function SahibkarIsciPage() {
         <h1 className="text-2xl font-bold tracking-tight">İşçilər (sahibkar baxışı)</h1>
         <p className="mt-1 text-sm text-muted-foreground">Yalnız oxumaq üçün — performans və əsas məlumat.</p>
       </header>
+
+      <SectionExplainer
+        icon={Users}
+        title="İşçi panel-i — yalnız oxumaq"
+        tone="sky"
+        description="Burada işçilər haqqında məcmu məlumat görürsən: maaş, performans, satış payı. Redaktə üçün əsas /iscilier bölməsi istifadə olunur — bu səhifə sahibkar görüşü üçün read-only-dir."
+      />
 
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">

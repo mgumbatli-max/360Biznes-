@@ -18,7 +18,7 @@ export function SectionExplainer({
   icon?: LucideIcon;
   description: string;
   bullets?: Bullet[];
-  tone?: "indigo" | "emerald" | "amber" | "rose" | "violet" | "sky";
+  tone?: "indigo" | "emerald" | "amber" | "rose" | "violet" | "sky" | "slate";
 }) {
   const toneClasses: Record<string, { border: string; bg: string; icon: string; chip: string }> = {
     indigo: { border: "border-indigo-500/30", bg: "bg-indigo-500/5", icon: "text-indigo-500", chip: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300" },
@@ -27,6 +27,7 @@ export function SectionExplainer({
     rose: { border: "border-rose-500/30", bg: "bg-rose-500/5", icon: "text-rose-500", chip: "bg-rose-500/10 text-rose-700 dark:text-rose-300" },
     violet: { border: "border-violet-500/30", bg: "bg-violet-500/5", icon: "text-violet-500", chip: "bg-violet-500/10 text-violet-700 dark:text-violet-300" },
     sky: { border: "border-sky-500/30", bg: "bg-sky-500/5", icon: "text-sky-500", chip: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
+    slate: { border: "border-slate-500/30", bg: "bg-slate-500/5", icon: "text-slate-500", chip: "bg-slate-500/10 text-slate-700 dark:text-slate-300" },
   };
   const t = toneClasses[tone];
   const HeadIcon = Icon ?? Info;

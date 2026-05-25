@@ -6,27 +6,6 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
-/** Modules that can be linked to a task. Used as `obyekt_nov` in tapshiriq_obyektleri. */
-export const LINKABLE_MODULES = {
-  mehsul:           "Məhsul",
-  musteri:          "Müştəri",
-  tedarukcu:        "Təchizatçı",
-  satis_sifaris:    "Satış sifarişi",
-  alis_sifaris:     "Alış sifarişi",
-  qaytarma:         "Qaytarma",
-  servis:           "Servis",
-  anbar:            "Anbar",
-  isci:             "İşçi",
-  filial:           "Filial",
-  marketplace:      "Marketplace sifarişi",
-  xeberdarliq:      "Xəbərdarlıq",
-  tesdiq:           "Təsdiq tələbi",
-  qaime:            "Qaimə",
-  odenis:           "Ödəniş",
-  diger:            "Digər",
-} as const;
-
-export type LinkableModul = keyof typeof LINKABLE_MODULES;
 
 const Schema = z.object({
   basliq:       z.string().trim().min(1, "Başlıq mütləqdir").max(200),

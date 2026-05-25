@@ -1172,6 +1172,10 @@ model filiallar {
   anbarlar                                                 anbarlar[]
   api_keys                                                 api_keys[]
   catdirmalar                                              catdirmalar[]
+  filial_gorunush_source                                   filial_gorunush[]              @relation("filial_gorunush_source")
+  filial_gorunush_target                                   filial_gorunush[]              @relation("filial_gorunush_target")
+  filial_mesaj_source                                      filial_mesaj[]                 @relation("filial_mesaj_source")
+  filial_mesaj_target                                      filial_mesaj[]                 @relation("filial_mesaj_target")
   istifadeciler_filiallar_cavabdeh_idToistifadeciler       istifadeciler?                 @relation("filiallar_cavabdeh_idToistifadeciler", fields: [cavabdeh_id], references: [id], onUpdate: NoAction)
   sahibkarlar                                              sahibkarlar                    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   finance_operations                                       finance_operations[]
@@ -1186,45 +1190,41 @@ model filiallar {
   marketplace_magaza_hesablari                             marketplace_magaza_hesablari[]
   pos_sessions                                             pos_sessions[]
   rezervler                                                rezervler[]
+  satinalma_teklif                                         satinalma_teklif[]
   satis_sifarisleri                                        satis_sifarisleri[]
   servis_qeydleri                                          servis_qeydleri[]
   tapshiriq_tekrar                                         tapshiriq_tekrar[]
   tapshiriqlar                                             tapshiriqlar[]
+  team_kanal                                               team_kanal[]
   teklifler                                                teklifler[]
   tesdiq_sorgulari                                         tesdiq_sorgulari[]
   webhook_endpoints                                        webhook_endpoints[]
   xercl_r                                                  xercl_r[]
   zemanetler                                               zemanetler[]
-  filial_gorunush_source                                   filial_gorunush[]              @relation("filial_gorunush_source")
-  filial_gorunush_target                                   filial_gorunush[]              @relation("filial_gorunush_target")
-  filial_mesaj_source                                      filial_mesaj[]                 @relation("filial_mesaj_source")
-  filial_mesaj_target                                      filial_mesaj[]                 @relation("filial_mesaj_target")
-  team_kanal                                               team_kanal[]
-  satinalma_teklif                                         satinalma_teklif[]
 
   @@index([sahibkar_id], map: "idx_filiallar_sahibkar")
 }
 
 /// Team module — channel / DM / filial conversation.
 model team_kanal {
-  id              Int          @id @default(autoincrement())
-  sahibkar_id     String       @db.Uuid
-  ad              String       @db.VarChar(150)
-  tesvir          String?
-  novu            String       @default("kanal") @db.VarChar(20)
-  filial_id       Int?
-  qapali          Boolean      @default(false)
-  arxivlendi      Boolean      @default(false)
-  yaradan_id      String?      @db.Uuid
-  yaradildi       DateTime     @default(now()) @db.Timestamp(6)
-  yenilendi       DateTime?    @default(now()) @db.Timestamp(6)
-  son_mesaj_de    DateTime?    @db.Timestamp(6)
-  uzvler          team_uzv[]
-  mesajlar        team_mesaj[]
-  loglar          team_mesaj_log[]
-  sahibkarlar     sahibkarlar  @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  filial          filiallar?   @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
-  yaradan         istifadeciler? @relation("team_kanal_yaradan", fields: [yaradan_id], references: [id], onUpdate: NoAction)
+  id           Int              @id @default(autoincrement())
+  sahibkar_id  String           @db.Uuid
+  ad           String           @db.VarChar(150)
+  tesvir       String?
+  novu         String           @default("kanal") @db.VarChar(20)
+  filial_id    Int?
+  qapali       Boolean          @default(false)
+  arxivlendi   Boolean          @default(false)
+  yaradan_id   String?          @db.Uuid
+  yaradildi    DateTime         @default(now()) @db.Timestamp(6)
+  yenilendi    DateTime?        @default(now()) @db.Timestamp(6)
+  son_mesaj_de DateTime?        @db.Timestamp(6)
+  filial       filiallar?       @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
+  sahibkarlar  sahibkarlar      @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  yaradan      istifadeciler?   @relation("team_kanal_yaradan", fields: [yaradan_id], references: [id], onUpdate: NoAction)
+  mesajlar     team_mesaj[]
+  loglar       team_mesaj_log[]
+  uzvler       team_uzv[]
 
   @@index([sahibkar_id], map: "idx_team_kanal_sahibkar")
   @@index([sahibkar_id, son_mesaj_de(sort: Desc)], map: "idx_team_kanal_son_mesaj")
@@ -1238,8 +1238,8 @@ model team_uzv {
   son_oxudu_de  DateTime?     @db.Timestamp(6)
   bildiris      Boolean       @default(true)
   qosuldu       DateTime      @default(now()) @db.Timestamp(6)
-  kanal         team_kanal    @relation(fields: [kanal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   istifadeci    istifadeciler @relation("team_uzv_istifadeci", fields: [istifadeci_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kanal         team_kanal    @relation(fields: [kanal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([kanal_id, istifadeci_id])
   @@index([istifadeci_id], map: "idx_team_uzv_user")
@@ -1258,16 +1258,16 @@ model team_mesaj {
   eklenti_url      String?
   eklenti_ad       String?        @db.VarChar(200)
   mention_ids      String[]
-  gizli            Boolean        @default(false)
+  yaradildi        DateTime       @default(now()) @db.Timestamp(6)
   bir_dafelik      Boolean        @default(false)
+  gizli            Boolean        @default(false)
   kilid_sifre_hash String?        @db.VarChar(255)
-  oxuyan_id        String?        @db.Uuid
   oxundu_de        DateTime?      @db.Timestamp(6)
+  oxuyan_id        String?        @db.Uuid
   silen_id         String?        @db.Uuid
   silinme_tarixi   DateTime?      @db.Timestamp(6)
-  yaradildi        DateTime       @default(now()) @db.Timestamp(6)
-  kanal            team_kanal     @relation(fields: [kanal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   gonderici        istifadeciler? @relation("team_mesaj_gonderici", fields: [gonderici_id], references: [id], onUpdate: NoAction)
+  kanal            team_kanal     @relation(fields: [kanal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   parent           team_mesaj?    @relation("team_mesaj_thread", fields: [parent_id], references: [id], onUpdate: NoAction)
   cavablar         team_mesaj[]   @relation("team_mesaj_thread")
 
@@ -1277,20 +1277,20 @@ model team_mesaj {
 
 /// Permanent audit log of all team messages — survives deletion / self-destruct for owner review.
 model team_mesaj_log {
-  id           Int            @id @default(autoincrement())
-  sahibkar_id  String         @db.Uuid
-  kanal_id     Int
-  mesaj_id     Int?
-  gonderici_id String?        @db.Uuid
-  event_user_id String?       @db.Uuid
-  mesaj_metni  String
-  novu         String         @default("created") @db.VarChar(20)
-  metadata     Json?
-  yaradildi    DateTime       @default(now()) @db.Timestamp(6)
-  kanal        team_kanal     @relation(fields: [kanal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  gonderici    istifadeciler? @relation("team_mesaj_log_gonderici", fields: [gonderici_id], references: [id], onUpdate: NoAction)
-  event_user   istifadeciler? @relation("team_mesaj_log_event_user", fields: [event_user_id], references: [id], onUpdate: NoAction)
-  sahibkarlar  sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id            Int            @id @default(autoincrement())
+  sahibkar_id   String         @db.Uuid
+  kanal_id      Int
+  mesaj_id      Int?
+  gonderici_id  String?        @db.Uuid
+  event_user_id String?        @db.Uuid
+  mesaj_metni   String
+  novu          String         @default("created") @db.VarChar(20)
+  metadata      Json?
+  yaradildi     DateTime       @default(now()) @db.Timestamp(6)
+  event_user    istifadeciler? @relation("team_mesaj_log_event_user", fields: [event_user_id], references: [id], onUpdate: NoAction)
+  gonderici     istifadeciler? @relation("team_mesaj_log_gonderici", fields: [gonderici_id], references: [id], onUpdate: NoAction)
+  kanal         team_kanal     @relation(fields: [kanal_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sahibkarlar   sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_team_msglog_sahibkar")
   @@index([kanal_id, yaradildi(sort: Desc)], map: "idx_team_msglog_kanal")
@@ -1298,79 +1298,79 @@ model team_mesaj_log {
 }
 
 model team_ayar {
-  id                  Int         @id @default(autoincrement())
-  sahibkar_id         String      @unique @db.Uuid
-  aktiv               Boolean     @default(true)
-  filial_kanal_avto   Boolean     @default(true)
-  general_kanal_avto  Boolean     @default(true)
-  bildiris_push       Boolean     @default(true)
-  bildiris_email      Boolean     @default(false)
-  bildiris_inapp      Boolean     @default(true)
-  retention_gun       Int         @default(365)
-  yaradildi           DateTime    @default(now()) @db.Timestamp(6)
-  yenilendi           DateTime?   @default(now()) @db.Timestamp(6)
-  sahibkarlar         sahibkarlar @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                 Int         @id @default(autoincrement())
+  sahibkar_id        String      @unique @db.Uuid
+  aktiv              Boolean     @default(true)
+  filial_kanal_avto  Boolean     @default(true)
+  general_kanal_avto Boolean     @default(true)
+  bildiris_push      Boolean     @default(true)
+  bildiris_email     Boolean     @default(false)
+  bildiris_inapp     Boolean     @default(true)
+  retention_gun      Int         @default(365)
+  yaradildi          DateTime    @default(now()) @db.Timestamp(6)
+  yenilendi          DateTime?   @default(now()) @db.Timestamp(6)
+  sahibkarlar        sahibkarlar @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 /// Purchase planning proposal — employee-created request for owner approval.
 model satinalma_teklif {
-  id              Int                       @id @default(autoincrement())
-  sahibkar_id     String                    @db.Uuid
-  kod             String                    @db.VarChar(50)
-  ad              String?                   @db.VarChar(200)
-  status          String                    @default("draft") @db.VarChar(20)
-  yaradan_id      String?                   @db.Uuid
-  filial_id       Int?
-  qeyd            String?
-  ai_tovsiyye     String?
-  ai_skor         Decimal?                  @db.Decimal(5, 2)
-  cemi_say        Int                       @default(0)
-  cemi_meblegh    Decimal?                  @default(0) @db.Decimal(14, 2)
-  cemi_maya       Decimal?                  @default(0) @db.Decimal(14, 2)
-  baxan_id        String?                   @db.Uuid
-  baxan_qeyd      String?
-  baxildi_de      DateTime?                 @db.Timestamp(6)
-  gonderildi_de   DateTime?                 @db.Timestamp(6)
-  yaradildi       DateTime                  @default(now()) @db.Timestamp(6)
-  yenilendi       DateTime?                 @default(now()) @db.Timestamp(6)
-  satirlar        satinalma_teklif_satir[]
-  yaradan         istifadeciler?            @relation("satinalma_yaradan", fields: [yaradan_id], references: [id], onUpdate: NoAction)
-  baxan           istifadeciler?            @relation("satinalma_baxan", fields: [baxan_id], references: [id], onUpdate: NoAction)
-  filial          filiallar?                @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
-  sahibkarlar     sahibkarlar               @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id            Int                      @id @default(autoincrement())
+  sahibkar_id   String                   @db.Uuid
+  kod           String                   @db.VarChar(50)
+  ad            String?                  @db.VarChar(200)
+  status        String                   @default("draft") @db.VarChar(20)
+  yaradan_id    String?                  @db.Uuid
+  filial_id     Int?
+  qeyd          String?
+  ai_tovsiyye   String?
+  ai_skor       Decimal?                 @db.Decimal(5, 2)
+  cemi_say      Int                      @default(0)
+  cemi_meblegh  Decimal?                 @default(0) @db.Decimal(14, 2)
+  cemi_maya     Decimal?                 @default(0) @db.Decimal(14, 2)
+  baxan_id      String?                  @db.Uuid
+  baxan_qeyd    String?
+  baxildi_de    DateTime?                @db.Timestamp(6)
+  gonderildi_de DateTime?                @db.Timestamp(6)
+  yaradildi     DateTime                 @default(now()) @db.Timestamp(6)
+  yenilendi     DateTime?                @default(now()) @db.Timestamp(6)
+  baxan         istifadeciler?           @relation("satinalma_baxan", fields: [baxan_id], references: [id], onUpdate: NoAction)
+  filial        filiallar?               @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
+  sahibkarlar   sahibkarlar              @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  yaradan       istifadeciler?           @relation("satinalma_yaradan", fields: [yaradan_id], references: [id], onUpdate: NoAction)
+  satirlar      satinalma_teklif_satir[]
 
   @@index([sahibkar_id, status, yaradildi(sort: Desc)], map: "idx_satinalma_teklif_sahibkar")
   @@index([yaradan_id], map: "idx_satinalma_teklif_yaradan")
 }
 
 model satinalma_teklif_satir {
-  id                Int               @id @default(autoincrement())
+  id                Int              @id @default(autoincrement())
   teklif_id         Int
-  mehsul_id         String?           @db.Uuid
-  mehsul_adi        String            @db.VarChar(300)
-  mehsul_kod        String?           @db.VarChar(100)
-  marka             String?           @db.VarChar(100)
-  kateqoriya        String?           @db.VarChar(100)
-  vahid             String?           @default("ed") @db.VarChar(10)
-  miqdar            Decimal           @db.Decimal(12, 3)
+  mehsul_id         String?          @db.Uuid
+  mehsul_adi        String           @db.VarChar(300)
+  mehsul_kod        String?          @db.VarChar(100)
+  marka             String?          @db.VarChar(100)
+  kateqoriya        String?          @db.VarChar(100)
+  vahid             String?          @default("ed") @db.VarChar(10)
+  miqdar            Decimal          @db.Decimal(12, 3)
   teyinat           String?
-  bazar_qiymeti     Decimal?          @db.Decimal(12, 2)
-  son_alish_qiymeti Decimal?          @db.Decimal(12, 2)
-  teklif_qiymeti    Decimal?          @db.Decimal(12, 2)
-  satis_qiymeti     Decimal?          @db.Decimal(12, 2)
+  bazar_qiymeti     Decimal?         @db.Decimal(12, 2)
+  son_alish_qiymeti Decimal?         @db.Decimal(12, 2)
+  teklif_qiymeti    Decimal?         @db.Decimal(12, 2)
+  satis_qiymeti     Decimal?         @db.Decimal(12, 2)
   maya_aciqlama     String?
-  techizatci_id     String?           @db.Uuid
-  techizatci_ad     String?           @db.VarChar(200)
+  techizatci_id     String?          @db.Uuid
+  techizatci_ad     String?          @db.VarChar(200)
   shekil_url        String?
   ai_analiz         String?
-  ai_skor           Decimal?          @db.Decimal(5, 2)
+  ai_skor           Decimal?         @db.Decimal(5, 2)
   qeyd              String?
-  yeni_mehsul       Boolean           @default(false)
-  servis_mehsulu    Boolean           @default(false)
-  yaradildi         DateTime          @default(now()) @db.Timestamp(6)
-  teklif            satinalma_teklif  @relation(fields: [teklif_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  mehsul            mehsullar?        @relation(fields: [mehsul_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  techizatci        kontragentler?    @relation(fields: [techizatci_id], references: [id], onUpdate: NoAction)
+  yeni_mehsul       Boolean          @default(false)
+  servis_mehsulu    Boolean          @default(false)
+  yaradildi         DateTime         @default(now()) @db.Timestamp(6)
+  mehsul            mehsullar?       @relation(fields: [mehsul_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  techizatci        kontragentler?   @relation(fields: [techizatci_id], references: [id], onUpdate: NoAction)
+  teklif            satinalma_teklif @relation(fields: [teklif_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([teklif_id], map: "idx_satinalma_satir_teklif")
   @@index([mehsul_id], map: "idx_satinalma_satir_mehsul")
@@ -1394,13 +1394,13 @@ model filial_mesaj {
   eklenti_url      String?
   yaradildi        DateTime       @default(now()) @db.Timestamp(6)
   yenilendi        DateTime?      @default(now()) @db.Timestamp(6)
-  source_filial    filiallar      @relation("filial_mesaj_source", fields: [source_filial_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  target_filial    filiallar      @relation("filial_mesaj_target", fields: [target_filial_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   gonderici        istifadeciler? @relation("filial_mesaj_gonderici", fields: [gonderici_id], references: [id], onUpdate: NoAction)
   oxuyan           istifadeciler? @relation("filial_mesaj_oxuyan", fields: [oxuyan_id], references: [id], onUpdate: NoAction)
-  sahibkarlar      sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   parent           filial_mesaj?  @relation("filial_mesaj_parent", fields: [parent_id], references: [id], onUpdate: NoAction)
   replies          filial_mesaj[] @relation("filial_mesaj_parent")
+  sahibkarlar      sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  source_filial    filiallar      @relation("filial_mesaj_source", fields: [source_filial_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  target_filial    filiallar      @relation("filial_mesaj_target", fields: [target_filial_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([sahibkar_id, source_filial_id, target_filial_id], map: "idx_filmesaj_pair")
   @@index([target_filial_id, oxundu], map: "idx_filmesaj_unread")
@@ -1427,9 +1427,9 @@ model filial_gorunush {
   servis_gor       Boolean     @default(false)
   yaradildi        DateTime?   @default(now()) @db.Timestamp(6)
   yenilendi        DateTime?   @default(now()) @db.Timestamp(6)
+  sahibkarlar      sahibkarlar @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   source_filial    filiallar   @relation("filial_gorunush_source", fields: [source_filial_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   target_filial    filiallar   @relation("filial_gorunush_target", fields: [target_filial_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  sahibkarlar      sahibkarlar @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([source_filial_id, target_filial_id])
   @@index([sahibkar_id], map: "idx_filgor_sahibkar")
@@ -2351,15 +2351,6 @@ model istifadeciler {
   anbar_transferleri                                                                anbar_transferleri[]
   anbarlar                                                                          anbarlar[]
   audit_log                                                                         audit_log[]
-  filial_mesaj_gondericiToistifadeciler                                             filial_mesaj[]                 @relation("filial_mesaj_gonderici")
-  filial_mesaj_oxuyanToistifadeciler                                                filial_mesaj[]                 @relation("filial_mesaj_oxuyan")
-  team_kanal_yaradanToistifadeciler                                                 team_kanal[]                   @relation("team_kanal_yaradan")
-  team_uzv_istifadeciToistifadeciler                                                team_uzv[]                     @relation("team_uzv_istifadeci")
-  team_mesaj_gondericiToistifadeciler                                               team_mesaj[]                   @relation("team_mesaj_gonderici")
-  team_mesaj_log_gondericiToistifadeciler                                           team_mesaj_log[]               @relation("team_mesaj_log_gonderici")
-  team_mesaj_log_event_userToistifadeciler                                          team_mesaj_log[]               @relation("team_mesaj_log_event_user")
-  satinalma_teklif_yaradanToistifadeciler                                           satinalma_teklif[]             @relation("satinalma_yaradan")
-  satinalma_teklif_baxanToistifadeciler                                             satinalma_teklif[]             @relation("satinalma_baxan")
   avto_qayda_avto_qayda_hedef_ist_idToistifadeciler                                 avto_qayda[]                   @relation("avto_qayda_hedef_ist_idToistifadeciler")
   avto_qayda_avto_qayda_yaradan_idToistifadeciler                                   avto_qayda[]                   @relation("avto_qayda_yaradan_idToistifadeciler")
   axtaris_tarixce                                                                   axtaris_tarixce[]
@@ -2373,6 +2364,8 @@ model istifadeciler {
   contact_merge_logs                                                                contact_merge_logs[]
   davamiyyet_davamiyyet_istifadeci_idToistifadeciler                                davamiyyet[]                   @relation("davamiyyet_istifadeci_idToistifadeciler")
   davamiyyet_davamiyyet_yaradan_idToistifadeciler                                   davamiyyet[]                   @relation("davamiyyet_yaradan_idToistifadeciler")
+  filial_mesaj_gondericiToistifadeciler                                             filial_mesaj[]                 @relation("filial_mesaj_gonderici")
+  filial_mesaj_oxuyanToistifadeciler                                                filial_mesaj[]                 @relation("filial_mesaj_oxuyan")
   filiallar_filiallar_cavabdeh_idToistifadeciler                                    filiallar[]                    @relation("filiallar_cavabdeh_idToistifadeciler")
   finance_approval_requests_finance_approval_requests_cavab_eden_idToistifadeciler  finance_approval_requests[]    @relation("finance_approval_requests_cavab_eden_idToistifadeciler")
   finance_approval_requests_finance_approval_requests_yaradan_idToistifadeciler     finance_approval_requests[]    @relation("finance_approval_requests_yaradan_idToistifadeciler")
@@ -2474,6 +2467,8 @@ model istifadeciler {
   sahibkar_snapshot                                                                 sahibkar_snapshot[]
   sahibkar_tapshiriq                                                                sahibkar_tapshiriq[]
   sahibkar_ticaret_qeyd                                                             sahibkar_ticaret_qeyd[]
+  satinalma_teklif_baxanToistifadeciler                                             satinalma_teklif[]             @relation("satinalma_baxan")
+  satinalma_teklif_yaradanToistifadeciler                                           satinalma_teklif[]             @relation("satinalma_yaradan")
   satis_sifarisleri_satis_sifarisleri_satis_meneceri_idToistifadeciler              satis_sifarisleri[]            @relation("satis_sifarisleri_satis_meneceri_idToistifadeciler")
   satis_sifarisleri_satis_sifarisleri_yaradan_idToistifadeciler                     satis_sifarisleri[]            @relation("satis_sifarisleri_yaradan_idToistifadeciler")
   seher_briefing                                                                    seher_briefing[]
@@ -2498,6 +2493,11 @@ model istifadeciler {
   tapshiriqlar_tapshiriqlar_escalation_toToistifadeciler                            tapshiriqlar[]                 @relation("tapshiriqlar_escalation_toToistifadeciler")
   tapshiriqlar_tapshiriqlar_mesul_idToistifadeciler                                 tapshiriqlar[]                 @relation("tapshiriqlar_mesul_idToistifadeciler")
   tapshiriqlar_tapshiriqlar_yaradan_idToistifadeciler                               tapshiriqlar[]                 @relation("tapshiriqlar_yaradan_idToistifadeciler")
+  team_kanal_yaradanToistifadeciler                                                 team_kanal[]                   @relation("team_kanal_yaradan")
+  team_mesaj_gondericiToistifadeciler                                               team_mesaj[]                   @relation("team_mesaj_gonderici")
+  team_mesaj_log_event_userToistifadeciler                                          team_mesaj_log[]               @relation("team_mesaj_log_event_user")
+  team_mesaj_log_gondericiToistifadeciler                                           team_mesaj_log[]               @relation("team_mesaj_log_gonderici")
+  team_uzv_istifadeciToistifadeciler                                                team_uzv[]                     @relation("team_uzv_istifadeci")
   teklifler_teklifler_menecer_idToistifadeciler                                     teklifler[]                    @relation("teklifler_menecer_idToistifadeciler")
   teklifler_teklifler_tesdiq_eden_idToistifadeciler                                 teklifler[]                    @relation("teklifler_tesdiq_eden_idToistifadeciler")
   teklifler_teklifler_yaradan_idToistifadeciler                                     teklifler[]                    @relation("teklifler_yaradan_idToistifadeciler")
@@ -2732,13 +2732,13 @@ model kontragentler {
   odenis_jurnali                                           odenis_jurnali[]
   qaytarma_sifarisleri                                     qaytarma_sifarisleri[]
   rezervler                                                rezervler[]
+  satinalma_teklif_satir                                   satinalma_teklif_satir[]
   satinalma_tovsiye                                        satinalma_tovsiye[]
   satis_sifarisleri                                        satis_sifarisleri[]
   servis_qeydleri                                          servis_qeydleri[]
   stok_bron                                                stok_bron[]
   teklifler                                                teklifler[]
   zemanetler                                               zemanetler[]
-  satinalma_teklif_satir                                   satinalma_teklif_satir[]
 
   @@index([ad(ops: raw("gin_trgm_ops"))], map: "idx_kontragent_ad_trgm", type: Gin)
   @@index([aktiv], map: "idx_kontragent_aktiv")
@@ -3799,6 +3799,7 @@ model mehsullar {
   reqib_qiymet             reqib_qiymet[]
   rezerv_satirlari         rezerv_satirlari[]
   sahibkar_partiya_mehsul  sahibkar_partiya_mehsul[]
+  satinalma_teklif_satir   satinalma_teklif_satir[]
   satinalma_tovsiye        satinalma_tovsiye[]
   satis_sifaris_satirlari  satis_sifaris_satirlari[]
   seri_nomreler            seri_nomreler[]
@@ -3809,7 +3810,6 @@ model mehsullar {
   transfer_satirlari       transfer_satirlari[]
   xarici_partiya_satirlari xarici_partiya_satirlari[]
   zemanetler               zemanetler[]
-  satinalma_teklif_satir   satinalma_teklif_satir[]
 
   @@index([barkod], map: "idx_mehsul_barkod")
   @@index([sahibkar_id, kateqoriya_id], map: "idx_mehsul_kateq")
@@ -4169,12 +4169,12 @@ model qiymet_novleri {
   aktiv         Boolean?     @default(true)
   siralama      Int?         @default(0)
   yaradildi     DateTime?    @default(now()) @db.Timestamp(6)
-  formula_novu  String?      @default("yox") @db.VarChar(20)
   formula_baza  String?      @default("maya") @db.VarChar(20)
   formula_faiz  Decimal?     @default(0) @db.Decimal(7, 3)
-  yuvarla       Decimal?     @db.Decimal(7, 3)
-  yenilendi     DateTime?    @default(now()) @db.Timestamp(6)
+  formula_novu  String?      @default("yox") @db.VarChar(20)
   tesvir        String?
+  yenilendi     DateTime?    @default(now()) @db.Timestamp(6)
+  yuvarla       Decimal?     @db.Decimal(7, 3)
   sahibkarlar   sahibkarlar? @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([sahibkar_id, kod])
@@ -4600,6 +4600,9 @@ model sahibkar_qeyd {
   pinned        Boolean?        @default(false)
   yaradildi     DateTime?       @default(now()) @db.Timestamp(6)
   yenilendi     DateTime?       @default(now()) @db.Timestamp(6)
+  link_nov      String?         @db.VarChar(20)
+  link_id       String?         @db.VarChar(100)
+  link_label    String?         @db.VarChar(200)
   sahibkar_fayl sahibkar_fayl[]
   istifadeciler istifadeciler?  @relation(fields: [istifadeci_id], references: [id], onUpdate: NoAction)
   sahibkarlar   sahibkarlar     @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -4682,6 +4685,9 @@ model sahibkar_tapshiriq {
   qeyd           String?
   yaradildi      DateTime?      @default(now()) @db.Timestamp(6)
   yenilendi      DateTime?      @default(now()) @db.Timestamp(6)
+  link_nov       String?        @db.VarChar(20)
+  link_id        String?        @db.VarChar(100)
+  link_label     String?        @db.VarChar(200)
   istifadeciler  istifadeciler? @relation(fields: [istifadeci_id], references: [id], onUpdate: NoAction)
   sahibkarlar    sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -4798,13 +4804,9 @@ model sahibkarlar {
   davamiyyet                    davamiyyet[]
   demo_trials                   demo_trials[]
   etiket_sablonu                etiket_sablonu[]
-  filiallar                     filiallar[]
   filial_gorunush               filial_gorunush[]
   filial_mesaj                  filial_mesaj[]
-  team_kanal                    team_kanal[]
-  team_ayar                     team_ayar?
-  team_mesaj_log                team_mesaj_log[]
-  satinalma_teklif              satinalma_teklif[]
+  filiallar                     filiallar[]
   finance_approval_requests     finance_approval_requests[]
   finance_attachments           finance_attachments[]
   finance_audit_logs            finance_audit_logs[]
@@ -4918,6 +4920,7 @@ model sahibkarlar {
   sahibkar_tapshiriq            sahibkar_tapshiriq[]
   sahibkar_techizatci           sahibkar_techizatci[]
   sahibkar_ticaret_qeyd         sahibkar_ticaret_qeyd[]
+  satinalma_teklif              satinalma_teklif[]
   satinalma_tovsiye             satinalma_tovsiye[]
   satis_sifaris_satirlari       satis_sifaris_satirlari[]
   satis_sifarisleri             satis_sifarisleri[]
@@ -4941,6 +4944,9 @@ model sahibkarlar {
   tapshiriq_tekrar              tapshiriq_tekrar[]
   tapshiriq_xatirlatmalar       tapshiriq_xatirlatmalar[]
   tapshiriqlar                  tapshiriqlar[]
+  team_ayar                     team_ayar?
+  team_kanal                    team_kanal[]
+  team_mesaj_log                team_mesaj_log[]
   teklifler                     teklifler[]
   tesdiq_sorgulari              tesdiq_sorgulari[]
   tesdiq_telep                  tesdiq_telep[]

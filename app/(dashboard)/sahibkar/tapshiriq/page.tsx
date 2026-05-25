@@ -6,6 +6,7 @@ import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerTasks, getStaffOptions } from "@/features/sahibkar/owner-queries";
 import { TaskDialog, TaskStatusSelect } from "@/features/sahibkar/components/task-dialog";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
+import { EntityLinkBadge, type EntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sahibkar tapşırıqları" };
@@ -92,7 +93,7 @@ export default async function SahibkarTapshiriqPage() {
                         <CardContent className="space-y-1.5 py-3">
                           <div className="flex items-start justify-between gap-1.5">
                             <div className="text-sm font-medium leading-tight">{t.basliq}</div>
-                            <TaskDialog task={{ id: t.id, basliq: t.basliq, tesvir: t.tesvir, tarix: t.tarix, prioritet: t.prioritet, status: t.status }} staff={staff} />
+                            <TaskDialog task={{ id: t.id, basliq: t.basliq, tesvir: t.tesvir, tarix: t.tarix, prioritet: t.prioritet, status: t.status, link_nov: t.link_nov, link_id: t.link_id, link_label: t.link_label }} staff={staff} />
                           </div>
                           <div className="flex flex-wrap gap-1">
                             <Badge variant="outline" className={`text-[10px] ${prio.class}`}>
@@ -113,6 +114,11 @@ export default async function SahibkarTapshiriqPage() {
                             )}
                           </div>
                           {t.tesvir ? <p className="line-clamp-2 text-xs text-muted-foreground">{t.tesvir}</p> : null}
+                          {t.link_nov && t.link_id && (
+                            <div className="pt-0.5">
+                              <EntityLinkBadge nov={t.link_nov as EntityLinkNov} id={t.link_id} label={t.link_label} withHref size="xs" />
+                            </div>
+                          )}
                           <div className="flex items-center justify-between text-[10.5px] text-muted-foreground">
                             <span className="truncate">{t.mesul_ad ?? "—"}</span>
                             <span>{t.tarix ? formatDate(t.tarix, { day: "2-digit", month: "short" }) : "—"}</span>

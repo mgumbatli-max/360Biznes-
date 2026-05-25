@@ -5,6 +5,7 @@ import { Pin, Search, StickyNote } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NoteDialog, DeleteNoteButton } from "./note-dialog";
+import { EntityLinkBadge, type EntityLinkNov } from "./entity-link-input";
 import { formatDate } from "@/lib/utils";
 import type { ViewMode } from "@/components/ui/view-toggle";
 
@@ -14,6 +15,9 @@ type Note = {
   metn: string | null;
   reng: string | null;
   pinned: boolean;
+  link_nov?: string | null;
+  link_id?: string | null;
+  link_label?: string | null;
   yaradildi: Date | string | null;
   yenilendi: Date | string | null;
 };
@@ -105,6 +109,9 @@ function NotesCardView({ notes }: { notes: Note[] }) {
                     metn: n.metn,
                     reng: n.reng,
                     pinned: n.pinned,
+                    link_nov: n.link_nov,
+                    link_id: n.link_id,
+                    link_label: n.link_label,
                   }}
                 />
                 <DeleteNoteButton id={n.id} />
@@ -115,6 +122,11 @@ function NotesCardView({ notes }: { notes: Note[] }) {
                 {n.metn}
               </p>
             ) : null}
+            {n.link_nov && n.link_id && (
+              <div className="mt-2">
+                <EntityLinkBadge nov={n.link_nov as EntityLinkNov} id={n.link_id} label={n.link_label} withHref />
+              </div>
+            )}
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-current/10 pt-2 text-[10.5px] font-medium opacity-70">
               <Badge variant="outline" className="bg-white/40 text-[10px]">
                 {n.reng ?? "sari"}
@@ -144,6 +156,7 @@ function NotesListView({ notes }: { notes: Note[] }) {
             <th className="w-6 px-2 py-2"></th>
             <th className="px-3 py-2 text-left">Başlıq</th>
             <th className="hidden px-3 py-2 text-left md:table-cell">Mətn</th>
+            <th className="w-32 px-3 py-2 text-left">Bağlantı</th>
             <th className="w-24 px-3 py-2 text-left">Rəng</th>
             <th className="w-32 px-3 py-2 text-left">Tarix</th>
             <th className="w-20 px-3 py-2 text-right">Əməl</th>
@@ -162,6 +175,13 @@ function NotesListView({ notes }: { notes: Note[] }) {
                 </td>
                 <td className="hidden px-3 py-2 text-xs text-muted-foreground md:table-cell">
                   {n.metn ? <span className="line-clamp-1">{n.metn}</span> : "—"}
+                </td>
+                <td className="px-3 py-2">
+                  {n.link_nov && n.link_id ? (
+                    <EntityLinkBadge nov={n.link_nov as EntityLinkNov} id={n.link_id} label={n.link_label} withHref size="xs" />
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <Badge variant="outline" className="text-[10px]">{n.reng ?? "sari"}</Badge>

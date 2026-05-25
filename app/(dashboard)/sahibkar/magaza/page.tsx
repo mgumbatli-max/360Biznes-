@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getBranchPerformance } from "@/features/sahibkar/queries";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Mağaza müqayisəsi" };
@@ -20,6 +21,12 @@ export default async function MagazaPage() {
         <h1 className="text-2xl font-bold tracking-tight">Mağaza müqayisəsi (bu ay)</h1>
         <p className="mt-1 text-sm text-muted-foreground">Filiallar üzrə satış və stok dəyəri.</p>
       </header>
+
+      <SectionExplainer
+        icon={Building2}
+        tone="emerald"
+        description="Bu ayın filial üzrə müqayisəsi — hər filial nə qədər satıb, hansı stok dəyəri var. Lider və geri qalanı bir baxışda tap. Daha detallı analiz üçün /sahibkar/filial-muqayise bölməsinə bax."
+      />
 
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">

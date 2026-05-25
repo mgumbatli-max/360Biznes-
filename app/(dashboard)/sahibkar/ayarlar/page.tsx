@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { toggleSahibkarSetting, updateSessionTimeout, updateSecretCode, updateRecoveryEmail, changePin } from "@/features/sahibkar/settings-actions";
 import { DEFAULT_SECRET_CODE } from "@/features/sahibkar/constants";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 
 export const metadata: Metadata = { title: "Sahibkar ayarları" };
 export const dynamic = "force-dynamic";
@@ -53,6 +54,17 @@ export default async function SahibkarAyarlarPage() {
           </p>
         </div>
       </header>
+
+      <SectionExplainer
+        icon={Settings}
+        tone="slate"
+        description="Sahibkar bölməsinin əsas konfiqurasiyası burada cəmlənir. Sidebar-da görünüş, PIN, gizli kod (panika rejimi), sessiya müddəti (avto-kilid), yanlış cəhd limiti, bərpa email və audit log toggle."
+        bullets={[
+          { label: "Sessiya", text: `${cfg.sessiya_muddet} dəq (boş qalanda kilid)` },
+          { label: "Cəhd limiti", text: `${cfg.yanlis_limit} → lockout` },
+          { label: "Audit", text: cfg.audit_log ? "aktiv" : "söndürülüb" },
+        ]}
+      />
 
       {/* Visibility toggle */}
       <Card className="glass">

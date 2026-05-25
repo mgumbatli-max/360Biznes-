@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
-import { setPinSession, clearPinSession, touchPinSession } from "@/lib/sahibkar/session";
+import { setPinSession, clearPinSession } from "@/lib/sahibkar/session";
 import { getAttemptStatus, recordFailure, resetAttempts } from "@/lib/sahibkar/rate-limit";
 
 const PIN_RULE = z.string().regex(/^\d{4,8}$/, "PIN 4-8 rəqəm olmalıdır");
@@ -121,17 +121,4 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
 export async function lockSahibkar() {
   await clearPinSession();
   redirect("/dashboard");
-}
-
-/**
- * Client-tərəfli aktivlik sliding-TTL üçün cookie refresh-i.
- * Sahibkar/layout-da SessionCountdown bunu throttled (~30s) çağırır.
- * Cavabda yeni absolute expiresAt (unix saniyə) qaytarır ki, sayğac sinxronlaşsın.
- */
-export async function refreshSahibkarSession(): Promise<{ expiresAt: number; ttlSec: number } | null> {
-  const cfg = await withTenant(async () => prisma.sahibkar_ayar.findFirst({ select: { sessiya_muddet: true } })).catch(() => null);
-  const ttl = (cfg?.sessiya_muddet ?? 15) || 15;
-  const sess = await touchPinSession(ttl);
-  if (!sess) return null;
-  return { expiresAt: sess.exp, ttlSec: ttl * 60 };
 }

@@ -14,6 +14,9 @@ const NoteSchema = z.object({
   metn: z.string().max(20000).optional().or(z.literal("")),
   reng: z.string().max(20).optional().or(z.literal("")),
   pinned: z.coerce.boolean().optional(),
+  link_nov: z.string().max(20).optional().or(z.literal("")),
+  link_id: z.string().max(100).optional().or(z.literal("")),
+  link_label: z.string().max(200).optional().or(z.literal("")),
 });
 
 export async function saveNot(input: FormData): Promise<ActionResult> {
@@ -22,11 +25,16 @@ export async function saveNot(input: FormData): Promise<ActionResult> {
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    // Boş link sahələri → null (xanaları açıb sonra "Sil" basıb saxlayanda təmizlənsin)
+    const linkActive = !!(d.link_nov?.trim() && d.link_id?.trim());
     const data = {
       basliq: d.basliq?.trim() || null,
       metn: d.metn?.trim() || null,
       reng: d.reng?.trim() || "sari",
       pinned: !!d.pinned,
+      link_nov: linkActive ? d.link_nov!.trim() : null,
+      link_id: linkActive ? d.link_id!.trim() : null,
+      link_label: linkActive ? (d.link_label?.trim() || null) : null,
       yenilendi: new Date(),
     };
     let row;
@@ -64,6 +72,9 @@ const TaskSchema = z.object({
   prioritet: z.string().max(20).optional().or(z.literal("")),
   status: z.string().max(20).optional().or(z.literal("")),
   istifadeci_id: z.string().uuid().optional().or(z.literal("")),
+  link_nov: z.string().max(20).optional().or(z.literal("")),
+  link_id: z.string().max(100).optional().or(z.literal("")),
+  link_label: z.string().max(200).optional().or(z.literal("")),
 });
 
 export async function saveTapshiriq(input: FormData): Promise<ActionResult> {
@@ -74,6 +85,7 @@ export async function saveTapshiriq(input: FormData): Promise<ActionResult> {
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    const linkActive = !!(d.link_nov?.trim() && d.link_id?.trim());
     const data = {
       basliq: d.basliq.trim(),
       tesvir: d.tesvir?.trim() || null,
@@ -81,6 +93,9 @@ export async function saveTapshiriq(input: FormData): Promise<ActionResult> {
       prioritet: d.prioritet?.trim() || "orta",
       status: d.status?.trim() || "acig",
       istifadeci_id: d.istifadeci_id ? d.istifadeci_id : null,
+      link_nov: linkActive ? d.link_nov!.trim() : null,
+      link_id: linkActive ? d.link_id!.trim() : null,
+      link_label: linkActive ? (d.link_label?.trim() || null) : null,
       yenilendi: new Date(),
     };
     let row;

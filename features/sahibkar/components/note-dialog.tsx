@@ -7,8 +7,18 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveNot, deleteNot } from "@/features/sahibkar/owner-actions";
+import { EntityLinkInput } from "@/features/sahibkar/components/entity-link-input";
 
-type Note = { id: number; basliq: string | null; metn: string | null; reng: string | null; pinned: boolean };
+type Note = {
+  id: number;
+  basliq: string | null;
+  metn: string | null;
+  reng: string | null;
+  pinned: boolean;
+  link_nov?: string | null;
+  link_id?: string | null;
+  link_label?: string | null;
+};
 
 export function NoteDialog({ note }: { note?: Note }) {
   const [open, setOpen] = useState(false);
@@ -64,6 +74,9 @@ export function NoteDialog({ note }: { note?: Note }) {
               <input type="checkbox" name="pinned" defaultChecked={!!note?.pinned} /> Pin et
             </label>
           </div>
+          <EntityLinkInput
+            initial={{ nov: note?.link_nov, id: note?.link_id, label: note?.link_label }}
+          />
           {error ? <p className="text-xs text-danger">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Ləğv et</Button>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Truck } from "lucide-react";
+import Link from "next/link";
+import { Truck, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getOwnerPartiyas } from "@/features/sahibkar/owner-queries";
@@ -54,11 +55,12 @@ export default async function SahibkarPartiyaPage() {
                 <th className="px-3 py-2.5 text-right">Xərc (AZN)</th>
                 <th className="px-3 py-2.5">Status</th>
                 <th className="px-3 py-2.5">Tarix</th>
+                <th className="px-3 py-2.5"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-border/30">
+                <tr key={r.id} className="border-b border-border/30 hover:bg-secondary/30">
                   <td className="px-3 py-2 font-medium">{r.ad}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{r.olke ?? "—"}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{r.techizatci_ad ?? "—"}</td>
@@ -67,6 +69,11 @@ export default async function SahibkarPartiyaPage() {
                   <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.cemi_xerc_azn)}</td>
                   <td className="px-3 py-2"><Badge variant="outline" className="text-[10px]">{r.status ?? "qaralama"}</Badge></td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">{r.tarix ? formatDate(r.tarix) : "—"}</td>
+                  <td className="px-3 py-2 text-right">
+                    <Link href={`/sahibkar/partiya/${r.id}`} className="inline-flex items-center gap-0.5 text-[11px] text-primary-light hover:underline">
+                      Detal <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

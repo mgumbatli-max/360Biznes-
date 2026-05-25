@@ -413,5 +413,3 @@ export async function publishDuePosts(): Promise<ActionResult<{ published: numbe
     }
   });
 }
-
-export { ALLOWED_CHANNELS };

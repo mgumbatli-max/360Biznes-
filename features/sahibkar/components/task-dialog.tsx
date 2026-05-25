@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveTapshiriq, updateTaskStatus } from "@/features/sahibkar/owner-actions";
+import { EntityLinkInput } from "@/features/sahibkar/components/entity-link-input";
 
 type Staff = { id: string; ad_soyad: string };
 type Task = {
@@ -17,6 +18,9 @@ type Task = {
   prioritet: string | null;
   status: string | null;
   istifadeci_id?: string | null;
+  link_nov?: string | null;
+  link_id?: string | null;
+  link_label?: string | null;
 };
 
 export function TaskDialog({ task, staff }: { task?: Task; staff: Staff[] }) {
@@ -90,6 +94,9 @@ export function TaskDialog({ task, staff }: { task?: Task; staff: Staff[] }) {
               </select>
             </div>
           </div>
+          <EntityLinkInput
+            initial={{ nov: task?.link_nov, id: task?.link_id, label: task?.link_label }}
+          />
           {error ? <p className="text-xs text-danger">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Ləğv et</Button>

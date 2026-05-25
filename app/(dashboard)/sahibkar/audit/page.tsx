@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getDetailedAuditLog, getAuditFacets, type AuditFilter } from "@/features/sahibkar/queries";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Audit log — Sahibkar" };
@@ -107,6 +108,18 @@ export default async function SahibkarAuditPage({ searchParams }: { searchParams
           <KpiPill label="Göstərilir" value={rows.length} icon={Activity} tone="primary" />
         </div>
       </header>
+
+      <SectionExplainer
+        icon={History}
+        title="Audit log nə üçündür?"
+        tone="slate"
+        description="Sistemdə hər mühüm əməliyyat — kim, nə vaxt, hansı IP/brauzerdən, hansı obyekti dəyişib — burada saxlanır. Şübhəli aktivlik, səhv əməliyyat, mübahisəli dəyişiklik üçün axtarış zolağı və filterlər var."
+        bullets={[
+          { label: "Kim", text: "istifadəçi + brauzer + IP" },
+          { label: "Nə", text: "yarat / yenilə / sil + diff" },
+          { label: "Vaxt", text: "tarix aralığı filteri" },
+        ]}
+      />
 
       {/* Filters */}
       <Card className="glass">

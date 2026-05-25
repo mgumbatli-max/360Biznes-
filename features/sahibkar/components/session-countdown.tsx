@@ -1,26 +1,25 @@
 "use client";
 
-import { useEffect, useState, useTransition, useRef } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Clock, ShieldOff, MousePointer2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { lockSahibkar, refreshSahibkarSession } from "../actions";
-
-const LOCAL_BUMP_THROTTLE_MS = 1_000;   // hər saniyədə bir lokal deadline-ı uzat
-const SERVER_REFRESH_INTERVAL_MS = 30_000; // server cookie-sini ən çox 30 sn-də bir yenilə
+import { lockSahibkar } from "../actions";
 
 /**
- * Activity-aware session countdown with server-synced sliding TTL.
+ * Fixed session countdown — cookie deadline-dən asılı, aktivlik resetləmir.
  *
- * - `expiresAt` (unix saniyə) cookie-dən gələn absolut deadline.
- * - Hər aktivlikdə (mouse/keydown/touch) lokal deadline saniyədə bir uzanır
- *   ki, görünən sayğac aktiv istifadəçi üçün hər zaman tam ttl-də qalsın.
- * - Server cookie-si ən çox 30 saniyədən bir `refreshSahibkarSession` ilə
- *   yenilənir — sliding TTL bütün cihazlar arası persistent.
- * - Aktivlik olmazsa sayğac azalır; 0-a çatanda lockSahibkar() çağırılır.
+ * Sahibkar bölməsinə girəndə (PIN doğrulamasında) cookie-yə `exp` yazılır
+ * (məs. now + 15 dəq). Sayğac yalnız bu deadline-a görə geri sayır;
+ * naviqasiya və ya mouse aktivliyi vaxtı uzatmır — istifadəçi tələb edir
+ * ki, "Umumi bölmənin vaxdı" sabit qalsın.
+ *
+ * - Layout re-render-də prop dəyişərsə (məs. ayarlarda TTL dəyişib yenidən
+ *   PIN daxil edilib) lokal state yenilənir.
+ * - Deadline-a çatanda lockSahibkar() çağırılır.
  */
 export function SessionCountdown({
-  expiresAt: initialExpiresAt,
+  expiresAt,
   ttlSec,
 }: {
   expiresAt: number; // unix saniyə
@@ -29,50 +28,12 @@ export function SessionCountdown({
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [lockTriggered, setLockTriggered] = useState(false);
-  const [expiresAt, setExpiresAt] = useState(initialExpiresAt);
   const [now, setNow] = useState<number | null>(null);
-  const lastLocalBumpRef = useRef(0);
-  const lastServerRefreshRef = useRef(0);
-  const ttlSecRef = useRef(ttlSec);
-
-  useEffect(() => { ttlSecRef.current = ttlSec; }, [ttlSec]);
-
-  // Server-prop dəyişəndə (layout re-render) local state-i sinxronlaşdır
-  useEffect(() => {
-    setExpiresAt(initialExpiresAt);
-  }, [initialExpiresAt]);
 
   useEffect(() => {
     setNow(Math.floor(Date.now() / 1000));
     const tickId = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
-
-    const onActivity = () => {
-      const t = Date.now();
-      // 1) Local bump — görünən sayğac dərhal təzələnsin (kilidsiz, smooth)
-      if (t - lastLocalBumpRef.current >= LOCAL_BUMP_THROTTLE_MS) {
-        lastLocalBumpRef.current = t;
-        setExpiresAt(Math.floor(t / 1000) + ttlSecRef.current);
-      }
-      // 2) Server refresh — cookie-ni 30 sn-də bir uzat, response-dakı exp ilə dəqiqləşdir
-      if (t - lastServerRefreshRef.current >= SERVER_REFRESH_INTERVAL_MS) {
-        lastServerRefreshRef.current = t;
-        refreshSahibkarSession()
-          .then((res) => {
-            if (res?.expiresAt) setExpiresAt(res.expiresAt);
-          })
-          .catch(() => {
-            /* silent — tick davam edir, deadline-da kilid bağlanır */
-          });
-      }
-    };
-
-    const events: (keyof DocumentEventMap)[] = ["mousedown", "keydown", "touchstart", "scroll", "wheel"];
-    events.forEach((e) => document.addEventListener(e, onActivity, { passive: true }));
-
-    return () => {
-      clearInterval(tickId);
-      events.forEach((e) => document.removeEventListener(e, onActivity));
-    };
+    return () => clearInterval(tickId);
   }, []);
 
   const remaining = now != null ? Math.max(0, expiresAt - now) : ttlSec;
@@ -111,7 +72,11 @@ export function SessionCountdown({
         color,
         isWarning && "animate-pulse"
       )}
-      title={isWarning ? "Diqqət — yaxında kilidlənəcək. Klik və ya yaz, sessiya yenilənəcək" : "Boş qalanda avto-kilid. Aktivlik gördükdə server-də yenilənir."}
+      title={
+        isWarning
+          ? "Diqqət — yaxında kilidlənəcək. PIN ilə yenidən giriş lazım olacaq."
+          : "Sessiya vaxtı sabitdir. Naviqasiya vaxtı uzatmır."
+      }
     >
       {isLocked ? (
         <ShieldOff className="h-3 w-3" />

@@ -70,6 +70,9 @@ export async function getOwnerNotes(limit = 50) {
       metn: r.metn,
       reng: r.reng,
       pinned: !!r.pinned,
+      link_nov: r.link_nov,
+      link_id: r.link_id,
+      link_label: r.link_label,
       yaradildi: r.yaradildi,
       yenilendi: r.yenilendi,
     }));
@@ -91,6 +94,9 @@ export async function getOwnerTasks(limit = 50) {
       prioritet: r.prioritet,
       status: r.status,
       mesul_ad: r.istifadeciler?.ad_soyad ?? null,
+      link_nov: r.link_nov,
+      link_id: r.link_id,
+      link_label: r.link_label,
       yaradildi: r.yaradildi,
     }));
   });
@@ -304,30 +310,48 @@ export async function getOwnerBranchComparison() {
     if (branches.length === 0) return [];
 
     const ids = branches.map((b) => b.id);
-    const [thisMonth, lastMonth] = await Promise.all([
+    const [thisMonth, lastMonth, isciCounts] = await Promise.all([
       prisma.satis_sifarisleri.groupBy({
         by: ["filial_id"],
         where: { filial_id: { in: ids }, tarix: { gte: monthStart }, status: { not: "legv" } },
         _sum: { son_mebleg: true },
+        _count: { _all: true },
       }),
       prisma.satis_sifarisleri.groupBy({
         by: ["filial_id"],
         where: { filial_id: { in: ids }, tarix: { gte: prevMonthStart, lte: prevMonthEnd }, status: { not: "legv" } },
         _sum: { son_mebleg: true },
+        _count: { _all: true },
       }),
+      prisma.istifadeciler.groupBy({
+        by: ["default_filial_id"],
+        where: { default_filial_id: { in: ids }, aktiv: true },
+        _count: { _all: true },
+      }).catch(() => [] as { default_filial_id: number | null; _count: { _all: number } }[]),
     ]);
-    const a = new Map(thisMonth.map((r) => [r.filial_id, Number(r._sum.son_mebleg ?? 0)]));
-    const b = new Map(lastMonth.map((r) => [r.filial_id, Number(r._sum.son_mebleg ?? 0)]));
+    const a = new Map(thisMonth.map((r) => [r.filial_id, { sum: Number(r._sum.son_mebleg ?? 0), n: r._count._all }]));
+    const b = new Map(lastMonth.map((r) => [r.filial_id, { sum: Number(r._sum.son_mebleg ?? 0), n: r._count._all }]));
+    const isci = new Map(isciCounts.map((r) => [r.default_filial_id, r._count._all] as const));
 
     const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
 
-    return branches.map((br) => ({
-      id: br.id,
-      ad: br.ad,
-      bu_ay: (a.get(br.id) ?? 0) * s,
-      kecen_ay: (b.get(br.id) ?? 0) * s,
-    }));
+    return branches.map((br) => {
+      const cur = a.get(br.id) ?? { sum: 0, n: 0 };
+      const prev = b.get(br.id) ?? { sum: 0, n: 0 };
+      const buAy = cur.sum * s;
+      const avgTicket = cur.n > 0 ? buAy / cur.n : 0;
+      return {
+        id: br.id,
+        ad: br.ad,
+        bu_ay: buAy,
+        kecen_ay: prev.sum * s,
+        sifaris_say: cur.n,
+        kecen_sifaris_say: prev.n,
+        orta_cek: avgTicket,
+        isci_say: isci.get(br.id) ?? 0,
+      };
+    });
   });
 }
 

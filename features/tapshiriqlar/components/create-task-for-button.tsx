@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createTaskFor, type LinkableModul } from "../cross-module";
+import { createTaskFor } from "../cross-module";
+import type { LinkableModul } from "../cross-module-constants";
 
 /**
  * Drop-in button for any module page that wants to spawn a task linked

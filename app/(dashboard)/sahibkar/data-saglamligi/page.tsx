@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getDataHealth } from "@/features/sahibkar/owner-queries";
+import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 
 export const metadata: Metadata = { title: "Data sağlamlığı" };
 export const dynamic = "force-dynamic";
@@ -37,6 +38,18 @@ export default async function DataSaglamliqPage() {
           </Button>
         ) : null}
       </header>
+
+      <SectionExplainer
+        icon={Activity}
+        title="Data sağlamlığı nəyə yarayır?"
+        tone="rose"
+        description="Datanda olan problemləri bir baxışda görürsən: şəkilsiz məhsul, barkodsuz mal, mayasız partiya, qiymətsiz mal və s. Hər anomaliya birbaşa /anbar/anomali bölməsinə bağlanır — orada düzəliş edə bilərsən. Defekt rezerv, AI-bazalı toplu düzəltmə bölmələri də əlavədir."
+        bullets={[
+          { label: "Anomaliya", text: "şəkilsiz, barkodsuz, mayasız mal" },
+          { label: "AI fix", text: "şəkilsiz məhsullara avto-şəkil" },
+          { label: "Prioritet", text: "yüksək (qırmızı) → aşağı (boz)" },
+        ]}
+      />
 
       <Card className="glass">
         <CardContent className="flex items-center justify-between py-4">
