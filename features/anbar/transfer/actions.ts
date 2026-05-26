@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
+import { safeStockDecrement } from "@/lib/db/stock-guards";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -99,16 +100,17 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
         if (t.status === "tesdiqlendi") throw new Error("Artıq qəbul edilib");
 
         for (const line of t.transfer_satirlari) {
-          // Decrement source
+          // Atomic decrement at source — race-safe
+          const dec = await safeStockDecrement(tx, {
+            mehsulId: line.mehsul_id,
+            anbarId: t.kaynak_anbar_id,
+            miqdar: Number(line.miqdar),
+          });
+          if (!dec.ok) throw new Error(dec.error);
+          // Need source row for son_qiymet (used in dest create below)
           const src = await tx.stok.findFirst({
             where: { mehsul_id: line.mehsul_id, anbar_id: t.kaynak_anbar_id },
-          });
-          if (!src || Number(src.miqdar ?? 0) < Number(line.miqdar)) {
-            throw new Error(`Stok kifayət deyil: məhsul ${line.mehsul_id}`);
-          }
-          await tx.stok.update({
-            where: { id: src.id },
-            data: { miqdar: { decrement: line.miqdar } },
+            select: { son_qiymet: true },
           });
 
           // Increment dest
@@ -118,7 +120,7 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
           if (dst) {
             await tx.stok.update({
               where: { id: dst.id },
-              data: { miqdar: { increment: line.miqdar }, son_qiymet: src.son_qiymet ?? undefined },
+              data: { miqdar: { increment: line.miqdar }, son_qiymet: src?.son_qiymet ?? undefined },
             });
           } else {
             await tx.stok.create({
@@ -127,7 +129,7 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
                 mehsul_id: line.mehsul_id,
                 anbar_id: t.hedef_anbar_id,
                 miqdar: line.miqdar,
-                son_qiymet: src.son_qiymet,
+                son_qiymet: src?.son_qiymet,
               },
             });
           }
@@ -141,7 +143,7 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
                 mehsul_id: line.mehsul_id,
                 nov: "transfer_cixis",
                 miqdar: line.miqdar,
-                qiymet: src.son_qiymet ?? null,
+                qiymet: src?.son_qiymet ?? null,
                 ref_nov: "transfer",
                 ref_id: t.id,
                 edilen_id: istifadeciId,
@@ -152,7 +154,7 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
                 mehsul_id: line.mehsul_id,
                 nov: "transfer_giris",
                 miqdar: line.miqdar,
-                qiymet: src.son_qiymet ?? null,
+                qiymet: src?.son_qiymet ?? null,
                 ref_nov: "transfer",
                 ref_id: t.id,
                 edilen_id: istifadeciId,

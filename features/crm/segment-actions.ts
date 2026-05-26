@@ -111,8 +111,9 @@ function heuristicParse(t: string): SegmentRule {
 /** Qaydaya görə kontragentlər WHERE şərti */
 function whereFromRule(rule: SegmentRule): Record<string, unknown> {
   const where: Record<string, unknown> = { nov: "musteri" };
-  if (rule.borc === "var") where.borc = { gt: 0 };
-  if (rule.borc === "yox") where.borc = { lte: 0 };
+  // Müştəri seqmentində "borc" = müştərinin bizə borcu (alacaq sütunu).
+  if (rule.borc === "var") where.alacaq = { gt: 0 };
+  if (rule.borc === "yox") where.alacaq = { lte: 0 };
   if (rule.qiymet_tipi?.length) where.qiymet_tipi = { in: rule.qiymet_tipi };
   if (rule.funnel?.length) where.funnel_status = { in: rule.funnel };
   if (typeof rule.qara_siyahi === "boolean") where.qara_siyahi = rule.qara_siyahi;

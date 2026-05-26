@@ -7,6 +7,8 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { checkDiscountLimit, requestDiscountApproval } from "@/features/ticaret/discount-approval";
 import { checkCustomerCreditLimit } from "@/features/ticaret/customer-tier";
+import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -146,13 +148,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
 
         // 5. Sale number (race-safe inside transaction)
         const year = new Date().getFullYear();
-        const last = await tx.satis_sifarisleri.findFirst({
-          where: { nomre: { startsWith: `${SALE_PREFIX}-${year}-` } },
-          orderBy: { nomre: "desc" },
-          select: { nomre: true },
-        });
-        const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-        const nomre = `${SALE_PREFIX}-${year}-${String(lastNum + 1).padStart(5, "0")}`;
+        const nomre = await nextDocNumber(tx, sahibkarId, "satis");
 
         // 5b. POS receipt number sequence per kassa session
         // Format: POS-{year}-{kassa_short}-{seq} where kassa_short = last 4 chars of kassa.id
@@ -211,10 +207,12 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
             },
           });
 
-          await tx.stok.updateMany({
-            where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: data.anbar_id },
-            data: { miqdar: { decrement: line.miqdar } },
+          const dec = await safeStockDecrement(tx, {
+            mehsulId: line.mehsul_id,
+            anbarId: data.anbar_id,
+            miqdar: line.miqdar,
           });
+          if (!dec.ok) throw new Error(dec.error);
 
           await tx.anbar_hereketleri.create({
             data: {

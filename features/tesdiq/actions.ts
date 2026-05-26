@@ -105,11 +105,12 @@ async function propagateDocumentApproval(
         where: { id: resursId },
         data: { status: "gozlemede" },
       });
-      // Təchizatçı borcunu artır (createPurchase təsdiq-gözləyəndə skip etmişdi)
+      // Təchizatçı borcunu artır (createPurchase təsdiq-gözləyəndə skip etmişdi).
+      // Yeni model: borc = bizim təchizatçıya borcumuz (musbet).
       if (purchase.techiazatci_id && purchase.umumi_mebleg != null) {
         await prisma.kontragentler.update({
           where: { id: purchase.techiazatci_id },
-          data: { borc: { decrement: purchase.umumi_mebleg } },
+          data: { borc: { increment: purchase.umumi_mebleg } },
         });
       }
       return;

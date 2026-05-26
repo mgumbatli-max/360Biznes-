@@ -10,6 +10,8 @@ import { checkDiscountLimit, requestDiscountApproval } from "./discount-approval
 import { checkAndCreateStockAlertBatch } from "@/features/anbar/alert-helpers";
 import { parseLocalDate } from "@/lib/utils";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
+import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 
 /**
  * Sale-date helper: if user typed only YYYY-MM-DD use parseLocalDate (local noon)
@@ -157,13 +159,7 @@ export async function createOrUpdateSatisYeni(
         } else {
           // Create new
           const year = new Date().getFullYear();
-          const last = await tx.satis_sifarisleri.findFirst({
-            where: { nomre: { startsWith: `${PREFIX}-${year}-` } },
-            orderBy: { nomre: "desc" },
-            select: { nomre: true },
-          });
-          const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-          nomre = `${PREFIX}-${year}-${String(lastNum + 1).padStart(5, "0")}`;
+          nomre = await nextDocNumber(tx, sahibkarId, "satis");
 
           // Use first line's anbar as the "primary" anbar on the sale header
           const primaryAnbar = data.lines[0].anbar_id;
@@ -234,20 +230,15 @@ export async function createOrUpdateSatisYeni(
         if (!data.qaralama && !needsApproval) {
           // 1. Stock decrement + anbar_hereketleri (mexaric) per line
           for (const line of data.lines) {
-            // Upsert stok row so partial-stock products still record movement
-            await tx.stok.upsert({
-              where: {
-                mehsul_id_anbar_id: { mehsul_id: line.mehsul_id, anbar_id: line.anbar_id },
-              },
-              update: { miqdar: { decrement: new Prisma.Decimal(line.miqdar) } },
-              create: {
-                sahibkar_id: sahibkarId,
-                mehsul_id: line.mehsul_id,
-                anbar_id: line.anbar_id,
-                miqdar: new Prisma.Decimal(-line.miqdar),
-                son_qiymet: new Prisma.Decimal(line.qiymet),
-              },
+            // Atomic check-and-decrement: race-safe, refuse if insufficient
+            const dec = await safeStockDecrement(tx, {
+              mehsulId: line.mehsul_id,
+              anbarId: line.anbar_id,
+              miqdar: line.miqdar,
             });
+            if (!dec.ok) {
+              throw new Error(dec.error);
+            }
             await tx.anbar_hereketleri.create({
               data: {
                 sahibkar_id: sahibkarId,
@@ -342,9 +333,10 @@ export async function createOrUpdateSatisYeni(
               },
             });
             if (data.musteri_id) {
+              // Satış nisyə → müştəri bizə borclu (alacaq artır)
               await tx.kontragentler.update({
                 where: { id: data.musteri_id },
-                data: { borc: { increment: new Prisma.Decimal(sonMebleg) } },
+                data: { alacaq: { increment: new Prisma.Decimal(sonMebleg) } },
               });
             }
           }

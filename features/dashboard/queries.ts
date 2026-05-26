@@ -41,8 +41,8 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
         _sum: { miqdar: true },
       }),
       prisma.kontragentler.aggregate({
-        where: { nov: "musteri", borc: { gt: 0 } },
-        _sum: { borc: true },
+        where: { nov: "musteri", alacaq: { gt: 0 } },
+        _sum: { alacaq: true },
       }),
       // Low stock: stok.miqdar < mehsul.kritik_stok (raw because Prisma can't
       // compare two columns of the same row directly)
@@ -65,7 +65,7 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
       todaySalesAmount: Number(salesAgg._sum.son_mebleg ?? 0) * s,
       todaySalesCount: salesAgg._count._all,
       stockValue: Number(stokAgg._sum.miqdar ?? 0) * s,
-      customerDebt: Number(debtAgg._sum.borc ?? 0) * s,
+      customerDebt: Number(debtAgg._sum.alacaq ?? 0) * s,
       lowStockCount: Number(lowStockCount[0]?.count ?? 0),
     };
   });

@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { checkAndCreateStockAlertBatch } from "@/features/anbar/alert-helpers";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -131,12 +132,12 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
           }
         }
 
-        // Təchizatçı borcu — təsdiq gözlədiyi müddətdə də artırılmır, sənəd
-        // hələ aktiv hesab olunmur.
+        // Təchizatçı borcu — alış qaiməsi → biz təchizatçıya borclu (borc artır).
+        // Təsdiq gözlədiyi müddətdə də artırılmır, sənəd hələ aktiv hesab olunmur.
         if (!needsApproval) {
           await tx.kontragentler.update({
             where: { id: d.techizatci_id },
-            data: { borc: { decrement: new Prisma.Decimal(umumi) } },
+            data: { borc: { increment: new Prisma.Decimal(umumi) } },
           });
         }
 

@@ -87,9 +87,9 @@ export async function getRiskDashboard(): Promise<RiskDashboardData> {
       `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0)),
 
       prisma.kontragentler.aggregate({
-        where: { aktiv: true, borc: { gt: 0 } },
+        where: { aktiv: true, alacaq: { gt: 0 } },
         _count: { _all: true },
-        _sum: { borc: true },
+        _sum: { alacaq: true },
       }),
 
       prisma.alerts.count({
@@ -168,7 +168,7 @@ export async function getRiskDashboard(): Promise<RiskDashboardData> {
       task_overdue,
       stock_zero, stock_low,
       debtor_count: debtors._count._all,
-      debtor_amount: Number(debtors._sum.borc ?? 0),
+      debtor_amount: Number(debtors._sum.alacaq ?? 0),
       overdue_debt: overdue_debt_count,
       late_employees_today: late_today,
       service_stalled, mp_pending,

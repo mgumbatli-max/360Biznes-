@@ -205,11 +205,11 @@ export async function getTopExpenseCategories(limit = 5): Promise<TopRow[]> {
 export async function getTopDebtors(limit = 5): Promise<TopRow[]> {
   return withTenant(async () =>
     (await prisma.kontragentler.findMany({
-      where: { aktiv: true, nov: { in: ["musteri", "her_ikisi"] }, borc: { gt: 0 } },
-      orderBy: { borc: "desc" },
+      where: { aktiv: true, nov: { in: ["musteri", "her_ikisi"] }, alacaq: { gt: 0 } },
+      orderBy: { alacaq: "desc" },
       take: limit,
-      select: { ad: true, borc: true },
-    })).map((r) => ({ ad: r.ad, mebleg: Number(r.borc ?? 0) }))
+      select: { ad: true, alacaq: true },
+    })).map((r) => ({ ad: r.ad, mebleg: Number(r.alacaq ?? 0) }))
   );
 }
 

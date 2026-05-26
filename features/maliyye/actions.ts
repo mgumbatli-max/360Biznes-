@@ -413,32 +413,30 @@ export async function saveQuickOperation(input: FormData): Promise<ActionResult>
         }
       }
 
-      // Update kontragent.borc on debt-related payments (best-effort)
-      // Sign convention: kontragentler.borc > 0 → customer owes us (debitor);
-      //                  kontragentler.borc < 0 → we owe supplier (kreditor)
+      // Update kontragent debt on debt-related payments (best-effort)
+      // Yeni model:
+      //   alacaq > 0 → müştəri bizə borclu (debitor)
+      //   borc   > 0 → biz təchizatçıya borcluyuq (kreditor)
       if (d.kontragent_id) {
         const azn = d.mebleg * (d.mezenne || 1);
-        let delta = 0;
+        let alacaqDelta = 0;
         switch (d.type_kod) {
           case "qaime":
-            // Customer pays us → their debt drops
-            delta = -azn;
-            break;
           case "borc_silinme":
-            // Forgive customer debt
-            delta = -azn;
+            // Müştəri ödəyir / silinir → onun bizə borcu (alacaq) azalır
+            alacaqDelta = -azn;
             break;
           default:
-            delta = 0;
+            alacaqDelta = 0;
         }
-        if (delta !== 0) {
+        if (alacaqDelta !== 0) {
           try {
             await prisma.kontragentler.update({
               where: { id: d.kontragent_id },
-              data: { borc: { increment: delta }, yenilendi: new Date() },
+              data: { alacaq: { increment: alacaqDelta }, yenilendi: new Date() },
             });
           } catch (e) {
-            console.warn("[saveQuickOperation] borc update skipped:", e);
+            console.warn("[saveQuickOperation] alacaq update skipped:", e);
           }
         }
       }
@@ -783,10 +781,10 @@ export async function receivePartialPayment(input: FormData): Promise<ActionResu
           });
         }
 
-        // 4) Decrement kontragentler.borc
+        // 4) Müştəri ödəyir nisyə üçün → onun bizə borcu (alacaq) azalır
         await tx.kontragentler.update({
           where: { id: d.musteri_id },
-          data: { borc: { decrement: d.mebleg }, son_temas: new Date(), yenilendi: new Date() },
+          data: { alacaq: { decrement: d.mebleg }, son_temas: new Date(), yenilendi: new Date() },
         });
 
         // 5) audit_log

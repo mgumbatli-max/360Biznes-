@@ -92,9 +92,10 @@ export async function applySplitPayment(input: z.infer<typeof InputSchema>): Pro
         });
 
         if (nisyeSum > 0 && sale.musteri_id) {
+          // Qismən nisyə → müştəri bizə borclu (alacaq artır)
           await tx.kontragentler.update({
             where: { id: sale.musteri_id },
-            data: { borc: { increment: new Prisma.Decimal(nisyeSum) } },
+            data: { alacaq: { increment: new Prisma.Decimal(nisyeSum) } },
           });
         }
       });

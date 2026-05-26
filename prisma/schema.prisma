@@ -2700,6 +2700,7 @@ model kontragentler {
   huquqi_fiziki                                            String?                       @db.VarChar(15)
   qara_siyahi                                              Boolean?                      @default(false)
   qara_siyahi_sebeb                                        String?
+  alacaq                                                   Decimal?                      @default(0) @db.Decimal(14, 2)
   alis_sifarisleri                                         alis_sifarisleri[]
   auto_log                                                 auto_log[]
   broadcast_log                                            broadcast_log[]
@@ -6138,4 +6139,14 @@ model zemanetler {
   @@index([sahibkar_id], map: "idx_zemanet_sahibkar")
   @@index([satis_id], map: "idx_zemanet_satis")
   @@index([status], map: "idx_zemanet_status")
+}
+
+model sened_nomre_counter {
+  sahibkar_id String    @db.Uuid
+  prefix      String    @db.VarChar(20)
+  il          Int
+  son_nomre   Int       @default(0)
+  yenilendi   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@id([sahibkar_id, prefix, il])
 }

@@ -70,8 +70,9 @@ export async function getContacts(
     if (filter.nov !== "any") {
       where.nov = filter.nov === "her_ikisi" ? "her_ikisi" : { in: [filter.nov, "her_ikisi"] };
     }
-    if (filter.borc === "var") where.borc = { gt: 0 };
-    if (filter.borc === "yox") where.borc = { lte: 0 };
+    // "Borclu" filtri — istənilən növdə borcun olması (musteri alacaq və ya təchizatçı borcu).
+    if (filter.borc === "var") where.OR = [{ alacaq: { gt: 0 } }, { borc: { gt: 0 } }];
+    if (filter.borc === "yox") where.AND = [{ alacaq: { lte: 0 } }, { borc: { lte: 0 } }];
     if (filter.qiymet_tipi) where.qiymet_tipi = filter.qiymet_tipi;
     if (filter.menecer_id) where.menecer_id = filter.menecer_id;
     if (filter.olke) where.olke = filter.olke;
@@ -131,10 +132,11 @@ export async function getContacts(
         },
       }),
       prisma.kontragentler.count({ where }),
-      prisma.kontragentler.aggregate({ where, _sum: { borc: true } }),
+      // Net debt: alacaq (müştəri borcu bizə) - borc (bizim təchizatçıya borcumuz)
+      prisma.kontragentler.aggregate({ where, _sum: { alacaq: true, borc: true } }),
       prisma.kontragentler.count({ where: { ...where, aktiv: true } }),
       prisma.kontragentler.count({
-        where: { ...where, borc: { gt: 0 } },
+        where: { ...where, OR: [{ alacaq: { gt: 0 } }, { borc: { gt: 0 } }] },
       }),
     ]);
 
@@ -148,7 +150,9 @@ export async function getContacts(
         telefon: r.telefon,
         email: r.email,
         unvan: r.unvan,
-        borc: Number(r.borc ?? 0),
+        // UI üçün "borc" sahəsi rolun nov-undan asılı seçilir:
+        //   musteri → alacaq (bizə borc), techizatci → borc (bizim borcumuz)
+        borc: Number((r.nov === "techizatci" ? r.borc : r.alacaq) ?? 0),
         aktiv: r.aktiv ?? false,
         yaradildi: r.yaradildi,
         son_temas: r.son_temas,
@@ -164,7 +168,7 @@ export async function getContacts(
       total,
       stats: {
         count: total,
-        total_borc: Number(agg._sum.borc ?? 0),
+        total_borc: Number(agg._sum.alacaq ?? 0) - Number(agg._sum.borc ?? 0),
         aktiv_count: aktivCount,
         borclu_count: borcluCount,
       },
@@ -217,8 +221,8 @@ export async function getDebtorList(): Promise<{
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     const rows = await prisma.kontragentler.findMany({
-      where: { aktiv: true, borc: { gt: 0 } },
-      orderBy: { borc: "desc" },
+      where: { aktiv: true, alacaq: { gt: 0 } },
+      orderBy: { alacaq: "desc" },
     });
 
     // For each kontragent, get latest sales order
@@ -243,7 +247,7 @@ export async function getDebtorList(): Promise<{
     let kritik_limit_asib = 0;
 
     const items: DebtorRow[] = rows.map((r) => {
-      const borc = Number(r.borc ?? 0);
+      const borc = Number(r.alacaq ?? 0);
       const limit = r.borc_limiti === null ? null : Number(r.borc_limiti);
       const ls = lastSales.get(r.id);
       const lastDate = ls?.tarix ?? r.son_temas ?? null;
@@ -586,8 +590,8 @@ export async function getElaqeReport(): Promise<ReportData> {
          ORDER BY 1
       `.catch(() => []),
       prisma.kontragentler.findMany({
-        where: { aktiv: true, borc: { gt: 0 } },
-        select: { borc: true, son_temas: true },
+        where: { aktiv: true, alacaq: { gt: 0 } },
+        select: { alacaq: true, son_temas: true },
       }),
       prisma.$queryRaw<{ aktiv: boolean; count: bigint }[]>`
         SELECT aktiv, COUNT(*)::bigint AS count
@@ -608,7 +612,7 @@ export async function getElaqeReport(): Promise<ReportData> {
     const now = Date.now();
     const buckets = { "0-30": { count: 0, sum: 0 }, "31-60": { count: 0, sum: 0 }, "61-90": { count: 0, sum: 0 }, "90+": { count: 0, sum: 0 } };
     for (const r of allDebtor) {
-      const borc = Number(r.borc ?? 0);
+      const borc = Number(r.alacaq ?? 0);
       const days = r.son_temas ? Math.floor((now - r.son_temas.getTime()) / 86400000) : 999;
       let key: keyof typeof buckets = "0-30";
       if (days > 90) key = "90+";
@@ -691,8 +695,8 @@ export async function getElaqeDashboard(): Promise<ElaqeDashboard> {
       prisma.kontragentler.count({ where: { aktiv: true, nov: { in: ["techizatci", "her_ikisi"] } } }),
       prisma.kontragentler.count({ where: { qara_siyahi: true } }),
       prisma.kontragentler.findMany({
-        where: { aktiv: true, borc: { gt: 0 } },
-        select: { borc: true, son_temas: true, borc_limiti: true },
+        where: { aktiv: true, alacaq: { gt: 0 } },
+        select: { alacaq: true, son_temas: true, borc_limiti: true },
       }),
       prisma.contact_followups.count({
         where: { status: "gozleyir", vaxt: { gte: today, lt: tomorrow } },
@@ -714,9 +718,9 @@ export async function getElaqeDashboard(): Promise<ElaqeDashboard> {
          LIMIT 8
       `.catch(() => []),
       prisma.kontragentler.findMany({
-        where: { aktiv: true, borc: { gt: 0 } },
-        select: { id: true, ad: true, borc: true, son_temas: true },
-        orderBy: { borc: "desc" },
+        where: { aktiv: true, alacaq: { gt: 0 } },
+        select: { id: true, ad: true, alacaq: true, son_temas: true },
+        orderBy: { alacaq: "desc" },
         take: 30,
       }),
       prisma.$queryRaw<{ count: bigint }[]>`
@@ -740,7 +744,7 @@ export async function getElaqeDashboard(): Promise<ElaqeDashboard> {
       },
     });
 
-    const borc_cemi = borcluList.reduce((s, r) => s + Number(r.borc ?? 0), 0);
+    const borc_cemi = borcluList.reduce((s, r) => s + Number(r.alacaq ?? 0), 0);
     let gec_borc_say = 0;
     const nowTs = Date.now();
     for (const r of borcluList) {
@@ -752,7 +756,7 @@ export async function getElaqeDashboard(): Promise<ElaqeDashboard> {
     const risk_musteri = riskRaw
       .map((r) => {
         const gun = r.son_temas ? Math.floor((nowTs - r.son_temas.getTime()) / 86400000) : 999;
-        return { id: r.id, ad: r.ad, borc: Number(r.borc ?? 0), gun };
+        return { id: r.id, ad: r.ad, borc: Number(r.alacaq ?? 0), gun };
       })
       .filter((r) => r.gun > 30)
       .sort((a, b) => b.borc - a.borc)
@@ -805,9 +809,10 @@ export async function getCreditorList(): Promise<{
 }> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    // Kreditor — biz təchizatçıya borcluyuq (borc > 0 yeni modeldə).
     const rows = await prisma.kontragentler.findMany({
-      where: { aktiv: true, borc: { lt: 0 }, nov: { in: ["techizatci", "her_ikisi"] } },
-      orderBy: { borc: "asc" },
+      where: { aktiv: true, borc: { gt: 0 }, nov: { in: ["techizatci", "her_ikisi"] } },
+      orderBy: { borc: "desc" },
       select: { id: true, ad: true, telefon: true, voen: true, borc: true, son_temas: true },
     });
     const ids = rows.map((r) => r.id);
@@ -828,7 +833,7 @@ export async function getCreditorList(): Promise<{
     let cemi = 0;
     let gecikmis_30 = 0;
     const items: CreditorRow[] = rows.map((r) => {
-      const borc = Math.abs(Number(r.borc ?? 0));
+      const borc = Number(r.borc ?? 0);
       const ls = lastBuy.get(r.id);
       const lastDate = ls?.tarix ?? r.son_temas ?? null;
       const yas = lastDate ? Math.floor((nowTs - lastDate.getTime()) / 86400000) : null;
@@ -900,16 +905,16 @@ export async function getContactSegmentCounts(
       prisma.kontragentler.aggregate({
         where: { aktiv: true, nov: { in: novList } },
         _count: { _all: true },
-        _sum: { borc: true },
+        _sum: { alacaq: true, borc: true },
       }),
       prisma.kontragentler.count({
-        where: { aktiv: true, nov: { in: novList }, borc: { gt: 0 } },
+        where: { aktiv: true, nov: { in: novList }, OR: [{ alacaq: { gt: 0 } }, { borc: { gt: 0 } }] },
       }),
     ]);
 
     return {
       total: totalAgg._count._all,
-      borc_total: Number(totalAgg._sum.borc ?? 0),
+      borc_total: Number(totalAgg._sum.alacaq ?? 0) - Number(totalAgg._sum.borc ?? 0),
       borclu_say: borcluCount,
       segments: segments.map((s) => ({
         qiymet_tipi: s.qiymet_tipi ?? "adi",

@@ -229,14 +229,14 @@ export async function testRule(id: number): Promise<TestRunResult> {
             const rows = await prisma.kontragentler.findMany({
               where: {
                 aktiv: true,
-                borc: { gt: 0 },
+                alacaq: { gt: 0 },
                 yenilendi: { lt: since },
               },
-              select: { id: true, ad: true, borc: true },
+              select: { id: true, ad: true, alacaq: true },
               take: 100,
             });
             matched = rows.length;
-            for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: `${row.ad} (${Number(row.borc).toFixed(0)} ₼)` });
+            for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: `${row.ad} (${Number(row.alacaq).toFixed(0)} ₼)` });
             break;
           }
           case "tap_gecikdi": {

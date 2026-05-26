@@ -61,7 +61,7 @@ export async function estimateRecipientCount(hedef: string): Promise<number> {
       case "vip":
         return prisma.kontragentler.count({ where: { nov: "musteri", qiymet_tipi: "vip" } });
       case "borclu":
-        return prisma.kontragentler.count({ where: { nov: "musteri", borc: { gt: 0 } } });
+        return prisma.kontragentler.count({ where: { nov: "musteri", alacaq: { gt: 0 } } });
       case "passiv_30d":
         return prisma.kontragentler.count({
           where: {

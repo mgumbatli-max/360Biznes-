@@ -6,6 +6,7 @@ import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 
 function parseSaleDate(s: string): Date {
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return parseLocalDate(s) ?? new Date();

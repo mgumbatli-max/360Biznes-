@@ -26,7 +26,7 @@ export async function getBuiltInSegments(): Promise<SegmentItem[]> {
 
     const [yeni, borclu, cixanCount, yuksekCek] = await Promise.all([
       prisma.kontragentler.count({ where: { nov: "musteri", yaradildi: { gte: days30Ago } } }),
-      prisma.kontragentler.count({ where: { nov: "musteri", borc: { gt: 0 } } }),
+      prisma.kontragentler.count({ where: { nov: "musteri", alacaq: { gt: 0 } } }),
       prisma.kontragentler.count({
         where: {
           nov: "musteri",
@@ -77,7 +77,7 @@ export async function getSegmentCustomers(kod: string): Promise<SegmentCustomer[
         };
         break;
       case "borclu":
-        where = { nov: "musteri", borc: { gt: 0 } };
+        where = { nov: "musteri", alacaq: { gt: 0 } };
         break;
       case "yuksek_cek":
         where = { nov: "musteri", qiymet_tipi: { in: ["topdan", "vip"] } };
@@ -97,7 +97,7 @@ export async function getSegmentCustomers(kod: string): Promise<SegmentCustomer[
       ad: r.ad,
       telefon: r.telefon,
       email: r.email,
-      borc: Number(r.borc ?? 0),
+      borc: Number(r.alacaq ?? 0),
       son_alish: r.son_temas,
     }));
   });

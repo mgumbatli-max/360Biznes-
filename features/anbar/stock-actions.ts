@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { safeStockDecrement } from "@/lib/db/stock-guards";
 
 const StockAdjustSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -112,19 +113,17 @@ export async function transferStock(input: z.input<typeof TransferSchema>): Prom
 
     try {
       await prisma.$transaction(async (tx) => {
-        // 1. Check source stock
+        // 1+2. Atomic check-and-decrement at source — race-safe
+        const dec = await safeStockDecrement(tx, {
+          mehsulId: d.mehsul_id,
+          anbarId: d.kaynak_anbar_id,
+          miqdar: d.miqdar,
+        });
+        if (!dec.ok) throw new Error(dec.error);
+        // Need source row for son_qiymet reference (used in dest create below)
         const source = await tx.stok.findFirst({
           where: { sahibkar_id: sahibkarId, mehsul_id: d.mehsul_id, anbar_id: d.kaynak_anbar_id },
-        });
-        const sourceQty = source ? Number(source.miqdar ?? 0) : 0;
-        if (sourceQty < d.miqdar) {
-          throw new Error(`Mənbə anbarda stok kifayət deyil (${sourceQty} mövcud, ${d.miqdar} tələb)`);
-        }
-
-        // 2. Decrement source
-        await tx.stok.update({
-          where: { id: source!.id },
-          data: { miqdar: { decrement: d.miqdar } },
+          select: { son_qiymet: true },
         });
 
         // 3. Increment dest (or create)
