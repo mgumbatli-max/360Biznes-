@@ -18,6 +18,7 @@ type Props = {
   suggestions?: string[];
   emptyHeading?: string;
   emptySubtext?: string;
+  prefilledInput?: string;
 };
 
 const DEFAULT_EMPLOYEE_SUGGESTIONS = [
@@ -41,11 +42,12 @@ export function ChatClient({
   suggestions,
   emptyHeading = "AI Köməkçi",
   emptySubtext = "Anbar, satış, vəzifə və şəxsi performans haqqında sual ver.",
+  prefilledInput,
 }: Props) {
   const chips = suggestions ?? (mode === "owner" ? DEFAULT_OWNER_SUGGESTIONS : DEFAULT_EMPLOYEE_SUGGESTIONS);
   const router = useRouter();
   const [messages, setMessages] = useState<ChatTurn[]>(initial);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(prefilledInput ?? "");
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);

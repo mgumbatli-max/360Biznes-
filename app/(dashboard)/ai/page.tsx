@@ -19,27 +19,26 @@ import type { ChatTurn } from "@/features/ai/types";
 export const metadata: Metadata = { title: "AI Mərkəzi" };
 export const dynamic = "force-dynamic";
 
+// Hər feature chat-ə pre-filled prompt ilə yönlədir — ortaq AI infrastrukturu
+// (ChatClient + getBusinessContext) hər bir feature üçün ayrı səhifə tələb etmir.
 const FEATURES = [
   {
     icon: TrendingUp,
     title: "AI satış məsləhəti",
     desc: "Maya, marja, tempə baxıb endirim/qiymət tövsiyəsi.",
-    href: "/ai/satis-meslehet",
-    soon: true,
+    href: "/ai?q=" + encodeURIComponent("Bu ayın top 5 məhsulu haqqında satış məsləhəti və endirim strategiyası ver"),
   },
   {
     icon: Users,
     title: "Müştəri seqmentləşdirmə",
     desc: "RFM analizi əsasında müştəri qrupları və ünvan strategiyası.",
-    href: "/ai/segment",
-    soon: true,
+    href: "/ai?q=" + encodeURIComponent("Müştərilərimi RFM (Recency, Frequency, Monetary) analizi ilə qruplaşdır və hər seqment üçün ünvan strategiyası təklif et"),
   },
   {
     icon: Tag,
     title: "Qiymət təklifi",
     desc: "Rəqib qiyməti və maya əsasında optimal satış qiyməti.",
-    href: "/ai/qiymet",
-    soon: true,
+    href: "/ai?q=" + encodeURIComponent("Top satılan məhsullarımın maya/satış qiyməti haqqında məlumat ver və hansılarına qiymət dəyişikliyi tövsiyə edirsən"),
   },
   {
     icon: Package,
@@ -51,8 +50,7 @@ const FEATURES = [
     icon: PenLine,
     title: "Yazı kömək",
     desc: "Məhsul təsviri, kampaniya elanı, müştəri mesajı üçün AI-redaktor.",
-    href: "/ai/yazi",
-    soon: true,
+    href: "/ai?q=" + encodeURIComponent("Top satılan məhsullarımdan birinə cəlbedici 3-4 cümləlik təsvir yaz"),
   },
   {
     icon: Beaker,
@@ -69,9 +67,11 @@ const INSIGHT_TONE: Record<string, string> = {
   info: "border-info/30 bg-info/5",
 };
 
-export default async function AiPage() {
+export default async function AiPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   // Bu səhifə hər kəs üçündür — sahibkar belə "employee" rejimində gəlir
   // (sahibkar-tam giriş üçün ayrıca /sahibkar/ai səhifəsi var)
+  const sp = await searchParams;
+  const prefilledQuery = sp.q?.trim() ?? "";
   const [history, insights] = await Promise.all([getChatHistory(50, "employee"), getDailyInsights()]);
   const isMockMode = getMockStatus();
 
@@ -134,9 +134,7 @@ export default async function AiPage() {
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {FEATURES.map((f) => {
           const inner = (
-            <Card
-              className={`glass transition ${f.soon ? "opacity-70" : "hover:border-primary/40 hover:shadow"}`}
-            >
+            <Card className="glass transition hover:border-primary/40 hover:shadow">
               <CardContent className="space-y-2 py-4">
                 <div className="flex items-start justify-between gap-2">
                   <div
@@ -145,16 +143,13 @@ export default async function AiPage() {
                   >
                     <f.icon className="h-4 w-4 text-white" />
                   </div>
-                  {f.soon && <Badge variant="outline" className="text-[10px]">tezliklə</Badge>}
                 </div>
                 <h3 className="font-semibold">{f.title}</h3>
                 <p className="text-xs text-muted-foreground">{f.desc}</p>
               </CardContent>
             </Card>
           );
-          return f.soon ? (
-            <div key={f.title} className="block">{inner}</div>
-          ) : (
+          return (
             <Link key={f.title} href={f.href} className="block">{inner}</Link>
           );
         })}
@@ -171,6 +166,7 @@ export default async function AiPage() {
           mode="employee"
           emptyHeading="AI Köməkçi — Əməkdaş rejimi"
           emptySubtext="Şəxsi performans, satış, tapşırıq, anbar və vəzifə inkişafı haqqında sual ver. Şirkətin ümumi gəlir/mənfəət/kassa məlumatları yalnız Sahibkar bölməsindədir."
+          prefilledInput={prefilledQuery || undefined}
         />
       </section>
     </div>
