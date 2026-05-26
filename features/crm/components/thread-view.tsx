@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Send, Sparkles, FileText, UserPlus, Loader2, Bot, AlertTriangle, Copy } from "lucide-react";
+import { Send, Sparkles, FileText, UserPlus, Loader2, Bot, AlertTriangle, Copy, Phone, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -195,6 +195,26 @@ export function ThreadView({ chat, messages, templates }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {chat.telefon && (
+              <>
+                <a
+                  href={`tel:${chat.telefon.replace(/[^+0-9]/g, "")}`}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-emerald-500 hover:bg-emerald-500/10"
+                  title="Zəng et"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                </a>
+                <a
+                  href={`https://wa.me/${chat.telefon.replace(/[^0-9]/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-green-500 hover:bg-green-500/10"
+                  title="WhatsApp aç"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                </a>
+              </>
+            )}
             <Button
               size="sm"
               variant={isAutoOn ? "default" : "ghost"}
