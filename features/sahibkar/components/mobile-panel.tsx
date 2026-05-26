@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { saveMobileWidgets } from "../mobile-widget-actions";
 import {
   ArrowRight, ClipboardList, StickyNote, Building2, FileText, Camera, Activity,
   Settings, Check, RotateCcw, Truck, Wallet, Lock, FolderArchive, GitCompare, EyeOff, Database, Smartphone, Sparkles,
@@ -62,13 +63,22 @@ const DEFAULT_KEYS: WidgetKey[] = [
   "ai", "tapshiriq", "qeyd", "filiallar", "snapshot", "hesabat", "maya", "data",
 ];
 
-const STORAGE_KEY = "sahibkar-mobile-widgets-v1";
+const STORAGE_KEY = "sahibkar-mobile-widgets-v1"; // offline cache yalnız, source of truth — DB
 
-export function MobilePanel({ hub }: { hub: Hub }) {
+export function MobilePanel({ hub, initialActive }: { hub: Hub; initialActive?: string[] }) {
   const [editing, setEditing] = useState(false);
-  const [active, setActive] = useState<WidgetKey[]>(DEFAULT_KEYS);
+  const [active, setActive] = useState<WidgetKey[]>(() => {
+    if (initialActive && initialActive.length > 0) {
+      return initialActive.filter((k) => ALL_WIDGETS.some((w) => w.key === k)) as WidgetKey[];
+    }
+    return DEFAULT_KEYS;
+  });
+  const [, startTransition] = useTransition();
 
+  // DB → state; localStorage yalnız offline cache kimi qalır (cihaz internetsiz olarsa).
   useEffect(() => {
+    if (initialActive && initialActive.length > 0) return;
+    // Server initial vermədisə, localStorage-i fallback olaraq oxu
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -78,11 +88,15 @@ export function MobilePanel({ hub }: { hub: Hub }) {
         }
       }
     } catch { /* silent */ }
-  }, []);
+  }, [initialActive]);
 
   function persist(next: WidgetKey[]) {
     setActive(next);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* silent */ }
+    // DB-də saxla — cihazlar arası sinxron
+    startTransition(async () => {
+      try { await saveMobileWidgets(next); } catch { /* silent */ }
+    });
   }
 
   function toggle(key: WidgetKey) {

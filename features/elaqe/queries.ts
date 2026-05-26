@@ -65,7 +65,8 @@ export async function getContacts(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
     if (filter.status === "passiv") where.aktiv = false;
-    else if (filter.status === "aktiv" || !filter.status || filter.status === "any") where.aktiv = true;
+    else if (filter.status === "any") { /* heç bir aktiv filtri tətbiq etmə */ }
+    else where.aktiv = true; // default: aktiv
 
     if (filter.nov !== "any") {
       where.nov = filter.nov === "her_ikisi" ? "her_ikisi" : { in: [filter.nov, "her_ikisi"] };

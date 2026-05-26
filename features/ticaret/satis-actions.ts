@@ -208,11 +208,11 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
           });
         }
 
-        // 3. Reverse customer debt if it was a credit sale
+        // 3. Reverse customer debt if it was a credit sale (yeni model: alacaq)
         if (sale.odenis_nov === "borc" && sale.musteri_id) {
           await tx.kontragentler.update({
             where: { id: sale.musteri_id },
-            data: { borc: { decrement: sonMebleg } },
+            data: { alacaq: { decrement: sonMebleg } },
           });
         }
 

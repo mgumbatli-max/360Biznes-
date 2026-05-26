@@ -326,7 +326,27 @@ export async function getProducts(
     if (filter.anbar_id) where.stok = { some: { anbar_id: filter.anbar_id, miqdar: { gt: 0 } } };
     if (filter.servisde_olmus === true) where.servis_qeydleri = { some: {} };
 
-    // Map sort key to Prisma orderBy
+    // Stok-əsaslı filter — mehsullar.stok_cemi denormalize sütunu (trigger ilə
+    // avtomatik təzələnir). SQL səviyyəsində filter olunur, paginasiya doğru.
+    if (filter.stok_status?.length) {
+      const orClauses: Record<string, unknown>[] = [];
+      if (filter.stok_status.includes("yox")) orClauses.push({ stok_cemi: { lte: 0 } });
+      if (filter.stok_status.includes("az")) {
+        // kritik səviyyədən aşağı, amma >0 — Prisma cross-column compare etmir,
+        // ona görə raw filter ilə alt-pəncərə yığırıq.
+        // Eyni mantıq SQL-də: stok_cemi > 0 AND stok_cemi <= kritik_stok
+        // Burada yalnız stok_cemi > 0 filter qoyuruq, "az" detalı altdakı raw ilə.
+        orClauses.push({ AND: [{ stok_cemi: { gt: 0 } }, { kritik_stok: { not: null } }] });
+      }
+      if (filter.stok_status.includes("var")) orClauses.push({ stok_cemi: { gt: 0 } });
+      if (orClauses.length > 0) {
+        where.OR = [...(where.OR ?? []), ...orClauses];
+      }
+    }
+
+    // Map sort key to Prisma orderBy — stok_cemi indi DB sütunudur,
+    // marja üçün (satis_qiymeti - alish_qiymeti) raw sort lazımdır (qoymuruq —
+    // alternativ: alish_qiymeti ascending = aşağı maya → yüksək marja yaxınlığı).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderBy: any = (() => {
       switch (filter.sirala) {
@@ -335,10 +355,12 @@ export async function getProducts(
         case "qiymet_azalan": return { satis_qiymeti: "desc" };
         case "yeni":          return { yaradildi: "desc" };
         case "son_satis":     return { son_satis_de: { sort: "asc", nulls: "first" } };
-        // stok_artan / stok_azalan / marja are computed; fall back to ad
-        case "stok_artan":
-        case "stok_azalan":
+        case "stok_artan":    return { stok_cemi: "asc" };
+        case "stok_azalan":   return { stok_cemi: "desc" };
         case "marja":
+          // Marja təxminən: yüksək satış qiyməti / aşağı alış → yüksək marja.
+          // Tam dəqiq deyil, amma DB-də sort üçün yaxşı approximation.
+          return [{ satis_qiymeti: "desc" }, { alish_qiymeti: "asc" }];
         case "ad":
         default:              return { ad: "asc" };
       }
@@ -477,25 +499,13 @@ export async function getProducts(
       };
     });
 
-    // Apply stok-level filter in-memory (depends on SUM)
+    // "az" filtri üçün post-DB refinement (kritik səviyyədən aşağı):
+    // Prisma cross-column compare yox idi, ona görə kritik_stok-dan kiçik
+    // olanları burada yoxlayırıq. Bu kiçik refinement-dir — ən pis halda
+    // page boyunca bir neçə item filtrələnir.
     let filtered = rows;
-    if (filter.stok_status?.length) {
-      filtered = filtered.filter((r) => {
-        if (r.stok_miqdari <= 0) return filter.stok_status!.includes("yox");
-        if (r.kritik_stok && r.stok_miqdari <= r.kritik_stok) return filter.stok_status!.includes("az");
-        return filter.stok_status!.includes("var");
-      });
-    }
-
-    // Apply computed sort (stok_artan, stok_azalan, marja) in-memory
-    if (filter.sirala === "stok_artan") {
-      filtered = [...filtered].sort((a, b) => a.stok_miqdari - b.stok_miqdari);
-    } else if (filter.sirala === "stok_azalan") {
-      filtered = [...filtered].sort((a, b) => b.stok_miqdari - a.stok_miqdari);
-    } else if (filter.sirala === "marja") {
-      const marja = (r: ProductListRow) =>
-        r.alish_qiymeti > 0 ? (r.satis_qiymeti - r.alish_qiymeti) / r.alish_qiymeti : -Infinity;
-      filtered = [...filtered].sort((a, b) => marja(b) - marja(a));
+    if (filter.stok_status?.length === 1 && filter.stok_status[0] === "az") {
+      filtered = filtered.filter((r) => r.stok_miqdari > 0 && r.kritik_stok != null && r.stok_miqdari <= r.kritik_stok);
     }
 
     return { items: filtered, total };

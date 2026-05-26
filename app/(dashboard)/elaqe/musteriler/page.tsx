@@ -33,7 +33,10 @@ type SearchParams = {
   qara?: string;
   yeni?: string;
   filter?: string;
+  page?: string;
 };
+
+const PAGE_SIZE = 50;
 
 export default async function MusterilerPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
@@ -56,8 +59,9 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
     yeni: sp.yeni === "1" || f === "yeni",
   };
 
+  const page = Math.max(1, Number(sp.page) || 1);
   const [data, managers, segments] = await Promise.all([
-    getContacts(filter),
+    getContacts(filter, page, PAGE_SIZE),
     getManagers(),
     getContactSegmentCounts("musteri"),
   ]);
@@ -110,7 +114,15 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
         cities={segments.cities}
       />
 
-      <ContactsTable items={items} total={total} defaultNov="musteri" managers={managers} />
+      <ContactsTable
+        items={items}
+        total={total}
+        defaultNov="musteri"
+        managers={managers}
+        page={page}
+        pageSize={PAGE_SIZE}
+        basePath="/elaqe/musteriler"
+      />
     </div>
   );
 }

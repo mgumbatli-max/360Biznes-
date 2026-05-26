@@ -16,6 +16,7 @@ export type TaskFilter = {
   mesul_id?: string;
   search?: string;
   sort?: TaskSort;
+  overdue?: boolean; // deadline < indi VƏ status != tamamlandi/legv
 };
 
 export type TaskListItem = {
@@ -89,6 +90,11 @@ export async function getTasks(filter: TaskFilter, page = 1, pageSize = 50): Pro
     if (filter.prioritet?.length) where.prioritet = { in: filter.prioritet };
     if (filter.tip?.length) where.tip = { in: filter.tip };
     if (filter.mesul_id) where.mesul_id = filter.mesul_id;
+    // Overdue: server-side filter — pagination/total düzgün hesablansın
+    if (filter.overdue) {
+      where.deadline = { lt: new Date() };
+      where.status = { notIn: ["tamamlandi", "legv"] };
+    }
     if (filter.search) {
       const search = filter.search.trim();
       const orFilters = [

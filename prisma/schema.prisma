@@ -3779,6 +3779,7 @@ model mehsullar {
   qisaca_tesvir            String?
   seo_acharlar             String?
   marketplace_aktiv        Json?                      @default("{}")
+  stok_cemi                Decimal?                   @default(0) @db.Decimal(14, 3)
   alis_sifaris_satirlari   alis_sifaris_satirlari[]
   anbar_hereketleri        anbar_hereketleri[]
   auto_log                 auto_log[]
@@ -3823,6 +3824,7 @@ model mehsullar {
   @@index([model(ops: raw("gin_trgm_ops"))], map: "idx_mehsul_model_trgm", type: Gin)
   @@index([tedarukci_id], map: "idx_mehsul_tedarukci")
   @@index([sahibkar_id], map: "idx_mehsullar_sahibkar")
+  @@index([sahibkar_id, stok_cemi], map: "idx_mehsul_stok_cemi")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

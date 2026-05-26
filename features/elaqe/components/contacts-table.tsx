@@ -34,6 +34,7 @@ import {
   bulkDeactivate,
 } from "../actions";
 import { formatMoney, formatDate } from "@/lib/utils";
+import { Pagination } from "@/components/ui/pagination";
 import type { ContactRow } from "../queries";
 
 type Manager = { id: string; ad_soyad: string };
@@ -43,6 +44,9 @@ type Props = {
   total: number;
   defaultNov: "musteri" | "techizatci" | "any";
   managers?: Manager[];
+  page?: number;
+  pageSize?: number;
+  basePath?: string;
 };
 
 const COLUMNS: ColumnDef[] = [
@@ -63,7 +67,7 @@ const COLUMNS: ColumnDef[] = [
 ];
 const DEFAULT_ORDER = COLUMNS.map((c) => c.key);
 
-export function ContactsTable({ items, total, defaultNov, managers = [] }: Props) {
+export function ContactsTable({ items, total, defaultNov, managers = [], page, pageSize, basePath }: Props) {
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const sp = useSearchParams();
@@ -502,6 +506,14 @@ export function ContactsTable({ items, total, defaultNov, managers = [] }: Props
           </tbody>
         </table>
       </div>
+      {page !== undefined && pageSize !== undefined && basePath && total > pageSize && (
+        <div className="flex items-center justify-between px-2 pt-2 text-xs text-muted-foreground">
+          <span>
+            {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} / cəmi {total}
+          </span>
+          <Pagination total={total} pageSize={pageSize} page={page} basePath={basePath} />
+        </div>
+      )}
     </div>
   );
 }

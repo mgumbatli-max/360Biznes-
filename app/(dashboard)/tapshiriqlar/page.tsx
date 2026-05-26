@@ -67,6 +67,7 @@ export default async function TapshiriqlarPage({
     mesul_id: mesulId,
     search: sp.q,
     sort,
+    overdue: isOverdue,
   };
 
   const view: "kanban" | "list" | "calendar" =
@@ -79,16 +80,8 @@ export default async function TapshiriqlarPage({
     getTasks(filter, 1, pageSize),
   ]);
 
-  const now = new Date();
-  const visibleItems = isOverdue
-    ? tasks.items.filter(
-        (t) =>
-          t.deadline &&
-          t.deadline.getTime() < now.getTime() &&
-          t.status !== "tamamlandi" &&
-          t.status !== "legv"
-      )
-    : tasks.items;
+  // Overdue filter artıq server-side (queries.ts) tətbiq olunur — paginasiya doğru
+  const visibleItems = tasks.items;
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
