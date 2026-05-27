@@ -22,32 +22,51 @@ export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; 
 export async function openKassa(input: FormData | z.infer<typeof OpenSchema>): Promise<ActionResult<{ id: string }>> {
   const raw = input instanceof FormData ? Object.fromEntries(input.entries()) : input;
   const parsed = OpenSchema.safeParse(raw);
-  if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, error: `Forma yanlışdır: ${issue?.path.join(".") || "?"} — ${issue?.message || "naməlum"}` };
+  }
 
-  return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
+  try {
+    return await withTenant(async () => {
+      const { istifadeciId, sahibkarId } = requireTenant();
 
-    // Already an open kassa for this user?
-    const existing = await prisma.kassalar.findFirst({
-      where: { status: "acig", acan_id: istifadeciId },
+      const existing = await prisma.kassalar.findFirst({
+        where: { status: "acig", acan_id: istifadeciId },
+      });
+      if (existing) {
+        return { ok: false as const, error: "Sizdə artıq açıq kassa var. Əvvəl bağlayın." };
+      }
+
+      const created = await prisma.kassalar.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          ad: parsed.data.ad,
+          filial_id: parsed.data.filial_id ?? null,
+          acan_id: istifadeciId,
+          acilis_qaligi: parsed.data.acilis_qaligi,
+          status: "acig",
+        },
+      });
+      revalidatePath("/pos");
+      return { ok: true as const, data: { id: created.id } };
     });
-    if (existing) {
-      return { ok: false as const, error: "Sizdə artıq açıq kassa var. Əvvəl bağlayın." };
-    }
-
-    const created = await prisma.kassalar.create({
-      data: {
-        sahibkar_id: requireTenant().sahibkarId,
-        ad: parsed.data.ad,
-        filial_id: parsed.data.filial_id ?? null,
-        acan_id: istifadeciId,
-        acilis_qaligi: parsed.data.acilis_qaligi,
-        status: "acig",
-      },
+  } catch (e) {
+    const err = e as Error & { code?: string; meta?: unknown };
+    console.error("[openKassa] failed", {
+      message: err.message,
+      code: err.code,
+      meta: err.meta,
+      stack: err.stack,
     });
-    revalidatePath("/pos");
-    return { ok: true as const, data: { id: created.id } };
-  });
+    const detail =
+      err.code === "P2003"
+        ? "Bağlı qeyd (FK) tapılmadı (sahibkar/filial)."
+        : err.code === "P2002"
+          ? "Eyni kassa artıq mövcuddur."
+          : err.message;
+    return { ok: false, error: `Kassa açıla bilmədi: ${detail}` };
+  }
 }
 
 export async function closeKassa(
