@@ -1,0 +1,37 @@
+{
+  "name": "360Biznes — Modern ERP",
+  "short_name": "360Biznes",
+  "description": "Multi-tenant SaaS ERP — anbar, satış, maliyyə, CRM, AI köməkçi.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#6366f1",
+  "lang": "az",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "256x256",
+      "type": "image/x-icon"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "POS",
+      "short_name": "POS",
+      "description": "İsti satış kassası",
+      "url": "/pos"
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard"
+    },
+    {
+      "name": "Anbar",
+      "short_name": "Anbar",
+      "url": "/anbar/mehsullar"
+    }
+  ]
+}

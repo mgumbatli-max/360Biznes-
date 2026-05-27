@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ThemeAwareToaster } from "@/components/providers/theme-aware-toaster";
@@ -18,6 +18,24 @@ export const metadata: Metadata = {
   description:
     "360Biznes — multi-tenant SaaS ERP. Anbar, satış, maliyyə, CRM, AI köməkçi və daha çoxu vahid platformada.",
   icons: { icon: "/favicon.ico" },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "360Biznes",
+  },
+};
+
+// Mobil görünüş — themeColor, viewport-fit notch dəstəyi.
+// userScalable: true (accessibility üçün zoom qalmalıdır — disable etmirik).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default function RootLayout({
