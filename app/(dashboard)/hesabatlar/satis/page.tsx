@@ -500,6 +500,7 @@ export default async function SatisReportPage({ searchParams }: { searchParams: 
                       rank={i + 1}
                       ad={p.ad}
                       kod={p.kod}
+                      mehsulId={p.mehsul_id}
                       units={p.satilan_qty}
                       revenue={p.cemi}
                       margin={marginInfo?.margin ?? 0}

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { Users, CreditCard, AlertCircle, UserCheck } from "lucide-react";
+import Link from "next/link";
+import { Users, CreditCard, AlertCircle, UserCheck, FileSpreadsheet } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
@@ -76,7 +78,14 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
             Qiymət növü üzrə segmentlərlə: pərakəndə, topdan, diller, VIP. Tez seçim üçün yuxarıdan tab klikləyin.
           </p>
         </div>
-        <ContactDialog defaultNov="musteri" managers={managers} />
+        <div className="flex items-center gap-2">
+          <Link href="/ayarlar/inteqrasiya?key=musteri">
+            <Button variant="outline" size="sm">
+              <FileSpreadsheet className="h-3.5 w-3.5" /> Excel idxal
+            </Button>
+          </Link>
+          <ContactDialog defaultNov="musteri" managers={managers} />
+        </div>
       </header>
 
       {/* Segment tabs by price tier */}

@@ -1,4 +1,5 @@
-import { Package, ShoppingCart, Percent, Users, Phone, MapPin, Hash, Tag, Truck, Building2, Wallet } from "lucide-react";
+import Link from "next/link";
+import { Package, ShoppingCart, Percent, Users, Phone, MapPin, Hash, Tag, Truck, Building2, Wallet, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ export function MehsulBrick({
   cogs,
   margin,
   margin_pct,
+  mehsulId,
 }: {
   rank: number;
   ad: string;
@@ -41,12 +43,22 @@ export function MehsulBrick({
   cogs?: number;
   margin: number;
   margin_pct: number;
+  mehsulId?: string; // drill-down link üçün — verildikdə kart kliklənən olur
 }) {
   const badge = marginBadge(margin_pct);
   const grad = marginGradient(margin_pct);
   const widthPct = Math.min(100, Math.max(0, margin_pct));
 
+  const Wrapper = mehsulId
+    ? ({ children }: { children: React.ReactNode }) => (
+        <Link href={`/anbar/mehsullar/${mehsulId}`} className="block" title="Məhsul detalı və günlük trend">
+          {children}
+        </Link>
+      )
+    : ({ children }: { children: React.ReactNode }) => <>{children}</>;
+
   return (
+    <Wrapper>
     <div className="group relative overflow-hidden rounded-xl border border-border/60 bg-card/40 p-3 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
       {/* Halo */}
       <div className={cn("pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-gradient-to-br opacity-10 blur-2xl transition group-hover:opacity-25", grad)} />
@@ -113,8 +125,15 @@ export function MehsulBrick({
             COGS: <span className="font-mono">{formatMoney(cogs)}</span>
           </div>
         )}
+
+        {mehsulId && (
+          <div className="mt-1.5 flex items-center justify-end gap-0.5 text-[10px] text-primary opacity-0 transition-opacity group-hover:opacity-100">
+            Detal və trend <ArrowRight className="h-2.5 w-2.5" />
+          </div>
+        )}
       </div>
     </div>
+    </Wrapper>
   );
 }
 

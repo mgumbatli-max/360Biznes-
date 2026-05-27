@@ -19,7 +19,9 @@ import {
   getStockMovements,
   getRecentSalesForProduct,
   getProductSalesStats,
+  getProductDailySales,
 } from "@/features/anbar/detail-queries";
+import { ProductDailyChart } from "@/features/anbar/components/product-daily-chart";
 import { getCategoryOptions, getBrandOptions } from "@/features/anbar/queries";
 import { getServisHistoryForProduct } from "@/features/servis/queries";
 import { SERVIS_STATUS_LABELS } from "@/features/servis/types";
@@ -47,7 +49,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const session = await auth();
   if (!session?.user) return null;
 
-  const [product, byWarehouse, movements, sales, stats, categories, brands, servisHistory, history, allowHistoryDelete] = await Promise.all([
+  const [product, byWarehouse, movements, sales, stats, categories, brands, servisHistory, history, allowHistoryDelete, dailySales] = await Promise.all([
     getProductDetail(id),
     getStockByWarehouse(id),
     getStockMovements(id, 30),
@@ -58,6 +60,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     getServisHistoryForProduct(id),
     getProductHistory(id, 100),
     canDeleteHistory(),
+    getProductDailySales(id, 30),
   ]);
 
   if (!product) notFound();
@@ -272,6 +275,9 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             )}
           </CardContent>
         </Card>
+
+        {/* Daily sales trend — drill-down chart */}
+        <ProductDailyChart data={dailySales} days={30} />
 
         {/* Recent sales */}
         <Card className="glass">

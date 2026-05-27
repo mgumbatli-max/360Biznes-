@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FileDown } from "lucide-react";
+import { FileDown, FileSpreadsheet } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { AnbarSubNav } from "@/components/anbar-subnav";
@@ -98,6 +98,11 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link href="/ayarlar/inteqrasiya?key=mehsul">
+            <Button variant="outline" size="sm">
+              <FileSpreadsheet className="h-4 w-4" /> Excel idxal
+            </Button>
+          </Link>
           <Link href="/api/anbar/mehsullar/export" prefetch={false}>
             <Button variant="outline" size="sm">
               <FileDown className="h-4 w-4" /> Excel ixrac

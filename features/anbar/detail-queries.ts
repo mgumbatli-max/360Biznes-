@@ -130,3 +130,36 @@ export async function getProductSalesStats(mehsul_id: string) {
     };
   });
 }
+
+/**
+ * Son 30 günlük satış trendi — gündəlik bucket.
+ * Drill-down chart üçün (hesabatlar → məhsul detalı).
+ */
+export async function getProductDailySales(mehsul_id: string, days = 30) {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const rows = await prisma.$queryRaw<{ gun: Date; qty: number; mebleg: number }[]>`
+      SELECT date_trunc('day', ss.tarix)::date AS gun,
+             COALESCE(SUM(sls.miqdar), 0)::float AS qty,
+             COALESCE(SUM(sls.cemi), 0)::float AS mebleg
+        FROM satis_sifaris_satirlari sls
+        JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
+       WHERE sls.mehsul_id = ${mehsul_id}::uuid
+         AND sls.sahibkar_id = ${sahibkarId}::uuid
+         AND ss.tarix >= CURRENT_DATE - (${days}::int * INTERVAL '1 day')
+         AND ss.status != 'legv'
+       GROUP BY 1
+       ORDER BY 1
+    `.catch(() => []);
+    // 0-doldur — boş günlər də xəttə düşsün
+    const out: { gun: string; qty: number; mebleg: number }[] = [];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const found = rows.find((r) => r.gun.toISOString().slice(0, 10) === key);
+      out.push({ gun: key, qty: found?.qty ?? 0, mebleg: found?.mebleg ?? 0 });
+    }
+    return out;
+  });
+}

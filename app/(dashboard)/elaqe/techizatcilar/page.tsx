@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { Truck, CreditCard, UserCheck, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { Truck, CreditCard, UserCheck, AlertCircle, FileSpreadsheet } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
@@ -60,7 +62,14 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
             Mal və xidmət göndərənlər — kateqoriya və ölkə üzrə tez filtr.
           </p>
         </div>
-        <ContactDialog defaultNov="techizatci" managers={managers} />
+        <div className="flex items-center gap-2">
+          <Link href="/ayarlar/inteqrasiya?key=techizatci">
+            <Button variant="outline" size="sm">
+              <FileSpreadsheet className="h-3.5 w-3.5" /> Excel idxal
+            </Button>
+          </Link>
+          <ContactDialog defaultNov="techizatci" managers={managers} />
+        </div>
       </header>
 
       <SegmentTabs
