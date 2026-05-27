@@ -32,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
+import { MenecerAssignInline } from "@/features/elaqe/components/menecer-assign-inline";
 import { PaymentDialog } from "@/features/elaqe/components/payment-dialog";
 import { NisyePaymentQuick } from "@/features/maliyye/components/nisye-payment-quick";
 import { getOpenSalesForCustomer, getQuickRefs } from "@/features/maliyye/queries";
@@ -130,9 +131,12 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
                 {c.qiymet_tipi && c.qiymet_tipi !== "adi" && (
                   <Badge variant="outline" className="text-[10px] capitalize">{c.qiymet_tipi}</Badge>
                 )}
-                {c.istifadeciler?.ad_soyad && (
-                  <span className="text-[10.5px] text-muted-foreground">Məsul: {c.istifadeciler.ad_soyad}</span>
-                )}
+                <MenecerAssignInline
+                  kontragentId={c.id}
+                  currentManagerId={c.menecer_id ?? null}
+                  currentManagerAd={c.istifadeciler?.ad_soyad ?? null}
+                  managers={managers}
+                />
                 {!c.aktiv && <Badge variant="outline" className="text-[10px]">passiv</Badge>}
                 {c.qara_siyahi && <Badge variant="outline" className="text-[10px] text-danger">qara siyahı</Badge>}
                 {isCustomer && health.is_risk && (
