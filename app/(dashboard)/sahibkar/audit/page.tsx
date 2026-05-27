@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getDetailedAuditLog, getAuditFacets, type AuditFilter } from "@/features/sahibkar/queries";
+import { getAuditOutboxSummary } from "@/features/sahibkar/audit-outbox-queries";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
+import { AuditOutboxWidget } from "@/features/sahibkar/components/audit-outbox-widget";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Audit log — Sahibkar" };
@@ -77,9 +79,10 @@ export default async function SahibkarAuditPage({ searchParams }: { searchParams
     limit: 100,
   };
 
-  const [rows, facets] = await Promise.all([
+  const [rows, facets, outbox] = await Promise.all([
     getDetailedAuditLog(filter),
     getAuditFacets(),
+    getAuditOutboxSummary(),
   ]);
 
   const ugurCount = facets.status.find((s) => s.value === "ugur" || s.value === "ugurlu")?.count ?? 0;
@@ -120,6 +123,9 @@ export default async function SahibkarAuditPage({ searchParams }: { searchParams
           { label: "Vaxt", text: "tarix aralığı filteri" },
         ]}
       />
+
+      {/* Audit log outbox status — fail edən log-ların retry növbəsi */}
+      <AuditOutboxWidget pending={outbox.pending} abandoned={outbox.abandoned} recentFails={outbox.recentFails} />
 
       {/* Filters */}
       <Card className="glass">
