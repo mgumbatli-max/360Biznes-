@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { MaasTable } from "@/features/iscilier/components/maas-table";
+import { MaasExportButton } from "@/features/iscilier/components/maas-export-button";
 import { getMaasTable } from "@/features/iscilier/maas-queries";
 
 export const metadata: Metadata = { title: "Maaş bordrosu" };
@@ -28,6 +29,7 @@ export default async function MaasPage({ searchParams }: { searchParams?: Promis
             </p>
           </div>
         </div>
+        <MaasExportButton month={sp.month} />
       </header>
 
       <MaasTable month={data.month} rows={data.rows} totals={data.totals} />

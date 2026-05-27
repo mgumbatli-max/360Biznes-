@@ -8,6 +8,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { setPinSession, clearPinSession } from "@/lib/sahibkar/session";
 import { getAttemptStatus, recordFailure, resetAttempts } from "@/lib/sahibkar/rate-limit";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 const PIN_RULE = z.string().regex(/^\d{4,8}$/, "PIN 4-8 rəqəm olmalıdır");
 
@@ -87,21 +88,18 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
     const ok = await bcrypt.compare(pin, cfg.sifre_hash);
     if (!ok) {
       const failed = await recordFailure(cfg.yanlis_limit ?? 5);
-      // Audit failed attempts (limited — only when locking out)
+      // Audit failed attempts (limited — only when locking out).
+      // safeAuditLog → outbox fallback, console.warn-də itmir.
       if (failed.locked && cfg.audit_log !== false) {
-        try {
-          await prisma.audit_log.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              istifadeci_id: istifadeciId,
-              emeliyyat: "pin_lockout",
-              resurs_nov: "sahibkar_ayar",
-              resurs_id: String(cfg.id),
-              status: "xeberdarliq",
-              sebeb: `${failed.count} yanlış PIN cəhdi — 5 dəq lockout`,
-            },
-          });
-        } catch { /* silent */ }
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "pin_lockout",
+          resurs_nov: "sahibkar_ayar",
+          resurs_id: String(cfg.id),
+          status: "xeberdarliq",
+          sebeb: `${failed.count} yanlış PIN cəhdi — 5 dəq lockout`,
+        });
       }
       if (failed.locked) {
         const min = Math.floor((failed.remainingSec ?? 0) / 60);

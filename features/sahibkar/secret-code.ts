@@ -6,6 +6,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { setPinSession } from "@/lib/sahibkar/session";
 import { DEFAULT_SECRET_CODE } from "./constants";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 export type SearchCodeResult =
   | { ok: true; redirect: "/sahibkar" | "/sahibkar/setup" }
@@ -53,22 +54,17 @@ export async function verifySearchCode(code: string): Promise<SearchCodeResult> 
     await setPinSession(sahibkarId, istifadeciId);
 
     // Audit log: secret-code access leaves a trail (security important)
+    // safeAuditLog fail-də outbox-a düşür, console.warn-də itmir.
     if (cfg.audit_log !== false) {
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: istifadeciId,
-            emeliyyat: "gizli_giris",
-            resurs_nov: "sahibkar_ayar",
-            resurs_id: String(cfg.id),
-            status: "ugur",
-            sebeb: "Axtarış vasitəsilə gizli kodla giriş",
-          },
-        });
-      } catch (e) {
-        console.warn("[verifySearchCode] audit skipped:", e);
-      }
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "gizli_giris",
+        resurs_nov: "sahibkar_ayar",
+        resurs_id: String(cfg.id),
+        status: "ugur",
+        sebeb: "Axtarış vasitəsilə gizli kodla giriş",
+      });
     }
 
     return { ok: true, redirect: "/sahibkar" } as const;
