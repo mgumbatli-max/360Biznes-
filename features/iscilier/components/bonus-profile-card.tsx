@@ -73,6 +73,7 @@ export function BonusProfileCard({
         fixed_mebleg: profile.fixed_mebleg,
         percent: profile.percent,
         paylanma: profile.paylanma,
+        musteri_filter: profile.musteri_filter,
       });
       if (res.ok) {
         toast.success("Bonus profili yadda saxlandı");
@@ -185,6 +186,44 @@ export function BonusProfileCard({
           <span className="font-bold text-primary tabular-nums">
             {typeof poolPreview === "number" ? `${poolPreview} ₼` : poolPreview}
           </span>
+        </div>
+
+        <div>
+          <Label className="text-xs">Hansı müştərilərdən bonus hesablansın?</Label>
+          <div className="mt-1 grid grid-cols-1 gap-1.5 md:grid-cols-2">
+            {([
+              {
+                v: "hamisi",
+                label: "Bütün müştərilər",
+                desc: "Bu işçinin yaratdığı hər satışdan bonus",
+              },
+              {
+                v: "mene_aid",
+                label: "Yalnız mənim müştərilərim",
+                desc: "Müştəri kartında menecer = bu işçi olan satışlar",
+              },
+            ] as const).map((m) => (
+              <button
+                key={m.v}
+                type="button"
+                onClick={() => setProfile((p) => ({ ...p, musteri_filter: m.v }))}
+                className={`rounded-md border px-3 py-2 text-left transition ${
+                  profile.musteri_filter === m.v
+                    ? "border-primary bg-primary/10"
+                    : "border-border hover:bg-secondary/30"
+                }`}
+              >
+                <div className="text-[11px] font-bold">{m.label}</div>
+                <div className="text-[10px] text-muted-foreground">{m.desc}</div>
+              </button>
+            ))}
+          </div>
+          {profile.musteri_filter === "mene_aid" && (
+            <p className="mt-1.5 text-[10.5px] text-muted-foreground">
+              Köhnə müştəri (başqa işçi menecer-dir) satışı bu işçi yaratsa belə, ona bonus düşməyəcək.
+              Müştərinin menecer-ini müştəri kartında dəyişmək olar.
+            </p>
+          )}
         </div>
 
         {/* Paylanma cədvəli */}

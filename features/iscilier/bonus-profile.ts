@@ -30,11 +30,14 @@ export type BonusPaylanma = {
   hedef: number;        // category-spesifik hədəf (faiz vs məbləğ)
 };
 
+export type MusteriFilter = "hamisi" | "mene_aid";
+
 export type BonusProfil = {
   metod: "fixed" | "percent_satis" | "percent_menfaat";
   fixed_mebleg: number;     // metod=fixed olduqda
   percent: number;          // metod=percent_* olduqda (0-100)
   paylanma: BonusPaylanma[];
+  musteri_filter: MusteriFilter; // "hamisi" = bütün satışlar, "mene_aid" = yalnız bu işçi menecer olduğu müştərilər
 };
 
 const DEFAULT_PROFIL: BonusProfil = {
@@ -42,6 +45,7 @@ const DEFAULT_PROFIL: BonusProfil = {
   fixed_mebleg: 0,
   percent: 0,
   paylanma: [],
+  musteri_filter: "hamisi",
 };
 
 export async function getBonusProfil(istifadeciId: string): Promise<BonusProfil> {
@@ -59,6 +63,7 @@ export async function getBonusProfil(istifadeciId: string): Promise<BonusProfil>
         fixed_mebleg: Number(parsed.fixed_mebleg ?? 0),
         percent: Number(parsed.percent ?? 0),
         paylanma: Array.isArray(parsed.paylanma) ? parsed.paylanma : [],
+        musteri_filter: parsed.musteri_filter === "mene_aid" ? "mene_aid" : "hamisi",
       };
     } catch {
       return { ...DEFAULT_PROFIL };

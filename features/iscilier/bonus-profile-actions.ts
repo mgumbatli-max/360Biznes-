@@ -20,6 +20,7 @@ const ProfilSchema = z.object({
   fixed_mebleg: z.coerce.number().min(0).max(1_000_000),
   percent: z.coerce.number().min(0).max(100),
   paylanma: z.array(PaylanmaSchema),
+  musteri_filter: z.enum(["hamisi", "mene_aid"]).default("hamisi"),
 });
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -48,6 +49,7 @@ export async function saveBonusProfil(input: z.input<typeof ProfilSchema>): Prom
         fixed_mebleg: data.fixed_mebleg,
         percent: data.percent,
         paylanma: data.paylanma,
+        musteri_filter: data.musteri_filter,
       };
       await prisma.ayarlar.upsert({
         where: {

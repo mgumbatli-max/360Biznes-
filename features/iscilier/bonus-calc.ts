@@ -50,6 +50,10 @@ export async function calculateMonthlyBonus(
     if (profil.metod === "fixed") {
       pool = profil.fixed_mebleg;
     } else if (profil.metod === "percent_satis" || profil.metod === "percent_menfaat") {
+      const musteriFiltri =
+        profil.musteri_filter === "mene_aid"
+          ? { kontragentler: { menecer_id: istifadeciId } }
+          : {};
       const salesAgg = await prisma.satis_sifarisleri.aggregate({
         _sum: { umumi_mebleg: true, son_mebleg: true },
         where: {
@@ -57,6 +61,7 @@ export async function calculateMonthlyBonus(
           yaradan_id: istifadeciId,
           tarix: { gte: periodStart, lte: periodEnd },
           status: { notIn: ["legv", "tesdiq_gozleyir", "qaralama"] },
+          ...musteriFiltri,
         },
       });
       const cemiSatis = Number(salesAgg._sum.son_mebleg ?? 0);
@@ -71,6 +76,7 @@ export async function calculateMonthlyBonus(
               yaradan_id: istifadeciId,
               tarix: { gte: periodStart, lte: periodEnd },
               status: { notIn: ["legv", "tesdiq_gozleyir", "qaralama"] },
+              ...musteriFiltri,
             },
           },
           select: {
@@ -98,7 +104,7 @@ export async function calculateMonthlyBonus(
     for (const p of profil.paylanma) {
       const pay = p.tip === "mebleg" ? p.deyer : pool * (p.deyer / 100);
       paylanmis += pay;
-      const calc = await calculateCategory(p.kateqoriya, istifadeciId, periodStart, periodEnd, p.hedef);
+      const calc = await calculateCategory(p.kateqoriya, istifadeciId, periodStart, periodEnd, p.hedef, profil.musteri_filter);
       const qazanilan = pay * Math.min(1, calc.nailiyyet_faiz / 100);
       const labelMap: Record<BonusKategoriya, string> = {
         davamiyyet: "Davamiyyət",
@@ -141,8 +147,13 @@ async function calculateCategory(
   start: Date,
   end: Date,
   hedef: number,
+  musteriFilter: "hamisi" | "mene_aid",
 ): Promise<{ faktiki: number; nailiyyet_faiz: number }> {
   const { sahibkarId } = requireTenant();
+  const musteriCond =
+    musteriFilter === "mene_aid"
+      ? { kontragentler: { menecer_id: istifadeciId } }
+      : {};
 
   if (k === "davamiyyet") {
     // İş günlərinin sayını davamiyyet cədvəlindən hesabla
@@ -212,7 +223,11 @@ async function calculateCategory(
         y_n: "daxil",
         tarix: { gte: start, lte: end },
         // Bu satıcının yaratdığı satışlara bağlı ödəniş
-        satis_sifarisleri: { yaradan_id: istifadeciId, odenis_nov: { in: ["nisye", "borc"] } },
+        satis_sifarisleri: {
+          yaradan_id: istifadeciId,
+          odenis_nov: { in: ["nisye", "borc"] },
+          ...musteriCond,
+        },
       },
     }).catch(() => null);
     const collectedAmt = Number(collected?._sum.meblegh ?? 0);
@@ -224,6 +239,7 @@ async function calculateCategory(
         yaradan_id: istifadeciId,
         odenis_nov: { in: ["nisye", "borc"] },
         tarix: { lt: end },
+        ...musteriCond,
       },
     });
     const portfolioMebleg = Number(portfolio._sum.son_mebleg ?? 0) - Number(portfolio._sum.odenilmis ?? 0);
@@ -240,6 +256,7 @@ async function calculateCategory(
         yaradan_id: istifadeciId,
         tarix: { gte: start, lte: end },
         status: { notIn: ["legv", "qaralama", "tesdiq_gozleyir"] },
+        ...musteriCond,
       },
     });
     const cemiSatis = Number(agg._sum.son_mebleg ?? 0);
