@@ -274,6 +274,25 @@ const BulkOpSchema = z.discriminatedUnion("op", [
     ids: z.array(z.string().uuid()).min(1),
     marka_id: z.coerce.number().int().positive(),
   }),
+  // Faiz ilə qiymət dəyişimi: bütün seçilmiş məhsullarda satis_qiymeti × (1 + pct/100)
+  // negative pct = endirim. ±50% məhdudiyyəti — yanlışlıqla 10x etmək olmasın.
+  z.object({
+    op: z.literal("qiymet_faiz"),
+    ids: z.array(z.string().uuid()).min(1),
+    pct: z.coerce.number().min(-50).max(50),
+  }),
+  // Endirimli qiymət təyin et (faizlə): endirimli_qiymet = satis_qiymeti × (1 - pct/100)
+  z.object({
+    op: z.literal("endirim_faiz"),
+    ids: z.array(z.string().uuid()).min(1),
+    pct: z.coerce.number().min(0).max(90),
+  }),
+  // Kritik stok səviyyəsi
+  z.object({
+    op: z.literal("kritik_stok"),
+    ids: z.array(z.string().uuid()).min(1),
+    kritik_stok: z.coerce.number().int().min(0).max(99999),
+  }),
 ]);
 
 export async function bulkUpdateProducts(
@@ -307,6 +326,31 @@ export async function bulkUpdateProducts(
         const r = await prisma.mehsullar.updateMany({
           where: { id: { in: d.ids } },
           data: { marka_id: d.marka_id },
+        });
+        count = r.count;
+      } else if (d.op === "qiymet_faiz") {
+        // Multiplikator faktorla satis_qiymeti yenilə (raw SQL — Prisma column math etmir)
+        const factor = 1 + d.pct / 100;
+        const r = await prisma.$executeRaw`
+          UPDATE mehsullar
+             SET satis_qiymeti = ROUND(satis_qiymeti * ${factor}::numeric, 2),
+                 yenilendi = NOW()
+           WHERE id = ANY(${d.ids}::uuid[])
+        `;
+        count = r;
+      } else if (d.op === "endirim_faiz") {
+        const factor = 1 - d.pct / 100;
+        const r = await prisma.$executeRaw`
+          UPDATE mehsullar
+             SET endirimli_qiymet = ROUND(satis_qiymeti * ${factor}::numeric, 2),
+                 yenilendi = NOW()
+           WHERE id = ANY(${d.ids}::uuid[])
+        `;
+        count = r;
+      } else if (d.op === "kritik_stok") {
+        const r = await prisma.mehsullar.updateMany({
+          where: { id: { in: d.ids } },
+          data: { kritik_stok: d.kritik_stok },
         });
         count = r.count;
       }

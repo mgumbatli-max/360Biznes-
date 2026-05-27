@@ -3,14 +3,16 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckSquare, Square, Trash2, Power, PowerOff, Tag, Layers, Printer, X } from "lucide-react";
+import { CheckSquare, Square, Trash2, Power, PowerOff, Tag, Layers, Printer, X, Percent, Wallet, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { bulkUpdateProducts } from "../actions";
 
 type Option = { id: number; ad: string };
-type Mode = "kateqoriya" | "marka" | null;
+type Mode = "kateqoriya" | "marka" | "qiymet_faiz" | "endirim_faiz" | "kritik_stok" | null;
 
 type Props = {
   selectedIds: string[];
@@ -41,6 +43,7 @@ export function BulkActionsBar({
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<Mode>(null);
   const [pickValue, setPickValue] = useState("");
+  const [numericInput, setNumericInput] = useState("");
 
   if (selectedIds.length === 0) return null;
 
@@ -63,19 +66,36 @@ export function BulkActionsBar({
   }
 
   function runChange() {
-    if (!pickValue) return;
-    const id = Number(pickValue);
-    if (!Number.isFinite(id)) return;
     startTransition(async () => {
-      const input =
-        mode === "kateqoriya"
-          ? { op: "kateqoriya" as const, ids: selectedIds, kateqoriya_id: id }
-          : { op: "marka" as const, ids: selectedIds, marka_id: id };
+      let input: Parameters<typeof bulkUpdateProducts>[0] | null = null;
+      if (mode === "kateqoriya") {
+        const id = Number(pickValue);
+        if (!Number.isFinite(id) || id <= 0) return;
+        input = { op: "kateqoriya", ids: selectedIds, kateqoriya_id: id };
+      } else if (mode === "marka") {
+        const id = Number(pickValue);
+        if (!Number.isFinite(id) || id <= 0) return;
+        input = { op: "marka", ids: selectedIds, marka_id: id };
+      } else if (mode === "qiymet_faiz") {
+        const pct = Number(numericInput);
+        if (!Number.isFinite(pct) || pct < -50 || pct > 50) return;
+        input = { op: "qiymet_faiz", ids: selectedIds, pct };
+      } else if (mode === "endirim_faiz") {
+        const pct = Number(numericInput);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 90) return;
+        input = { op: "endirim_faiz", ids: selectedIds, pct };
+      } else if (mode === "kritik_stok") {
+        const n = Number(numericInput);
+        if (!Number.isFinite(n) || n < 0) return;
+        input = { op: "kritik_stok", ids: selectedIds, kritik_stok: n };
+      }
+      if (!input) return;
       const r = await bulkUpdateProducts(input);
       if (r.ok) {
         toast.success(`Yeniləndi (${r.data?.count ?? 0})`);
         setMode(null);
         setPickValue("");
+        setNumericInput("");
         onClear();
         router.refresh();
       } else toast.error(r.error);
@@ -118,6 +138,15 @@ export function BulkActionsBar({
           <Button size="sm" variant="ghost" onClick={() => setMode("marka")} disabled={pending}>
             <Tag className="h-3.5 w-3.5" /> Marka
           </Button>
+          <Button size="sm" variant="ghost" onClick={() => setMode("qiymet_faiz")} disabled={pending}>
+            <Wallet className="h-3.5 w-3.5" /> Qiymət ±%
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setMode("endirim_faiz")} disabled={pending}>
+            <Percent className="h-3.5 w-3.5" /> Endirim %
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setMode("kritik_stok")} disabled={pending}>
+            <AlertTriangle className="h-3.5 w-3.5" /> Kritik stok
+          </Button>
           <Button size="sm" variant="ghost" onClick={printLabels} disabled={pending}>
             <Printer className="h-3.5 w-3.5" /> Etiket çap
           </Button>
@@ -142,24 +171,52 @@ export function BulkActionsBar({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {mode === "kateqoriya" ? "Kateqoriya dəyiş" : "Marka dəyiş"} — {selectedIds.length} məhsul
+              {mode === "kateqoriya" && "Kateqoriya dəyiş"}
+              {mode === "marka" && "Marka dəyiş"}
+              {mode === "qiymet_faiz" && "Qiymət ±% dəyiş"}
+              {mode === "endirim_faiz" && "Endirim faizi təyin et"}
+              {mode === "kritik_stok" && "Kritik stok təyin et"}
+              {" — "}{selectedIds.length} məhsul
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Combobox
-              options={
-                mode === "kateqoriya"
-                  ? categories.map((c) => ({ value: String(c.id), label: c.ad }))
-                  : brands.map((b) => ({ value: String(b.id), label: b.ad }))
-              }
-              value={pickValue}
-              onChange={setPickValue}
-              placeholder={mode === "kateqoriya" ? "Kateqoriya seçin..." : "Marka seçin..."}
-            />
+          <div className="space-y-3">
+            {(mode === "kateqoriya" || mode === "marka") && (
+              <Combobox
+                options={
+                  mode === "kateqoriya"
+                    ? categories.map((c) => ({ value: String(c.id), label: c.ad }))
+                    : brands.map((b) => ({ value: String(b.id), label: b.ad }))
+                }
+                value={pickValue}
+                onChange={setPickValue}
+                placeholder={mode === "kateqoriya" ? "Kateqoriya seçin..." : "Marka seçin..."}
+              />
+            )}
+            {mode === "qiymet_faiz" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="pct">Faiz (-50…+50). Misal: +10 = 10% artır, -15 = 15% azalt.</Label>
+                <Input id="pct" type="number" min={-50} max={50} step={0.5} value={numericInput} onChange={(e) => setNumericInput(e.target.value)} placeholder="məs. 10" autoFocus />
+                <p className="text-[10.5px] text-muted-foreground">Satış qiymətinə tətbiq olunur. Hesablama: satis_qiymeti × (1 + faiz/100), 2 onluq yuvarlama.</p>
+              </div>
+            )}
+            {mode === "endirim_faiz" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="endirim_pct">Endirim faizi (0…90)</Label>
+                <Input id="endirim_pct" type="number" min={0} max={90} step={1} value={numericInput} onChange={(e) => setNumericInput(e.target.value)} placeholder="məs. 20" autoFocus />
+                <p className="text-[10.5px] text-muted-foreground">endirimli_qiymet = satis_qiymeti × (1 − faiz/100).</p>
+              </div>
+            )}
+            {mode === "kritik_stok" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="krit">Kritik stok səviyyəsi (ədəd)</Label>
+                <Input id="krit" type="number" min={0} step={1} value={numericInput} onChange={(e) => setNumericInput(e.target.value)} placeholder="məs. 5" autoFocus />
+                <p className="text-[10.5px] text-muted-foreground">Bu səviyyədən aşağı düşəndə "kritik stok" xəbərdarlığı baş verir.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMode(null)}>Ləğv et</Button>
-            <Button onClick={runChange} disabled={!pickValue || pending}>
+            <Button variant="outline" onClick={() => { setMode(null); setPickValue(""); setNumericInput(""); }}>Ləğv et</Button>
+            <Button onClick={runChange} disabled={pending || ((mode === "kateqoriya" || mode === "marka") ? !pickValue : !numericInput)}>
               Tətbiq et
             </Button>
           </DialogFooter>
