@@ -16,6 +16,7 @@ import { getSahibkarSidebarVisible } from "@/lib/sahibkar/visibility";
 import { KeyboardShortcuts } from "@/components/layout/keyboard-shortcuts";
 import { QuickActionsFab } from "@/components/layout/quick-actions-fab";
 import { StealthBanner } from "@/components/layout/stealth-banner";
+import { NavigationTracker } from "@/components/layout/navigation-tracker";
 import { runDailyBriefing } from "@/lib/daily-briefing/run";
 import type { SessionUser } from "@/lib/auth/types";
 
@@ -99,6 +100,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <AuthSessionProvider>
       <PermissionsProvider icazeler={icazeler}>
         <EmbedDetector />
+        <NavigationTracker />
         <div className="flex min-h-screen bg-background" data-app-shell>
           <div data-sidebar-container>
             <Suspense fallback={<SidebarFallback />}>

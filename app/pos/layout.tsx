@@ -5,6 +5,7 @@ import { PermissionsProvider } from "@/components/providers/permissions-provider
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { PosHeader } from "@/features/pos/components/pos-header";
 import { OfflineBanner } from "@/features/pos/components/offline-banner";
+import { NavigationTracker } from "@/components/layout/navigation-tracker";
 
 export const metadata = {
   title: "POS — İsti satış",
@@ -24,6 +25,7 @@ export default async function PosStandaloneLayout({
   return (
     <AuthSessionProvider>
       <PermissionsProvider icazeler={icazeler}>
+        <NavigationTracker />
         <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900">
           <PosHeader user={{ ad_soyad: session.user.ad_soyad, sahibkar_ad: session.user.sahibkar_ad }} />
           <OfflineBanner />
