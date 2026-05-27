@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ClipboardCheck } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Badge } from "@/components/ui/badge";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { InventarEditor } from "@/features/anbar/inventar/components/inventar-editor";
@@ -57,9 +57,7 @@ export default async function InventarDetailPage({ params }: { params: Promise<{
     <div className="mx-auto max-w-6xl">
       <AnbarSubNav active="/anbar/inventar" />
       <div className="space-y-4">
-        <Link href="/anbar/inventar" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3 w-3" /> İnventar siyahısına qayıt
-        </Link>
+        <BackButton fallback="/anbar/inventar" label="İnventar siyahısına qayıt" />
 
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>

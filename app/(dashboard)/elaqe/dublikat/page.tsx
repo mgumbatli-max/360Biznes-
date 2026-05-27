@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Copy as CopyIcon, ArrowLeft } from "lucide-react";
+import { Copy as CopyIcon } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { findDuplicates } from "@/features/elaqe/queries";
 import { DuplicateCard } from "@/features/elaqe/components/duplicate-card";
 import { AutoMergeButton } from "@/features/elaqe/components/auto-merge-button";
@@ -48,9 +48,7 @@ export default async function DublikatPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/elaqe" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-3 w-3" /> Geri
-          </Link>
+          <BackButton fallback="/elaqe" label="Geri" />
           {suggested.length > 0 && <AutoMergeButton suggestions={suggested} />}
         </div>
       </header>

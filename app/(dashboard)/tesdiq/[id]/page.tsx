@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft, CheckCircle2, X, Clock, AlertTriangle, ShieldCheck, User, Calendar,
+  CheckCircle2, X, Clock, AlertTriangle, ShieldCheck, User, Calendar,
   Tag, FileText, MessageCircle, ChevronRight,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db/prisma";
@@ -268,10 +269,7 @@ export default async function TesdiqDetailPage({ params }: { params: Promise<{ i
 
       {/* Back link */}
       <div className="flex items-center justify-between">
-        <Link href="/tesdiq" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3 w-3" />
-          Bütün təsdiqlər
-        </Link>
+        <BackButton fallback="/tesdiq" label="Bütün təsdiqlər" />
       </div>
     </div>
   );

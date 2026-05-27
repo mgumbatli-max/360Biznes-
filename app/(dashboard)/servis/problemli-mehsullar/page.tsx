@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, PackageSearch, TrendingUp, Hash } from "lucide-react";
+import { PackageSearch, TrendingUp, Hash } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { ProblemMehsullarTable } from "@/features/servis/components/problemli-mehsullar-table";
 import {
@@ -61,9 +61,7 @@ export default async function ProblemliMehsullarPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <Link href="/servis" className="inline-flex items-center gap-1 hover:text-foreground">
-              <ArrowLeft className="h-3 w-3" /> Servis
-            </Link>
+            <BackButton fallback="/servis" label="Servis" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">Problemli məhsullar</h1>
           <p className="mt-1 text-sm text-muted-foreground">

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, MapPin, Phone, Users } from "lucide-react";
+import { Building2, MapPin, Phone, Users } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
@@ -26,9 +27,7 @@ export default async function BranchDetailPage({ params }: { params: Promise<{ i
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div>
-        <Link href="/sahibkar/filiallar" className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-          <ArrowLeft className="h-3 w-3" /> Filiallar
-        </Link>
+        <BackButton fallback="/sahibkar/filiallar" label="Filiallar" />
       </div>
 
       <header className="flex flex-wrap items-start justify-between gap-3">

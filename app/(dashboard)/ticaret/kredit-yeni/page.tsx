@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { CreditCard, ArrowLeft } from "lucide-react";
+import { CreditCard } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { KreditYeniClient } from "@/features/ticaret/components/kredit-yeni-client";
 import { getAnbarOptions } from "@/features/ticaret/satis-yeni-queries";
@@ -14,12 +14,7 @@ export default async function KreditYeniPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
-      <Link
-        href="/ticaret/kredit"
-        className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Kreditlər siyahısı
-      </Link>
+      <BackButton fallback="/ticaret/kredit" label="Kreditlər siyahısı" />
 
       <header className="flex items-start gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-md bg-secondary text-muted-foreground">

@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft, Calendar, User, ChevronRight, Radar, ArrowUpRight,
+  Calendar, User, ChevronRight, Radar, ArrowUpRight,
   MessageCircle, Sparkles,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getAlertDetail } from "@/features/alerts/queries";
@@ -189,10 +190,7 @@ export default async function AlertDetailPage({ params }: { params: Promise<{ id
 
       {/* Back link */}
       <div>
-        <Link href="/xeberdarliqlar" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3 w-3" />
-          Bütün xəbərdarlıqlar
-        </Link>
+        <BackButton fallback="/xeberdarliqlar" label="Bütün xəbərdarlıqlar" />
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Crown, Users, MapPin, AlertTriangle, TrendingUp } from "lucide-react";
+import { Crown, Users, MapPin, AlertTriangle, TrendingUp } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getElaqeReport } from "@/features/elaqe/queries";
@@ -27,9 +28,7 @@ export default async function HesabatPage() {
         <div className="flex items-center gap-2">
           <AutoTagButton />
           <BirthdayRemindersButton />
-          <Link href="/elaqe" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-3 w-3" /> Geri
-          </Link>
+          <BackButton fallback="/elaqe" label="Geri" />
         </div>
       </header>
 

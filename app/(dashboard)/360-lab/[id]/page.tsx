@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ShieldCheck, Sparkles, FlaskConical, Power } from "lucide-react";
+import { ShieldCheck, Sparkles, FlaskConical, Power } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LabActivateButton } from "@/features/lab/components/lab-activate-button";
@@ -71,13 +71,7 @@ export default async function LabDetailPage({ params }: { params: Promise<{ id: 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       {/* Back link */}
-      <Link
-        href="/360-lab"
-        className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="h-3 w-3" />
-        Bütün LAB funksiyaları
-      </Link>
+      <BackButton fallback="/360-lab" label="Bütün LAB funksiyaları" />
 
       {/* Header */}
       <Card className={`glass relative overflow-hidden ${active ? "border-emerald-500/40 ring-1 ring-emerald-500/20" : ""}`}>

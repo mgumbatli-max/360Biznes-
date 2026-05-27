@@ -17,11 +17,14 @@ import { cn } from "@/lib/utils";
  */
 export function BackButton({
   fallback,
+  label,
   className,
   title = "Geri",
   ariaLabel = "Geri qayıt",
 }: {
   fallback: string;
+  /** Mətn göstərilirsə (məs. "Geri", "İşçilərə qayıt"), düymə inline stilə keçir. */
+  label?: string;
   className?: string;
   title?: string;
   ariaLabel?: string;
@@ -33,6 +36,24 @@ export function BackButton({
       e.preventDefault();
       router.back();
     }
+  }
+
+  if (label) {
+    return (
+      <Link
+        href={fallback}
+        onClick={onClick}
+        title={title}
+        aria-label={ariaLabel}
+        className={cn(
+          "inline-flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground",
+          className,
+        )}
+      >
+        <ArrowLeft className="h-4 w-4" />
+        <span>{label}</span>
+      </Link>
+    );
   }
 
   return (

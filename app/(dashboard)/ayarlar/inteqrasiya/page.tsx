@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowLeft,
   FileSpreadsheet,
   Download,
   Upload,
@@ -23,6 +22,7 @@ import {
   Lock,
   Sparkles,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TEMPLATES, TEMPLATE_KEYS } from "@/features/inteqrasiya/templates";
@@ -247,13 +247,7 @@ function TemplateDetail({ templateKey }: { templateKey: string }) {
 
   return (
     <div className="space-y-4">
-      <Link
-        href="/ayarlar/inteqrasiya"
-        scroll={false}
-        className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Bütün şablonlar
-      </Link>
+      <BackButton fallback="/ayarlar/inteqrasiya" label="Bütün şablonlar" />
 
       <Card className="glass">
         <CardContent className="space-y-4 py-5">

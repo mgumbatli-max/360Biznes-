@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowLeft,
   History,
   Trash2,
   Sparkles,
@@ -13,6 +12,7 @@ import {
   Building2,
   Search,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -55,12 +55,7 @@ export default async function TeamMessageLogPage({ searchParams }: { searchParam
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <Link
-        href="/ayarlar/team"
-        className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Team ayarları
-      </Link>
+      <BackButton fallback="/ayarlar/team" label="Team ayarları" />
 
       <header className="flex items-center gap-3">
         <div className="grid h-10 w-10 place-items-center rounded-lg bg-secondary text-primary">

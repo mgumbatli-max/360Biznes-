@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { PrintTrigger } from "@/features/servis/components/print-trigger";
 import { getEmployeeFullDetail, getEmployeeBordroHistory } from "@/features/iscilier/detail-queries";
 import { formatMoney, formatDate } from "@/lib/utils";
@@ -77,12 +77,7 @@ export default async function BordroPrintPage({
       `}</style>
 
       <div className="mx-auto mb-4 flex max-w-3xl items-center justify-between print:hidden">
-        <Link
-          href={`/iscilier/${id}`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-secondary"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" /> Geri
-        </Link>
+        <BackButton fallback={`/iscilier/${id}`} label="Geri" />
         <PrintTrigger />
       </div>
 

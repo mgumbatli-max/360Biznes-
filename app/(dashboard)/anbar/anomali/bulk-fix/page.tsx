@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, ImageOff, Sparkles, Zap, ExternalLink } from "lucide-react";
+import { ImageOff, Sparkles, Zap, ExternalLink } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -52,12 +53,7 @@ export default async function BulkFixPage({ searchParams }: { searchParams: Prom
     <div className="mx-auto max-w-6xl space-y-4">
       <AnbarSubNav active="/anbar/anomali" />
 
-      <Link
-        href="/anbar/anomali"
-        className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Anomali siyahısı
-      </Link>
+      <BackButton fallback="/anbar/anomali" label="Anomali siyahısı" />
 
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">

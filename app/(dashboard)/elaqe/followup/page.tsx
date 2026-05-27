@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, CalendarClock, Cake, Phone } from "lucide-react";
+import { CalendarClock, Cake, Phone } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Badge } from "@/components/ui/badge";
 import { getFollowups, getContacts } from "@/features/elaqe/queries";
 import { FollowupDialog } from "@/features/elaqe/components/followup-dialog";
@@ -61,9 +62,7 @@ export default async function FollowupPage({
         </div>
         <div className="flex items-center gap-2">
           <BirthdayRemindersButton />
-          <Link href="/elaqe" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-3 w-3" /> Geri
-          </Link>
+          <BackButton fallback="/elaqe" label="Geri" />
           <FollowupDialog contacts={contacts} />
         </div>
       </header>

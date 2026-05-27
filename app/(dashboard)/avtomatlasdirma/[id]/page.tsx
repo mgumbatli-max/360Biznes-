@@ -2,9 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft, ChevronRight, Workflow, Zap, Filter, Target, Bell, Repeat, FlaskConical,
+  ChevronRight, Workflow, Zap, Filter, Target, Bell, Repeat, FlaskConical,
   CheckCircle2, XCircle, Calendar, Clock, User,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getRuleDefinition, getRuleStatsById } from "@/features/avtomatlasdirma/actions";
@@ -284,10 +285,7 @@ export default async function RuleDetailPage({ params }: { params: Promise<{ id:
       </Card>
 
       <div>
-        <Link href="/avtomatlasdirma" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="h-3 w-3" />
-          Bütün qaydalar
-        </Link>
+        <BackButton fallback="/avtomatlasdirma" label="Bütün qaydalar" />
       </div>
     </div>
   );

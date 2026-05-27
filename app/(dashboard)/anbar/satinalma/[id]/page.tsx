@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft,
   ClipboardList,
   FileSpreadsheet,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AddLineDialog } from "@/features/satinalma/components/add-line-dialog";
@@ -79,12 +78,7 @@ export default async function ProposalDetailPage({
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <Link
-        href="/anbar/satinalma"
-        className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" /> Satınalma siyahısı
-      </Link>
+      <BackButton fallback="/anbar/satinalma" label="Satınalma siyahısı" />
 
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
