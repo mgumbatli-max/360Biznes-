@@ -10,6 +10,19 @@ const nextConfig: NextConfig = {
   compress: true,
   productionBrowserSourceMaps: false,
 
+  // Heavy native/server-only paketlər — Next bundler bunları client-ə daşımır,
+  // server tərəfdə də require() ilə birbaşa node_modules-dən yüklənir
+  // (RSC tree-walk məruz qalmır → daha sürətli rebuild + soyuq start).
+  serverExternalPackages: [
+    "@prisma/client",
+    ".prisma/client",
+    "@anthropic-ai/sdk",
+    "exceljs",
+    "pg",
+    "pino",
+    "pino-pretty",
+  ],
+
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
@@ -23,12 +36,15 @@ const nextConfig: NextConfig = {
     optimizePackageImports: [
       "lucide-react",
       "date-fns",
+      "radix-ui",
       "@radix-ui/react-dialog",
       "@radix-ui/react-dropdown-menu",
       "@radix-ui/react-popover",
       "@radix-ui/react-select",
       "@radix-ui/react-tooltip",
       "recharts",
+      "cmdk",
+      "sonner",
     ],
   },
 

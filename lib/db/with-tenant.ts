@@ -1,6 +1,6 @@
 import "server-only";
 import { auth } from "@/auth";
-import { runWithTenant } from "./tenant-context";
+import { runWithTenant, getTenant } from "./tenant-context";
 import { loadPermissionsForRole } from "@/lib/auth/permissions";
 import { cache } from "react";
 
@@ -15,6 +15,13 @@ const loadPermissionsCached = cache(loadPermissionsForRole);
  * route handlers / server actions / server components only.
  */
 export async function withTenant<T>(fn: () => Promise<T>): Promise<T> {
+  // Reuse an already-active tenant context (e.g. nested withTenant call).
+  // Avoids re-hitting auth() + permissions on each helper.
+  const existing = getTenant();
+  if (existing) {
+    return runWithTenant(existing, async () => await fn());
+  }
+
   const session = await auth();
   if (!session?.user) {
     throw new Error("withTenant: no authenticated session");

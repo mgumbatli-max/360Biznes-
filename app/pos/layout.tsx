@@ -15,10 +15,11 @@ export default async function PosStandaloneLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const [session, icazeler] = await Promise.all([
+    auth(),
+    getRequestPermissions(),
+  ]);
   if (!session?.user) redirect("/login");
-
-  const icazeler = await getRequestPermissions();
 
   return (
     <AuthSessionProvider>

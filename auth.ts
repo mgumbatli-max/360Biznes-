@@ -1,5 +1,6 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { cache } from "react";
 import { z } from "zod";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
@@ -110,4 +111,10 @@ const config = {
   },
 } satisfies NextAuthConfig;
 
-export const { handlers, auth, signIn, signOut } = NextAuth(config);
+const nextAuth = NextAuth(config);
+export const { handlers, signIn, signOut } = nextAuth;
+
+// React `cache()` deduplicates `auth()` within a single Server Component render.
+// Without this, every `withTenant()` call (5+ per dashboard navigation) would
+// re-decode the JWT and re-run callbacks. Same signature as the original.
+export const auth: typeof nextAuth.auth = cache(nextAuth.auth) as typeof nextAuth.auth;
