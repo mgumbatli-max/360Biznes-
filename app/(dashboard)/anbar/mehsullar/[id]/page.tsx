@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft, Package, Tag, Layers, Barcode, Hash, Building2, ChevronDown, ChevronUp,
+  Package, Tag, Layers, Barcode, Hash, Building2, ChevronDown, ChevronUp,
   TrendingUp, Calendar, AlertTriangle, ShoppingCart, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight, ClipboardCheck,
   Wrench, ArrowRight,
 } from "lucide-react";
 import { auth } from "@/auth";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -77,12 +78,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <Link
-            href="/anbar/mehsullar"
-            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/anbar/mehsullar" className="mt-1" />
           <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight">{product.ad}</h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

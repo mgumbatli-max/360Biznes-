@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Flame, ArrowLeft, Calendar } from "lucide-react";
+import { Flame, Calendar } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { getSalesHeatmap } from "@/features/ticaret/heatmap-queries";
 import { formatMoney, formatNumber } from "@/lib/utils";
@@ -60,12 +61,7 @@ export default async function SalesHeatmapPage({
     <div className="mx-auto max-w-6xl space-y-5">
       <div className="flex items-center justify-between">
         <div className="flex items-start gap-3">
-          <Link
-            href="/ticaret"
-            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/ticaret" className="mt-1" />
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
               <Flame className="h-5 w-5 text-warning" />

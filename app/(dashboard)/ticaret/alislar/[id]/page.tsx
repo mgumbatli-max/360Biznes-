@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Truck, Package, Calendar, FileText, Tag, Receipt } from "lucide-react";
+import { Truck, Package, Calendar, FileText, Tag, Receipt } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db/prisma";
@@ -62,12 +63,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link
-          href="/ticaret/alislar"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/ticaret/alislar" className="mt-1" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <Truck className="h-5 w-5 text-primary-light" />

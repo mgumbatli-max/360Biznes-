@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, FolderArchive, Info } from "lucide-react";
+import { FolderArchive, Info } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getSahibkarState } from "@/lib/sahibkar/guard";
 import { getSenedTree, getBreadcrumb } from "@/features/sahibkar/senedler/queries";
@@ -34,12 +34,7 @@ export default async function SahibkarSenedlerPage({
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <Link
-            href="/sahibkar"
-            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/sahibkar" className="mt-1" />
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
               <FolderArchive className="h-5 w-5 text-amber-500" />

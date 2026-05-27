@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { OnboardingWizard } from "@/features/iscilier/components/onboarding-wizard";
 import { getRoleOptions, getFilialOptions } from "@/features/iscilier/queries";
 
@@ -13,12 +13,7 @@ export default async function OnboardingPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link
-          href="/iscilier"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/iscilier" className="mt-1" />
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-bold tracking-tight">
             <UserPlus className="h-5 w-5" /> Onboarding

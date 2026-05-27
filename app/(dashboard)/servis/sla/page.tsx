@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, AlertOctagon, Clock, Users, AlertTriangle } from "lucide-react";
+import { AlertOctagon, Clock, Users, AlertTriangle } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
@@ -21,12 +22,7 @@ export default async function ServisSLAPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link
-          href="/servis"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/servis" className="mt-1" />
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Servis SLA dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">

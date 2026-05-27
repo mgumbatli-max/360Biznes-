@@ -1,9 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Printer,
   Search,
   X,
@@ -17,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Barcode } from "@/components/ui/barcode";
@@ -171,12 +170,7 @@ export function LabelPrintClient({
         {/* Top bar */}
         <div className="no-print flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <Link
-              href="/anbar/mehsullar"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+            <BackButton fallback="/anbar/mehsullar" />
             <div>
               <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
                 <Tags className="h-6 w-6 text-primary" /> Etiket çapı

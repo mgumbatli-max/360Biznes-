@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, Coins, Info, AlertTriangle } from "lucide-react";
+import { Coins, Info, AlertTriangle } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -36,12 +36,7 @@ export default async function BorcAvtoPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link
-          href="/ayarlar"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/ayarlar" className="mt-1" />
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Coins className="h-5 w-5 text-amber-500" />

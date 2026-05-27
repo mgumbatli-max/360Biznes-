@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, Plane, CalendarDays, ListChecks } from "lucide-react";
+import { Plane, CalendarDays, ListChecks } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { MezuniyyetPanel } from "@/features/iscilier/components/mezuniyyet-panel";
 import { getLeaveRequests, getLeaveStats, getLeaveBalances, getEmployees } from "@/features/iscilier/queries";
@@ -25,9 +25,7 @@ export default async function MezuniyyetPage({
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <Link href="/iscilier" className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/iscilier" className="mt-1" />
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Məzuniyyət</h1>
             <p className="mt-1 text-sm text-muted-foreground">Məzuniyyət ərizələri və təsdiq idarəsi.</p>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, Users, TrendingDown, Cake, Sparkles } from "lucide-react";
+import { Users, TrendingDown, Cake, Sparkles } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { AnalitikaPanel } from "@/features/iscilier/components/analitika-panel";
 import { getAnalitika } from "@/features/iscilier/analitika-queries";
@@ -17,9 +17,7 @@ export default async function AnalitikaPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link href="/iscilier" className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/iscilier" className="mt-1" />
         <div>
           <h1 className="text-2xl font-bold tracking-tight">HR Analitika</h1>
           <p className="mt-1 text-sm text-muted-foreground">İşçi heyəti, turnover, maaş paylanması və daha çoxu.</p>

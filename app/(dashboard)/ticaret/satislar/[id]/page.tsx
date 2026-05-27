@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Phone, User, Calendar, Package, Tag, Printer } from "lucide-react";
+import { Phone, User, Calendar, Package, Tag, Printer } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,12 +38,7 @@ export default async function SatisDetailPage({ params }: { params: Promise<{ id
     <div className="mx-auto max-w-5xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <Link
-            href="/ticaret/satislar"
-            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/ticaret/satislar" className="mt-1" />
           <div>
             <h1 className="font-mono text-xl font-bold tracking-tight">{sale.nomre}</h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">

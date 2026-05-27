@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { SkillsMatrixView } from "@/features/iscilier/components/skills-matrix";
 import { getSkillsMatrix, getOrgChart } from "@/features/iscilier/hr-queries";
 
@@ -18,12 +18,7 @@ export default async function SkillsPage({
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link
-          href="/iscilier"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/iscilier" className="mt-1" />
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Sparkles className="h-5 w-5" /> Bacarıqlar matriksi

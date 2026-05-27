@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, Network } from "lucide-react";
+import { Network } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { OrgChartView } from "@/features/iscilier/components/org-chart";
 import { getOrgChart } from "@/features/iscilier/hr-queries";
 
@@ -18,12 +18,7 @@ export default async function OrgChartPage({
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex items-start gap-3 print:hidden">
-        <Link
-          href="/iscilier"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/iscilier" className="mt-1" />
         <div>
           <h1 className="inline-flex items-center gap-2 text-2xl font-bold tracking-tight">
             <Network className="h-5 w-5" /> Org chart

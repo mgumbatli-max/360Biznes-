@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Building2, Mail, Phone, MapPin, Calendar, Boxes, Users, ShoppingCart } from "lucide-react";
+import { Building2, Mail, Phone, MapPin, Calendar, Boxes, Users, ShoppingCart } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
@@ -25,12 +25,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
     <div className="mx-auto max-w-6xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <Link
-            href="/platform-admin/tenantlar"
-            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/platform-admin/tenantlar" className="mt-1" />
           <div>
             <div className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary-light" />

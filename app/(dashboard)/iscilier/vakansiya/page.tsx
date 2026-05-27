@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, Briefcase, Users, CheckCircle2 } from "lucide-react";
+import { Briefcase, Users, CheckCircle2 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { VakansiyaPanel } from "@/features/iscilier/components/vakansiya-panel";
 import { listVakansiya, listNamizedler, getVakansiyaStats } from "@/features/iscilier/vakansiya-queries";
@@ -18,9 +18,7 @@ export default async function VakansiyaPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link href="/iscilier" className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/iscilier" className="mt-1" />
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Vakansiya</h1>
           <p className="mt-1 text-sm text-muted-foreground">Açıq vakansiyalar və namizədlər.</p>

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft,
   Phone,
   User,
   Tag,
@@ -12,6 +11,7 @@ import {
   Wrench,
   Printer,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -65,12 +65,7 @@ export default async function ServisDetailPage({ params }: { params: Promise<{ i
   return (
     <div className="mx-auto max-w-6xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link
-          href="/servis"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/servis" className="mt-1" />
         <div className="min-w-0 flex-1">
           <h1 className="font-mono text-xl font-bold">{s.nomre}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">

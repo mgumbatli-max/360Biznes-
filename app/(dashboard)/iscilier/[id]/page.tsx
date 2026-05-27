@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { Badge } from "@/components/ui/badge";
@@ -100,12 +99,7 @@ export default async function EmployeeDetailPage({
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <Link
-            href="/iscilier"
-            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/iscilier" className="mt-1" />
           <div className="flex items-center gap-3">
             <Avatar className="h-14 w-14">
               <AvatarFallback

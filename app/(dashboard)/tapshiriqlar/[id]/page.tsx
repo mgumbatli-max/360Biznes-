@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock, User, Users, MessageSquare, CheckSquare, Eye } from "lucide-react";
+import { CalendarClock, User, Users, MessageSquare, CheckSquare, Eye } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PriorityBadge, TaskStatusBadge } from "@/features/tapshiriqlar/components/task-badges";
@@ -30,12 +30,7 @@ export default async function TaskDetailPage({ params }: { params: Promise<{ id:
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link
-          href="/tapshiriqlar"
-          className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/tapshiriqlar" className="mt-1" />
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold tracking-tight">{t.basliq}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-2">

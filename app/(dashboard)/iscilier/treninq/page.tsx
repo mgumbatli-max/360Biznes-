@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft, GraduationCap, BookOpen, CheckCircle2, Wallet } from "lucide-react";
+import { GraduationCap, BookOpen, CheckCircle2, Wallet } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { TreninqPanel } from "@/features/iscilier/components/treninq-panel";
 import { listTreninqler, listTreninqQeydleri, getTreninqStats } from "@/features/iscilier/treninq-queries";
@@ -21,9 +21,7 @@ export default async function TreninqPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex items-start gap-3">
-        <Link href="/iscilier" className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground">
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <BackButton fallback="/iscilier" className="mt-1" />
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Treninq</h1>
           <p className="mt-1 text-sm text-muted-foreground">Treninq kursları və işçi inkişafı.</p>

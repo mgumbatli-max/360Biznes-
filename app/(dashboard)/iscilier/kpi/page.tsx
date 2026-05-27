@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowLeft, TrendingUp, AlertTriangle, ClipboardCheck, Briefcase, Users, Coins,
+  TrendingUp, AlertTriangle, ClipboardCheck, Briefcase, Users, Coins,
   Search, Filter, Download, Info, Sparkles,
 } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { getKpiDashboard, type SortKey, type SortDir } from "@/features/iscilier/kpi-dashboard-queries";
@@ -89,12 +90,7 @@ export default async function KpiDashboardPage({
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <Link
-            href="/iscilier"
-            className="mt-1 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackButton fallback="/iscilier" className="mt-1" />
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
               KPI Dashboard
