@@ -29,7 +29,10 @@ type SearchParams = {
   sheher?: string;
   sort?: string;
   dir?: string;
+  page?: string;
 };
+
+const PAGE_SIZE = 50;
 
 export default async function TechizatcilarPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
@@ -46,8 +49,9 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
     dir: (sp.dir as "asc" | "desc") ?? "desc",
   };
 
+  const page = Math.max(1, Number(sp.page) || 1);
   const [data, managers, segments] = await Promise.all([
-    getContacts(filter),
+    getContacts(filter, page, PAGE_SIZE),
     getManagers(),
     getContactSegmentCounts("techizatci"),
   ]);
@@ -106,7 +110,15 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
         cities={segments.cities}
       />
 
-      <ContactsTable items={items} total={total} defaultNov="techizatci" managers={managers} />
+      <ContactsTable
+        items={items}
+        total={total}
+        defaultNov="techizatci"
+        managers={managers}
+        page={page}
+        pageSize={PAGE_SIZE}
+        basePath="/elaqe/techizatcilar"
+      />
     </div>
   );
 }
