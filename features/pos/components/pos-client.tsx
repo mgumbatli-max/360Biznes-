@@ -63,6 +63,8 @@ import {
   searchCustomersAction,
 } from "../search-actions";
 import { createSale } from "../sale-action";
+import { enqueueSale, getQueueSize } from "@/lib/pos/offline-queue";
+import { useOnlineStatus } from "../hooks/use-online-status";
 import {
   getQuickProductsAction,
   createQuickCustomer,
@@ -328,6 +330,7 @@ export function PosClient({
   const [qeyd, setQeyd] = useState("");
   const [showQeyd, setShowQeyd] = useState(false);
   const [completing, startCompleting] = useTransition();
+  const online = useOnlineStatus();
 
   // Auto actions
   const [autoVergiCek, setAutoVergiCek] = useState(true);
@@ -887,7 +890,9 @@ export function PosClient({
 
     const customerSnapshotName = customer?.ad ?? null;
     startCompleting(async () => {
-      const res = await createSale({
+      // Offline rejimdə satışı server-ə yox, localStorage-yə yığ.
+      // OfflineBanner online qayıdanda avtomat sinxron edir.
+      const payloadBuilder = () => ({
         kassa_id: kassaId,
         anbar_id: anbarId,
         musteri_id: customer?.id ?? null,
@@ -906,16 +911,9 @@ export function PosClient({
                 ? `Qarışıq — N:${splitNegd || 0} K:${splitKart || 0} B:${splitBank || 0}`
                 : null),
         lines: cart.map((l) => {
-          // The server takes a single per-line `endirim_faiz`. Fold the AZN
-          // discount (l.endirim_mebleg) into an effective percent so the
-          // line net stays mathematically identical (`lineNetTotal` here ==
-          // server-side `miqdar * qiymet * (1 - effFaiz/100)`).
           const gross = l.miqdar * l.qiymet;
           const net = lineNetTotal(l);
-          const effFaiz =
-            gross > 0
-              ? Math.max(0, Math.min(100, ((gross - net) / gross) * 100))
-              : 0;
+          const effFaiz = gross > 0 ? Math.max(0, Math.min(100, (1 - net / gross) * 100)) : 0;
           return {
             mehsul_id: l.mehsul_id,
             miqdar: l.miqdar,
@@ -924,6 +922,16 @@ export function PosClient({
           };
         }),
       });
+      // payloadBuilder() ortaq — həm offline enqueue, həm online createSale
+      // eyni payload ilə işləsin. Köhnə inline payload silindi (duplikatlıq idi).
+      const payload = payloadBuilder();
+      if (!online) {
+        const item = enqueueSale(payload);
+        toast.success(`Offline rejim — satış növbəyə yazıldı (#${item.id.slice(0, 8)}). Internet qayıdanda avtomat sinxron olacaq. Növbədə: ${getQueueSize()}`);
+        clearCart();
+        return;
+      }
+      const res = await createSale(payload);
       if (!res.ok) {
         toast.error(res.error);
         return;
