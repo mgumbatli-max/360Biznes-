@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -512,16 +513,22 @@ export async function getProducts(
   });
 }
 
-export async function getCategoryOptions() {
+/**
+ * Kateqoriya / marka / vahid — referans dataları nadir dəyişir, hər səhifə
+ * yüklənəndə fetch etmək israfdır. React `cache()` ilə eyni request boyu
+ * dedupe — eyni page render-də 5 dəfə getCategoryOptions çağırılsa belə
+ * yalnız 1 DB query gedir. (Tenant-scoped — withTenant request-bound.)
+ */
+export const getCategoryOptions = cache(async () => {
   return withTenant(async () => {
     return prisma.kateqoriyalar.findMany({
       orderBy: { ad: "asc" },
       select: { id: true, ad: true, ust_id: true },
     });
   });
-}
+});
 
-export async function getBrandOptions() {
+export const getBrandOptions = cache(async () => {
   return withTenant(async () => {
     return prisma.markalar.findMany({
       where: { aktiv: true },
@@ -529,16 +536,16 @@ export async function getBrandOptions() {
       select: { id: true, ad: true },
     });
   });
-}
+});
 
-export async function getUnitOptions() {
+export const getUnitOptions = cache(async () => {
   return withTenant(async () => {
     return prisma.olcu_vahidleri.findMany({
       orderBy: { ad: "asc" },
       select: { id: true, ad: true, qisa_ad: true },
     });
   });
-}
+});
 
 export type BrandFilter = {
   search?: string;
