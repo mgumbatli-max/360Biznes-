@@ -12,6 +12,7 @@ import { parseLocalDate } from "@/lib/utils";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 /**
  * Sale-date helper: if user typed only YYYY-MM-DD use parseLocalDate (local noon)
@@ -341,27 +342,22 @@ export async function createOrUpdateSatisYeni(
             }
           }
 
-          // 3. Audit log (best-effort, never fails the txn)
-          try {
-            await tx.audit_log.create({
-              data: {
-                sahibkar_id: sahibkarId,
-                istifadeci_id: istifadeciId,
-                emeliyyat: "yarad",
-                resurs_nov: "satis_sifarisi",
-                resurs_id: saleId,
-                yeni_data: {
-                  nomre,
-                  son_mebleg: sonMebleg,
-                  odenis_nov: data.odenis_nov,
-                  lines: data.lines.length,
-                },
-                status: "ugur",
-              },
-            });
-          } catch (e) {
-            console.warn("[createOrUpdateSatisYeni] audit_log skipped:", e);
-          }
+          // 3. Audit log — outbox-safe (transaksiya bitdikdən sonra çağırılır,
+          // ona görə tx yox prismaUnscoped istifadə edir).
+          await safeAuditLog({
+            sahibkar_id: sahibkarId,
+            istifadeci_id: istifadeciId,
+            emeliyyat: "yarad",
+            resurs_nov: "satis_sifarisi",
+            resurs_id: saleId,
+            yeni_data: {
+              nomre,
+              son_mebleg: sonMebleg,
+              odenis_nov: data.odenis_nov,
+              lines: data.lines.length,
+            },
+            status: "ugur",
+          });
         }
 
         return { id: saleId, nomre, affectedMehsulIds };

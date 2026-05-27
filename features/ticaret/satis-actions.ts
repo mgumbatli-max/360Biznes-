@@ -5,6 +5,7 @@ import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { checkAndCreateStockAlertBatch } from "@/features/anbar/alert-helpers";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -118,23 +119,17 @@ export async function changeSaleStatus(saleId: string, status: SaleStatus): Prom
         data: { status, yenilendi: new Date() },
       });
 
-      // Audit log — pipeline-da edilən status keçidini izlə
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: istifadeciId,
-            emeliyyat: "yenile",
-            resurs_nov: "satis_sifarisi",
-            resurs_id: saleId,
-            evvelki_data: { status: sale.status },
-            yeni_data: { status, nomre: sale.nomre },
-            status: "ugur",
-          },
-        });
-      } catch (e) {
-        console.warn("[changeSaleStatus] audit_log skipped:", e);
-      }
+      // Audit log — outbox-safe (status keçidini izlə)
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "yenile",
+        resurs_nov: "satis_sifarisi",
+        resurs_id: saleId,
+        evvelki_data: { status: sale.status },
+        yeni_data: { status, nomre: sale.nomre },
+        status: "ugur",
+      });
 
       revalidatePath(`/ticaret/satislar/${saleId}`);
       revalidatePath("/ticaret/satislar");

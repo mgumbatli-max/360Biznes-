@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 export async function setTenantStatus(id: string, status: "aktiv" | "dayandirildi"): Promise<{ ok: true } | { ok: false; error: string }> {
   await requirePlatformAdmin();
@@ -25,26 +26,20 @@ export async function setTenantStatus(id: string, status: "aktiv" | "dayandirild
  */
 export async function impersonateTenant(sahibkar_id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = await requirePlatformAdmin();
-  try {
-    const target = await prismaUnscoped.sahibkarlar.findUnique({ where: { id: sahibkar_id }, select: { id: true, ad: true } });
-    if (!target) return { ok: false, error: "Sahibkar tapılmadı" };
-    await prismaUnscoped.audit_log.create({
-      data: {
-        sahibkar_id: target.id,
-        istifadeci_id: admin.id,
-        istifadeci_ad: admin.ad_soyad ?? "platform_admin",
-        emeliyyat: "IMPERSONATE",
-        resurs_nov: "sahibkar",
-        resurs_id: target.id,
-        yeni_data: { target_name: target.ad, at: new Date().toISOString() },
-        sebeb: "Support/test üçün impersonate",
-        status: "ugur",
-      },
-    });
-  } catch (e) {
-    console.error("[impersonateTenant]", e);
-    return { ok: false, error: "Audit yazıla bilmədi" };
-  }
+  const target = await prismaUnscoped.sahibkarlar.findUnique({ where: { id: sahibkar_id }, select: { id: true, ad: true } });
+  if (!target) return { ok: false, error: "Sahibkar tapılmadı" };
+  // IMPERSONATE — kritik təhlükəsizlik logu, fail-də outbox-a düşməlidir.
+  await safeAuditLog({
+    sahibkar_id: target.id,
+    istifadeci_id: admin.id,
+    istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+    emeliyyat: "IMPERSONATE",
+    resurs_nov: "sahibkar",
+    resurs_id: target.id,
+    yeni_data: { target_name: target.ad, at: new Date().toISOString() },
+    sebeb: "Support/test üçün impersonate",
+    status: "ugur",
+  });
   redirect("/dashboard");
 }
 

@@ -7,6 +7,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { setPinSession } from "@/lib/sahibkar/session";
 import { getAttemptStatus, recordFailure, resetAttempts } from "@/lib/sahibkar/rate-limit";
 import { DEFAULT_SECRET_CODE } from "./constants";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -54,21 +55,17 @@ export async function verifyPinOrCode(input: FormData): Promise<Result> {
     if (codeMatch) {
       await setPinSession(sahibkarId, istifadeciId);
       await resetAttempts();
-      // Audit successful secret-code entry
+      // Audit successful secret-code entry — outbox fallback varsa itmir
       if (cfg.audit_log !== false) {
-        try {
-          await prisma.audit_log.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              istifadeci_id: istifadeciId,
-              emeliyyat: "gizli_giris",
-              resurs_nov: "sahibkar_ayar",
-              resurs_id: String(cfg.id),
-              status: "ugur",
-              sebeb: "Vahid forma vasitəsilə gizli kodla giriş",
-            },
-          });
-        } catch { /* silent */ }
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "gizli_giris",
+          resurs_nov: "sahibkar_ayar",
+          resurs_id: String(cfg.id),
+          status: "ugur",
+          sebeb: "Vahid forma vasitəsilə gizli kodla giriş",
+        });
       }
       return { ok: true };
     }

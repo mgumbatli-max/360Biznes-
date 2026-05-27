@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 /**
  * Auto-tag generator (cron-əsaslı, manual triggerable).
@@ -146,26 +147,20 @@ export async function runAutoTagUpdate(): Promise<AutoTagResult | { ok: false; e
         }
       }
 
-      // Audit log
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: istifadeciId,
-            emeliyyat: "auto_tag",
-            resurs_nov: "contact_tags",
-            yeni_data: {
-              scanned: contacts.length,
-              added,
-              removed,
-              by_tag,
-            } as unknown as object,
-            status: "ugur",
-          },
-        });
-      } catch {
-        /* skip */
-      }
+      // Audit log — outbox-safe
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "auto_tag",
+        resurs_nov: "contact_tags",
+        yeni_data: {
+          scanned: contacts.length,
+          added,
+          removed,
+          by_tag,
+        } as unknown as object,
+        status: "ugur",
+      });
 
       revalidatePath("/elaqe");
       revalidatePath("/elaqe/musteriler");

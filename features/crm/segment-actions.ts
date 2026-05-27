@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { chatCompletion } from "@/lib/ai/anthropic";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 type ActionResult =
   | { ok: true; id?: number; count?: number; rule?: SegmentRule; messages?: DripMessage[] }
@@ -256,22 +257,16 @@ export async function startDripCampaign(input: FormData): Promise<ActionResult> 
         createdIds.push(camp.id);
       }
 
-      // Audit
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: istifadeciId,
-            emeliyyat: "yarat",
-            resurs_nov: "drip_campaign",
-            resurs_id: createdIds[0] ?? null,
-            yeni_data: { seqment_kod: d.seqment_kod, count: createdIds.length, kanal: d.kanal } as unknown as object,
-            status: "ugur",
-          },
-        });
-      } catch (e) {
-        console.warn("[startDripCampaign] audit skipped:", e);
-      }
+      // Audit — outbox-safe
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "yarat",
+        resurs_nov: "drip_campaign",
+        resurs_id: createdIds[0] ?? null,
+        yeni_data: { seqment_kod: d.seqment_kod, count: createdIds.length, kanal: d.kanal } as unknown as object,
+        status: "ugur",
+      });
 
       revalidatePath("/crm/segment");
       revalidatePath("/crm/broadcast");

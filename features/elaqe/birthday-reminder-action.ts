@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 /**
  * Doğum günü xatırlatma — cron-əsaslı (manual da işlədilə bilər).
@@ -112,24 +113,18 @@ export async function runBirthdayReminders(): Promise<BirthdayResult | { ok: fal
         }
       }
 
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: istifadeciId,
-            emeliyyat: "dogum_xatirlatma",
-            resurs_nov: "tapshiriq",
-            yeni_data: {
-              scanned: rows.length,
-              created,
-              skipped,
-            } as unknown as object,
-            status: "ugur",
-          },
-        });
-      } catch {
-        /* skip */
-      }
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "dogum_xatirlatma",
+        resurs_nov: "tapshiriq",
+        yeni_data: {
+          scanned: rows.length,
+          created,
+          skipped,
+        } as unknown as object,
+        status: "ugur",
+      });
 
       revalidatePath("/elaqe/followup");
       revalidatePath("/tapshiriqlar");

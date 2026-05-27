@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 const LeadSchema = z.object({
   id: z.string().uuid().optional(),
@@ -244,23 +245,17 @@ export async function convertLeadToSale(id: string): Promise<{ ok: true; saleId:
         },
       });
 
-      // 4) Audit
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: istifadeciId,
-            emeliyyat: "yarat",
-            resurs_nov: "lead_konversiya_satis",
-            resurs_id: sale.id,
-            evvelki_data: { lead_id: id, lead_status: lead.status, kontragent_id: lead.kontragent_id },
-            yeni_data: { satis_id: sale.id, satis_nomre: nomre, musteri_id: musteriId, status: "qazandi" },
-            status: "ugur",
-          },
-        });
-      } catch (e) {
-        console.warn("[convertLeadToSale] audit skipped:", e);
-      }
+      // 4) Audit — outbox-safe
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "yarat",
+        resurs_nov: "lead_konversiya_satis",
+        resurs_id: sale.id,
+        evvelki_data: { lead_id: id, lead_status: lead.status, kontragent_id: lead.kontragent_id },
+        yeni_data: { satis_id: sale.id, satis_nomre: nomre, musteri_id: musteriId, status: "qazandi" },
+        status: "ugur",
+      });
 
       revalidatePath("/crm/leadler");
       revalidatePath("/crm");

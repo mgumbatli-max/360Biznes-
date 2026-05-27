@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { chatCompletion } from "@/lib/ai/anthropic";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 type AiResult =
   | { ok: true; text: string; model: string; is_mock: boolean }
@@ -152,19 +153,15 @@ export async function toggleAutoReply(input: FormData): Promise<{ ok: true; akti
         where: { id: d.sohbet_id },
         data: { etiketler: Array.from(tags), yenilendi: new Date() },
       });
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: istifadeciId,
-            emeliyyat: "yenile",
-            resurs_nov: "inbox_auto_reply",
-            resurs_id: d.sohbet_id,
-            yeni_data: { aktiv: d.aktiv },
-            status: "ugur",
-          },
-        });
-      } catch {}
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "yenile",
+        resurs_nov: "inbox_auto_reply",
+        resurs_id: d.sohbet_id,
+        yeni_data: { aktiv: d.aktiv },
+        status: "ugur",
+      });
       return { ok: true, aktiv: d.aktiv };
     } catch (e) {
       console.error("[toggleAutoReply]", e);

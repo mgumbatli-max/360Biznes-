@@ -92,3 +92,81 @@ export async function getCashflowSeries(
     return rows.map((r) => ({ ...r, net: r.daxil - r.xaric }));
   });
 }
+
+export type ForecastBucket = {
+  bucket: string;            // YYYY-MM-DD haftəlik bucket başı
+  expected_in: number;       // gözlənilən müştəri ödənişləri (alacaq → 30 gün payment terminə görə)
+  recurring_out: number;     // planlaşdırılmış aylıq xərclər (maaş bordrosu, abune)
+  supplier_out: number;      // təchizatçı borcumuz (borc → 30 gün payment terminə görə)
+  net: number;               // expected_in − (recurring_out + supplier_out)
+};
+
+/**
+ * Pul axını proqnozu — növbəti N gün üçün gözlənilən nəğd hərəkəti.
+ *
+ * Sadə model (gələcəkdə zənginləşdirə bilərik):
+ *  - **Daxil:** kontragentler.alacaq cəmi N gün ərzində eyni paylanır
+ *    (yenilendi tarixini "borc başlama" kimi götürüb 30 günlük ödəniş termini
+ *    fərz edirik).
+ *  - **Xaric (recurring):** istifadeciler.aylik_maas cəmi — ayda bir gün
+ *    (sadəlik üçün ayın 1-i) düşür.
+ *  - **Xaric (təchizatçı):** kontragentler.borc cəmi 30 gün ərzində eyni paylanır.
+ *
+ * Bucket: həftəlik (7 gün), ona görə range 30/60/90 → 4-5-13 bucket.
+ */
+export async function getCashFlowForecast(days: number = 30): Promise<ForecastBucket[]> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+
+    // 1. Aggregate-lər: alacaq cəmi, borc cəmi, aylıq maaş cəmi
+    const [debtAgg, creditAgg, payrollAgg] = await Promise.all([
+      prisma.kontragentler.aggregate({
+        where: { sahibkar_id: sahibkarId, aktiv: true, alacaq: { gt: 0 } },
+        _sum: { alacaq: true },
+      }),
+      prisma.kontragentler.aggregate({
+        where: { sahibkar_id: sahibkarId, aktiv: true, borc: { gt: 0 } },
+        _sum: { borc: true },
+      }),
+      prisma.istifadeciler.aggregate({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        _sum: { aylik_maas: true },
+      }),
+    ]);
+
+    const totalDebt = Number(debtAgg._sum.alacaq ?? 0);
+    const totalCredit = Number(creditAgg._sum.borc ?? 0);
+    const monthlyPayroll = Number(payrollAgg._sum.aylik_maas ?? 0);
+
+    // 2. Haftəlik bucket-lərə paylan
+    const weeks = Math.ceil(days / 7);
+    const debtPerWeek = totalDebt > 0 ? totalDebt / weeks : 0;
+    const creditPerWeek = totalCredit > 0 ? totalCredit / weeks : 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const buckets: ForecastBucket[] = [];
+
+    for (let i = 0; i < weeks; i++) {
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(startOfWeek.getDate() + i * 7);
+      const bucketKey = startOfWeek.toISOString().slice(0, 10);
+
+      // Aylıq maaş yalnız ayın 1-i ilə üst-üstə düşən həftədə tətbiq olunsun
+      const monthStartInBucket = startOfWeek.getDate() <= 7;
+      const recurringOut = monthStartInBucket ? monthlyPayroll : 0;
+
+      const expectedIn = debtPerWeek;
+      const supplierOut = creditPerWeek;
+      buckets.push({
+        bucket: bucketKey,
+        expected_in: Math.round(expectedIn),
+        recurring_out: Math.round(recurringOut),
+        supplier_out: Math.round(supplierOut),
+        net: Math.round(expectedIn - recurringOut - supplierOut),
+      });
+    }
+
+    return buckets;
+  });
+}

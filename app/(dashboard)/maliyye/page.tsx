@@ -30,13 +30,20 @@ import {
   getReceivableAging,
 } from "@/features/maliyye/queries";
 import { DebtAgingWidget } from "@/features/maliyye/components/debt-aging-widget";
+import { CashflowForecast } from "@/features/maliyye/components/cashflow-forecast";
+import { getCashFlowForecast } from "@/features/maliyye/cashflow-queries";
 import { formatCompactMoney, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maliyyə" };
 export const dynamic = "force-dynamic";
 
-export default async function MaliyyePage() {
-  const [kpis, flow, topExp, topDeb, topCred, refs, aging] = await Promise.all([
+type SP = { forecast?: string };
+
+export default async function MaliyyePage({ searchParams }: { searchParams?: Promise<SP> }) {
+  const sp = (await searchParams) ?? {};
+  const forecastDays = ([30, 60, 90].includes(Number(sp.forecast)) ? Number(sp.forecast) : 30) as 30 | 60 | 90;
+
+  const [kpis, flow, topExp, topDeb, topCred, refs, aging, forecast] = await Promise.all([
     getDashboardKpis(),
     getDailyFlow(30),
     getTopExpenseCategories(5),
@@ -44,6 +51,7 @@ export default async function MaliyyePage() {
     getTopCreditors(5),
     getQuickRefs(),
     getReceivableAging(),
+    getCashFlowForecast(forecastDays),
   ]);
 
   // Cash Runway hesabı — son 30 günün ortalama gündəlik xərci ilə neçə gün davam edə bilərik?
@@ -301,6 +309,9 @@ export default async function MaliyyePage() {
 
       {/* ─── Debt aging analysis ─── */}
       <DebtAgingWidget buckets={aging.buckets} totalAmount={aging.total} />
+
+      {/* ─── Cash flow forecast (M7) ─── */}
+      <CashflowForecast initialRange={forecastDays} data={forecast} />
 
       {/* ─── Top 5 panels ─── */}
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">

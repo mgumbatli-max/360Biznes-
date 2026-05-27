@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils/date-parse";
 import { createApprovalRequest, shouldApproveExpense } from "@/features/tesdiq/create";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 // ───────────────────────────────────────────────────────────
 // THRESHOLD HELPERS — ayarlar qrup="maliyye_threshold"
@@ -787,26 +788,20 @@ export async function receivePartialPayment(input: FormData): Promise<ActionResu
           data: { alacaq: { decrement: d.mebleg }, son_temas: new Date(), yenilendi: new Date() },
         });
 
-        // 5) audit_log
-        try {
-          await tx.audit_log.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              istifadeci_id: userId ?? null,
-              emeliyyat: "nisye_odenish",
-              resurs_nov: "kontragent",
-              resurs_id: d.musteri_id,
-              yeni_data: {
-                mebleg: d.mebleg,
-                qaime_id,
-                hesab_id: d.hesab_id || null,
-                odenis_nov: d.odenis_nov,
-              },
-            },
-          });
-        } catch (e) {
-          console.warn("[receivePartialPayment] audit_log skipped:", e);
-        }
+        // 5) audit_log — outbox fallback varsa səssizcə itmir
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: userId ?? null,
+          emeliyyat: "nisye_odenish",
+          resurs_nov: "kontragent",
+          resurs_id: d.musteri_id,
+          yeni_data: {
+            mebleg: d.mebleg,
+            qaime_id,
+            hesab_id: d.hesab_id || null,
+            odenis_nov: d.odenis_nov,
+          },
+        });
       });
 
       revalidatePath("/elaqe");
@@ -941,19 +936,15 @@ async function applyExpenseToInvoice(
     }
   }
 
-  // audit log
-  try {
-    await prisma.audit_log.create({
-      data: {
-        sahibkar_id: sahibkarId,
-        istifadeci_id: userId,
-        emeliyyat: "xerc_qaimeye_baglandi",
-        resurs_nov: "alis_sifarisi",
-        resurs_id: alis_id,
-        yeni_data: { elave_xerc: mebleg, tesvir, sira_sayi: lines.length },
-      },
-    });
-  } catch {}
+  // audit log — outbox-safe
+  await safeAuditLog({
+    sahibkar_id: sahibkarId,
+    istifadeci_id: userId,
+    emeliyyat: "xerc_qaimeye_baglandi",
+    resurs_nov: "alis_sifarisi",
+    resurs_id: alis_id,
+    yeni_data: { elave_xerc: mebleg, tesvir, sira_sayi: lines.length },
+  });
 }
 
 // Internal: weighted-average product cost from purchase lines + real_maya_eded
@@ -993,18 +984,14 @@ export async function recalculateProductCost(mehsul_id: string): Promise<ActionR
     const { sahibkarId, istifadeciId: userId } = requireTenant();
     try {
       await recalculateProductCostInternal(mehsul_id, sahibkarId);
-      try {
-        await prisma.audit_log.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: userId ?? null,
-            emeliyyat: "maya_yenidenhesab",
-            resurs_nov: "mehsul",
-            resurs_id: mehsul_id,
-            yeni_data: { reason: "manual" },
-          },
-        });
-      } catch {}
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: userId ?? null,
+        emeliyyat: "maya_yenidenhesab",
+        resurs_nov: "mehsul",
+        resurs_id: mehsul_id,
+        yeni_data: { reason: "manual" },
+      });
       revalidatePath("/anbar/mehsullar");
       return { ok: true, id: mehsul_id };
     } catch (e) {

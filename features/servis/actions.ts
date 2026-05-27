@@ -6,30 +6,25 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils/date-parse";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
-/* ---------- Audit helper (best-effort, never throws) ---------- */
+/* ---------- Audit helper — outbox-safe via safeAuditLog ---------- */
 
 async function writeServisAudit(
   emeliyyat: string,
   resurs_id: string,
   data: Record<string, unknown> | null,
 ): Promise<void> {
-  try {
-    const { sahibkarId, istifadeciId } = requireTenant();
-    await prisma.audit_log.create({
-      data: {
-        sahibkar_id: sahibkarId,
-        istifadeci_id: istifadeciId,
-        emeliyyat,
-        resurs_nov: "servis",
-        resurs_id,
-        yeni_data: data ?? undefined,
-        status: "ugur",
-      },
-    });
-  } catch (e) {
-    console.warn("[servis-audit]", emeliyyat, e);
-  }
+  const { sahibkarId, istifadeciId } = requireTenant();
+  await safeAuditLog({
+    sahibkar_id: sahibkarId,
+    istifadeci_id: istifadeciId,
+    emeliyyat,
+    resurs_nov: "servis",
+    resurs_id,
+    yeni_data: (data ?? undefined) as Record<string, unknown> | undefined as never,
+    status: "ugur",
+  });
 }
 
 const STATUSES = [
