@@ -57,6 +57,8 @@ import {
   getMyPendingWork,
   getDailyInsight,
 } from "@/features/dashboard/queries";
+import { getDashboardActivityFeed } from "@/features/dashboard/recent-activity-queries";
+import { RecentActivityWidget } from "@/features/dashboard/components/recent-activity-widget";
 
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -99,6 +101,7 @@ export default async function DashboardPage() {
     topPlatforms,
     recentSales,
     recentActivity,
+    bizFeed,
     critical,
     salesVsExp,
     cashflow,
@@ -116,6 +119,7 @@ export default async function DashboardPage() {
     getTopPlatforms(5),
     getRecentSales(5),
     getRecentActivity(15),
+    getDashboardActivityFeed(12).catch(() => []),
     getCriticalAlertsForDash(5),
     getSalesVsExpense30(),
     getTodayCashFlow(),
@@ -691,6 +695,11 @@ export default async function DashboardPage() {
             )}
           </CardContent>
         </Card>
+      </section>
+
+      {/* Business activity feed (satış / alış / ödəniş / yeni müştəri / tamamlanan tapşırıq) */}
+      <section>
+        <RecentActivityWidget items={bizFeed} limit={12} />
       </section>
 
       {/* Empty state */}
