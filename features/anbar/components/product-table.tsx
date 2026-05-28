@@ -20,6 +20,8 @@ import { BarcodeScanDialog } from "@/components/ui/barcode-scan-dialog";
 import { AnbarBreakdownCell, AnbarHoverBadge } from "./anbar-breakdown-cell";
 import { cn, formatMoney, formatNumber } from "@/lib/utils";
 import type { ProductListRow } from "../queries";
+import { InlineEditNumber } from "@/components/ui/inline-edit-cell";
+import { setProductCost, setProductSalePrice } from "../quick-fix-actions";
 
 type Props = {
   items: ProductListRow[];
@@ -561,12 +563,26 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                   </td>
                 ),
                 alish: (
-                  <td key="alish" className="px-3 py-2.5 text-right tabular-nums text-xs">
-                    {p.alish_qiymeti > 0 ? formatMoney(p.alish_qiymeti) : "—"}
+                  <td key="alish" className="px-3 py-2.5 text-right text-xs">
+                    <InlineEditNumber
+                      value={p.alish_qiymeti}
+                      onSave={(value) => setProductCost({ id: p.id, value })}
+                      format={(v) => (v > 0 ? formatMoney(v) : "—")}
+                      step={0.01}
+                      ariaLabel="Maya qiymətini redaktə et"
+                    />
                   </td>
                 ),
                 satis: (
-                  <td key="satis" className="px-3 py-2.5 text-right tabular-nums font-medium">{formatMoney(p.satis_qiymeti)}</td>
+                  <td key="satis" className="px-3 py-2.5 text-right font-medium">
+                    <InlineEditNumber
+                      value={p.satis_qiymeti}
+                      onSave={(value) => setProductSalePrice({ id: p.id, value })}
+                      format={(v) => formatMoney(v)}
+                      step={0.01}
+                      ariaLabel="Satış qiymətini redaktə et"
+                    />
+                  </td>
                 ),
                 topdan: (
                   <td key="topdan" className="px-3 py-2.5 text-right text-xs text-muted-foreground tabular-nums">
