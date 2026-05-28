@@ -11,6 +11,7 @@ import { getSaleStats, getSales, type SaleFilter } from "@/features/ticaret/sati
 import { getSalesByPipelineStage } from "@/features/ticaret/pipeline-queries";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { formatMoney } from "@/lib/utils";
+import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 
 export const metadata: Metadata = { title: "Satışlar" };
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export default async function SatislarPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SavedUrlFiltersChip storageKey="satislar" basePath="/ticaret/satislar" />
           <Button asChild size="sm" variant="outline">
             <Link href="/api/ticaret/satis-export" target="_blank">
               <FileSpreadsheet className="h-4 w-4" />

@@ -10,6 +10,7 @@ import { getDefaultAnbar } from "@/features/pos/sale-queries";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 
 export const metadata: Metadata = { title: "Alışlar" };
 export const dynamic = "force-dynamic";
@@ -70,6 +71,7 @@ export default async function AlislarPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SavedUrlFiltersChip storageKey="alislar" basePath="/ticaret/alislar" />
           <Button asChild size="sm" variant="outline">
             <Link href="/api/ticaret/alis-export" target="_blank">
               <FileSpreadsheet className="h-4 w-4" />

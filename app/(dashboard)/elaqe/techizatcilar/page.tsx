@@ -7,6 +7,7 @@ import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
 import { ContactsTable } from "@/features/elaqe/components/contacts-table";
 import { SegmentTabs } from "@/features/elaqe/components/segment-tabs";
+import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 import {
   getContacts,
   getManagers,
@@ -67,6 +68,7 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SavedUrlFiltersChip storageKey="techizatcilar" basePath="/elaqe/techizatcilar" />
           <Link href="/ayarlar/inteqrasiya?key=techizatci">
             <Button variant="outline" size="sm">
               <FileSpreadsheet className="h-3.5 w-3.5" /> Excel idxal
