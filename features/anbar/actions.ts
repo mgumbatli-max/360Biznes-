@@ -207,8 +207,10 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
         }
       }
 
-      revalidatePath("/anbar");
-      revalidatePath("/anbar/mehsullar");
+      // Granular cache invalidation — yalnız mehsul cache-i təmizlə.
+      // revalidatePath("/anbar") bütün anbar route cache-ini purge edir.
+      revalidateTag(`ref:${sahibkarId}:mehsullar`, "max");
+      revalidateTag(`dashboard:${sahibkarId}`, "max"); // low-stock widget üçün
       if (pendingApproval) revalidatePath("/tesdiq");
       return {
         ok: true,
@@ -243,9 +245,10 @@ function serializeForJson<T extends Record<string, unknown>>(o: T | null | undef
 export async function deleteProduct(id: string): Promise<ActionResult> {
   return withTenant(async () => {
     try {
-      // Soft-delete: just mark inactive. Hard delete would cascade to stok/satis.
+      const { sahibkarId } = requireTenant();
       await prisma.mehsullar.update({ where: { id }, data: { aktiv: false } });
-      revalidatePath("/anbar/mehsullar");
+      revalidateTag(`ref:${sahibkarId}:mehsullar`, "max");
+      revalidateTag(`dashboard:${sahibkarId}`, "max");
       return { ok: true };
     } catch (e) {
       console.error("[deleteProduct]", e);
@@ -354,8 +357,10 @@ export async function bulkUpdateProducts(
         });
         count = r.count;
       }
-      revalidatePath("/anbar/mehsullar");
-      revalidatePath("/anbar/stok");
+      const { sahibkarId } = requireTenant();
+      revalidateTag(`ref:${sahibkarId}:mehsullar`, "max");
+      revalidateTag(`dashboard:${sahibkarId}`, "max");
+      revalidateTag(`stok:${sahibkarId}`, "max");
       return { ok: true, data: { count } };
     } catch (e) {
       console.error("[bulkUpdateProducts]", e);
@@ -397,7 +402,6 @@ export async function saveBrand(input: FormData): Promise<ActionResult<{ id: num
         const created = await prisma.markalar.create({ data: { sahibkar_id: sahibkarId, ...data } });
         id = created.id;
       }
-      revalidatePath("/anbar/markalar");
       revalidateTag(`ref:${sahibkarId}:brands`, "max");
       return { ok: true, data: { id } };
     } catch (e) {
@@ -412,7 +416,6 @@ export async function deleteBrand(id: number): Promise<ActionResult> {
     const { sahibkarId } = requireTenant();
     try {
       await prisma.markalar.update({ where: { id }, data: { aktiv: false } });
-      revalidatePath("/anbar/markalar");
       revalidateTag(`ref:${sahibkarId}:brands`, "max");
       return { ok: true };
     } catch (e) {

@@ -1,6 +1,8 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
 
 export type SaleListItem = {
@@ -50,48 +52,73 @@ export type SaleStats = {
   borc_mebleg: number;
 };
 
+/**
+ * Daxili — hesablama. Tenant ID-i explicit ötürülür (cache və multi-tenant safety üçün).
+ *
+ * ⚠️ Köhnə kod-da line 81 raw SQL `WHERE sahibkar_id = (SELECT ... LIMIT 1)`
+ * istifadə edirdi — bu təsadüfi sahibkar seçirdi, multi-tenant data sızması!
+ * İndi explicit sahibkar_id ilə düzəldildi.
+ */
+async function fetchSaleStatsRaw(sahibkarId: string) {
+  const now = new Date();
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const [b, h, a, borc] = await Promise.all([
+    prismaUnscoped.satis_sifarisleri.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true } },
+      _sum: { son_mebleg: true },
+      _count: { _all: true },
+    }),
+    prismaUnscoped.satis_sifarisleri.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: weekStart }, qaralama: { not: true } },
+      _sum: { son_mebleg: true },
+      _count: { _all: true },
+    }),
+    prismaUnscoped.satis_sifarisleri.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, qaralama: { not: true } },
+      _sum: { son_mebleg: true },
+      _count: { _all: true },
+    }),
+    prismaUnscoped.$queryRaw<{ total: number }[]>`
+      SELECT COALESCE(SUM(son_mebleg - COALESCE(odenilmis, 0)), 0)::float AS total
+        FROM satis_sifarisleri
+       WHERE sahibkar_id = ${sahibkarId}::uuid
+         AND status NOT IN ('legv')
+         AND qaralama IS NOT TRUE
+    `,
+  ]);
+
+  return {
+    bugun_count: b._count._all,
+    bugun_mebleg: Number(b._sum.son_mebleg ?? 0),
+    hefte_count: h._count._all,
+    hefte_mebleg: Number(h._sum.son_mebleg ?? 0),
+    ay_count: a._count._all,
+    ay_mebleg: Number(a._sum.son_mebleg ?? 0),
+    borc_total: Number(borc[0]?.total ?? 0),
+  };
+}
+
 export async function getSaleStats(): Promise<SaleStats> {
   return withTenant(async () => {
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay());
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    const [b, h, a, borc] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: today }, qaralama: { not: true } },
-        _sum: { son_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: weekStart }, qaralama: { not: true } },
-        _sum: { son_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, qaralama: { not: true } },
-        _sum: { son_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(SUM(son_mebleg - COALESCE(odenilmis, 0)), 0)::float AS total
-          FROM satis_sifarisleri
-         WHERE sahibkar_id = (SELECT sahibkar_id FROM satis_sifarisleri LIMIT 1)
-           AND status NOT IN ('legv')
-           AND qaralama IS NOT TRUE
-      `,
-    ]);
-
+    const { sahibkarId } = requireTenant();
+    const cached = unstable_cache(
+      () => fetchSaleStatsRaw(sahibkarId),
+      ["sale-stats", sahibkarId],
+      { revalidate: 60, tags: [`sales:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+    );
+    const raw = await cached();
     const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
-
     return {
-      bugun: { count: b._count._all, mebleg: Number(b._sum.son_mebleg ?? 0) * s },
-      bu_hefte: { count: h._count._all, mebleg: Number(h._sum.son_mebleg ?? 0) * s },
-      bu_ay: { count: a._count._all, mebleg: Number(a._sum.son_mebleg ?? 0) * s },
-      borc_mebleg: Number(borc[0]?.total ?? 0) * s,
+      bugun: { count: raw.bugun_count, mebleg: raw.bugun_mebleg * s },
+      bu_hefte: { count: raw.hefte_count, mebleg: raw.hefte_mebleg * s },
+      bu_ay: { count: raw.ay_count, mebleg: raw.ay_mebleg * s },
+      borc_mebleg: raw.borc_total * s,
     };
   });
 }

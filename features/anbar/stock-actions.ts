@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -79,9 +79,8 @@ export async function adjustStock(input: z.input<typeof StockAdjustSchema>): Pro
         });
       });
 
-      revalidatePath("/anbar");
-      revalidatePath("/anbar/mehsullar");
-      revalidatePath("/anbar/hereketler");
+      revalidateTag(`stok:${sahibkarId}`, "max");
+      revalidateTag(`dashboard:${sahibkarId}`, "max");
 
       // Manual stok düzəlişi — auto-push kanal-larına yenilik göndər
       const { emitStockChange } = await import("@/lib/stock-change-emitter");
@@ -185,9 +184,8 @@ export async function transferStock(input: z.input<typeof TransferSchema>): Prom
         });
       });
 
-      revalidatePath("/anbar");
-      revalidatePath("/anbar/mehsullar");
-      revalidatePath("/anbar/transfer");
+      revalidateTag(`stok:${sahibkarId}`, "max");
+      revalidateTag(`dashboard:${sahibkarId}`, "max");
       return { ok: true };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Xəta";
