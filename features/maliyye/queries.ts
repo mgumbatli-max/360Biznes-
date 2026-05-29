@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
@@ -13,52 +14,69 @@ export type FinanceKpis = {
   techizatci_borcu: number; // payables (techizatci-ə borc)
 };
 
+/**
+ * ⚠️ Köhnə kod-da raw SQL customer/supplier debt cəmində sahibkar_id filtri yox
+ * idi — bütün tenant-ların datasını birləşdirirdi. İndi explicit ilə düzəldildi.
+ */
+async function fetchFinanceKpisRaw(sahibkarId: string) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [salesAgg, expenseAgg, openKassa, customers, suppliers] = await Promise.all([
+    prismaUnscoped.satis_sifarisleri.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, status: { not: "legv" }, qaralama: { not: true } },
+      _sum: { odenilmis: true },
+    }),
+    prismaUnscoped.xercl_r.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart } },
+      _sum: { mebleg: true },
+    }),
+    prismaUnscoped.kassalar.aggregate({
+      where: { sahibkar_id: sahibkarId, status: "acig" },
+      _sum: { acilis_qaligi: true },
+    }),
+    prismaUnscoped.$queryRaw<{ total: number }[]>`
+      SELECT COALESCE(SUM(borc), 0)::float AS total
+        FROM kontragentler
+       WHERE sahibkar_id = ${sahibkarId}::uuid
+         AND nov IN ('musteri', 'her_ikisi') AND borc > 0
+    `,
+    prismaUnscoped.$queryRaw<{ total: number }[]>`
+      SELECT COALESCE(ABS(SUM(LEAST(borc, 0))), 0)::float AS total
+        FROM kontragentler
+       WHERE sahibkar_id = ${sahibkarId}::uuid
+         AND nov IN ('techizatci', 'her_ikisi')
+    `,
+  ]);
+
+  return {
+    daxil: Number(salesAgg._sum.odenilmis ?? 0),
+    xaric: Number(expenseAgg._sum.mebleg ?? 0),
+    kassa: Number(openKassa._sum.acilis_qaligi ?? 0),
+    alici: Number(customers[0]?.total ?? 0),
+    techizatci: Number(suppliers[0]?.total ?? 0),
+  };
+}
+
 export async function getFinanceKpis(): Promise<FinanceKpis> {
   return withTenant(async () => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [salesAgg, expenseAgg, openKassa, customers, suppliers] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, status: { not: "legv" }, qaralama: { not: true } },
-        _sum: { odenilmis: true },
-      }),
-      prisma.xercl_r.aggregate({
-        where: { tarix: { gte: monthStart } },
-        _sum: { mebleg: true },
-      }),
-      prisma.kassalar.aggregate({
-        where: { status: "acig" },
-        _sum: { acilis_qaligi: true },
-      }),
-      // Customer debt (we receive)
-      prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(SUM(borc), 0)::float AS total
-          FROM kontragentler
-         WHERE nov IN ('musteri', 'her_ikisi') AND borc > 0
-      `,
-      // Supplier debt (we pay) — borc < 0 means we owe them; or positive in supplier's nov
-      prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(ABS(SUM(LEAST(borc, 0))), 0)::float AS total
-          FROM kontragentler
-         WHERE nov IN ('techizatci', 'her_ikisi')
-      `,
-    ]);
-
-    const daxil = Number(salesAgg._sum.odenilmis ?? 0);
-    const xaric = Number(expenseAgg._sum.mebleg ?? 0);
-
-    // Gizli mod scale tətbiqi — yalnız ekran üçün
+    const { sahibkarId } = requireTenant();
+    const cached = unstable_cache(
+      () => fetchFinanceKpisRaw(sahibkarId),
+      ["finance-kpis", sahibkarId],
+      { revalidate: 60, tags: [`maliyye:${sahibkarId}`] },
+    );
+    const raw = await cached();
     const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
 
     return {
-      daxil_bu_ay: daxil * s,
-      xaric_bu_ay: xaric * s,
-      net_bu_ay: (daxil - xaric) * s,
-      kassa_balans: Number(openKassa._sum.acilis_qaligi ?? 0) * s,
-      alici_borcu: Number(customers[0]?.total ?? 0) * s,
-      techizatci_borcu: Number(suppliers[0]?.total ?? 0) * s,
+      daxil_bu_ay: raw.daxil * s,
+      xaric_bu_ay: raw.xaric * s,
+      net_bu_ay: (raw.daxil - raw.xaric) * s,
+      kassa_balans: raw.kassa * s,
+      alici_borcu: raw.alici * s,
+      techizatci_borcu: raw.techizatci * s,
     };
   });
 }
@@ -77,81 +95,108 @@ export type DashboardKpis = {
   hesab_balans: number;
 };
 
+/**
+ * ⚠️ Köhnə kod-da line 113-120 raw SQL `WHERE nov = ...` (sahibkar_id filtri yox)
+ * — bütün tenant-ların borc/alacaq cəmini birləşdirirdi (multi-tenant leak).
+ * İndi explicit sahibkar_id ilə düzəldildi.
+ */
+async function fetchMaliyyeDashboardKpisRaw(sahibkarId: string) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [
+    bugunSales,
+    bugunExp,
+    ayslaes,
+    ayExp,
+    customers,
+    suppliers,
+    openKassa,
+    hesablar,
+    gozleyenOp,
+  ] = await Promise.all([
+    prismaUnscoped.satis_sifarisleri.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: todayStart }, status: { not: "legv" }, qaralama: { not: true } },
+      _sum: { odenilmis: true },
+    }),
+    prismaUnscoped.xercl_r.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: todayStart } },
+      _sum: { mebleg: true },
+    }),
+    prismaUnscoped.satis_sifarisleri.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, status: { not: "legv" }, qaralama: { not: true } },
+      _sum: { odenilmis: true, umumi_mebleg: true },
+    }),
+    prismaUnscoped.xercl_r.aggregate({
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart } },
+      _sum: { mebleg: true },
+    }),
+    prismaUnscoped.$queryRaw<{ total: number }[]>`
+      SELECT COALESCE(SUM(borc), 0)::float AS total FROM kontragentler
+       WHERE sahibkar_id = ${sahibkarId}::uuid
+         AND nov IN ('musteri', 'her_ikisi') AND borc > 0
+    `,
+    prismaUnscoped.$queryRaw<{ total: number }[]>`
+      SELECT COALESCE(ABS(SUM(LEAST(borc, 0))), 0)::float AS total FROM kontragentler
+       WHERE sahibkar_id = ${sahibkarId}::uuid
+         AND nov IN ('techizatci', 'her_ikisi')
+    `,
+    prismaUnscoped.kassalar.aggregate({
+      where: { sahibkar_id: sahibkarId, status: "acig" },
+      _sum: { acilis_qaligi: true },
+    }),
+    prismaUnscoped.maliye_hesablari.aggregate({
+      where: { sahibkar_id: sahibkarId, aktiv: true },
+      _sum: { qaliq: true },
+    }),
+    prismaUnscoped.finance_operations.count({
+      where: { sahibkar_id: sahibkarId, status: "gozleyen_tesdiq" },
+    }).catch(() => 0),
+  ]);
+
+  const ayGelir = Number(ayslaes._sum.odenilmis ?? 0);
+  const ayXerc = Number(ayExp._sum.mebleg ?? 0);
+  const ayMenfeet = ayGelir - ayXerc;
+
+  return {
+    bugun_gelir: Number(bugunSales._sum.odenilmis ?? 0),
+    bugun_xerc: Number(bugunExp._sum.mebleg ?? 0),
+    bugun_net: Number(bugunSales._sum.odenilmis ?? 0) - Number(bugunExp._sum.mebleg ?? 0),
+    ay_gelir: ayGelir,
+    ay_xerc: ayXerc,
+    ay_menfeet: ayMenfeet,
+    ay_ebitda: ayMenfeet,
+    debitor_cem: Number(customers[0]?.total ?? 0),
+    kreditor_cem: Number(suppliers[0]?.total ?? 0),
+    gozleyen_odenis: Number(gozleyenOp ?? 0),
+    hesab_balans: Number(openKassa._sum.acilis_qaligi ?? 0) + Number(hesablar._sum.qaliq ?? 0),
+  };
+}
+
 export async function getDashboardKpis(): Promise<DashboardKpis> {
   return withTenant(async () => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [
-      bugunSales,
-      bugunExp,
-      ayslaes,
-      ayExp,
-      customers,
-      suppliers,
-      openKassa,
-      hesablar,
-      gozleyenOp,
-    ] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: todayStart }, status: { not: "legv" }, qaralama: { not: true } },
-        _sum: { odenilmis: true },
-      }),
-      prisma.xercl_r.aggregate({
-        where: { tarix: { gte: todayStart } },
-        _sum: { mebleg: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, status: { not: "legv" }, qaralama: { not: true } },
-        _sum: { odenilmis: true, umumi_mebleg: true },
-      }),
-      prisma.xercl_r.aggregate({
-        where: { tarix: { gte: monthStart } },
-        _sum: { mebleg: true },
-      }),
-      prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(SUM(borc), 0)::float AS total FROM kontragentler
-         WHERE nov IN ('musteri', 'her_ikisi') AND borc > 0
-      `,
-      prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(ABS(SUM(LEAST(borc, 0))), 0)::float AS total FROM kontragentler
-         WHERE nov IN ('techizatci', 'her_ikisi')
-      `,
-      prisma.kassalar.aggregate({
-        where: { status: "acig" },
-        _sum: { acilis_qaligi: true },
-      }),
-      prisma.maliye_hesablari.aggregate({
-        where: { aktiv: true },
-        _sum: { qaliq: true },
-      }),
-      prisma.finance_operations.count({
-        where: { status: "gozleyen_tesdiq" },
-      }).catch(() => 0),
-    ]);
-
-    const ayGelir = Number(ayslaes._sum.odenilmis ?? 0);
-    const ayXerc = Number(ayExp._sum.mebleg ?? 0);
-    const ayMenfeet = ayGelir - ayXerc;
-
-    // Gizli mod scale
+    const { sahibkarId } = requireTenant();
+    const cached = unstable_cache(
+      () => fetchMaliyyeDashboardKpisRaw(sahibkarId),
+      ["maliyye-dashboard-kpis", sahibkarId],
+      { revalidate: 60, tags: [`maliyye:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+    );
+    const raw = await cached();
     const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
-
     return {
-      bugun_gelir: Number(bugunSales._sum.odenilmis ?? 0) * s,
-      bugun_xerc: Number(bugunExp._sum.mebleg ?? 0) * s,
-      bugun_net: (Number(bugunSales._sum.odenilmis ?? 0) - Number(bugunExp._sum.mebleg ?? 0)) * s,
-      ay_gelir: ayGelir * s,
-      ay_xerc: ayXerc * s,
-      ay_menfeet: ayMenfeet * s,
-      ay_ebitda: ayMenfeet * s,
-      debitor_cem: Number(customers[0]?.total ?? 0) * s,
-      kreditor_cem: Number(suppliers[0]?.total ?? 0) * s,
-      gozleyen_odenis: Number(gozleyenOp ?? 0),
-      hesab_balans:
-        (Number(openKassa._sum.acilis_qaligi ?? 0) + Number(hesablar._sum.qaliq ?? 0)) * s,
+      bugun_gelir: raw.bugun_gelir * s,
+      bugun_xerc: raw.bugun_xerc * s,
+      bugun_net: raw.bugun_net * s,
+      ay_gelir: raw.ay_gelir * s,
+      ay_xerc: raw.ay_xerc * s,
+      ay_menfeet: raw.ay_menfeet * s,
+      ay_ebitda: raw.ay_ebitda * s,
+      debitor_cem: raw.debitor_cem * s,
+      kreditor_cem: raw.kreditor_cem * s,
+      gozleyen_odenis: raw.gozleyen_odenis,
+      hesab_balans: raw.hesab_balans * s,
     };
   });
 }
