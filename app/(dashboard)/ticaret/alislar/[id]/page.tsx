@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -5,6 +6,7 @@ import { Truck, Package, Calendar, FileText, Tag, Receipt } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { ProductInline } from "@/features/anbar/components/product-inline";
@@ -42,23 +44,16 @@ async function getPurchaseDetail(id: string) {
 
 export default async function PurchaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [p, linkedExpenses, categories, linkedTasks] = await Promise.all([
-    getPurchaseDetail(id),
-    getLinkedExpensesForPurchase(id),
-    getExpenseCategories(),
-    getLinkedTasksForPurchase(id),
-  ]);
+  // Critical-path: yalnız alış detalı — başlıq, sətirlər, totallar bu məlumatla
+  // qurulur. Əlavə xərclər və bağlı tapşırıqlar ayrı Suspense-lərdə yüklənir.
+  const p = await getPurchaseDetail(id);
   if (!p) notFound();
 
   const status = STATUS[p.status ?? "gozlemede"] ?? STATUS.gozlemede;
   const umumi = Number(p.umumi_mebleg ?? 0);
   const odenilmis = Number(p.odenilmis ?? 0);
   const qalig = umumi - odenilmis;
-  const elaveXercCem =
-    linkedExpenses.reduce((s, x) => s + x.mebleg, 0) || Number(p.elave_xerc ?? 0);
-  const realMayaCem = umumi + elaveXercCem;
   const lineCount = p.alis_sifaris_satirlari.length;
-  const elaveXercPerLine = lineCount > 0 ? elaveXercCem / lineCount : 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -163,6 +158,52 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
         </CardContent>
       </Card>
 
+      <Suspense fallback={<Skeleton className="h-48 w-full rounded-xl" />}>
+        <ExpensesSection
+          id={id}
+          fallbackElaveXerc={Number(p.elave_xerc ?? 0)}
+          umumi={umumi}
+          odenilmis={odenilmis}
+          qalig={qalig}
+          lineCount={lineCount}
+          qeyd={p.qeyd ?? null}
+        />
+      </Suspense>
+
+      <Suspense fallback={<Skeleton className="h-40 w-full rounded-xl" />}>
+        <LinkedTasksSection id={id} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function ExpensesSection({
+  id,
+  fallbackElaveXerc,
+  umumi,
+  odenilmis,
+  qalig,
+  lineCount,
+  qeyd,
+}: {
+  id: string;
+  fallbackElaveXerc: number;
+  umumi: number;
+  odenilmis: number;
+  qalig: number;
+  lineCount: number;
+  qeyd: string | null;
+}) {
+  const [linkedExpenses, categories] = await Promise.all([
+    getLinkedExpensesForPurchase(id),
+    getExpenseCategories(),
+  ]);
+  const elaveXercCem = linkedExpenses.reduce((s, x) => s + x.mebleg, 0) || fallbackElaveXerc;
+  const realMayaCem = umumi + elaveXercCem;
+  const elaveXercPerLine = lineCount > 0 ? elaveXercCem / lineCount : 0;
+
+  return (
+    <>
       <Card className="glass">
         <CardHeader className="flex flex-row items-start justify-between pb-2">
           <div>
@@ -228,23 +269,28 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
         </CardContent>
       </Card>
 
-      {p.qeyd && (
+      {qeyd && (
         <Card className="glass">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Qeyd</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="whitespace-pre-wrap text-sm">{p.qeyd}</p>
+            <p className="whitespace-pre-wrap text-sm">{qeyd}</p>
           </CardContent>
         </Card>
       )}
+    </>
+  );
+}
 
-      <LinkedTasksPanel
-        contextType="alis_sifarisi"
-        contextId={id}
-        tasks={linkedTasks}
-      />
-    </div>
+async function LinkedTasksSection({ id }: { id: string }) {
+  const linkedTasks = await getLinkedTasksForPurchase(id);
+  return (
+    <LinkedTasksPanel
+      contextType="alis_sifarisi"
+      contextId={id}
+      tasks={linkedTasks}
+    />
   );
 }
 

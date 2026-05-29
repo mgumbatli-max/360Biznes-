@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -11,6 +12,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { StockAdjustDialog } from "@/features/anbar/components/stock-adjust-dialog";
 import { ProductDialog } from "@/features/anbar/components/product-dialog";
@@ -31,6 +33,8 @@ import { ListTodo, History } from "lucide-react";
 import { getProductHistory, canDeleteHistory } from "@/features/anbar/product-history";
 import { ProductHistoryTab } from "@/features/anbar/components/product-history-tab";
 import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
+import { getMehsulKanalQiymetler } from "@/features/qiymet-kanal/queries";
+import { MehsulKanalQiymetTable } from "@/features/qiymet-kanal/components/mehsul-kanal-qiymet-table";
 
 export const metadata: Metadata = { title: "Məhsul detayı" };
 export const dynamic = "force-dynamic";
@@ -50,18 +54,14 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const session = await auth();
   if (!session?.user) return null;
 
-  const [product, byWarehouse, movements, sales, stats, categories, brands, servisHistory, history, allowHistoryDelete, dailySales] = await Promise.all([
+  // Yalnız header + KPI + qiymət + anbar grid üçün lazım olan minimum sorğular.
+  // Hərəkət, satış, servis, tarixçə, kanal qiyməti — öz Suspense-lərində stream.
+  const [product, byWarehouse, stats, categories, brands] = await Promise.all([
     getProductDetail(id),
     getStockByWarehouse(id),
-    getStockMovements(id, 30),
-    getRecentSalesForProduct(id, 15),
     getProductSalesStats(id),
     getCategoryOptions(),
     getBrandOptions(),
-    getServisHistoryForProduct(id),
-    getProductHistory(id, 100),
-    canDeleteHistory(),
-    getProductDailySales(id, 30),
   ]);
 
   if (!product) notFound();
@@ -232,174 +232,27 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Movement history */}
-        <Card className="glass">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Son anbar hərəkətləri</CardTitle>
-            <p className="text-xs text-muted-foreground">Son 30 əməliyyat</p>
-          </CardHeader>
-          <CardContent className="p-0 max-h-[500px] overflow-y-auto">
-            {movements.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Hərəkət yoxdur</p>
-            ) : (
-              <div className="divide-y divide-border/40">
-                {movements.map((m) => {
-                  const meta = MOVEMENT_LABEL[m.nov] ?? { label: m.nov, icon: AlertTriangle, tone: "text-muted-foreground" };
-                  const Icon = meta.icon;
-                  const sign = ["medaxil", "transfer_giris", "qaytarma_giris"].includes(m.nov) ? "+" : "−";
-                  return (
-                    <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
-                      <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${meta.tone}`} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="font-medium">{meta.label}</span>
-                          <span className="text-xs text-muted-foreground">{m.anbar_ad}</span>
-                        </div>
-                        <div className="mt-0.5 text-xs text-muted-foreground">
-                          {m.tarix ? formatDate(m.tarix, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
-                          {m.edilen_ad && ` · ${m.edilen_ad}`}
-                          {m.qeyd && ` · ${m.qeyd}`}
-                        </div>
-                      </div>
-                      <div className={`tabular-nums font-semibold ${meta.tone}`}>
-                        {sign} {formatNumber(m.miqdar, 0)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <Suspense fallback={<Skeleton className="h-[500px] rounded-xl" />}>
+          <MovementsSection id={id} />
+        </Suspense>
 
-        {/* Daily sales trend — drill-down chart */}
-        <ProductDailyChart data={dailySales} days={30} />
+        <Suspense fallback={<Skeleton className="h-[500px] rounded-xl" />}>
+          <DailyChartSection id={id} />
+        </Suspense>
 
-        {/* Recent sales */}
-        <Card className="glass">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Son satışlar</CardTitle>
-            <p className="text-xs text-muted-foreground">Bu məhsulu alan müştərilər</p>
-          </CardHeader>
-          <CardContent className="p-0 max-h-[500px] overflow-y-auto">
-            {sales.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">Satış yoxdur</p>
-            ) : (
-              <div className="divide-y divide-border/40">
-                {sales.map((s) => (
-                  <Link
-                    key={s.sale_id}
-                    href={`/ticaret/satislar/${s.sale_id}`}
-                    className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-secondary/40"
-                  >
-                    <ShoppingCart className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="font-mono font-medium">{s.nomre}</span>
-                      </div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {s.tarix && formatDate(s.tarix)}
-                        {s.musteri_ad && ` · ${s.musteri_ad}`}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="tabular-nums font-medium">{formatNumber(Number(s.miqdar), 0)} əd</div>
-                      <div className="text-xs text-muted-foreground tabular-nums">{formatMoney(Number(s.cemi))}</div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <Suspense fallback={<Skeleton className="h-[500px] rounded-xl" />}>
+          <RecentSalesSection id={id} />
+        </Suspense>
       </div>
 
-      {/* Servis tarixçəsi */}
-      <Card className="glass">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Wrench className="h-4 w-4" /> Servis tarixçəsi
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">Bu məhsulla bağlı servis sifarişləri</p>
-            </div>
-            <div className="flex gap-3 text-xs">
-              <div className="rounded-md border border-border/40 px-3 py-1.5">
-                <div className="text-[10.5px] uppercase text-muted-foreground">Cəmi</div>
-                <div className="font-semibold tabular-nums">{servisHistory.stats.total}</div>
-              </div>
-              <div className="rounded-md border border-border/40 px-3 py-1.5">
-                <div className="text-[10.5px] uppercase text-muted-foreground">Bu il</div>
-                <div className="font-semibold tabular-nums text-info">{servisHistory.stats.thisYear}</div>
-              </div>
-              <div className="rounded-md border border-border/40 px-3 py-1.5">
-                <div className="text-[10.5px] uppercase text-muted-foreground">Aktiv</div>
-                <div className="font-semibold tabular-nums text-warning">{servisHistory.stats.active}</div>
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {servisHistory.rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Bu məhsula aid servis qeydi yoxdur</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="border-y border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2">Nömrə</th>
-                  <th className="px-4 py-2">Tarix</th>
-                  <th className="px-4 py-2">Müştəri</th>
-                  <th className="px-4 py-2">Problem</th>
-                  <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2 text-right">Ödəniş</th>
-                  <th className="px-4 py-2">Texnik</th>
-                  <th className="px-4 py-2 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {servisHistory.rows.map((r) => {
-                  const st = SERVIS_STATUS_LABELS[r.status] ?? SERVIS_STATUS_LABELS.qebul_edildi;
-                  return (
-                    <tr key={r.id} className="border-b border-border/30 last:border-0 hover:bg-secondary/30">
-                      <td className="px-4 py-2.5 font-mono text-xs">{r.nomre}</td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                        {r.yaradildi ? formatDate(r.yaradildi) : "—"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div>{r.musteri_ad}</div>
-                        <div className="text-[10.5px] text-muted-foreground">{r.musteri_telefon}</div>
-                      </td>
-                      <td className="px-4 py-2.5 max-w-[260px] truncate text-xs" title={r.problem_tesviri}>
-                        {r.problem_tesviri}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <Badge variant="outline" className={`${st.cls} text-[10px]`}>{st.label}</Badge>
-                      </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-xs">
-                        {formatMoney(r.musteriden_alinan)}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                        {r.texniki_ad ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        <Link
-                          href={`/servis/${r.id}`}
-                          className="inline-flex items-center text-xs text-primary-light hover:underline"
-                        >
-                          Bax <ArrowRight className="ml-1 h-3 w-3" />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+      <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>
+        <ServisHistorySection id={id} />
+      </Suspense>
 
-      {/* Bağlı tapşırıqlar */}
+      <Suspense fallback={<Skeleton className="h-48 rounded-xl" />}>
+        <KanalQiymetSection mehsulId={product.id} />
+      </Suspense>
+
       <Card className="glass">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -412,36 +265,10 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
 
-      {/* Məhsul tarixçəsi — audit_log əsaslı */}
-      <Card className="glass">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <History className="h-4 w-4" /> Tarixçə
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Məhsul kartında edilmiş bütün dəyişikliklər — kim, nə zaman, hansı sahə.
-            Yalnız sahibkar və admin qeydləri silə bilər.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <ProductHistoryTab
-            productId={product.id}
-            entries={history.map((h) => ({
-              id: h.id,
-              yaradildi: h.yaradildi,
-              emeliyyat: h.emeliyyat,
-              istifadeci_ad: h.istifadeci_ad,
-              url: h.url,
-              status: h.status,
-              sebeb: h.sebeb,
-              changes: h.changes,
-            }))}
-            canDelete={allowHistoryDelete}
-          />
-        </CardContent>
-      </Card>
+      <Suspense fallback={<Skeleton className="h-48 rounded-xl" />}>
+        <HistorySection productId={product.id} />
+      </Suspense>
 
-      {/* Misc info */}
       <Card className="glass">
         <CardContent className="grid grid-cols-2 gap-3 py-4 text-xs sm:grid-cols-4">
           <Field label="Yaradılıb" value={product.yaradildi ? formatDate(product.yaradildi) : "—"} />
@@ -451,6 +278,234 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+async function MovementsSection({ id }: { id: string }) {
+  const movements = await getStockMovements(id, 30);
+  return (
+    <Card className="glass">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Son anbar hərəkətləri</CardTitle>
+        <p className="text-xs text-muted-foreground">Son 30 əməliyyat</p>
+      </CardHeader>
+      <CardContent className="p-0 max-h-[500px] overflow-y-auto">
+        {movements.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Hərəkət yoxdur</p>
+        ) : (
+          <div className="divide-y divide-border/40">
+            {movements.map((m) => {
+              const meta = MOVEMENT_LABEL[m.nov] ?? { label: m.nov, icon: AlertTriangle, tone: "text-muted-foreground" };
+              const Icon = meta.icon;
+              const sign = ["medaxil", "transfer_giris", "qaytarma_giris"].includes(m.nov) ? "+" : "−";
+              return (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <Icon className={`h-3.5 w-3.5 flex-shrink-0 ${meta.tone}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-medium">{meta.label}</span>
+                      <span className="text-xs text-muted-foreground">{m.anbar_ad}</span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {m.tarix ? formatDate(m.tarix, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                      {m.edilen_ad && ` · ${m.edilen_ad}`}
+                      {m.qeyd && ` · ${m.qeyd}`}
+                    </div>
+                  </div>
+                  <div className={`tabular-nums font-semibold ${meta.tone}`}>
+                    {sign} {formatNumber(m.miqdar, 0)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+async function DailyChartSection({ id }: { id: string }) {
+  const dailySales = await getProductDailySales(id, 30);
+  return <ProductDailyChart data={dailySales} days={30} />;
+}
+
+async function RecentSalesSection({ id }: { id: string }) {
+  const sales = await getRecentSalesForProduct(id, 15);
+  return (
+    <Card className="glass">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Son satışlar</CardTitle>
+        <p className="text-xs text-muted-foreground">Bu məhsulu alan müştərilər</p>
+      </CardHeader>
+      <CardContent className="p-0 max-h-[500px] overflow-y-auto">
+        {sales.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Satış yoxdur</p>
+        ) : (
+          <div className="divide-y divide-border/40">
+            {sales.map((s) => (
+              <Link
+                key={s.sale_id}
+                href={`/ticaret/satislar/${s.sale_id}`}
+                className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-secondary/40"
+              >
+                <ShoppingCart className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-mono font-medium">{s.nomre}</span>
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {s.tarix && formatDate(s.tarix)}
+                    {s.musteri_ad && ` · ${s.musteri_ad}`}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="tabular-nums font-medium">{formatNumber(Number(s.miqdar), 0)} əd</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{formatMoney(Number(s.cemi))}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+async function ServisHistorySection({ id }: { id: string }) {
+  const servisHistory = await getServisHistoryForProduct(id);
+  return (
+    <Card className="glass">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wrench className="h-4 w-4" /> Servis tarixçəsi
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Bu məhsulla bağlı servis sifarişləri</p>
+          </div>
+          <div className="flex gap-3 text-xs">
+            <div className="rounded-md border border-border/40 px-3 py-1.5">
+              <div className="text-[10.5px] uppercase text-muted-foreground">Cəmi</div>
+              <div className="font-semibold tabular-nums">{servisHistory.stats.total}</div>
+            </div>
+            <div className="rounded-md border border-border/40 px-3 py-1.5">
+              <div className="text-[10.5px] uppercase text-muted-foreground">Bu il</div>
+              <div className="font-semibold tabular-nums text-info">{servisHistory.stats.thisYear}</div>
+            </div>
+            <div className="rounded-md border border-border/40 px-3 py-1.5">
+              <div className="text-[10.5px] uppercase text-muted-foreground">Aktiv</div>
+              <div className="font-semibold tabular-nums text-warning">{servisHistory.stats.active}</div>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {servisHistory.rows.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Bu məhsula aid servis qeydi yoxdur</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="border-y border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2">Nömrə</th>
+                <th className="px-4 py-2">Tarix</th>
+                <th className="px-4 py-2">Müştəri</th>
+                <th className="px-4 py-2">Problem</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2 text-right">Ödəniş</th>
+                <th className="px-4 py-2">Texnik</th>
+                <th className="px-4 py-2 w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {servisHistory.rows.map((r) => {
+                const st = SERVIS_STATUS_LABELS[r.status] ?? SERVIS_STATUS_LABELS.qebul_edildi;
+                return (
+                  <tr key={r.id} className="border-b border-border/30 last:border-0 hover:bg-secondary/30">
+                    <td className="px-4 py-2.5 font-mono text-xs">{r.nomre}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {r.yaradildi ? formatDate(r.yaradildi) : "—"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div>{r.musteri_ad}</div>
+                      <div className="text-[10.5px] text-muted-foreground">{r.musteri_telefon}</div>
+                    </td>
+                    <td className="px-4 py-2.5 max-w-[260px] truncate text-xs" title={r.problem_tesviri}>
+                      {r.problem_tesviri}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Badge variant="outline" className={`${st.cls} text-[10px]`}>{st.label}</Badge>
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-xs">
+                      {formatMoney(r.musteriden_alinan)}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {r.texniki_ad ?? "—"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      <Link
+                        href={`/servis/${r.id}`}
+                        className="inline-flex items-center text-xs text-primary-light hover:underline"
+                      >
+                        Bax <ArrowRight className="ml-1 h-3 w-3" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+async function KanalQiymetSection({ mehsulId }: { mehsulId: string }) {
+  const kanalQiymet = await getMehsulKanalQiymetler(mehsulId).catch(() => ({ baza: 0, min_baza: 0, rows: [] }));
+  return (
+    <MehsulKanalQiymetTable
+      mehsulId={mehsulId}
+      baza={kanalQiymet.baza}
+      minBaza={kanalQiymet.min_baza}
+      initial={kanalQiymet.rows}
+    />
+  );
+}
+
+async function HistorySection({ productId }: { productId: string }) {
+  const [history, allowHistoryDelete] = await Promise.all([
+    getProductHistory(productId, 100),
+    canDeleteHistory(),
+  ]);
+  return (
+    <Card className="glass">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <History className="h-4 w-4" /> Tarixçə
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Məhsul kartında edilmiş bütün dəyişikliklər — kim, nə zaman, hansı sahə.
+          Yalnız sahibkar və admin qeydləri silə bilər.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <ProductHistoryTab
+          productId={productId}
+          entries={history.map((h) => ({
+            id: h.id,
+            yaradildi: h.yaradildi,
+            emeliyyat: h.emeliyyat,
+            istifadeci_ad: h.istifadeci_ad,
+            url: h.url,
+            status: h.status,
+            sebeb: h.sebeb,
+            changes: h.changes,
+          }))}
+          canDelete={allowHistoryDelete}
+        />
+      </CardContent>
+    </Card>
   );
 }
 

@@ -9,6 +9,7 @@ import { checkDiscountLimit, requestDiscountApproval } from "@/features/ticaret/
 import { checkCustomerCreditLimit } from "@/features/ticaret/customer-tier";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
+import { emitStockChange } from "@/lib/stock-change-emitter";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -258,6 +259,10 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
 
       revalidatePath("/pos");
       revalidatePath("/dashboard");
+
+      // Stoku dəyişən məhsulları kanal-larda avtomatik sync — arxa fonda
+      emitStockChange(data.lines.map((l) => l.mehsul_id));
+
       return {
         ok: true as const,
         satis_id: result.id,

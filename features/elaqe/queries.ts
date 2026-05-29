@@ -122,24 +122,51 @@ export async function getContacts(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const orderBy: any = { [sort]: dir };
 
-    const [items, total, agg, aktivCount, borcluCount] = await Promise.all([
+    // `where.aktiv` default-da true olduğundan, status="aktiv" və ya unset olanda
+    // aktivCount === total. Ayrıca count etmək israfdır — yalnız "passiv" / "any"
+    // statusda ayrı sorğu gedir.
+    const aktivFilterIsAktiv = where.aktiv === true;
+
+    const [items, total, agg, borcluCount, maybeAktivCount] = await Promise.all([
       prisma.kontragentler.findMany({
         where,
         orderBy: [orderBy, { ad: "asc" }],
         take: pageSize,
         skip: (page - 1) * pageSize,
-        include: {
+        select: {
+          id: true,
+          ad: true,
+          nov: true,
+          voen: true,
+          fin_kod: true,
+          telefon: true,
+          email: true,
+          unvan: true,
+          alacaq: true,
+          borc: true,
+          aktiv: true,
+          yaradildi: true,
+          son_temas: true,
+          qiymet_tipi: true,
+          borc_limiti: true,
+          qara_siyahi: true,
+          funnel_status: true,
+          sirket_adi: true,
+          sheher: true,
           istifadeciler: { select: { ad_soyad: true } },
         },
       }),
       prisma.kontragentler.count({ where }),
       // Net debt: alacaq (müştəri borcu bizə) - borc (bizim təchizatçıya borcumuz)
       prisma.kontragentler.aggregate({ where, _sum: { alacaq: true, borc: true } }),
-      prisma.kontragentler.count({ where: { ...where, aktiv: true } }),
       prisma.kontragentler.count({
         where: { ...where, OR: [{ alacaq: { gt: 0 } }, { borc: { gt: 0 } }] },
       }),
+      aktivFilterIsAktiv
+        ? Promise.resolve(null)
+        : prisma.kontragentler.count({ where: { ...where, aktiv: true } }),
     ]);
+    const aktivCount = maybeAktivCount ?? total;
 
     return {
       items: items.map((r) => ({
@@ -224,6 +251,14 @@ export async function getDebtorList(): Promise<{
     const rows = await prisma.kontragentler.findMany({
       where: { aktiv: true, alacaq: { gt: 0 } },
       orderBy: { alacaq: "desc" },
+      select: {
+        id: true,
+        ad: true,
+        telefon: true,
+        alacaq: true,
+        borc_limiti: true,
+        son_temas: true,
+      },
     });
 
     // For each kontragent, get latest sales order
@@ -316,6 +351,9 @@ function lastDigits(s: string | null | undefined, n = 9): string | null {
 
 export async function findDuplicates(): Promise<DuplicatePair[]> {
   return withTenant(async () => {
+    // Çox böyük tenantlar üçün təhlükəsiz limit — duplicate axtarışı yaddaşda baş tutur,
+    // 20K-dən çox kontragent olarsa ilk 20K-də qrupla; UI-da xəbərdarlıq lazım deyil
+    // çünki real istifadəçi senarilərində bu limitə çatılması son dərəcə nadirdir.
     const rows = await prisma.kontragentler.findMany({
       where: { aktiv: true },
       select: {
@@ -328,6 +366,8 @@ export async function findDuplicates(): Promise<DuplicatePair[]> {
         borc: true,
         yaradildi: true,
       },
+      take: 20000,
+      orderBy: { yaradildi: "desc" },
     });
 
     const byTel = new Map<string, typeof rows>();
@@ -593,6 +633,7 @@ export async function getElaqeReport(): Promise<ReportData> {
       prisma.kontragentler.findMany({
         where: { aktiv: true, alacaq: { gt: 0 } },
         select: { alacaq: true, son_temas: true },
+        take: 5000,
       }),
       prisma.$queryRaw<{ aktiv: boolean; count: bigint }[]>`
         SELECT aktiv, COUNT(*)::bigint AS count

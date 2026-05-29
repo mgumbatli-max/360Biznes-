@@ -4,6 +4,8 @@ import {
   Share2,
   Send,
   RefreshCw,
+  Webhook,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 
@@ -19,6 +21,8 @@ const TABS: Tab[] = [
   { href: "/marketplace/multi-sync",  label: "Multi-Sync",   Icon: RefreshCw, desc: "Unified stok + sifariş" },
   { href: "/marketplace/sosial",      label: "Sosial hesab", Icon: Share2,   desc: "Instagram, Facebook, TikTok" },
   { href: "/marketplace/avto-poster", label: "Avto-Poster",  Icon: Send,     desc: "Post composer + planlayıcı" },
+  { href: "/marketplace/webhook-orders", label: "Webhook sifarişləri", Icon: Webhook, desc: "Platforma webhook ilə qəbul olunan sifarişlər" },
+  { href: "/marketplace/sync-health",    label: "Sync sağlamlığı",    Icon: Activity, desc: "Inbound/Webhook/Outbound real-time monitorinq" },
 ];
 
 export function MarketplaceSubNav({ active }: { active: string }) {

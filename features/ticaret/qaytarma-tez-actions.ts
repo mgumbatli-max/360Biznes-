@@ -198,6 +198,15 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
       revalidatePath("/ticaret/qaytarma");
       revalidatePath("/ticaret/qaytarma/tez");
       revalidatePath("/ticaret");
+
+      // Sürətli qaytarma — stok artar, kanal-larına sync
+      try {
+        const { emitStockChange } = await import("@/lib/stock-change-emitter");
+        emitStockChange([input.mehsul_id]);
+      } catch (e) {
+        console.error("[fastReturn.emitStockChange]", e);
+      }
+
       return { ok: true, id: result.id, nomre: result.nomre };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta baş verdi" };

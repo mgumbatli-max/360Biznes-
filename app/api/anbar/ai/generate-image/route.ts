@@ -66,14 +66,47 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Fallback: Pollinations.ai — pulsuz AI generasiya, key tələb etmir
-  // URL formatı CDN-də cache olunur, hər prompt üçün eyni şəkli qaytarır
-  const q = encodeURIComponent(`product photo: ${prompt}, white background, professional, centered`);
-  const fallback = `https://image.pollinations.ai/prompt/${q}?width=600&height=600&nologo=true`;
-  return NextResponse.json({
-    url: fallback,
-    provider: "pollinations-fallback",
-    is_mock: true,
-    notice: "Pollinations.ai pulsuz AI ilə şəkil generasiya etdi. Daha yüksək keyfiyyət üçün OPENAI_API_KEY əlavə edin (DALL-E 3).",
-  });
+  // Fallback: Pollinations.ai — pulsuz AI generasiya, key tələb etmir.
+  // CRİTİK: Pollinations URL-i 24 saatdan sonra etibarsız ola bilər (CDN cache TTL),
+  // ona görə şəkili lokal saxlayırıq ki, URL həmişə işləsin.
+  try {
+    const q = encodeURIComponent(`product photo: ${prompt}, white background, professional, centered`);
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${q}?width=600&height=600&nologo=true`;
+    const imgRes = await fetch(pollinationsUrl, {
+      // Pollinations bəzən 30+ saniyə çəkir — Vercel timeout-undan az verirük
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!imgRes.ok) {
+      return NextResponse.json(
+        {
+          error: `Pollinations xətası: ${imgRes.status}`,
+          url: pollinationsUrl,
+          provider: "pollinations-direct",
+          is_mock: true,
+          notice: "Şəkil yüklənə bilmədi, müvəqqəti URL qaytarıldı (24 saat sonra ölə bilər).",
+        },
+        { status: 200 },
+      );
+    }
+    const buf = Buffer.from(await imgRes.arrayBuffer());
+    if (buf.length === 0) {
+      return NextResponse.json({ error: "Boş şəkil cavabı" }, { status: 502 });
+    }
+    const uploadsDir = path.join(process.cwd(), ...(["public", "uploads", "mehsul"] as string[]));
+    await mkdir(uploadsDir, { recursive: true });
+    const filename = `ai-${randomUUID()}.jpg`;
+    await writeFile(path.join(uploadsDir, filename), buf);
+    return NextResponse.json({
+      url: `/uploads/mehsul/${filename}`,
+      provider: "pollinations-saved",
+      is_mock: false,
+      notice: "Pollinations.ai pulsuz AI ilə şəkil yaradıldı və lokal saxlandı. Daha yüksək keyfiyyət üçün OPENAI_API_KEY əlavə edin (DALL-E 3).",
+    });
+  } catch (e) {
+    console.error("[ai/generate-image] Pollinations exception:", e);
+    return NextResponse.json(
+      { error: "AI şəkil generasiyası uğursuz oldu (timeout və ya şəbəkə xətası)" },
+      { status: 502 },
+    );
+  }
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -43,7 +44,7 @@ export async function getNezaretBadges(): Promise<Partial<Record<NezaretTab, Tab
 }
 
 /** Single number for the sidebar badge — total things needing attention. */
-export async function getNezaretSidebarTotal(): Promise<{ count: number; tone: "rose" | "amber" | "emerald" }> {
+export const getNezaretSidebarTotal = cache(async (): Promise<{ count: number; tone: "rose" | "amber" | "emerald" }> => {
   return withTenant(async () => {
     try {
       const { istifadeciId } = requireTenant();
@@ -63,4 +64,4 @@ export async function getNezaretSidebarTotal(): Promise<{ count: number; tone: "
       return { count: 0, tone: "emerald" };
     }
   });
-}
+});

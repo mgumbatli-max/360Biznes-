@@ -276,6 +276,15 @@ export async function createMarketSatis(
       revalidatePath("/ticaret/emeliyyat");
       revalidatePath("/ticaret/market-satis");
       revalidatePath("/ticaret/satislar");
+
+      // Market satışı (Wolt/Bolt/və s. manual) — kanal-larına sync
+      try {
+        const { emitStockChange } = await import("@/lib/stock-change-emitter");
+        emitStockChange(data.lines.map((l) => l.mehsul_id));
+      } catch (e) {
+        console.error("[createMarketSatis.emitStockChange]", e);
+      }
+
       return {
         ok: true as const,
         satis_id: result.id,

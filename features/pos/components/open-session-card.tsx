@@ -23,12 +23,22 @@ export function OpenSessionCard({ filiallar }: { filiallar: FilialOption[] }) {
     setError(null);
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
-      const res = await openKassa(fd);
-      if (!res.ok) {
-        setError(res.error);
-        toast.error(res.error);
-      } else {
-        toast.success("Sessiya açıldı");
+      try {
+        const res = await openKassa(fd);
+        if (!res.ok) {
+          setError(res.error);
+          toast.error(res.error);
+        } else {
+          toast.success("Sessiya açıldı");
+        }
+      } catch (err) {
+        // Uncaught exception (network drop, server timeout, Vercel cold-start fail).
+        // Əvvəlcə bu yerdə yalnız console.error olurdu, istifadəçi spinner-i
+        // əbədi görürdü — indi açıq error mesajı göstərilir.
+        const msg = err instanceof Error ? err.message : "Naməlum xəta — şəbəkə və ya server problemi";
+        console.error("[openKassa] uncaught", err);
+        setError(msg);
+        toast.error(`Sessiya açıla bilmədi: ${msg}`);
       }
     });
   }

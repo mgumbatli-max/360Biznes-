@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
+import { silentFallback } from "@/lib/safe-query";
 import type { DateRange } from "./shared";
 
 export type SalesFilter = {
@@ -73,7 +74,7 @@ export async function getSalesKpi(f: SalesFilter): Promise<SalesKpi> {
           FROM qaytarma_sifarisleri
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND tarix BETWEEN ${f.range.from} AND ${f.range.to}
-      `.catch(() => [{ say: 0n, mebleg: 0 }]),
+      `.catch(silentFallback("getSatisKpi.qaytarma", [{ say: 0n, mebleg: 0 }])),
     ]);
 
     const total_count = totalAgg._count._all;

@@ -63,7 +63,16 @@ export async function syncAllMarketplaces(): Promise<ActionResult<{ synced: numb
 
       revalidatePath("/marketplace");
       revalidatePath("/marketplace/multi-sync");
-      return { ok: true, data: { synced, failed, logs } };
+      return {
+        ok: true,
+        data: {
+          synced,
+          failed,
+          logs,
+          is_mock: true,
+          notice: "MOCK SYNC: Real platforma adapter-ləri (Wolt/Trendyol/Bolt) qoşulmayıb. Yalnız son_sync tarixi yenilənir, məhsul/stok göndərilmir.",
+        },
+      };
     } catch (e) {
       console.error("[syncAllMarketplaces]", e);
       return { ok: false, error: "Toplu sync alınmadı" };

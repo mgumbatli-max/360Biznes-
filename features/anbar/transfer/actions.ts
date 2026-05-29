@@ -170,6 +170,21 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
       });
       revalidatePath("/anbar/transfer");
       revalidatePath("/anbar/hereketler");
+
+      // Transfer qəbul edildikdə hər iki anbarda stok dəyişir — kanal-larına sync
+      try {
+        const t = await prisma.anbar_transferleri.findUnique({
+          where: { id },
+          include: { transfer_satirlari: { select: { mehsul_id: true } } },
+        });
+        if (t) {
+          const { emitStockChange } = await import("@/lib/stock-change-emitter");
+          emitStockChange(t.transfer_satirlari.map((s) => s.mehsul_id));
+        }
+      } catch (e) {
+        console.error("[acceptTransfer.emitStockChange]", e);
+      }
+
       return { ok: true };
     } catch (e) {
       console.error("[acceptTransfer]", e);

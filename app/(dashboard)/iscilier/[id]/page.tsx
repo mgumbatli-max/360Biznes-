@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { BackButton } from "@/components/ui/back-button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { Badge } from "@/components/ui/badge";
@@ -37,10 +39,19 @@ export default async function EmployeeDetailPage({
 }) {
   const { id } = await params;
   const sp = (await searchParams) ?? {};
-  const now = new Date();
-  // İcazə yoxlanışı — kim bonus profili dəyişdirə bilər
-  const session = await auth();
-  const icazeler = await getRequestPermissions();
+
+  // Critical-path: header + edit dialog + icazə kontekstu.
+  // 4 paralel sorğu — istifadəçi əsasları, rol siyahısı, filial siyahısı, auth.
+  // Tab data (13 əlavə sorğu) ayrı Suspense-də paralel yüklənir.
+  const [e, roles, filiallar, session, icazeler] = await Promise.all([
+    getEmployeeFullDetail(id),
+    getRoleOptions(),
+    getFilialOptions(),
+    auth(),
+    getRequestPermissions(),
+  ]);
+  if (!e) notFound();
+
   const currentUserId = session?.user?.id ?? "";
   const currentRol = session?.user?.rol_id ?? 0;
   const canEditBonus =
@@ -49,25 +60,6 @@ export default async function EmployeeDetailPage({
     icazeler.includes("istifadeci.idare") ||
     icazeler.includes("sahibkar.access");
   const isViewingSelf = currentUserId === id;
-  const [e, sales, attendance, bordro, leaves, tasks, audit, roles, filiallar, bonusEvents, commission, documents, schedule, extras, bonusProfil, bonusCalc] = await Promise.all([
-    getEmployeeFullDetail(id),
-    getEmployeeSales(id),
-    getEmployeeAttendance(id),
-    getEmployeeBordroHistory(id),
-    getEmployeeLeaves(id),
-    getEmployeeTasks(id),
-    getEmployeeAuditLog(id),
-    getRoleOptions(),
-    getFilialOptions(),
-    getEmployeeBonusEvents(id),
-    getCommissionForUser(id, now.getFullYear(), now.getMonth() + 1),
-    getEmployeeDocuments(id),
-    getEmployeeSchedule(id),
-    getEmployeeExtras(id),
-    getBonusProfil(id),
-    calculateMonthlyBonus(id, now.getFullYear(), now.getMonth() + 1),
-  ]);
-  if (!e) notFound();
 
   const initials = e.ad_soyad.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 
@@ -93,6 +85,27 @@ export default async function EmployeeDetailPage({
     default_filial_ad: e.filiallar_istifadeciler_default_filial_idTofiliallar?.ad ?? null,
     profil_sekil: e.profil_sekil,
     status: e.isden_cixdi ? "cixib" : !e.aktiv ? "passiv" : "aktiv",
+  };
+
+  const detail = {
+    id: e.id,
+    ad_soyad: e.ad_soyad,
+    email: e.email,
+    telefon: e.telefon,
+    vezife: e.vezife,
+    rol_ad: e.roles?.ad ?? "—",
+    ise_baslama: e.ise_baslama,
+    son_giris: e.son_giris,
+    aktiv: e.aktiv ?? true,
+    aylik_maas: Number(e.aylik_maas ?? 0),
+    fin_kod: e.fin_kod,
+    dogum_tarixi: e.dogum_tarixi,
+    unvan: e.unvan,
+    bank_ad: e.bank_ad,
+    bank_hesab: e.bank_hesab,
+    default_filial_ad: e.filiallar_istifadeciler_default_filial_idTofiliallar?.ad ?? null,
+    profil_sekil: e.profil_sekil,
+    isden_cixdi: e.isden_cixdi,
   };
 
   return (
@@ -126,44 +139,99 @@ export default async function EmployeeDetailPage({
         <EmployeeDialog roles={roles} filiallar={filiallar} initial={employeeRow} trigger="edit" />
       </header>
 
-      <EmployeeDetailTabs
-        detail={{
-          id: e.id,
-          ad_soyad: e.ad_soyad,
-          email: e.email,
-          telefon: e.telefon,
-          vezife: e.vezife,
-          rol_ad: e.roles?.ad ?? "—",
-          ise_baslama: e.ise_baslama,
-          son_giris: e.son_giris,
-          aktiv: e.aktiv ?? true,
-          aylik_maas: Number(e.aylik_maas ?? 0),
-          fin_kod: e.fin_kod,
-          dogum_tarixi: e.dogum_tarixi,
-          unvan: e.unvan,
-          bank_ad: e.bank_ad,
-          bank_hesab: e.bank_hesab,
-          default_filial_ad: e.filiallar_istifadeciler_default_filial_idTofiliallar?.ad ?? null,
-          profil_sekil: e.profil_sekil,
-          isden_cixdi: e.isden_cixdi,
-        }}
-        sales={sales}
-        attendance={attendance}
-        bordro={bordro}
-        leaves={leaves}
-        tasks={tasks}
-        audit={audit}
-        initialTab={sp.tab}
-        bonusEvents={bonusEvents}
-        commission={commission}
-        documents={documents}
-        schedule={schedule}
-        extras={extras}
-        bonusProfil={bonusProfil}
-        bonusCalc={bonusCalc}
-        canEditBonus={canEditBonus}
-        isViewingSelf={isViewingSelf}
-      />
+      <Suspense fallback={<EmployeeTabsSkeleton />}>
+        <EmployeeTabsSection
+          id={id}
+          detail={detail}
+          initialTab={sp.tab}
+          canEditBonus={canEditBonus}
+          isViewingSelf={isViewingSelf}
+        />
+      </Suspense>
     </div>
+  );
+}
+
+function EmployeeTabsSkeleton() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-10 w-full rounded-md" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
+      </div>
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </div>
+  );
+}
+
+async function EmployeeTabsSection({
+  id,
+  detail,
+  initialTab,
+  canEditBonus,
+  isViewingSelf,
+}: {
+  id: string;
+  detail: Parameters<typeof EmployeeDetailTabs>[0]["detail"];
+  initialTab?: string;
+  canEditBonus: boolean;
+  isViewingSelf: boolean;
+}) {
+  const now = new Date();
+  // 13 ağır sorğu burada paralel — kritik header dərhal render olunduqdan
+  // sonra tablar streaming ilə gəlir. Hamısı eyni `Promise.all`-də ki, ən
+  // yavaş sorğu (worst-case) hamısının yeniləndiyi vaxtdır.
+  const [
+    sales,
+    attendance,
+    bordro,
+    leaves,
+    tasks,
+    audit,
+    bonusEvents,
+    commission,
+    documents,
+    schedule,
+    extras,
+    bonusProfil,
+    bonusCalc,
+  ] = await Promise.all([
+    getEmployeeSales(id),
+    getEmployeeAttendance(id),
+    getEmployeeBordroHistory(id),
+    getEmployeeLeaves(id),
+    getEmployeeTasks(id),
+    getEmployeeAuditLog(id),
+    getEmployeeBonusEvents(id),
+    getCommissionForUser(id, now.getFullYear(), now.getMonth() + 1),
+    getEmployeeDocuments(id),
+    getEmployeeSchedule(id),
+    getEmployeeExtras(id),
+    getBonusProfil(id),
+    calculateMonthlyBonus(id, now.getFullYear(), now.getMonth() + 1),
+  ]);
+
+  return (
+    <EmployeeDetailTabs
+      detail={detail}
+      sales={sales}
+      attendance={attendance}
+      bordro={bordro}
+      leaves={leaves}
+      tasks={tasks}
+      audit={audit}
+      initialTab={initialTab}
+      bonusEvents={bonusEvents}
+      commission={commission}
+      documents={documents}
+      schedule={schedule}
+      extras={extras}
+      bonusProfil={bonusProfil}
+      bonusCalc={bonusCalc}
+      canEditBonus={canEditBonus}
+      isViewingSelf={isViewingSelf}
+    />
   );
 }

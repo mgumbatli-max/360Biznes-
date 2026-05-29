@@ -38,6 +38,8 @@ import {
   Settings,
   Workflow,
   Briefcase,
+  Network,
+  Send as TelegramSend,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { LucideIcon } from "lucide-react";
@@ -148,6 +150,12 @@ function buildGroups(stats: SettingsGridStats): SettingGroup[] {
         { href: "/ayarlar/komissiya-qaydalari", icon: Percent, title: "Komissiya qaydaları",
           desc: "Satıcı komissiyası — mərhələli faiz",
           synonyms: "commission komissiya satici" },
+        { href: "/ayarlar/kanallar", icon: Network, title: "Satış kanalları",
+          desc: "Wolt, Birmarket, Tap.az komissiyaları və avto-qiymət",
+          synonyms: "channel kanal wolt birmarket tap marketplace platform" },
+        { href: "/ayarlar/telegram", icon: TelegramSend, title: "Telegram bildirişləri",
+          desc: "Marketplace sifariş, stok xəbərdarlığı və s. real-time",
+          synonyms: "telegram bot bildiris notification mesaj real-time" },
         { href: "/ayarlar/anbar-mehsul", icon: Boxes, title: "Anbar / Məhsul",
           desc: "Məhsul tipi, ölçü vahidi, custom field",
           synonyms: "warehouse product anbar mehsul olcu" },

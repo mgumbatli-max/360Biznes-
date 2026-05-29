@@ -397,6 +397,15 @@ export async function createOrUpdateSatisYeni(
       revalidatePath("/anbar");
       revalidatePath("/xeberdarliqlar");
       if (needsApproval) revalidatePath("/tesdiq");
+
+      // Yeni satış (B2B sənəd) stoku azalır — kanal-larına sync
+      try {
+        const { emitStockChange } = await import("@/lib/stock-change-emitter");
+        emitStockChange(result.affectedMehsulIds);
+      } catch (e) {
+        console.error("[createSatisYeni.emitStockChange]", e);
+      }
+
       return {
         ok: true,
         satis_id: result.id,

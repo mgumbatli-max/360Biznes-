@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
+import { silentFallback } from "@/lib/safe-query";
 
 export type CrossSellItem = {
   id: string;
@@ -100,7 +101,7 @@ export async function getTopCrossSellPairs(days = 90, limit = 10): Promise<Cross
       HAVING COUNT(DISTINCT ss1.sifaris_id) >= 2
       ORDER BY birge_say DESC
       LIMIT ${limit}
-    `.catch(() => []);
+    `.catch(silentFallback("getCrossSellSuggestions", [] as Array<{ a_id: string; a_ad: string; b_id: string; b_ad: string; birge_say: bigint; orta_mebleg: number }>));
     return rows.map((r) => ({
       a_id: r.a_id,
       a_ad: r.a_ad,

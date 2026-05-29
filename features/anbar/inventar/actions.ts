@@ -202,6 +202,24 @@ export async function completeInventar(id: string): Promise<ActionResult> {
       revalidatePath("/anbar/inventar");
       revalidatePath(`/anbar/inventar/${id}`);
       revalidatePath("/anbar/hereketler");
+
+      // İnventarizasiya tamamlandı — stoku dəyişən məhsulları kanal-larına sync
+      try {
+        const inv = await prisma.inventarizasiyalar.findUnique({
+          where: { id },
+          include: { inventar_satirlari: { select: { mehsul_id: true, fakti_miqdar: true, sistemde_olan: true } } },
+        });
+        if (inv) {
+          const changedIds = inv.inventar_satirlari
+            .filter((r) => r.fakti_miqdar != null && Number(r.fakti_miqdar) !== Number(r.sistemde_olan))
+            .map((r) => r.mehsul_id);
+          const { emitStockChange } = await import("@/lib/stock-change-emitter");
+          emitStockChange(changedIds);
+        }
+      } catch (e) {
+        console.error("[completeInventar.emitStockChange]", e);
+      }
+
       return { ok: true };
     } catch (e) {
       console.error("[completeInventar]", e);

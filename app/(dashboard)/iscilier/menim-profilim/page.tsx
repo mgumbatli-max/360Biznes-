@@ -34,6 +34,10 @@ const MONTH_LABELS = [
 
 export default async function MyProfilePage() {
   const myId = await getMyId();
+  // Guard: əgər istifadəçi istifadeciler cədvəlində yoxdursa (məs. silinmiş və ya
+  // yeni hesabdırsa) notFound qaytar — sonrakı Promise.all parallel queries-də
+  // null myId ilə krash olmasın.
+  if (!myId) notFound();
   const [me, extras, bordro, attendance, leaves, documents] = await Promise.all([
     getMyProfile(),
     getEmployeeExtras(myId),

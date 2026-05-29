@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { currentTenantId, requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
 
 export type DashboardKpis = {
@@ -50,7 +51,7 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
         SELECT count(*)::bigint AS count
           FROM stok s
           JOIN mehsullar m ON m.id = s.mehsul_id
-         WHERE s.sahibkar_id = ${(await getCurrentTenantId())}::uuid
+         WHERE s.sahibkar_id = ${(getCurrentTenantId())}::uuid
            AND m.kritik_stok IS NOT NULL
            AND m.kritik_stok > 0
            AND COALESCE(s.miqdar, 0) <= m.kritik_stok
@@ -82,7 +83,7 @@ export async function getRecentSalesByDay(days = 7): Promise<DailySalesPoint[]> 
              COALESCE(SUM(son_mebleg), 0)::float AS total,
              COUNT(*)::bigint AS cnt
         FROM satis_sifarisleri
-       WHERE sahibkar_id = ${(await getCurrentTenantId())}::uuid
+       WHERE sahibkar_id = ${(getCurrentTenantId())}::uuid
          AND tarix >= ${from}::date
          AND qaralama IS NOT TRUE
        GROUP BY tarix
@@ -119,7 +120,7 @@ export async function getLowStockItems(limit = 10): Promise<LowStockRow[]> {
         FROM stok s
         JOIN mehsullar m ON m.id = s.mehsul_id
         JOIN anbarlar a ON a.id = s.anbar_id
-       WHERE s.sahibkar_id = ${(await getCurrentTenantId())}::uuid
+       WHERE s.sahibkar_id = ${(getCurrentTenantId())}::uuid
          AND m.kritik_stok IS NOT NULL
          AND m.kritik_stok > 0
          AND COALESCE(s.miqdar, 0) <= m.kritik_stok
@@ -130,10 +131,9 @@ export async function getLowStockItems(limit = 10): Promise<LowStockRow[]> {
   });
 }
 
-// Helper used inside raw queries — gets tenant id from the current context.
-// Importing currentTenantId at top would create a circular import; defer.
-async function getCurrentTenantId(): Promise<string> {
-  const { currentTenantId } = await import("@/lib/db/tenant-context");
+// Helper used inside raw queries — sinxron tenant id oxuyur.
+// (Promise wrap-i tələbsizdir; bütün çağırıçlar withTenant() içindədir.)
+function getCurrentTenantId(): string {
   const id = currentTenantId();
   if (!id) throw new Error("No tenant in context");
   return id;
@@ -194,7 +194,7 @@ export async function getCeoKpis(): Promise<CeoKpis> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
 
     const [salesToday, monthSalesRow, monthCogsRow, customers, openTasks, lowStockCount] = await Promise.all([
       prisma.satis_sifarisleri.aggregate({
@@ -257,7 +257,7 @@ export async function getMonthlyComparison(): Promise<MonthlyComparison> {
     const curStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
 
     const [salesA, salesB, expensesA, expensesB, custA, custB] = await Promise.all([
       prisma.satis_sifarisleri.aggregate({
@@ -296,7 +296,7 @@ export async function getMonthlyComparison(): Promise<MonthlyComparison> {
 
 export async function getTopProducts(limit = 5): Promise<TopProductRow[]> {
   return withTenant(async () => {
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const rows = await prisma.$queryRaw<TopProductRow[]>`
       SELECT m.ad,
@@ -398,7 +398,7 @@ export type TopPlatformRow = {
 
 export async function getTopPlatforms(limit = 5): Promise<TopPlatformRow[]> {
   return withTenant(async () => {
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const rows = await prisma.$queryRaw<Array<{ platform: string; say: bigint; cemi: number }>>`
       SELECT COALESCE(NULLIF(s.marketplace_platform, ''), 'Birbaşa satış') AS platform,
@@ -480,7 +480,7 @@ const RESOURCE_LABEL: Record<string, string> = {
 
 export async function getRecentActivity(limit = 15): Promise<ActivityEvent[]> {
   return withTenant(async () => {
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
     const rows = await prisma.audit_log.findMany({
       where: {
         sahibkar_id: sahibkarId,
@@ -545,7 +545,7 @@ export async function getCriticalAlertsForDash(limit = 5): Promise<CriticalAlert
 
 export async function getSalesVsExpense30(): Promise<SalesVsExpensePoint[]> {
   return withTenant(async () => {
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
     const from = new Date();
     from.setHours(0, 0, 0, 0);
     from.setDate(from.getDate() - 29);
@@ -602,7 +602,7 @@ export async function getTodayCashFlow(): Promise<TodayCashFlow> {
   return withTenant(async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
 
     const rows = await prisma.$queryRaw<{ daxil: number; xaric: number; cnt: number }[]>`
       SELECT
@@ -632,7 +632,6 @@ export type MyPendingWork = {
 
 export async function getMyPendingWork(): Promise<MyPendingWork> {
   return withTenant(async () => {
-    const { requireTenant } = await import("@/lib/db/tenant-context");
     const { istifadeciId } = requireTenant();
     const now = new Date();
     const endOfToday = new Date(now);
@@ -681,7 +680,7 @@ export type DailyInsight = {
 
 export async function getDailyInsight(): Promise<DailyInsight> {
   return withTenant(async () => {
-    const sahibkarId = await getCurrentTenantId();
+    const sahibkarId = getCurrentTenantId();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const yesterday = new Date(today);

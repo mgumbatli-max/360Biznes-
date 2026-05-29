@@ -82,6 +82,11 @@ export async function adjustStock(input: z.input<typeof StockAdjustSchema>): Pro
       revalidatePath("/anbar");
       revalidatePath("/anbar/mehsullar");
       revalidatePath("/anbar/hereketler");
+
+      // Manual stok düzəlişi — auto-push kanal-larına yenilik göndər
+      const { emitStockChange } = await import("@/lib/stock-change-emitter");
+      emitStockChange([d.mehsul_id]);
+
       return { ok: true };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Xəta";

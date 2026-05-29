@@ -4,6 +4,14 @@
     {
       "path": "/api/cron/audit-outbox-retry",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/process-outbound-retry",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/full-sync-channels",
+      "schedule": "0 * * * *"
     }
   ]
 }

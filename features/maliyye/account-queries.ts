@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { silentFallback } from "@/lib/safe-query";
 
 export type AccountRow = {
   id: string;
@@ -36,7 +37,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
             select: { ad_soyad: true },
           },
         },
-      }).catch(() => [] as never[]),
+      }).catch(silentFallback("getHesablar.findMany", [] as never[])),
       prisma.kassalar.findMany({
         orderBy: { acilis_tarixi: "desc" },
         include: {

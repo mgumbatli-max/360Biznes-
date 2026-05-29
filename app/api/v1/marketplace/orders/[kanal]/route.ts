@@ -1,0 +1,314 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db/prisma";
+import { runWithTenant } from "@/lib/db/tenant-context";
+import { findWebhookSecretsForKanal } from "@/features/qiymet-kanal/webhook-actions";
+import { verifyWebhookSignature } from "@/lib/webhook-verify";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+/**
+ * Marketplace webhook receiver — platforma sifariş göndərdikdə qəbul edir,
+ * `marketplace_sifarisleri`-yə yazır və stok-u azaldır.
+ *
+ * POST /api/v1/marketplace/orders/<kanal>
+ *   Headers:
+ *     X-Signature: sha256=<hex>     (HMAC body imzası — kanal secret ilə)
+ *     Content-Type: application/json
+ *   Body (universal JSON sxema):
+ *     {
+ *       "external_id": "WOLT-12345",       // platformanın sifariş ID-si
+ *       "musteri": { "ad": "...", "telefon": "..." },
+ *       "items": [
+ *         { "sku": "ABC", "miqdar": 2, "qiymet": 25.50 }
+ *       ],
+ *       "umumi_mebleg": 51.00,
+ *       "valyuta": "AZN",
+ *       "status": "yeni"                    // "yeni" | "tesdiqlendi" | "legv"
+ *     }
+ *
+ * Davranış:
+ *  - HMAC verify (signature düz olmazsa 401)
+ *  - Duplicate yoxlanışı (external_id + kanal unikaldır)
+ *  - SKU → mehsul.id resolve, stok azaldılır
+ *  - Stok yetərli deyilsə item-də "stok_catismir": true qaytarır, amma sifarişi qəbul edir
+ *  - Audit log yazılır
+ */
+export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: string }> }) {
+  const { kanal } = await ctx.params;
+  if (!kanal) return NextResponse.json({ error: "kanal boşdur" }, { status: 400 });
+
+  const rawBody = await req.text();
+  const signature = req.headers.get("x-signature") ?? req.headers.get("x-hub-signature-256");
+
+  // 1. Tap kanal üçün bütün sahibkar secret-lərini, müqayisə et
+  const secrets = await findWebhookSecretsForKanal(kanal);
+  if (secrets.length === 0) {
+    return NextResponse.json(
+      { error: "Bu kanal üçün webhook secret yaradılmayıb" },
+      { status: 404 },
+    );
+  }
+  const matched = secrets.find((s) => verifyWebhookSignature(rawBody, signature, s.secret));
+  if (!matched) {
+    return NextResponse.json({ error: "Signature etibarsızdır" }, { status: 401 });
+  }
+  const sahibkarId = matched.sahibkar_id;
+
+  // 2. Body parse
+  type IncomingItem = { sku?: string | null; barkod?: string | null; miqdar: number; qiymet: number; ad?: string };
+  type Incoming = {
+    external_id: string;
+    musteri?: { ad?: string; telefon?: string; email?: string } | null;
+    items: IncomingItem[];
+    umumi_mebleg?: number;
+    valyuta?: string;
+    status?: string;
+    qeyd?: string;
+  };
+  let body: Incoming;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "JSON parse xətası" }, { status: 400 });
+  }
+  if (!body.external_id) return NextResponse.json({ error: "external_id tələb olunur" }, { status: 400 });
+  if (!Array.isArray(body.items) || body.items.length === 0) {
+    return NextResponse.json({ error: "items boşdur" }, { status: 400 });
+  }
+
+  return runWithTenant(
+    {
+      sahibkarId,
+      istifadeciId: "00000000-0000-0000-0000-000000000000",
+      rolId: 0,
+      icazeler: [],
+    },
+    async () => {
+      // 3. Duplicate yoxla — audit_log-da bu external_id ilə qeyd var?
+      const dup = await prisma.audit_log.findFirst({
+        where: {
+          sahibkar_id: sahibkarId,
+          resurs_nov: "webhook_order",
+          resurs_id: `${kanal}:${body.external_id}`,
+        },
+        select: { id: true },
+      });
+      if (dup) {
+        return NextResponse.json(
+          { ok: true, duplicate: true, message: "Sifariş artıq qəbul olunub" },
+          { status: 200 },
+        );
+      }
+
+      // 4. SKU/barkod → mehsul.id resolve
+      const skus = body.items.map((i) => i.sku).filter((s): s is string => !!s);
+      const barkodlar = body.items.map((i) => i.barkod).filter((s): s is string => !!s);
+      const products = await prisma.mehsullar.findMany({
+        where: {
+          sahibkar_id: sahibkarId,
+          OR: [
+            ...(skus.length > 0 ? [{ kod: { in: skus } }] : []),
+            ...(barkodlar.length > 0 ? [{ barkod: { in: barkodlar } }] : []),
+          ],
+        },
+        select: { id: true, kod: true, barkod: true, ad: true, stok_cemi: true },
+      });
+      const bySku = new Map(products.filter((p) => p.kod).map((p) => [p.kod!, p]));
+      const byBarkod = new Map(products.filter((p) => p.barkod).map((p) => [p.barkod!, p]));
+
+      // 5. Item processing — stok azaltma
+      const itemResults: Array<{ sku: string | null; resolved_id: string | null; miqdar: number; stok_catismir: boolean; azaldilan: number }> = [];
+      let totalCalculated = 0;
+
+      for (const it of body.items) {
+        const p = (it.sku && bySku.get(it.sku)) || (it.barkod && byBarkod.get(it.barkod)) || null;
+        const stokQalig = p ? Number(p.stok_cemi ?? 0) : 0;
+        const catismir = !p || stokQalig < it.miqdar;
+        let azaldilan = 0;
+        if (p && stokQalig > 0) {
+          azaldilan = Math.min(stokQalig, it.miqdar);
+          await prisma.mehsullar.update({
+            where: { id: p.id },
+            data: { stok_cemi: stokQalig - azaldilan },
+          });
+        }
+        itemResults.push({
+          sku: it.sku ?? null,
+          resolved_id: p?.id ?? null,
+          miqdar: it.miqdar,
+          azaldilan,
+          stok_catismir: catismir,
+        });
+        totalCalculated += it.miqdar * it.qiymet;
+      }
+
+      // 6. Müştəri upsert (telefon ya ad üzrə)
+      let musteriId: string | null = null;
+      const phone = body.musteri?.telefon?.trim() ?? null;
+      const ad = body.musteri?.ad?.trim() ?? null;
+      if (phone || ad) {
+        const existing = phone
+          ? await prisma.kontragentler.findFirst({
+              where: { sahibkar_id: sahibkarId, telefon: phone },
+              select: { id: true },
+            })
+          : null;
+        if (existing) {
+          musteriId = existing.id;
+        } else if (phone || ad) {
+          const created = await prisma.kontragentler.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              nov: "musteri",
+              ad: ad ?? phone ?? "Webhook müştəri",
+              telefon: phone,
+              email: body.musteri?.email ?? null,
+              qaynaq: kanal,
+            },
+            select: { id: true },
+          });
+          musteriId = created.id;
+        }
+      }
+
+      // 7. satis_sifarisleri + satis_sifaris_satirlari yarat
+      const nomre = `WH-${kanal.toUpperCase()}-${body.external_id}`.slice(0, 50);
+      const cem = body.umumi_mebleg ?? totalCalculated;
+      const satis = await prisma.satis_sifarisleri.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          nomre,
+          musteri_id: musteriId,
+          status: body.status === "legv" ? "legv" : "tesdiqlendi",
+          umumi_mebleg: cem,
+          son_mebleg: cem,
+          marketplace_platform: kanal,
+          qeyd: `Webhook · external_id: ${body.external_id}${body.qeyd ? ` · ${body.qeyd}` : ""}`,
+        },
+        select: { id: true },
+      });
+      // Yalnız resolved məhsullar üçün satır yarat
+      for (let i = 0; i < body.items.length; i++) {
+        const it = body.items[i];
+        const resolved = itemResults[i];
+        if (!resolved.resolved_id) continue;
+        await prisma.satis_sifaris_satirlari.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            sifaris_id: satis.id,
+            mehsul_id: resolved.resolved_id,
+            miqdar: it.miqdar,
+            vahid_qiymet: it.qiymet,
+          },
+        });
+      }
+
+      // 8. Audit log — duplicate yoxlama + tarixçə
+      await prisma.audit_log.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          istifadeci_ad: `webhook:${kanal}`,
+          emeliyyat: "WEBHOOK_ORDER",
+          resurs_nov: "webhook_order",
+          resurs_id: `${kanal}:${body.external_id}`,
+          yeni_data: {
+            kanal,
+            external_id: body.external_id,
+            satis_id: satis.id,
+            musteri_id: musteriId,
+            musteri: body.musteri ?? null,
+            items: itemResults,
+            cem_mebleg: cem,
+            valyuta: body.valyuta ?? "AZN",
+            status: body.status ?? "yeni",
+          } as object,
+        },
+      });
+
+      const anyShort = itemResults.some((r) => r.stok_catismir);
+
+      // 9. In-app bildiriş — sahibkar (rol 9) və admin (rol 1) istifadəçilərə
+      try {
+        const admins = await prisma.istifadeciler.findMany({
+          where: { sahibkar_id: sahibkarId, aktiv: true, rol_id: { in: [1, 9] } },
+          select: { id: true },
+        });
+        if (admins.length > 0) {
+          await prisma.bildirisler.createMany({
+            data: admins.map((a) => ({
+              sahibkar_id: sahibkarId,
+              istifadeci_id: a.id,
+              basliq: `Yeni ${kanal} sifariş — ${cem.toFixed(2)} ₼`,
+              metn: `${body.musteri?.ad ?? "Naməlum müştəri"} · ${body.items.length} item${anyShort ? " · ⚠ stok yetmir" : ""}`,
+              nov: anyShort ? "warning" : "success",
+              link: `/marketplace/webhook-orders?kanal=${encodeURIComponent(kanal)}`,
+              resurs_nov: "webhook_order",
+              resurs_id: `${kanal}:${body.external_id}`,
+            })),
+          });
+        }
+      } catch (e) {
+        // Bildiriş yazılması uğursuz olsa sifarişi geri qaytarmırıq
+        console.error("[webhook] bildirisler yazıla bilmədi:", e);
+      }
+
+      // 10. Telegram bildiriş (opsiyonel — env-də TELEGRAM_BOT_TOKEN + sahibkar chat_id qoyulubsa)
+      try {
+        const { getTelegramConfigForSahibkar } = await import("@/features/telegram/actions");
+        const { sendTelegramMessage, escapeTelegramHtml, isTelegramConfigured } = await import(
+          "@/lib/telegram/notifier"
+        );
+        const tg = await getTelegramConfigForSahibkar(sahibkarId);
+        if (isTelegramConfigured() && tg.chat_id && tg.events.includes("webhook_order")) {
+          const itemsList = body.items
+            .slice(0, 5)
+            .map((it) => `• ${escapeTelegramHtml(it.sku ?? "?")} × ${it.miqdar} × ${it.qiymet}₼`)
+            .join("\n");
+          const more = body.items.length > 5 ? `\n<i>... və ${body.items.length - 5} item daha</i>` : "";
+          const warn = anyShort ? `\n⚠️ <b>Bəzi məhsulların stoku yetmir</b>` : "";
+          const baseUrl = process.env.NEXTAUTH_URL ?? "";
+          await sendTelegramMessage({
+            chatId: tg.chat_id,
+            text:
+              `🛒 <b>Yeni sifariş — ${kanal.toUpperCase()}</b>\n` +
+              `<b>Məbləğ:</b> ${cem.toFixed(2)} ₼\n` +
+              `<b>Müştəri:</b> ${escapeTelegramHtml(body.musteri?.ad ?? "—")}\n` +
+              `<b>Telefon:</b> ${escapeTelegramHtml(body.musteri?.telefon ?? "—")}\n` +
+              `<b>External:</b> <code>${escapeTelegramHtml(body.external_id)}</code>\n\n` +
+              itemsList + more + warn,
+            parseMode: "HTML",
+            inlineKeyboard: baseUrl
+              ? [[{ text: "ERP-də aç", url: `${baseUrl}/ticaret/satislar/${satis.id}` }]]
+              : undefined,
+          });
+        }
+      } catch (e) {
+        console.error("[webhook] telegram göndərilə bilmədi:", e);
+      }
+
+      // 11. Stok dəyişən məhsulları DIGƏR kanallara avtomatik sync — arxa fonda
+      try {
+        const { emitStockChange } = await import("@/lib/stock-change-emitter");
+        const changedIds = itemResults
+          .map((r) => r.resolved_id)
+          .filter((id): id is string => !!id);
+        emitStockChange(changedIds);
+      } catch (e) {
+        console.error("[webhook] emitStockChange:", e);
+      }
+
+      return NextResponse.json({
+        ok: true,
+        kanal,
+        external_id: body.external_id,
+        satis_id: satis.id,
+        satis_nomre: nomre,
+        musteri_id: musteriId,
+        items: itemResults,
+        cem_mebleg: cem,
+        warning: anyShort ? "Bəzi məhsulların stoku yetmir — qismən qəbul olundu" : null,
+      });
+    },
+  );
+}

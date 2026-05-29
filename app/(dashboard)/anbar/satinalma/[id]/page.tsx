@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
@@ -7,6 +8,7 @@ import {
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AddLineDialog } from "@/features/satinalma/components/add-line-dialog";
 import { LineRowEditor } from "@/features/satinalma/components/line-row-editor";
 import { ProposalActions } from "@/features/satinalma/components/proposal-actions";
@@ -53,13 +55,10 @@ export default async function ProposalDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const teklif = await getProposalDetail(Number(id));
-  if (!teklif) notFound();
-
-  const [products, suppliers, aiSuggestions, canDeleteNonDraft] = await Promise.all([
-    getProductsForPicker(""),
-    getSuppliersForPicker(),
-    getAiSuggestions(),
+  // Critical-path: təklif detalı + ProposalActions üçün icazə yoxlanışı.
+  // Picker datası (məhsul + təchizatçı) və AI tövsiyələri ayrı Suspense-lərdə.
+  const [teklif, canDeleteNonDraft] = await Promise.all([
+    getProposalDetail(Number(id)),
     withTenant(async () => {
       const { rolId, icazeler } = requireTenant();
       // Sahibkar (rol_id=9) və administrator (rol_id=1) həmişə silə bilər;
@@ -67,10 +66,10 @@ export default async function ProposalDetailPage({
       return rolId === 1 || rolId === 9 || icazeler.includes("satinalma.tesdiq_silme");
     }),
   ]);
+  if (!teklif) notFound();
 
   const st = STATUS_INFO[teklif.status] ?? STATUS_INFO.draft;
   const isDraft = teklif.status === "draft";
-  const isPending = teklif.status === "gonderildi";
 
   const cemiMeblegh = toNum(teklif.cemi_meblegh);
   const cemiMaya = toNum(teklif.cemi_maya);
@@ -137,7 +136,11 @@ export default async function ProposalDetailPage({
       {/* Add line + Export */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {isDraft && <AddLineDialog teklifId={teklif.id} products={products} suppliers={suppliers} />}
+          {isDraft && (
+            <Suspense fallback={<Skeleton className="h-9 w-36 rounded-md" />}>
+              <AddLineDialogSection teklifId={teklif.id} />
+            </Suspense>
+          )}
         </div>
         <a
           href={`/api/satinalma/export/${teklif.id}`}
@@ -189,8 +192,10 @@ export default async function ProposalDetailPage({
       </Card>
 
       {/* AI Suggestions */}
-      {isDraft && aiSuggestions.length > 0 && (
-        <AiSuggestionsPanel teklifId={teklif.id} suggestions={aiSuggestions} />
+      {isDraft && (
+        <Suspense fallback={<Skeleton className="h-40 w-full rounded-xl" />}>
+          <AiSuggestionsSection teklifId={teklif.id} />
+        </Suspense>
       )}
 
       {/* Status / decision history */}
@@ -222,6 +227,20 @@ export default async function ProposalDetailPage({
       )}
     </div>
   );
+}
+
+async function AddLineDialogSection({ teklifId }: { teklifId: number }) {
+  const [products, suppliers] = await Promise.all([
+    getProductsForPicker(""),
+    getSuppliersForPicker(),
+  ]);
+  return <AddLineDialog teklifId={teklifId} products={products} suppliers={suppliers} />;
+}
+
+async function AiSuggestionsSection({ teklifId }: { teklifId: number }) {
+  const aiSuggestions = await getAiSuggestions();
+  if (aiSuggestions.length === 0) return null;
+  return <AiSuggestionsPanel teklifId={teklifId} suggestions={aiSuggestions} />;
 }
 
 function Package({ className }: { className?: string }) {

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -5,7 +6,7 @@ import { Phone, User, Calendar, Package, Tag, Printer } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SaleStatusBadge, PaymentBadge } from "@/features/ticaret/components/sale-status-badge";
 import { CancelSaleDialog } from "@/features/ticaret/components/cancel-sale-dialog";
 import { SalePaymentDialog } from "@/features/ticaret/components/sale-payment-dialog";
@@ -21,10 +22,9 @@ export const dynamic = "force-dynamic";
 
 export default async function SatisDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [sale, linkedTasks] = await Promise.all([
-    getSaleDetail(id),
-    getLinkedTasksForSale(id),
-  ]);
+  // Critical-path: yalnız sale detail — başlıq, sətirlər, KPI hamısı bu məlumatdan
+  // qurulur. Bağlı tapşırıqlar (notes panel) ayrı bir Suspense-də yüklənir.
+  const sale = await getSaleDetail(id);
   if (!sale) notFound();
 
   const umumi = Number(sale.umumi_mebleg ?? 0);
@@ -188,13 +188,16 @@ export default async function SatisDetailPage({ params }: { params: Promise<{ id
         </CardContent>
       </Card>
 
-      <SaleNotesTasks
-        saleId={sale.id}
-        initialNote={sale.qeyd ?? ""}
-        tasks={linkedTasks}
-      />
+      <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
+        <NotesTasksSection saleId={sale.id} initialNote={sale.qeyd ?? ""} />
+      </Suspense>
     </div>
   );
+}
+
+async function NotesTasksSection({ saleId, initialNote }: { saleId: string; initialNote: string }) {
+  const linkedTasks = await getLinkedTasksForSale(saleId);
+  return <SaleNotesTasks saleId={saleId} initialNote={initialNote} tasks={linkedTasks} />;
 }
 
 function Row({

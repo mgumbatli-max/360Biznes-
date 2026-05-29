@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -245,7 +246,7 @@ export async function getUsersForAssignment(): Promise<Array<{ id: string; ad_so
 /**
  * Aktiv (vaxtı keçmiş və ya yaxınlaşan) xatırlatmaların sayı — cari istifadəçi üçün.
  */
-export async function getMyActiveReminders(): Promise<number> {
+export const getMyActiveReminders = cache(async (): Promise<number> => {
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
     const now = new Date();
@@ -263,7 +264,7 @@ export async function getMyActiveReminders(): Promise<number> {
 
     return count;
   });
-}
+});
 
 /**
  * Cari istifadəçinin ID-si (server component-lərdə default mesul üçün)
@@ -297,7 +298,7 @@ export type MyWorkSummary = {
   totals: { tasks: number; reminders: number; approvals: number };
 };
 
-export async function getMyWorkSummary(): Promise<MyWorkSummary> {
+export const getMyWorkSummary = cache(async (): Promise<MyWorkSummary> => {
   return withTenant(async () => {
     const { istifadeciId, icazeler } = requireTenant();
     const now = new Date();
@@ -416,7 +417,7 @@ export async function getMyWorkSummary(): Promise<MyWorkSummary> {
       },
     };
   });
-}
+});
 
 // ============================================================
 // AI analiz — işçi performansı
@@ -441,74 +442,90 @@ export async function getTaskPerformanceAnalytics(): Promise<UserTaskPerformance
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const users = await prisma.istifadeciler.findMany({
-      where: { sahibkar_id: sahibkarId, aktiv: true },
-      select: { id: true, ad_soyad: true, vezife: true },
-      orderBy: { ad_soyad: "asc" },
-    });
+    // N+1-i ortadan qaldırırıq — istifadəçi başına 6 query (N=50 üçün 300 sorğu) yerinə
+    // bir neçə ümumi raw aggregation. `tapshiriq_iscilier` link cədvəli ilə UNION ALL
+    // edib hər tapşırığı ona bağlı bütün istifadəçilərlə cütləşdiririk.
+    const [users, statRows, durationRows] = await Promise.all([
+      prisma.istifadeciler.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        select: { id: true, ad_soyad: true, vezife: true },
+        orderBy: { ad_soyad: "asc" },
+      }),
+      prisma.$queryRaw<
+        {
+          istifadeci_id: string;
+          cemi: bigint;
+          tamamlandi: bigint;
+          icrada: bigint;
+          gecikmis: bigint;
+          son30: bigint;
+        }[]
+      >`
+        WITH user_task AS (
+          SELECT t.id, t.status, t.deadline, t.tamamlandi_de, t.mesul_id AS istifadeci_id
+            FROM tapshiriqlar t
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid AND t.mesul_id IS NOT NULL
+          UNION
+          SELECT t.id, t.status, t.deadline, t.tamamlandi_de, ti.istifadeci_id
+            FROM tapshiriqlar t
+            JOIN tapshiriq_iscilier ti ON ti.tapshiriq_id = t.id
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid
+        )
+        SELECT istifadeci_id,
+               COUNT(*)::bigint AS cemi,
+               COUNT(*) FILTER (WHERE status = 'tamamlandi')::bigint AS tamamlandi,
+               COUNT(*) FILTER (WHERE status = 'icrada')::bigint AS icrada,
+               COUNT(*) FILTER (WHERE deadline < ${now} AND status NOT IN ('tamamlandi','legv'))::bigint AS gecikmis,
+               COUNT(*) FILTER (WHERE status = 'tamamlandi' AND tamamlandi_de >= ${thirtyDaysAgo})::bigint AS son30
+          FROM user_task
+         GROUP BY istifadeci_id
+      `.catch(() => []),
+      prisma.$queryRaw<{ istifadeci_id: string; orta_gun: number }[]>`
+        WITH user_task AS (
+          SELECT t.id, t.yaradildi, t.tamamlandi_de, t.status, t.mesul_id AS istifadeci_id
+            FROM tapshiriqlar t
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid AND t.mesul_id IS NOT NULL
+          UNION
+          SELECT t.id, t.yaradildi, t.tamamlandi_de, t.status, ti.istifadeci_id
+            FROM tapshiriqlar t
+            JOIN tapshiriq_iscilier ti ON ti.tapshiriq_id = t.id
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid
+        )
+        SELECT istifadeci_id,
+               COALESCE(AVG(EXTRACT(EPOCH FROM (tamamlandi_de - yaradildi)) / 86400), 0)::float AS orta_gun
+          FROM user_task
+         WHERE status = 'tamamlandi'
+           AND yaradildi IS NOT NULL
+           AND tamamlandi_de IS NOT NULL
+           AND tamamlandi_de >= yaradildi
+         GROUP BY istifadeci_id
+      `.catch(() => []),
+    ]);
+
+    const statMap = new Map(statRows.map((r) => [r.istifadeci_id, r]));
+    const durMap = new Map(durationRows.map((r) => [r.istifadeci_id, Number(r.orta_gun)]));
 
     const result: UserTaskPerformance[] = [];
-
     for (const u of users) {
-      const baseWhere = {
-        sahibkar_id: sahibkarId,
-        OR: [
-          { mesul_id: u.id },
-          { tapshiriq_iscilier: { some: { istifadeci_id: u.id } } },
-        ],
-      };
-
-      const [cemi, tamamlandi, icrada, gecikmis, son30, completedTasks] = await Promise.all([
-        prisma.tapshiriqlar.count({ where: baseWhere }),
-        prisma.tapshiriqlar.count({ where: { ...baseWhere, status: "tamamlandi" } }),
-        prisma.tapshiriqlar.count({ where: { ...baseWhere, status: "icrada" } }),
-        prisma.tapshiriqlar.count({
-          where: { ...baseWhere, deadline: { lt: now }, status: { notIn: ["tamamlandi", "legv"] } },
-        }),
-        prisma.tapshiriqlar.count({
-          where: {
-            ...baseWhere,
-            status: "tamamlandi",
-            tamamlandi_de: { gte: thirtyDaysAgo },
-          },
-        }),
-        prisma.tapshiriqlar.findMany({
-          where: {
-            ...baseWhere,
-            status: "tamamlandi",
-            tamamlandi_de: { not: null },
-            yaradildi: { not: null },
-          },
-          select: { yaradildi: true, tamamlandi_de: true },
-          take: 100,
-        }),
-      ]);
-
-      const durations = completedTasks
-        .map((t) => {
-          if (!t.yaradildi || !t.tamamlandi_de) return null;
-          return (t.tamamlandi_de.getTime() - t.yaradildi.getTime()) / (1000 * 60 * 60 * 24);
-        })
-        .filter((d): d is number => d !== null && d >= 0);
-      const ortBitmeGun = durations.length
-        ? Math.round((durations.reduce((s, x) => s + x, 0) / durations.length) * 10) / 10
-        : 0;
-      const faiz = cemi > 0 ? Math.round((tamamlandi / cemi) * 1000) / 10 : 0;
-
-      if (cemi > 0) {
-        result.push({
-          istifadeci_id: u.id,
-          ad_soyad: u.ad_soyad,
-          vezife: u.vezife,
-          cemi,
-          tamamlandi,
-          icrada,
-          gecikmis,
-          tamamlanma_faiz: faiz,
-          orta_bitme_gun: ortBitmeGun,
-          son_30_gun: son30,
-        });
-      }
+      const s = statMap.get(u.id);
+      if (!s) continue;
+      const cemi = Number(s.cemi);
+      if (cemi === 0) continue;
+      const tamamlandi = Number(s.tamamlandi);
+      const ortBitmeGun = Math.round((durMap.get(u.id) ?? 0) * 10) / 10;
+      const faiz = Math.round((tamamlandi / cemi) * 1000) / 10;
+      result.push({
+        istifadeci_id: u.id,
+        ad_soyad: u.ad_soyad,
+        vezife: u.vezife,
+        cemi,
+        tamamlandi,
+        icrada: Number(s.icrada),
+        gecikmis: Number(s.gecikmis),
+        tamamlanma_faiz: faiz,
+        orta_bitme_gun: ortBitmeGun,
+        son_30_gun: Number(s.son30),
+      });
     }
 
     return result.sort((a, b) => b.tamamlanma_faiz - a.tamamlanma_faiz);

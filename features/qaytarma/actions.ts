@@ -106,6 +106,15 @@ export async function createReturn(
 
       revalidatePath("/ticaret/qaytarma");
       revalidatePath("/ticaret/emeliyyat");
+
+      // Qaytarma stoku artırır (geri qəbul) — kanal-larına sync
+      try {
+        const { emitStockChange } = await import("@/lib/stock-change-emitter");
+        emitStockChange(data.lines.map((l) => l.mehsul_id));
+      } catch (e) {
+        console.error("[createReturn.emitStockChange]", e);
+      }
+
       return { ok: true, data: created };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };

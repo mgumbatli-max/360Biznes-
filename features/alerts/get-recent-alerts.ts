@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 
@@ -19,7 +20,7 @@ export type RecentAlertsResult = {
 
 const OPEN_STATUSES = ["yeni", "baxilir"];
 
-export async function getRecentAlerts(limit = 10): Promise<RecentAlertsResult> {
+export const getRecentAlerts = cache(async (limit = 10): Promise<RecentAlertsResult> => {
   return withTenant(async () => {
     const [items, unreadCount] = await Promise.all([
       prisma.alerts.findMany({
@@ -44,4 +45,4 @@ export async function getRecentAlerts(limit = 10): Promise<RecentAlertsResult> {
       unreadCount,
     };
   });
-}
+});

@@ -61,7 +61,7 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
     (raw as Record<string, unknown>).icracilar = icr;
   }
   const parsed = CreateTaskSchema.safeParse(raw);
-  if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
+  if (!parsed.success) { const i = parsed.error.issues[0]; return { ok: false, error: `Forma yanlışdır: ${i?.path.join(".") || "?"} — ${i?.message || "naməlum"}` }; }
   const d = parsed.data;
 
   return withTenant(async () => {
@@ -329,7 +329,7 @@ function buildReminderTag(repeat: string | undefined, message: string | undefine
 
 export async function setTaskReminder(input: z.input<typeof SetReminderSchema>): Promise<ActionResult> {
   const parsed = SetReminderSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
+  if (!parsed.success) { const i = parsed.error.issues[0]; return { ok: false, error: `Forma yanlışdır: ${i?.path.join(".") || "?"} — ${i?.message || "naməlum"}` }; }
   const { taskId, datetime, repeat, message, kime_id, gizlilik } = parsed.data;
 
   return withTenant(async () => {

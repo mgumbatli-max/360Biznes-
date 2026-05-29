@@ -105,10 +105,14 @@ export async function getPurchases(
 
 export async function getSuppliers() {
   return withTenant(async () => {
+    // Dropdown üçündür — 500-dən çox təchizatçısı olan tenantlarda combobox onsuz da
+    // axtarış vasitəsilə istifadə olunur. Limit qoymadan həm DB-yə, həm də client-ə
+    // yüzlərlə MB göndərirdik.
     return prisma.kontragentler.findMany({
       where: { aktiv: true, nov: { in: ["techizatci", "her_ikisi"] } },
       orderBy: { ad: "asc" },
       select: { id: true, ad: true, telefon: true, borc: true },
+      take: 500,
     });
   });
 }

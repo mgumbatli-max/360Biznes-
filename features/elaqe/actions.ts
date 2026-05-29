@@ -559,20 +559,28 @@ export async function autoMergeSuggested(
 }
 
 /* ------------------------------------------------------------------ */
-/*   SMS LAUNCHER (mock send + log communication)                      */
+/*   SMS LAUNCHER — real provider (Twilio/MSG91/AzerCell) ya mock     */
 /* ------------------------------------------------------------------ */
 
 export async function sendContactSms(
   kontragentId: string,
   template: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; provider: string; is_mock: boolean } | { ok: false; error: string }> {
   if (!template?.trim()) return { ok: false, error: "Mətn boşdur" };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const k = await prisma.kontragentler.findUnique({ where: { id: kontragentId } });
       if (!k?.telefon) return { ok: false, error: "Telefon yoxdur" };
-      // Mock send: just log to contact_communications
+
+      // Real göndərmə (env-də provider varsa) ya da mock log.
+      // SMS adapter avtomatik provider seçir (Twilio/MSG91/AzerCell/mock).
+      const { sendSms } = await import("@/lib/sms/adapter");
+      const smsResult = await sendSms({ to: k.telefon, body: template.trim() });
+      if (!smsResult.ok) {
+        return { ok: false as const, error: smsResult.error };
+      }
+
       await prisma.contact_communications.create({
         data: {
           sahibkar_id: sahibkarId,
@@ -581,7 +589,7 @@ export async function sendContactSms(
           kanal: "sms",
           istiqamet: "cixan",
           metn: template.trim(),
-          m_vzu: "SMS şablonu",
+          m_vzu: smsResult.is_mock ? "SMS (mock)" : `SMS (${smsResult.provider})`,
         },
       });
       await prisma.kontragentler.update({
@@ -590,7 +598,7 @@ export async function sendContactSms(
       });
       revalidatePath(`/elaqe/musteriler/${kontragentId}`);
       revalidatePath("/elaqe/followup");
-      return { ok: true };
+      return { ok: true as const, provider: smsResult.provider, is_mock: smsResult.is_mock };
     } catch (e) {
       console.error("[sendContactSms]", e);
       return { ok: false, error: "SMS göndərilmədi" };

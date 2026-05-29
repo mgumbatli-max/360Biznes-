@@ -166,6 +166,11 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
 
       revalidatePath("/ticaret/alislar");
       revalidatePath("/tesdiq");
+
+      // Alış qəbul edildikdə stok artır — auto-push kanal-larına yenilik göndər
+      const { emitStockChange } = await import("@/lib/stock-change-emitter");
+      emitStockChange(d.lines.map((l) => l.mehsul_id));
+
       return { ok: true, id: result.id, nomre: result.nomre };
     } catch (e) {
       console.error("[createPurchase]", e);

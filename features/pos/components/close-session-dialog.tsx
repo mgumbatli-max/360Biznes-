@@ -25,11 +25,17 @@ export function CloseSessionDialog({ kassa, open, onOpenChange }: Props) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     startTransition(async () => {
-      const res = await closeKassa(kassa.id, fd);
-      if (!res.ok) toast.error(res.error);
-      else {
-        toast.success("Sessiya bağlandı");
-        onOpenChange(false);
+      try {
+        const res = await closeKassa(kassa.id, fd);
+        if (!res.ok) toast.error(res.error);
+        else {
+          toast.success("Sessiya bağlandı");
+          onOpenChange(false);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Naməlum xəta";
+        console.error("[closeKassa] uncaught", err);
+        toast.error(`Sessiya bağlana bilmədi: ${msg}`);
       }
     });
   }
