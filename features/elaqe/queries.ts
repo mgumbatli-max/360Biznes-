@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { Prisma } from "@prisma/client";
@@ -238,13 +239,23 @@ export async function getContactDetail(id: string) {
   });
 }
 
+async function fetchManagersRaw(sahibkarId: string) {
+  return prismaUnscoped.istifadeciler.findMany({
+    where: { sahibkar_id: sahibkarId, aktiv: true },
+    select: { id: true, ad_soyad: true },
+    orderBy: { ad_soyad: "asc" },
+  });
+}
+
 export async function getManagers() {
   return withTenant(async () => {
-    return prisma.istifadeciler.findMany({
-      where: { aktiv: true },
-      select: { id: true, ad_soyad: true },
-      orderBy: { ad_soyad: "asc" },
-    });
+    const { sahibkarId } = requireTenant();
+    const cached = unstable_cache(
+      () => fetchManagersRaw(sahibkarId),
+      ["elaqe-managers", sahibkarId],
+      { revalidate: 300, tags: [`ref:${sahibkarId}:managers`] },
+    );
+    return cached();
   });
 }
 
@@ -935,63 +946,76 @@ export type SegmentCountsResult = {
   cities: { sheher: string; count: number }[];
 };
 
+async function fetchContactSegmentCountsRaw(
+  sahibkarId: string,
+  nov: "musteri" | "techizatci" | "her_ikisi"
+): Promise<SegmentCountsResult> {
+  const novList: string[] =
+    nov === "her_ikisi"
+      ? ["musteri", "techizatci", "her_ikisi"]
+      : nov === "musteri"
+      ? ["musteri", "her_ikisi"]
+      : ["techizatci", "her_ikisi"];
+
+  const [segments, countries, cities, totalAgg, borcluCount] = await Promise.all([
+    prismaUnscoped.kontragentler.groupBy({
+      by: ["qiymet_tipi"],
+      where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: novList } },
+      _count: { _all: true },
+      _sum: { borc: true },
+    }),
+    prismaUnscoped.kontragentler.groupBy({
+      by: ["olke"],
+      where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: novList }, olke: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { olke: "desc" } },
+      take: 10,
+    }).catch(() => [] as { olke: string | null; _count: { _all: number } }[]),
+    prismaUnscoped.kontragentler.groupBy({
+      by: ["sheher"],
+      where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: novList }, sheher: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { sheher: "desc" } },
+      take: 10,
+    }).catch(() => [] as { sheher: string | null; _count: { _all: number } }[]),
+    prismaUnscoped.kontragentler.aggregate({
+      where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: novList } },
+      _count: { _all: true },
+      _sum: { alacaq: true, borc: true },
+    }),
+    prismaUnscoped.kontragentler.count({
+      where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: novList }, OR: [{ alacaq: { gt: 0 } }, { borc: { gt: 0 } }] },
+    }),
+  ]);
+
+  return {
+    total: totalAgg._count._all,
+    borc_total: Number(totalAgg._sum.alacaq ?? 0) - Number(totalAgg._sum.borc ?? 0),
+    borclu_say: borcluCount,
+    segments: segments.map((s) => ({
+      qiymet_tipi: s.qiymet_tipi ?? "adi",
+      count: s._count._all,
+      borc_cemi: Number(s._sum.borc ?? 0),
+    })),
+    countries: countries
+      .filter((c) => c.olke)
+      .map((c) => ({ olke: c.olke!, count: c._count._all })),
+    cities: cities
+      .filter((c) => c.sheher)
+      .map((c) => ({ sheher: c.sheher!, count: c._count._all })),
+  };
+}
+
 export async function getContactSegmentCounts(
   nov: "musteri" | "techizatci" | "her_ikisi"
 ): Promise<SegmentCountsResult> {
   return withTenant(async () => {
-    const novList: string[] =
-      nov === "her_ikisi"
-        ? ["musteri", "techizatci", "her_ikisi"]
-        : nov === "musteri"
-        ? ["musteri", "her_ikisi"]
-        : ["techizatci", "her_ikisi"];
-
-    const [segments, countries, cities, totalAgg, borcluCount] = await Promise.all([
-      prisma.kontragentler.groupBy({
-        by: ["qiymet_tipi"],
-        where: { aktiv: true, nov: { in: novList } },
-        _count: { _all: true },
-        _sum: { borc: true },
-      }),
-      prisma.kontragentler.groupBy({
-        by: ["olke"],
-        where: { aktiv: true, nov: { in: novList }, olke: { not: null } },
-        _count: { _all: true },
-        orderBy: { _count: { olke: "desc" } },
-        take: 10,
-      }).catch(() => [] as { olke: string | null; _count: { _all: number } }[]),
-      prisma.kontragentler.groupBy({
-        by: ["sheher"],
-        where: { aktiv: true, nov: { in: novList }, sheher: { not: null } },
-        _count: { _all: true },
-        orderBy: { _count: { sheher: "desc" } },
-        take: 10,
-      }).catch(() => [] as { sheher: string | null; _count: { _all: number } }[]),
-      prisma.kontragentler.aggregate({
-        where: { aktiv: true, nov: { in: novList } },
-        _count: { _all: true },
-        _sum: { alacaq: true, borc: true },
-      }),
-      prisma.kontragentler.count({
-        where: { aktiv: true, nov: { in: novList }, OR: [{ alacaq: { gt: 0 } }, { borc: { gt: 0 } }] },
-      }),
-    ]);
-
-    return {
-      total: totalAgg._count._all,
-      borc_total: Number(totalAgg._sum.alacaq ?? 0) - Number(totalAgg._sum.borc ?? 0),
-      borclu_say: borcluCount,
-      segments: segments.map((s) => ({
-        qiymet_tipi: s.qiymet_tipi ?? "adi",
-        count: s._count._all,
-        borc_cemi: Number(s._sum.borc ?? 0),
-      })),
-      countries: countries
-        .filter((c) => c.olke)
-        .map((c) => ({ olke: c.olke!, count: c._count._all })),
-      cities: cities
-        .filter((c) => c.sheher)
-        .map((c) => ({ sheher: c.sheher!, count: c._count._all })),
-    };
+    const { sahibkarId } = requireTenant();
+    const cached = unstable_cache(
+      () => fetchContactSegmentCountsRaw(sahibkarId, nov),
+      ["contact-segment-counts", sahibkarId, nov],
+      { revalidate: 60, tags: [`contacts:${sahibkarId}`] },
+    );
+    return cached();
   });
 }
