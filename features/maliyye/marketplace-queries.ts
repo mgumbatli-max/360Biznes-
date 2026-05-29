@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 
 export type MarketplacePaymentFilter = {
   platforma?: string;
@@ -84,9 +85,12 @@ export type PlatformCard = {
 export async function getMarketplacePlatformCards(): Promise<PlatformCard[]> {
   return withTenant(async () => {
     try {
+      const { sahibkarId } = requireTenant();
       const monthStart = new Date();
       monthStart.setDate(1);
       monthStart.setHours(0, 0, 0, 0);
+      // ⚠️ Köhnə kod-da `WHERE tarix >= ...` (sahibkar_id filter yox idi)
+      // — bütün tenant-ların marketplace satışlarını birləşdirirdi.
       const rows = await prisma.$queryRaw<{
         platforma: string;
         sifaris_say: number;
@@ -102,7 +106,8 @@ export async function getMarketplacePlatformCards(): Promise<PlatformCard[]> {
                COALESCE(SUM(COALESCE(xalis_meblegh, son_mebleg - COALESCE(komisyon_meblegh, 0))), 0)::float AS net,
                MAX(tarix) AS son_donem
           FROM satis_sifarisleri
-         WHERE tarix >= ${monthStart}
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND tarix >= ${monthStart}
            AND status != 'legv'
            AND marketplace_platform IS NOT NULL
          GROUP BY marketplace_platform
