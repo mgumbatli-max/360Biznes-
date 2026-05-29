@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
-import { ThemeAwareToaster } from "@/components/providers/theme-aware-toaster";
+import { ToasterMount } from "@/components/providers/toaster-mount";
 import "./globals.css";
 
 const inter = Inter({
@@ -43,10 +43,14 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="az" className={`${inter.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://public.blob.vercel-storage.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://res.cloudinary.com" />
+      </head>
       <body className="min-h-full bg-background text-foreground font-sans">
         <ThemeProvider>
           {children}
-          <ThemeAwareToaster />
+          <ToasterMount />
         </ThemeProvider>
       </body>
     </html>

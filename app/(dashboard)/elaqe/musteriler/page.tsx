@@ -1,7 +1,9 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Users, CreditCard, AlertCircle, UserCheck, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
@@ -41,6 +43,124 @@ type SearchParams = {
 
 const PAGE_SIZE = 50;
 
+function KpiSkeleton() {
+  return (
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-24 rounded-xl" />
+      ))}
+    </section>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="space-y-2">
+      <Skeleton className="h-10 w-full rounded-md" />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-14 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+async function HeaderDialog({ managersP }: { managersP: ReturnType<typeof getManagers> }) {
+  const managers = await managersP;
+  return <ContactDialog defaultNov="musteri" managers={managers} />;
+}
+
+async function SegmentTabsBlock({
+  sp,
+  segmentsP,
+}: {
+  sp: SearchParams;
+  segmentsP: ReturnType<typeof getContactSegmentCounts>;
+}) {
+  const segments = await segmentsP;
+  return (
+    <SegmentTabs
+      basePath="/elaqe/musteriler"
+      current={sp.qiymet}
+      data={segments}
+      nov="musteri"
+      searchParams={sp}
+    />
+  );
+}
+
+async function StatsKpis({
+  dataP,
+  segmentsP,
+}: {
+  dataP: ReturnType<typeof getContacts>;
+  segmentsP: ReturnType<typeof getContactSegmentCounts>;
+}) {
+  const [data, segments] = await Promise.all([dataP, segmentsP]);
+  const { stats } = data;
+  return (
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <KpiCard icon={Users} label="Filtrdə" value={String(stats.count)} subline={`${segments.total} cəmi`} />
+      <KpiCard icon={UserCheck} label="Aktiv" value={String(stats.aktiv_count)} subline="Aktiv qeydlər" tone="success" />
+      <KpiCard
+        icon={AlertCircle}
+        label="Borclu"
+        value={String(stats.borclu_count)}
+        subline={`${segments.borclu_say} cəmi borclu`}
+        tone={stats.borclu_count > 0 ? "warning" : "neutral"}
+      />
+      <KpiCard
+        icon={CreditCard}
+        label="Cəmi borc"
+        value={formatMoney(stats.total_borc > 0 ? stats.total_borc : 0)}
+        subline="Bizə borclu"
+        tone={stats.total_borc > 0 ? "warning" : "neutral"}
+      />
+    </section>
+  );
+}
+
+async function SearchBlock({
+  managersP,
+  segmentsP,
+}: {
+  managersP: ReturnType<typeof getManagers>;
+  segmentsP: ReturnType<typeof getContactSegmentCounts>;
+}) {
+  const [managers, segments] = await Promise.all([managersP, segmentsP]);
+  return (
+    <ContactSearch
+      basePath="/elaqe/musteriler"
+      managers={managers}
+      countries={segments.countries}
+      cities={segments.cities}
+    />
+  );
+}
+
+async function ContactsTableBlock({
+  dataP,
+  managersP,
+  page,
+}: {
+  dataP: ReturnType<typeof getContacts>;
+  managersP: ReturnType<typeof getManagers>;
+  page: number;
+}) {
+  const [data, managers] = await Promise.all([dataP, managersP]);
+  const { items, total } = data;
+  return (
+    <ContactsTable
+      items={items}
+      total={total}
+      defaultNov="musteri"
+      managers={managers}
+      page={page}
+      pageSize={PAGE_SIZE}
+      basePath="/elaqe/musteriler"
+    />
+  );
+}
+
 export default async function MusterilerPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const f = (sp.filter ?? "").toLowerCase();
@@ -63,12 +183,10 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
   };
 
   const page = Math.max(1, Number(sp.page) || 1);
-  const [data, managers, segments] = await Promise.all([
-    getContacts(filter, page, PAGE_SIZE),
-    getManagers(),
-    getContactSegmentCounts("musteri"),
-  ]);
-  const { items, total, stats } = data;
+  // Promise-ləri page-də başlat — parallel resolve, hər Suspense eyni promise-i await edir
+  const dataP = getContacts(filter, page, PAGE_SIZE);
+  const managersP = getManagers();
+  const segmentsP = getContactSegmentCounts("musteri");
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -86,54 +204,27 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
               <FileSpreadsheet className="h-3.5 w-3.5" /> Excel idxal
             </Button>
           </Link>
-          <ContactDialog defaultNov="musteri" managers={managers} />
+          <Suspense fallback={<Skeleton className="h-9 w-32 rounded-md" />}>
+            <HeaderDialog managersP={managersP} />
+          </Suspense>
         </div>
       </header>
 
-      {/* Segment tabs by price tier */}
-      <SegmentTabs
-        basePath="/elaqe/musteriler"
-        current={sp.qiymet}
-        data={segments}
-        nov="musteri"
-        searchParams={sp}
-      />
+      <Suspense fallback={<Skeleton className="h-10 w-full rounded-md" />}>
+        <SegmentTabsBlock sp={sp} segmentsP={segmentsP} />
+      </Suspense>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard icon={Users} label="Filtrdə" value={String(stats.count)} subline={`${segments.total} cəmi`} />
-        <KpiCard icon={UserCheck} label="Aktiv" value={String(stats.aktiv_count)} subline="Aktiv qeydlər" tone="success" />
-        <KpiCard
-          icon={AlertCircle}
-          label="Borclu"
-          value={String(stats.borclu_count)}
-          subline={`${segments.borclu_say} cəmi borclu`}
-          tone={stats.borclu_count > 0 ? "warning" : "neutral"}
-        />
-        <KpiCard
-          icon={CreditCard}
-          label="Cəmi borc"
-          value={formatMoney(stats.total_borc > 0 ? stats.total_borc : 0)}
-          subline="Bizə borclu"
-          tone={stats.total_borc > 0 ? "warning" : "neutral"}
-        />
-      </section>
+      <Suspense fallback={<KpiSkeleton />}>
+        <StatsKpis dataP={dataP} segmentsP={segmentsP} />
+      </Suspense>
 
-      <ContactSearch
-        basePath="/elaqe/musteriler"
-        managers={managers}
-        countries={segments.countries}
-        cities={segments.cities}
-      />
+      <Suspense fallback={<Skeleton className="h-14 w-full rounded-md" />}>
+        <SearchBlock managersP={managersP} segmentsP={segmentsP} />
+      </Suspense>
 
-      <ContactsTable
-        items={items}
-        total={total}
-        defaultNov="musteri"
-        managers={managers}
-        page={page}
-        pageSize={PAGE_SIZE}
-        basePath="/elaqe/musteriler"
-      />
+      <Suspense fallback={<TableSkeleton />}>
+        <ContactsTableBlock dataP={dataP} managersP={managersP} page={page} />
+      </Suspense>
     </div>
   );
 }

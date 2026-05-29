@@ -1,19 +1,25 @@
 {
+  "id": "/dashboard",
   "name": "360Biznes — Modern ERP",
   "short_name": "360Biznes",
   "description": "Multi-tenant SaaS ERP — anbar, satış, maliyyə, CRM, AI köməkçi.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
   "background_color": "#ffffff",
   "theme_color": "#6366f1",
   "lang": "az",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "finance"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/favicon.ico",
       "sizes": "256x256",
-      "type": "image/x-icon"
+      "type": "image/x-icon",
+      "purpose": "any"
     }
   ],
   "shortcuts": [

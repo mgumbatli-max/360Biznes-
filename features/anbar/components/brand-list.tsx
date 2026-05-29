@@ -38,7 +38,7 @@ export function BrandList({ brands }: { brands: Brand[] }) {
                   <div className="flex items-center gap-2">
                     {b.logo_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={b.logo_url} alt={b.ad} className="h-8 w-8 rounded-lg object-cover" />
+                      <img loading="lazy" decoding="async" src={b.logo_url} alt={b.ad} className="h-8 w-8 rounded-lg object-cover" />
                     ) : (
                       <div className="grid h-8 w-8 place-items-center rounded-lg bg-secondary text-muted-foreground">
                         <Tag className="h-3.5 w-3.5" />

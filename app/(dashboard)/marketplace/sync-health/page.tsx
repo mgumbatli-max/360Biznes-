@@ -221,7 +221,7 @@ export default async function SyncHealthPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full min-w-[900px] text-xs">
                 <thead className="bg-secondary/30 text-[10.5px] uppercase tracking-wider text-muted-foreground">
                   <tr className="text-left">
                     <th className="px-3 py-2 font-medium">Kanal</th>

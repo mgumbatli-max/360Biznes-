@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -166,6 +166,9 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
       });
 
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
+      } catch { /* tenant context missing — TTL will catch */ }
       return { ok: true, id: task.id };
     } catch (e) {
       console.error("[createTask]", e);
@@ -219,6 +222,9 @@ export async function changeTaskStatus(taskId: string, status: "yeni" | "icrada"
       }
 
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
+      } catch { /* tenant context missing — TTL will catch */ }
       return { ok: true };
     } catch (e) {
       console.error("[changeTaskStatus]", e);
@@ -243,6 +249,9 @@ export async function addComment(taskId: string, metn: string): Promise<ActionRe
         },
       });
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
+      } catch { /* tenant context missing — TTL will catch */ }
       return { ok: true };
     } catch (e) {
       console.error("[addComment]", e);
@@ -264,6 +273,9 @@ export async function toggleChecklist(itemId: string, done: boolean): Promise<Ac
         },
       });
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
+      } catch { /* tenant context missing — TTL will catch */ }
       return { ok: true };
     } catch (e) {
       console.error("[toggleChecklist]", e);
@@ -294,6 +306,9 @@ export async function setTaskColor(taskId: string, reng: string): Promise<Action
         data: { qeyd_daxili: newQeyd, yenilendi: new Date() },
       });
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
+      } catch { /* tenant context missing — TTL will catch */ }
       revalidatePath(`/tapshiriqlar/${taskId}`);
       return { ok: true, id: taskId };
     } catch (e) {
@@ -405,6 +420,9 @@ export async function setTaskReminder(input: z.input<typeof SetReminderSchema>):
       });
 
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
+      } catch { /* tenant context missing — TTL will catch */ }
       revalidatePath(`/tapshiriqlar/${taskId}`);
       return { ok: true, id: taskId };
     } catch (e) {
@@ -471,6 +489,9 @@ export async function runOverdueCheck(): Promise<{ ok: true; created: number } |
       }
 
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
+      } catch { /* tenant context missing — TTL will catch */ }
       return { ok: true, created };
     } catch (e) {
       console.error("[runOverdueCheck]", e);

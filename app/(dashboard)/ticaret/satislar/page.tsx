@@ -1,7 +1,9 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ShoppingCart, TrendingUp, Calendar, CalendarRange, AlertCircle, FileSpreadsheet, LayoutGrid, List, Zap, FileText, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { SaleFilters } from "@/features/ticaret/components/sale-filters";
 import { SalesTable } from "@/features/ticaret/components/sales-table";
@@ -31,6 +33,61 @@ function asArray(v: string | string[] | undefined): string[] {
   return Array.isArray(v) ? v : [v];
 }
 
+async function StatsKpis() {
+  const stats = await getSaleStats();
+  return (
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <KpiCard
+        icon={TrendingUp}
+        label="Bugün"
+        value={formatMoney(stats.bugun.mebleg)}
+        subline={`${stats.bugun.count} sifariş`}
+        tone="success"
+      />
+      <KpiCard icon={Calendar} label="Bu həftə" value={formatMoney(stats.bu_hefte.mebleg)} subline={`${stats.bu_hefte.count} sifariş`} />
+      <KpiCard icon={CalendarRange} label="Bu ay" value={formatMoney(stats.bu_ay.mebleg)} subline={`${stats.bu_ay.count} sifariş`} />
+      <KpiCard
+        icon={AlertCircle}
+        label="Ödənilməmiş qalıq"
+        value={formatMoney(stats.borc_mebleg)}
+        subline="Müştəri borcu"
+        tone={stats.borc_mebleg > 0 ? "warning" : "neutral"}
+      />
+    </section>
+  );
+}
+
+function StatsKpisSkeleton() {
+  return (
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-24 rounded-xl" />
+      ))}
+    </section>
+  );
+}
+
+function SalesTableSkeleton() {
+  return (
+    <div className="space-y-2">
+      <Skeleton className="h-10 w-full rounded-md" />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-14 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+async function SalesContent({ filter }: { filter: SaleFilter }) {
+  const sales = await getSales(filter);
+  return <SalesTable items={sales.items} total={sales.total} />;
+}
+
+async function PipelineContent() {
+  const pipeline = await getSalesByPipelineStage(30);
+  return <PipelineBoard columns={pipeline} />;
+}
+
 export default async function SatislarPage({
   searchParams,
 }: {
@@ -48,11 +105,6 @@ export default async function SatislarPage({
   };
 
   const isKanban = sp.view === "kanban";
-  const [stats, sales, pipeline] = await Promise.all([
-    getSaleStats(),
-    isKanban ? Promise.resolve({ items: [], total: 0 }) : getSales(filter),
-    isKanban ? getSalesByPipelineStage(30) : Promise.resolve([]),
-  ]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -122,24 +174,9 @@ export default async function SatislarPage({
         </div>
       )}
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
-          icon={TrendingUp}
-          label="Bugün"
-          value={formatMoney(stats.bugun.mebleg)}
-          subline={`${stats.bugun.count} sifariş`}
-          tone="success"
-        />
-        <KpiCard icon={Calendar} label="Bu həftə" value={formatMoney(stats.bu_hefte.mebleg)} subline={`${stats.bu_hefte.count} sifariş`} />
-        <KpiCard icon={CalendarRange} label="Bu ay" value={formatMoney(stats.bu_ay.mebleg)} subline={`${stats.bu_ay.count} sifariş`} />
-        <KpiCard
-          icon={AlertCircle}
-          label="Ödənilməmiş qalıq"
-          value={formatMoney(stats.borc_mebleg)}
-          subline="Müştəri borcu"
-          tone={stats.borc_mebleg > 0 ? "warning" : "neutral"}
-        />
-      </section>
+      <Suspense fallback={<StatsKpisSkeleton />}>
+        <StatsKpis />
+      </Suspense>
 
       {/* View toggle — Cədvəl vs Kanban (pipeline board) */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -175,11 +212,15 @@ export default async function SatislarPage({
       </div>
 
       {isKanban ? (
-        <PipelineBoard columns={pipeline} />
+        <Suspense fallback={<SalesTableSkeleton />}>
+          <PipelineContent />
+        </Suspense>
       ) : (
         <>
           <SaleFilters />
-          <SalesTable items={sales.items} total={sales.total} />
+          <Suspense fallback={<SalesTableSkeleton />}>
+            <SalesContent filter={filter} />
+          </Suspense>
         </>
       )}
     </div>

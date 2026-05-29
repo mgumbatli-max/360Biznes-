@@ -83,7 +83,7 @@ export default async function MarkalarPage({ searchParams }: { searchParams: Pro
                   <div className="flex items-start gap-3">
                     {b.logo_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={b.logo_url} alt={b.ad} className="h-10 w-10 rounded-lg object-cover" />
+                      <img loading="lazy" decoding="async" src={b.logo_url} alt={b.ad} className="h-10 w-10 rounded-lg object-cover" />
                     ) : (
                       <div className="grid h-10 w-10 place-items-center rounded-lg bg-secondary text-muted-foreground">
                         <Tag className="h-4 w-4" />

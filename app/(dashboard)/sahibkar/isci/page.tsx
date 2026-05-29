@@ -43,7 +43,7 @@ export default async function SahibkarIsciPage() {
                   <div className="flex items-center gap-3">
                     {e.profil_sekil ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={e.profil_sekil} alt="" className="h-10 w-10 rounded-full object-cover" />
+                      <img loading="lazy" decoding="async" src={e.profil_sekil} alt="" className="h-10 w-10 rounded-full object-cover" />
                     ) : (
                       <div className="grid h-10 w-10 place-items-center rounded-full bg-secondary text-xs font-semibold">
                         {e.ad_soyad.slice(0, 2).toUpperCase()}

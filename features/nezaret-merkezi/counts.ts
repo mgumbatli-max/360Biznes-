@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import type { TabBadge, NezaretTab } from "./components/tabs";
@@ -43,23 +44,38 @@ export async function getNezaretBadges(): Promise<Partial<Record<NezaretTab, Tab
   });
 }
 
+async function fetchNezaretTotal(sahibkarId: string, istifadeciId: string) {
+  const [alertOpen, alertKritik, tesdiqGozleyen] = await Promise.all([
+    prismaUnscoped.alerts.count({
+      where: { sahibkar_id: sahibkarId, status: { in: ["yeni", "baxilir"] } },
+    }),
+    prismaUnscoped.alerts.count({
+      where: { sahibkar_id: sahibkarId, status: { in: ["yeni", "baxilir"] }, seviyye: "kritik" },
+    }),
+    prismaUnscoped.tesdiq_telep.count({
+      where: { sahibkar_id: sahibkarId, status: "gozleyir", yaradan_id: { not: istifadeciId } },
+    }),
+  ]);
+  const total = alertOpen + tesdiqGozleyen;
+  const tone: "rose" | "amber" | "emerald" =
+    alertKritik > 0 ? "rose" : alertOpen > 0 || tesdiqGozleyen > 0 ? "amber" : "emerald";
+  return { count: total, tone };
+}
+
 /** Single number for the sidebar badge — total things needing attention. */
 export const getNezaretSidebarTotal = cache(async (): Promise<{ count: number; tone: "rose" | "amber" | "emerald" }> => {
   return withTenant(async () => {
     try {
-      const { istifadeciId } = requireTenant();
-      const [alertOpen, alertKritik, tesdiqGozleyen] = await Promise.all([
-        prisma.alerts.count({ where: { status: { in: ["yeni", "baxilir"] } } }),
-        prisma.alerts.count({ where: { status: { in: ["yeni", "baxilir"] }, seviyye: "kritik" } }),
-        // 4-eyes: yalnız başqalarının yaratdıqları — özümünkü mənim üçün təsdiqə dəymir
-        prisma.tesdiq_telep.count({
-          where: { status: "gozleyir", yaradan_id: { not: istifadeciId } },
-        }),
-      ]);
-      const total = alertOpen + tesdiqGozleyen;
-      const tone: "rose" | "amber" | "emerald" =
-        alertKritik > 0 ? "rose" : alertOpen > 0 || tesdiqGozleyen > 0 ? "amber" : "emerald";
-      return { count: total, tone };
+      const { sahibkarId, istifadeciId } = requireTenant();
+      const cached = unstable_cache(
+        () => fetchNezaretTotal(sahibkarId, istifadeciId),
+        ["nezaret-sidebar-total", sahibkarId, istifadeciId],
+        {
+          revalidate: 30,
+          tags: [`nezaret:${sahibkarId}`, `alerts:${sahibkarId}`],
+        },
+      );
+      return cached();
     } catch {
       return { count: 0, tone: "emerald" };
     }

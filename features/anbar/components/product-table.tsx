@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition, useState, useMemo } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Package, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, SlidersHorizontal } from "lucide-react";
@@ -260,8 +261,13 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                 aria-label="Sürətli baxış"
               >
                 {p.sekil_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.sekil_url} alt={p.ad} className="h-full w-full object-cover" />
+                  <Image
+                    src={p.sekil_url}
+                    alt={p.ad}
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="grid h-full w-full place-items-center">
                     <Package className="h-5 w-5 text-muted-foreground opacity-50" />
@@ -441,8 +447,13 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                 sekil: (
                   <td key="sekil" className="px-3 py-2.5">
                     {p.sekil_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.sekil_url} alt={p.ad} className="h-12 w-12 rounded-md object-cover border border-border/40" />
+                      <Image
+                        src={p.sekil_url}
+                        alt={p.ad}
+                        width={48}
+                        height={48}
+                        className="rounded-md object-cover border border-border/40"
+                      />
                     ) : (
                       <div className="grid h-12 w-12 place-items-center rounded-md bg-secondary text-muted-foreground">
                         <Package className="h-4 w-4 opacity-50" />

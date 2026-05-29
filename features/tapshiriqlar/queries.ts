@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
@@ -246,23 +247,37 @@ export async function getUsersForAssignment(): Promise<Array<{ id: string; ad_so
 /**
  * Aktiv (vaxtı keçmiş və ya yaxınlaşan) xatırlatmaların sayı — cari istifadəçi üçün.
  */
+async function fetchActiveReminderCount(sahibkarId: string, istifadeciId: string): Promise<number> {
+  // Reminder sayğacı — sidebar badge üçün. 30s TTL kifayətdir, çünki
+  // dəyişiklik təxminən eyni dərəcədə dropdown-də də görünür.
+  return prismaUnscoped.tapshiriqlar.count({
+    where: {
+      sahibkar_id: sahibkarId,
+      OR: [
+        { mesul_id: istifadeciId },
+        { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
+      ],
+      status: { notIn: ["tamamlandi", "legv"] },
+      xatirlatma: { lte: new Date(), not: null },
+    },
+  });
+}
+
 export const getMyActiveReminders = cache(async (): Promise<number> => {
   return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
-    const now = new Date();
-
-    const count = await prisma.tapshiriqlar.count({
-      where: {
-        OR: [
-          { mesul_id: istifadeciId },
-          { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
+    const { sahibkarId, istifadeciId } = requireTenant();
+    const cached = unstable_cache(
+      () => fetchActiveReminderCount(sahibkarId, istifadeciId),
+      ["my-reminders-count", sahibkarId, istifadeciId],
+      {
+        revalidate: 30,
+        tags: [
+          `mywork:${sahibkarId}:${istifadeciId}`,
+          `mywork:${sahibkarId}`,
         ],
-        status: { notIn: ["tamamlandi", "legv"] },
-        xatirlatma: { lte: now, not: null },
       },
-    });
-
-    return count;
+    );
+    return cached();
   });
 });
 
@@ -298,57 +313,113 @@ export type MyWorkSummary = {
   totals: { tasks: number; reminders: number; approvals: number };
 };
 
+/**
+ * "Mənim işim" topbar widget — hər naviqasiyada 4-6 query çağırırdı.
+ * İndi (istifadeci_id) açarlı 30s TTL cross-request cache. Tapşırıq /
+ * təsdiq mutasiyaları tag-i geri çağırır → instant invalidation.
+ *
+ * `prismaUnscoped` istifadə edirik (sahibkar_id explicit filter), çünki
+ * unstable_cache içindən AsyncLocalStorage və ya cookies-ə girmək olmur.
+ */
+async function fetchMyWorkSummary(
+  sahibkarId: string,
+  istifadeciId: string,
+  canSeeApprovals: boolean,
+): Promise<MyWorkSummary> {
+  const now = new Date();
+  const startOfTomorrow = new Date(now);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  startOfTomorrow.setHours(0, 0, 0, 0);
+
+  const taskScope = {
+    sahibkar_id: sahibkarId,
+    OR: [
+      { mesul_id: istifadeciId },
+      { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
+    ],
+    status: { notIn: ["tamamlandi", "legv"] },
+  };
+
+  const [tasks, reminders, tasksTotal, remindersTotal] = await Promise.all([
+    prismaUnscoped.tapshiriqlar.findMany({
+      where: taskScope,
+      orderBy: [
+        { prioritet: "desc" as const },
+        { deadline: { sort: "asc" as const, nulls: "last" as const } },
+      ],
+      take: 5,
+      select: { id: true, basliq: true, deadline: true, prioritet: true },
+    }),
+    prismaUnscoped.tapshiriqlar.findMany({
+      where: { ...taskScope, xatirlatma: { lte: startOfTomorrow, not: null } },
+      orderBy: [{ xatirlatma: { sort: "asc" as const, nulls: "last" as const } }],
+      take: 5,
+      select: { id: true, basliq: true, xatirlatma: true },
+    }),
+    prismaUnscoped.tapshiriqlar.count({ where: taskScope }),
+    prismaUnscoped.tapshiriqlar.count({
+      where: { ...taskScope, xatirlatma: { lte: startOfTomorrow, not: null } },
+    }),
+  ]);
+
+  let approvals: Array<{
+    id: number;
+    basliq: string | null;
+    mebleg: unknown;
+    emeliyyat_nov: string;
+    yaradildi: Date | null;
+  }> = [];
+  let approvalsTotal = 0;
+  if (canSeeApprovals) {
+    const approvalWhere = {
+      sahibkar_id: sahibkarId,
+      status: "gozleyir",
+      yaradan_id: { not: istifadeciId },
+    };
+    [approvals, approvalsTotal] = await Promise.all([
+      prismaUnscoped.tesdiq_telep.findMany({
+        where: approvalWhere,
+        orderBy: { yaradildi: "desc" },
+        take: 5,
+        select: { id: true, basliq: true, mebleg: true, emeliyyat_nov: true, yaradildi: true },
+      }),
+      prismaUnscoped.tesdiq_telep.count({ where: approvalWhere }),
+    ]);
+  }
+
+  return {
+    myTasks: tasks.map((t) => ({
+      id: t.id,
+      basliq: t.basliq,
+      meta: t.deadline
+        ? `Son tarix: ${t.deadline.toLocaleDateString("az-AZ")}`
+        : t.prioritet
+          ? `Prioritet: ${t.prioritet}`
+          : null,
+      href: `/tapshiriqlar/${t.id}`,
+    })),
+    todayReminders: reminders.map((t) => ({
+      id: t.id,
+      basliq: t.basliq,
+      meta: t.xatirlatma
+        ? t.xatirlatma.toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })
+        : null,
+      href: `/tapshiriqlar/${t.id}`,
+    })),
+    pendingApprovals: approvals.map((a) => ({
+      id: String(a.id),
+      basliq: a.basliq ?? a.emeliyyat_nov,
+      meta: a.mebleg != null ? String(a.mebleg) + " ₼" : null,
+      href: `/tesdiq`,
+    })),
+    canSeeApprovals,
+    totals: { tasks: tasksTotal, reminders: remindersTotal, approvals: approvalsTotal },
+  };
+}
+
 export const getMyWorkSummary = cache(async (): Promise<MyWorkSummary> => {
   return withTenant(async () => {
-    const { istifadeciId, icazeler } = requireTenant();
-    const now = new Date();
-    const startOfTomorrow = new Date(now);
-    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-    startOfTomorrow.setHours(0, 0, 0, 0);
-
-    // Top 5 açıq tapşırıqlar (məsul və ya icraçı olduğum)
-    const taskScope = {
-      OR: [
-        { mesul_id: istifadeciId },
-        { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
-      ],
-      status: { notIn: ["tamamlandi", "legv"] },
-    };
-
-    const [tasks, reminders, tasksTotal, remindersTotal] = await Promise.all([
-      prisma.tapshiriqlar.findMany({
-        where: taskScope,
-        orderBy: [
-          { prioritet: "desc" as const },
-          { deadline: { sort: "asc" as const, nulls: "last" as const } },
-        ],
-        take: 5,
-        select: {
-          id: true,
-          basliq: true,
-          deadline: true,
-          prioritet: true,
-        },
-      }),
-      prisma.tapshiriqlar.findMany({
-        where: {
-          ...taskScope,
-          xatirlatma: { lte: startOfTomorrow, not: null },
-        },
-        orderBy: [{ xatirlatma: { sort: "asc" as const, nulls: "last" as const } }],
-        take: 5,
-        select: {
-          id: true,
-          basliq: true,
-          xatirlatma: true,
-        },
-      }),
-      prisma.tapshiriqlar.count({ where: taskScope }),
-      prisma.tapshiriqlar.count({
-        where: { ...taskScope, xatirlatma: { lte: startOfTomorrow, not: null } },
-      }),
-    ]);
-
+    const { sahibkarId, istifadeciId, icazeler } = requireTenant();
     const canSeeApprovals =
       icazeler?.some?.(
         (c) =>
@@ -358,64 +429,18 @@ export const getMyWorkSummary = cache(async (): Promise<MyWorkSummary> => {
           c === "sahibkar.access",
       ) ?? false;
 
-    let approvals: Array<{ id: number; basliq: string | null; mebleg: unknown; emeliyyat_nov: string; yaradildi: Date | null }> = [];
-    let approvalsTotal = 0;
-    if (canSeeApprovals) {
-      // 4-eyes: öz yaratdığın sorğunu özün təsdiqləyə bilməzsən,
-      // ona görə öz sorğularını "Mənim işim" panelində göstərməyə dəyməz.
-      const approvalWhere = {
-        status: "gozleyir",
-        yaradan_id: { not: istifadeciId },
-      };
-      [approvals, approvalsTotal] = await Promise.all([
-        prisma.tesdiq_telep.findMany({
-          where: approvalWhere,
-          orderBy: { yaradildi: "desc" },
-          take: 5,
-          select: {
-            id: true,
-            basliq: true,
-            mebleg: true,
-            emeliyyat_nov: true,
-            yaradildi: true,
-          },
-        }),
-        prisma.tesdiq_telep.count({ where: approvalWhere }),
-      ]);
-    }
-
-    return {
-      myTasks: tasks.map((t) => ({
-        id: t.id,
-        basliq: t.basliq,
-        meta: t.deadline
-          ? `Son tarix: ${t.deadline.toLocaleDateString("az-AZ")}`
-          : t.prioritet
-            ? `Prioritet: ${t.prioritet}`
-            : null,
-        href: `/tapshiriqlar/${t.id}`,
-      })),
-      todayReminders: reminders.map((t) => ({
-        id: t.id,
-        basliq: t.basliq,
-        meta: t.xatirlatma
-          ? t.xatirlatma.toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })
-          : null,
-        href: `/tapshiriqlar/${t.id}`,
-      })),
-      pendingApprovals: approvals.map((a) => ({
-        id: String(a.id),
-        basliq: a.basliq ?? a.emeliyyat_nov,
-        meta: a.mebleg != null ? String(a.mebleg) + " ₼" : null,
-        href: `/tesdiq`,
-      })),
-      canSeeApprovals,
-      totals: {
-        tasks: tasksTotal,
-        reminders: remindersTotal,
-        approvals: approvalsTotal,
+    const cached = unstable_cache(
+      () => fetchMyWorkSummary(sahibkarId, istifadeciId, canSeeApprovals),
+      ["my-work-summary", sahibkarId, istifadeciId, canSeeApprovals ? "1" : "0"],
+      {
+        revalidate: 30,
+        tags: [
+          `mywork:${sahibkarId}:${istifadeciId}`,
+          `mywork:${sahibkarId}`,
+        ],
       },
-    };
+    );
+    return cached();
   });
 });
 

@@ -82,7 +82,7 @@ export function LineRowEditor({ line, index, readOnly }: { line: Line; index: nu
       <td className="px-2 py-2">
         {line.shekil_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={line.shekil_url} alt="" className="h-10 w-10 rounded-md object-cover" />
+          <img loading="lazy" decoding="async" src={line.shekil_url} alt="" className="h-10 w-10 rounded-md object-cover" />
         ) : (
           <div className="grid h-10 w-10 place-items-center rounded-md bg-secondary text-muted-foreground/40">
             <ImageIcon className="h-4 w-4" />

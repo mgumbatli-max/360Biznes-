@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X, PanelLeftClose, PanelLeftOpen, Bell } from "lucide-react";
@@ -17,21 +18,24 @@ type Props = {
   sahibkarVisible?: boolean;
 };
 
-export function Sidebar({ user, badges, sahibkarVisible = true }: Props) {
+function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
   const pathname = usePathname();
   const icazeler = usePermissions();
   const { collapsed, mobileOpen, setMobileOpen, toggleCollapsed } = useSidebar();
 
-  const ctx = { rolId: user.rol_id, icazeler };
-  const sections = NAV_SECTIONS.map((sec) => ({
-    ...sec,
-    items: sec.items.filter((i) => {
-      if (!canSeeNavItem(i, ctx)) return false;
-      // Hidden via owner preference — only reachable via secret search code
-      if (i.href === "/sahibkar" && !sahibkarVisible) return false;
-      return true;
-    }),
-  })).filter((sec) => sec.items.length > 0);
+  // NAV_SECTIONS filtering — yalnız rol/icazələr/sahibkar görünüş dəyişəndə yenidən hesabla.
+  // Hər navigation-da 30+ nav item üçün canSeeNavItem() çağırışını qənaət edir.
+  const sections = useMemo(() => {
+    const ctx = { rolId: user.rol_id, icazeler };
+    return NAV_SECTIONS.map((sec) => ({
+      ...sec,
+      items: sec.items.filter((i) => {
+        if (!canSeeNavItem(i, ctx)) return false;
+        if (i.href === "/sahibkar" && !sahibkarVisible) return false;
+        return true;
+      }),
+    })).filter((sec) => sec.items.length > 0);
+  }, [user.rol_id, icazeler, sahibkarVisible]);
 
   return (
     <>
@@ -72,14 +76,14 @@ export function Sidebar({ user, badges, sahibkarVisible = true }: Props) {
             )}
           </Link>
 
-          {/* Mobile close */}
+          {/* Mobile close — 44px touch target */}
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground md:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground active:bg-sidebar-accent/80 md:hidden"
             aria-label="Bağla"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
 
           {/* Desktop collapse */}
@@ -146,6 +150,10 @@ export function Sidebar({ user, badges, sahibkarVisible = true }: Props) {
   );
 }
 
+// Layout hər navigation-da re-render olur; props stabil olduqda Sidebar
+// (150+ LOC, 30+ nav item) yenidən hesablanmasın deyə memo.
+export const Sidebar = memo(SidebarComponent);
+
 function SidebarThemeButton({ collapsed }: { collapsed: boolean }) {
   return (
     <div className={cn("flex items-center gap-1 text-[11px] text-muted-foreground", collapsed && "md:justify-center")}>
@@ -182,6 +190,7 @@ function SidebarLink({
     <li>
       <Link
         href={item.href}
+        prefetch={item.external ? false : true}
         onClick={onClick}
         title={collapsed ? item.label : undefined}
         target={item.external ? "_blank" : undefined}

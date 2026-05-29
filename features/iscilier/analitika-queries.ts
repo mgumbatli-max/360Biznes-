@@ -28,6 +28,7 @@ export async function getAnalitika(): Promise<AnalitikaData> {
     const employeesAll = await prisma.istifadeciler.findMany({
       where: { sahibkar_id: sahibkarId },
       select: { id: true, ise_baslama: true, isden_cixdi: true, yaradildi: true },
+      take: 5000,
     });
 
     const headcount_trend: Array<{ ay: string; aktiv: number; yeni: number; cixmis: number }> = [];
@@ -64,6 +65,7 @@ export async function getAnalitika(): Promise<AnalitikaData> {
     const empWithVezife = await prisma.istifadeciler.findMany({
       where: { sahibkar_id: sahibkarId, aktiv: true, isden_cixdi: null, vezife: { not: null } },
       select: { vezife: true, aylik_maas: true },
+      take: 5000,
     });
     const byVezifeMap = new Map<string, number[]>();
     for (const e of empWithVezife) {

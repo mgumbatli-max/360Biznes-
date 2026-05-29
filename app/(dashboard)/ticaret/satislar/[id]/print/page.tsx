@@ -70,7 +70,7 @@ export default async function SaleReceiptPage({
             <div className="space-y-0.5">
               {company?.loqo_url && (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={company.loqo_url} alt="" className="mb-2 h-12 w-auto object-contain" />
+                <img loading="lazy" decoding="async" src={company.loqo_url} alt="" className="mb-2 h-12 w-auto object-contain" />
               )}
               <h1 className={`font-bold ${isThermal ? "text-base" : "text-2xl"}`}>
                 {company?.ad ?? "Şirkət"}

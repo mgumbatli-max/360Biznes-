@@ -153,7 +153,7 @@ export default async function WebhookOrdersPage({
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-secondary/30 text-[10.5px] uppercase tracking-wider text-muted-foreground">
                   <tr className="text-left">
                     <th className="px-3 py-2 font-medium">Tarix</th>

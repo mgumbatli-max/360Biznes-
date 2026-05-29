@@ -448,32 +448,43 @@ export type PLTrendRow = { ay: string; gelir: number; xerc: number; menfeet: num
 export async function getPLTrend(months = 12): Promise<PLTrendRow[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const out: PLTrendRow[] = [];
     const now = new Date();
+    const startMonth = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+    const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    // Əvvəl 12 sequential aggregate idi (24 round-trip).
+    // İndi 2 paralel GROUP BY date_trunc('month') ilə tək sorğu.
+    const [salesRows, xercRows] = await Promise.all([
+      prisma.$queryRaw<{ ay: string; total: number }[]>`
+        SELECT to_char(date_trunc('month', tarix), 'YYYY-MM') AS ay,
+               COALESCE(SUM(son_mebleg), 0)::float AS total
+          FROM satis_sifarisleri
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND tarix >= ${startMonth}::date
+           AND tarix < ${endMonth}::date
+           AND status != 'legv'
+           AND COALESCE(qaralama, false) = false
+         GROUP BY date_trunc('month', tarix)
+      `,
+      prisma.$queryRaw<{ ay: string; total: number }[]>`
+        SELECT to_char(date_trunc('month', tarix), 'YYYY-MM') AS ay,
+               COALESCE(SUM(mebleg), 0)::float AS total
+          FROM "xerclər"
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND tarix >= ${startMonth}::date
+           AND tarix < ${endMonth}::date
+         GROUP BY date_trunc('month', tarix)
+      `,
+    ]);
+
+    const salesMap = new Map(salesRows.map((r) => [r.ay, Number(r.total)]));
+    const xercMap = new Map(xercRows.map((r) => [r.ay, Number(r.total)]));
+    const out: PLTrendRow[] = [];
     for (let i = months - 1; i >= 0; i--) {
-      const y = now.getFullYear();
-      const m = now.getMonth() - i;
-      const dt = new Date(y, m, 1);
-      const start = new Date(dt.getFullYear(), dt.getMonth(), 1);
-      const end = new Date(dt.getFullYear(), dt.getMonth() + 1, 1);
+      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const ayKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-      const [s, x] = await Promise.all([
-        prisma.satis_sifarisleri.aggregate({
-          where: {
-            sahibkar_id: sahibkarId,
-            tarix: { gte: start, lt: end },
-            status: { not: "legv" },
-            qaralama: { not: true },
-          },
-          _sum: { son_mebleg: true },
-        }),
-        prisma.xercl_r.aggregate({
-          where: { sahibkar_id: sahibkarId, tarix: { gte: start, lt: end } },
-          _sum: { mebleg: true },
-        }),
-      ]);
-      const gelir = Number(s._sum.son_mebleg ?? 0);
-      const xerc = Number(x._sum.mebleg ?? 0);
+      const gelir = salesMap.get(ayKey) ?? 0;
+      const xerc = xercMap.get(ayKey) ?? 0;
       out.push({ ay: ayKey, gelir, xerc, menfeet: gelir - xerc });
     }
     return out;

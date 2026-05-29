@@ -37,14 +37,23 @@ import {
   ExternalLink,
   type LucideIcon,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { YeniSatisModal } from "./yeni-satis-modal";
-import { YeniAlisModal } from "./yeni-alis-modal";
+
+// 765 + 528 LOC modal-lar — yalnız istifadəçi yeni satış/alış basanda yüklənir
+const YeniSatisModal = dynamic(
+  () => import("./yeni-satis-modal").then((m) => m.YeniSatisModal),
+  { ssr: false }
+);
+const YeniAlisModal = dynamic(
+  () => import("./yeni-alis-modal").then((m) => m.YeniAlisModal),
+  { ssr: false }
+);
 import {
   getSatisOptions,
   getAlisOptions,
@@ -214,19 +223,19 @@ export function NewOperationButton() {
         </DialogContent>
       </Dialog>
 
-      {/* Native modals */}
-      {satisOpts && (
+      {/* Native modals — chunk yalnız activeModal seçildikdə yüklənir */}
+      {satisOpts && activeModal === "satis" && (
         <YeniSatisModal
-          open={activeModal === "satis"}
+          open={true}
           onOpenChange={(v) => !v && setActiveModal(null)}
           anbarlar={satisOpts.anbarlar}
           saticilar={satisOpts.saticilar}
           defaultSalespersonId={satisOpts.saticilar[0]?.id ?? null}
         />
       )}
-      {alisOpts && (
+      {alisOpts && activeModal === "alis" && (
         <YeniAlisModal
-          open={activeModal === "alis"}
+          open={true}
           onOpenChange={(v) => !v && setActiveModal(null)}
           anbarlar={alisOpts.anbarlar}
           suppliers={alisOpts.suppliers}

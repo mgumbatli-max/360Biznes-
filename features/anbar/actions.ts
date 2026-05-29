@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -398,6 +398,7 @@ export async function saveBrand(input: FormData): Promise<ActionResult<{ id: num
         id = created.id;
       }
       revalidatePath("/anbar/markalar");
+      revalidateTag(`ref:${sahibkarId}:brands`, "max");
       return { ok: true, data: { id } };
     } catch (e) {
       console.error("[saveBrand]", e);
@@ -408,9 +409,11 @@ export async function saveBrand(input: FormData): Promise<ActionResult<{ id: num
 
 export async function deleteBrand(id: number): Promise<ActionResult> {
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
       await prisma.markalar.update({ where: { id }, data: { aktiv: false } });
       revalidatePath("/anbar/markalar");
+      revalidateTag(`ref:${sahibkarId}:brands`, "max");
       return { ok: true };
     } catch (e) {
       console.error("[deleteBrand]", e);

@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { TopicsBrowser } from "@/features/komekci/components/topics-browser";
 
 export const metadata: Metadata = { title: "Köməkçi mərkəzi" };
-export const dynamic = "force-dynamic";
+// Tamamən statik məzmun — DB sorğusu yoxdur, lazımsız SSR-i kəsirik.
 
 export default function KomekciPage() {
   return (

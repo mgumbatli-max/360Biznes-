@@ -85,8 +85,8 @@ export function KanalListTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border/40">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-xl border border-border/40">
+      <table className="w-full min-w-[900px] text-sm">
         <thead className="bg-secondary/30">
           <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-2 font-medium">Kanal</th>

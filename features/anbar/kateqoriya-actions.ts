@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -51,6 +51,7 @@ export async function createKateqoriya(input: FormData): Promise<ActionResult> {
         select: { id: true },
       });
       revalidatePath("/anbar/kateqoriyalar");
+      revalidateTag(`ref:${sahibkarId}:categories`, "max");
       return { ok: true, id: row.id };
     } catch (e) {
       console.error("[createKateqoriya]", e);
@@ -75,6 +76,7 @@ export async function updateKateqoriya(input: FormData): Promise<ActionResult> {
         data: { ad: parsed.data.ad, ust_id: parsed.data.ust_id ?? null },
       });
       revalidatePath("/anbar/kateqoriyalar");
+      revalidateTag(`ref:${requireTenant().sahibkarId}:categories`, "max");
       return { ok: true };
     } catch (e) {
       console.error("[updateKateqoriya]", e);
@@ -102,6 +104,7 @@ export async function renameKateqoriya(id: number, ad: string): Promise<ActionRe
         data: { ad: parsed.data.ad },
       });
       revalidatePath("/anbar/kateqoriyalar");
+      revalidateTag(`ref:${requireTenant().sahibkarId}:categories`, "max");
       return { ok: true };
     } catch (e) {
       console.error("[renameKateqoriya]", e);
@@ -128,6 +131,7 @@ export async function deleteKateqoriya(id: number): Promise<ActionResult> {
       }
       await prisma.kateqoriyalar.delete({ where: { id } });
       revalidatePath("/anbar/kateqoriyalar");
+      revalidateTag(`ref:${requireTenant().sahibkarId}:categories`, "max");
       return { ok: true };
     } catch (e) {
       console.error("[deleteKateqoriya]", e);

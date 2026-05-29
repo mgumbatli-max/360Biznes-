@@ -295,7 +295,7 @@ export function PostComposer({
           {sekilUrl && (
             <div className="mt-2 inline-block overflow-hidden rounded-lg border border-border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={sekilUrl} alt="Önbax" className="max-h-40 w-auto" />
+              <img loading="lazy" decoding="async" src={sekilUrl} alt="Önbax" className="max-h-40 w-auto" />
             </div>
           )}
         </div>

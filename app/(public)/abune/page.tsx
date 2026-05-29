@@ -5,7 +5,7 @@ import { prismaUnscoped } from "@/lib/db/prisma";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Abunə paketlər — 360Biznes" };
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 async function getActivePlans() {
   return prismaUnscoped.abune_planlari.findMany({

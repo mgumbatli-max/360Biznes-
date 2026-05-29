@@ -151,7 +151,7 @@ function A4Layout({
         {qrSrc && (
           <div className="ml-auto flex flex-col items-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrSrc} alt="Servis QR" width={88} height={88} className="border border-neutral-300" />
+            <img loading="lazy" decoding="async" src={qrSrc} alt="Servis QR" width={88} height={88} className="border border-neutral-300" />
             <div className="mt-0.5 font-mono text-[8.5px] text-neutral-500">{s.nomre}</div>
             <div className="text-[8px] text-neutral-500">İzləmə: scan QR</div>
           </div>

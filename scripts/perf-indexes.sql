@@ -78,9 +78,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_sah_yaradildi
 CREATE INDEX IF NOT EXISTS idx_kassa_emeliyyat_kassa_odenis
   ON kassa_emeliyyatlari (kassa_id, odenis_nov);
 
--- alış sifarişləri timeline
-CREATE INDEX IF NOT EXISTS idx_alis_sah_kontragent_tarix
-  ON alis_sifarisleri (sahibkar_id, kontragent_id, tarix DESC);
+-- alış sifarişləri timeline (təchizatçı üzrə tarix DESC)
+CREATE INDEX IF NOT EXISTS idx_alis_sah_techiazatci_tarix
+  ON alis_sifarisleri (sahibkar_id, techiazatci_id, tarix DESC);
+
+-- alış list filter (status + tarix)
+CREATE INDEX IF NOT EXISTS idx_alis_sah_status_tarix
+  ON alis_sifarisleri (sahibkar_id, status, tarix DESC);
 
 -- ============================================================================
 -- Yoxlama (manual icra üçün):

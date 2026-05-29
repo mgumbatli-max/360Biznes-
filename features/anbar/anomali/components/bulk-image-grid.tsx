@@ -144,7 +144,7 @@ export function BulkImageGrid({ items }: { items: Item[] }) {
               <div className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-lg border border-border/40 bg-secondary">
                 {s?.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.url} alt={it.ad} className="h-full w-full object-cover" />
+                  <img loading="lazy" decoding="async" src={s.url} alt={it.ad} className="h-full w-full object-cover" />
                 ) : (
                   <Package className="h-6 w-6 text-muted-foreground/40" />
                 )}

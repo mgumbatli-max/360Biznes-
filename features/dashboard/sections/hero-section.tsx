@@ -96,7 +96,7 @@ export async function HeroSection() {
                   {revD.val.toFixed(0)}%
                 </span>
               </div>
-              <div className="text-5xl font-bold tracking-tight tabular-nums leading-none text-success">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight tabular-nums leading-none text-success break-words">
                 {formatMoney(monthly.current.revenue)}
               </div>
               <div className="text-xs text-muted-foreground">

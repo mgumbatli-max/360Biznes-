@@ -32,6 +32,8 @@ const nextConfig: NextConfig = {
       dynamic: 30,    // dinamik səhifələr 30 saniyə cache
       static: 180,    // statik səhifələr 3 dəqiqə
     },
+    // Next 16 View Transitions — səhifə dəyişikliklərində smooth animasiya
+    viewTransition: true,
     // Tree-shake heavy paketlər — bundle ölçüsünü çox azaldır
     optimizePackageImports: [
       "lucide-react",

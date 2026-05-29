@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Package, Inspect } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { QuickViewDialog } from "./quick-view-dialog";
@@ -31,14 +32,20 @@ export function ProductInline({
 }) {
   const [open, setOpen] = useState(false);
   const img = size === "xs" ? "h-7 w-7" : size === "md" ? "h-10 w-10" : "h-9 w-9";
+  const imgPx = size === "xs" ? 28 : size === "md" ? 40 : 36;
 
   return (
     <>
       <div className="flex items-start gap-2 min-w-0">
         {showImage && (
           sekil_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={sekil_url} alt={ad} className={`${img} flex-shrink-0 rounded-md object-cover border border-border/40`} />
+            <Image
+              src={sekil_url}
+              alt={ad}
+              width={imgPx}
+              height={imgPx}
+              className="flex-shrink-0 rounded-md object-cover border border-border/40"
+            />
           ) : (
             <div className={`grid ${img} flex-shrink-0 place-items-center rounded-md bg-secondary text-muted-foreground`}>
               <Package className="h-3.5 w-3.5" />

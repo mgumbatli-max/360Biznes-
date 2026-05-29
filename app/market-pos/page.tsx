@@ -28,7 +28,7 @@ export default async function MarketPosPage() {
     }));
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4 px-4 py-4">
+    <div className="mx-auto max-w-7xl space-y-4 px-2 py-3 sm:px-4 sm:py-4">
       <MarketSatisClient anbarlar={anbarlar} hesablar={hesablar} />
     </div>
   );

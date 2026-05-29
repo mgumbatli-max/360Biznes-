@@ -40,6 +40,7 @@ import {
   Briefcase,
   Network,
   Send as TelegramSend,
+  Mail,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { LucideIcon } from "lucide-react";
@@ -156,6 +157,9 @@ function buildGroups(stats: SettingsGridStats): SettingGroup[] {
         { href: "/ayarlar/telegram", icon: TelegramSend, title: "Telegram bildirişləri",
           desc: "Marketplace sifariş, stok xəbərdarlığı və s. real-time",
           synonyms: "telegram bot bildiris notification mesaj real-time" },
+        { href: "/ayarlar/email", icon: Mail, title: "Email bildirişləri",
+          desc: "Resend/SendGrid ilə marketplace və günlük xülasə",
+          synonyms: "email mail resend sendgrid bildiris notification" },
         { href: "/ayarlar/anbar-mehsul", icon: Boxes, title: "Anbar / Məhsul",
           desc: "Məhsul tipi, ölçü vahidi, custom field",
           synonyms: "warehouse product anbar mehsul olcu" },

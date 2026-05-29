@@ -239,7 +239,7 @@ function DocCard({
       <div className="relative aspect-video bg-secondary/30">
         {isImage ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={doc.url} alt={doc.title} className="h-full w-full object-cover" />
+          <img loading="lazy" decoding="async" src={doc.url} alt={doc.title} className="h-full w-full object-cover" />
         ) : (
           <div className="grid h-full w-full place-items-center">
             <FileImage className="h-10 w-10 text-muted-foreground" />

@@ -425,8 +425,8 @@ export function MarketSatisClient({
                 Səbət boşdur — yuxarıdan barkod skan edin və ya axtarış yazın
               </div>
             ) : (
-              <div className="max-h-[420px] overflow-y-auto">
-                <table className="w-full text-sm">
+              <div className="max-h-[420px] overflow-y-auto overflow-x-auto">
+                <table className="w-[640px] sm:w-full text-sm">
                   <thead className="sticky top-0 bg-background">
                     <tr className="text-left text-xs text-muted-foreground">
                       <th className="px-2 py-1">Məhsul</th>

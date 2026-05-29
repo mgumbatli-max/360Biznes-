@@ -293,7 +293,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
         </div>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[720px] text-sm">
           <thead className="border-b border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
             <tr>
               {order.map((key) => {

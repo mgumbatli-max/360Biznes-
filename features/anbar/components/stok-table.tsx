@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ArrowDown, ArrowUp, History, Package, ArrowLeftRight, ClipboardCheck } from "lucide-react";
@@ -235,8 +236,13 @@ export function StokTable({ rows, anbarlar, exportHref }: Props) {
                 sekil_col: (
                   <td key="sekil_col" className="px-3 py-2">
                     {r.sekil_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.sekil_url} alt={r.ad} className="h-9 w-9 rounded-md object-cover border border-border/40" />
+                      <Image
+                        src={r.sekil_url}
+                        alt={r.ad}
+                        width={36}
+                        height={36}
+                        className="rounded-md object-cover border border-border/40"
+                      />
                     ) : (
                       <div className="grid h-9 w-9 place-items-center rounded-md bg-secondary text-muted-foreground">
                         <Package className="h-3.5 w-3.5 opacity-50" />

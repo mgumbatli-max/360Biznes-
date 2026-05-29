@@ -379,7 +379,7 @@ export function AddLineDialog({
                 {imageUrl ? (
                   <div className="relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={imageUrl} alt="" className="h-16 w-16 rounded-md object-cover" />
+                    <img loading="lazy" decoding="async" src={imageUrl} alt="" className="h-16 w-16 rounded-md object-cover" />
                     <button
                       type="button"
                       onClick={() => setImageUrl("")}

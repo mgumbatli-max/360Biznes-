@@ -113,7 +113,7 @@ export function CompanyForm({ initial }: { initial: Initial }) {
           >
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={logoUrl} alt="Logo" className="h-full w-full object-contain" />
+              <img loading="lazy" decoding="async" src={logoUrl} alt="Logo" className="h-full w-full object-contain" />
             ) : (
               <div
                 className="grid h-24 w-24 place-items-center rounded-2xl text-3xl font-bold text-white"

@@ -36,7 +36,7 @@ export function ZemanetQrCell({
         className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background transition hover:border-primary/30"
         title="QR ön-bax"
       >
-        <img src={small} alt={`QR ${unikalKod}`} width={28} height={28} className="rounded-sm" />
+        <img loading="lazy" decoding="async" src={small} alt={`QR ${unikalKod}`} width={28} height={28} className="rounded-sm" />
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -48,7 +48,7 @@ export function ZemanetQrCell({
           </DialogHeader>
 
           <div className="flex flex-col items-center gap-3 py-2">
-            <img src={big} alt={`QR ${unikalKod}`} width={240} height={240} className="rounded-md border border-border" />
+            <img loading="lazy" decoding="async" src={big} alt={`QR ${unikalKod}`} width={240} height={240} className="rounded-md border border-border" />
             <div className="w-full space-y-1 text-center">
               <div className="font-mono text-sm font-semibold">{unikalKod}</div>
               {musteriAd && <div className="text-xs text-muted-foreground">{musteriAd}</div>}

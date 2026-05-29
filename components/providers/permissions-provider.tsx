@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 
 const PermissionsContext = createContext<string[]>([]);
 
@@ -11,7 +11,11 @@ export function PermissionsProvider({
   icazeler: string[];
   children: React.ReactNode;
 }) {
-  return <PermissionsContext.Provider value={icazeler}>{children}</PermissionsContext.Provider>;
+  // Stabil reference — yalnız icazələr siyahısı dəyişəndə context yenilənir.
+  // Bu olmadan hər layout re-render-də Sidebar daxili usePermissions consumer-ləri
+  // re-render olur (NAV_SECTIONS filter təkrar hesablanır).
+  const stable = useMemo(() => icazeler, [icazeler.join(",")]);
+  return <PermissionsContext.Provider value={stable}>{children}</PermissionsContext.Provider>;
 }
 
 /** Read the current user's permission codes inside a Client Component. */

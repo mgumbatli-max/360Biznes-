@@ -252,7 +252,7 @@ export function KonsTable({ rows }: Props) {
                   <td key="sekil_col" className="px-3 py-2">
                     {r.mehsul_sekil_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.mehsul_sekil_url} alt={r.mehsul_ad} className="h-8 w-8 rounded-md object-cover border border-border/40" />
+                      <img loading="lazy" decoding="async" src={r.mehsul_sekil_url} alt={r.mehsul_ad} className="h-8 w-8 rounded-md object-cover border border-border/40" />
                     ) : (
                       <div className="grid h-8 w-8 place-items-center rounded-md bg-secondary text-muted-foreground">
                         <Package className="h-3.5 w-3.5 opacity-50" />

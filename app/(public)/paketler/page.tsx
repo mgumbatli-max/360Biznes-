@@ -7,7 +7,7 @@ import { prismaUnscoped } from "@/lib/db/prisma";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Paketlər" };
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 const HIGHLIGHTS: Record<string, string[]> = {
   baslangic: [

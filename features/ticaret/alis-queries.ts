@@ -39,6 +39,8 @@ export async function getPurchases(
   page = 1,
   pageSize = 50
 ): Promise<{ items: PurchaseListItem[]; total: number }> {
+  pageSize = Math.min(Math.max(1, pageSize), 100);
+  page = Math.max(1, page);
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};

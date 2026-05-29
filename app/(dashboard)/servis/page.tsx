@@ -11,12 +11,13 @@ import {
   CircleDollarSign,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ServisDialog } from "@/features/servis/components/servis-dialog";
 import { ServisTable } from "@/features/servis/components/servis-table";
 import { ServisKanban } from "@/features/servis/components/servis-kanban";
 import { ViewToggle } from "@/features/servis/components/view-toggle";
 import { StatusKpiStrip } from "@/features/servis/components/status-kpi-strip";
-import { ServisDetailModalRouter } from "@/features/servis/components/servis-detail-modal";
+import { ServisDetailModalMount } from "@/features/servis/components/servis-detail-modal-mount";
 import {
   getServisRequests,
   getServisStats,
@@ -117,22 +118,21 @@ export default async function ServisPage({
 
   const view = pickStr(sp, "view") === "kanban" ? "kanban" : "list";
 
-  const [rows, stats, filiallar, texniki, mehsullar, musteriler, hesablar, markalar, kateqoriyalar, defektKateq, widgets, daily, heatmap, leaderboard] = await Promise.all([
-    getServisRequests(filter),
-    getServisStats(),
-    getFiliallar(),
-    getTexnikiUsers(),
-    getMehsulOptionsForServis(),
-    getMusteriOptionsForServis(),
-    getMaliyeAccountsForServis(),
-    getMarkaOptionsForServis(),
-    getKateqoriyaOptionsForServis(),
-    getDefektKategoriyalar(),
-    getServisDashboardWidgets(),
-    getDailyServisCounts(),
-    getHourlyHeatmap(),
-    getTechnicianLeaderboard(30, 10),
-  ]);
+  // Promise-ləri page-də başlat — paralel resolve, Suspense block-ları eyni promise-i await edir
+  const rowsP = getServisRequests(filter);
+  const statsP = getServisStats();
+  const filiallarP = getFiliallar();
+  const texnikiP = getTexnikiUsers();
+  const mehsullarP = getMehsulOptionsForServis();
+  const musterilerP = getMusteriOptionsForServis();
+  const hesablarP = getMaliyeAccountsForServis();
+  const markalarP = getMarkaOptionsForServis();
+  const kateqoriyalarP = getKateqoriyaOptionsForServis();
+  const defektKateqP = getDefektKategoriyalar();
+  const widgetsP = getServisDashboardWidgets();
+  const dailyP = getDailyServisCounts();
+  const heatmapP = getHourlyHeatmap();
+  const leaderboardP = getTechnicianLeaderboard(30, 10);
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -166,188 +166,374 @@ export default async function ServisPage({
           >
             <ShieldCheck className="h-3.5 w-3.5" /> Zəmanətlər
           </Link>
-          <ServisDialog
-            filiallar={filiallar.map((f) => ({ id: f.id, label: f.ad }))}
-            texniki={texniki.map((t) => ({ id: t.id, label: t.ad_soyad }))}
-            mehsullar={mehsullar.map((m) => ({ id: m.id, ad: m.ad, kod: m.kod ?? null, barkod: m.barkod ?? null }))}
-            musteriler={musteriler.map((m) => ({ id: m.id, ad: m.ad, telefon: m.telefon ?? null }))}
-            hesablar={hesablar.map((h) => ({ id: h.id, ad: h.ad, nov: h.nov ?? null }))}
-            defektKateq={defektKateq.map((k) => ({
-              id: k.id,
-              ad: k.ad,
-              qrup: k.qrup ?? null,
-              default: !!k.default_kateq,
-            }))}
-          />
+          <Suspense fallback={<Skeleton className="h-9 w-32 rounded-md" />}>
+            <HeaderDialogBlock
+              filiallarP={filiallarP}
+              texnikiP={texnikiP}
+              mehsullarP={mehsullarP}
+              musterilerP={musterilerP}
+              hesablarP={hesablarP}
+              defektKateqP={defektKateqP}
+            />
+          </Suspense>
         </div>
       </header>
 
-      {/* C1: Yeni dashboard widget strip (KPI-dan əvvəl) */}
-      <ServisDashboardWidgets
-        cycle_avg={widgets.cycle_avg}
-        sla_breach={widgets.sla_breach}
-        month_profit={widgets.month_profit}
-        rating_avg={widgets.rating_avg}
-        rating_count={widgets.rating_count}
-      />
+      <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
+        <WidgetsBlock widgetsP={widgetsP} />
+      </Suspense>
 
-      {/* Status mərhələləri — 8 KPI strip (köhnə ERP screenshot-larına uyğun) */}
-      <StatusKpiStrip counts={stats.by_status} activeStatus={status ?? undefined} />
+      <Suspense fallback={<Skeleton className="h-12 w-full rounded-xl" />}>
+        <StatusStripBlock statsP={statsP} status={status} />
+      </Suspense>
 
-      {/* Əlavə alt-bilgilər: gecikmə, gəlir cəmi */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Link
-          href="/servis?gecikme=1"
-          className={`glass block rounded-lg border bg-card/40 p-3 transition hover:border-rose-400/60 ${gecikme ? "ring-1 ring-rose-400/60" : ""}`}
-        >
-          <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
-            <AlertTriangle className="h-3.5 w-3.5" /> Gecikən
-          </div>
-          <div className="mt-1 text-xl font-bold tabular-nums text-rose-400">{stats.late}</div>
-        </Link>
-        <div className="glass rounded-lg border bg-card/40 p-3">
-          <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
-            <Wrench className="h-3.5 w-3.5" /> Orta təmir günü
-          </div>
-          <div className="mt-1 text-xl font-bold tabular-nums">{stats.avg_days}</div>
-        </div>
-        <Link
-          href="/servis?ay=current"
-          className={`glass block rounded-lg border bg-card/40 p-3 transition hover:border-emerald-400/60 ${ay === "current" ? "ring-1 ring-emerald-400/60" : ""}`}
-        >
-          <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
-            <CircleDollarSign className="h-3.5 w-3.5" /> Bu ay gəlir
-          </div>
-          <div className="mt-1 text-xl font-bold tabular-nums text-emerald-400">{formatMoney(stats.month_revenue)}</div>
-        </Link>
-        <Link
-          href="/servis?from=7d"
-          className={`glass block rounded-lg border bg-card/40 p-3 transition hover:border-sky-400/60 ${fromKey === "7d" ? "ring-1 ring-sky-400/60" : ""}`}
-        >
-          <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
-            <Wrench className="h-3.5 w-3.5" /> Son 7 gün qəbul
-          </div>
-          <div className="mt-1 text-xl font-bold tabular-nums">{stats.week_in}</div>
-        </Link>
-      </div>
+      <Suspense fallback={<KpiStripSkeleton />}>
+        <KpiCardsBlock
+          statsP={statsP}
+          gecikme={gecikme}
+          ay={ay}
+          fromKey={fromKey}
+        />
+      </Suspense>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <Link href="/servis/problemli-mehsullar" className="block">
-          <Card className="glass transition hover:border-primary/30">
-            <CardContent className="flex items-center justify-between py-4">
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-md bg-secondary text-muted-foreground">
-                  <PackageSearch className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="font-semibold">Problemli məhsullar</div>
-                  <div className="text-xs text-muted-foreground">Məhsul-əsaslı servis qruplama</div>
-                </div>
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/servis/zemanet" className="block">
-          <Card className="glass transition hover:border-primary/30">
-            <CardContent className="flex items-center justify-between py-4">
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-md bg-secondary text-muted-foreground">
-                  <ShieldCheck className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="font-semibold">Zəmanətlər</div>
-                  <div className="text-xs text-muted-foreground">Talon idarəetməsi, QR & public view</div>
-                </div>
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-
-        <Link href="/servis/hesabat" className="block">
-          <Card className="glass transition hover:border-primary/30">
-            <CardContent className="flex items-center justify-between gap-3 py-4">
-              <div className="flex items-center gap-3">
-                <div className="grid h-9 w-9 place-items-center rounded-md bg-secondary text-muted-foreground">
-                  <BarChart3 className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-semibold">Bu ay servis hesabatı</div>
-                  <div className="mt-0.5 flex flex-wrap gap-3 text-xs text-muted-foreground">
-                    <span>Aktiv: <span className="font-medium text-foreground">{stats.acig}</span></span>
-                    <span>Hazır: <span className="font-medium text-success">{stats.hazir}</span></span>
-                    <span>Gəlir: <span className="font-medium text-foreground">{formatMoney(stats.month_revenue)}</span></span>
-                  </div>
-                </div>
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
+      <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
+        <SummaryCards statsP={statsP} />
+      </Suspense>
 
       <div className="flex items-center justify-between">
-        <div className="text-xs text-muted-foreground">
-          Cəmi: <span className="font-medium text-foreground">{rows.length}</span> sifariş
-        </div>
+        <Suspense fallback={<Skeleton className="h-4 w-24" />}>
+          <RowsCount rowsP={rowsP} />
+        </Suspense>
         <ViewToggle current={view} />
       </div>
 
-      {rows.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-          <Wrench className="mb-2 h-8 w-8 text-muted-foreground/50" />
-          <h3 className="font-semibold">Servis sifarişi tapılmadı</h3>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">{`Filtrləri sıfırlayın və ya "Yeni servis qəbul" düyməsi ilə başlayın.`}</p>
-        </div>
-      ) : view === "kanban" ? (
-        <ServisKanban rows={rows} />
-      ) : (
-        <ServisTable
-          rows={rows}
-          filiallar={filiallar.map((f) => ({ id: f.id, ad: f.ad }))}
-          markalar={markalar.map((m) => ({ id: m.id, ad: m.ad }))}
-          kateqoriyalar={kateqoriyalar.map((k) => ({ id: k.id, ad: k.ad }))}
-          initial={{
-            q: q ?? "",
-            status: status ?? "",
-            prioritet: prioritet ?? "",
-            zemanet,
-            gecikme,
-            odenilmis,
-            filial: filialId != null ? String(filialId) : "",
-            marka: markaId != null ? String(markaId) : "",
-            kateqoriya: kateqoriyaId != null ? String(kateqoriyaId) : "",
-            from: pickStr(sp, "from") ?? "",
-            to: pickStr(sp, "to") ?? "",
-          }}
+      <Suspense fallback={<TableSkeleton />}>
+        <TableBlock
+          rowsP={rowsP}
+          filiallarP={filiallarP}
+          markalarP={markalarP}
+          kateqoriyalarP={kateqoriyalarP}
+          view={view}
+          sp={sp}
+          filterParams={{ q, status, prioritet, zemanet, gecikme, odenilmis, filialId, markaId, kateqoriyaId }}
         />
-      )}
+      </Suspense>
 
-      {/* C2: Daily charts + hourly heatmap */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="glass rounded-lg border border-border bg-card/40 p-3">
-          <div className="mb-2 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
-            Daily qəbul / təhvil (son 30 gün)
-          </div>
-          <DailyServisChart data={daily} />
-        </div>
-        <div className="glass overflow-hidden rounded-lg border border-border bg-card/40 p-3">
-          <div className="mb-2 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
-            Saatlıq heatmap (qəbul tezliyi, son 90 gün)
-          </div>
-          <HourlyHeatmap data={heatmap} />
-        </div>
-      </div>
+      <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
+        <ChartsBlock dailyP={dailyP} heatmapP={heatmapP} />
+      </Suspense>
 
-      {/* Texnik liderbordu (NEW) */}
-      <TechnicianLeaderboard rows={leaderboard} />
+      <Suspense fallback={<Skeleton className="h-48 w-full rounded-xl" />}>
+        <LeaderboardBlock leaderboardP={leaderboardP} />
+      </Suspense>
 
       {/* Modal pəncərə — URL `?detail=<id>` parametri ilə açılır */}
       <Suspense fallback={null}>
-        <ServisDetailModalRouter />
+        <ServisDetailModalMount />
       </Suspense>
     </div>
   );
+}
+
+/* ── Suspense blocks — paralel resolve, hər biri stream olur ── */
+
+async function HeaderDialogBlock({
+  filiallarP,
+  texnikiP,
+  mehsullarP,
+  musterilerP,
+  hesablarP,
+  defektKateqP,
+}: {
+  filiallarP: ReturnType<typeof getFiliallar>;
+  texnikiP: ReturnType<typeof getTexnikiUsers>;
+  mehsullarP: ReturnType<typeof getMehsulOptionsForServis>;
+  musterilerP: ReturnType<typeof getMusteriOptionsForServis>;
+  hesablarP: ReturnType<typeof getMaliyeAccountsForServis>;
+  defektKateqP: ReturnType<typeof getDefektKategoriyalar>;
+}) {
+  const [filiallar, texniki, mehsullar, musteriler, hesablar, defektKateq] = await Promise.all([
+    filiallarP, texnikiP, mehsullarP, musterilerP, hesablarP, defektKateqP,
+  ]);
+  return (
+    <ServisDialog
+      filiallar={filiallar.map((f) => ({ id: f.id, label: f.ad }))}
+      texniki={texniki.map((t) => ({ id: t.id, label: t.ad_soyad }))}
+      mehsullar={mehsullar.map((m) => ({ id: m.id, ad: m.ad, kod: m.kod ?? null, barkod: m.barkod ?? null }))}
+      musteriler={musteriler.map((m) => ({ id: m.id, ad: m.ad, telefon: m.telefon ?? null }))}
+      hesablar={hesablar.map((h) => ({ id: h.id, ad: h.ad, nov: h.nov ?? null }))}
+      defektKateq={defektKateq.map((k) => ({
+        id: k.id,
+        ad: k.ad,
+        qrup: k.qrup ?? null,
+        default: !!k.default_kateq,
+      }))}
+    />
+  );
+}
+
+async function WidgetsBlock({ widgetsP }: { widgetsP: ReturnType<typeof getServisDashboardWidgets> }) {
+  const widgets = await widgetsP;
+  return (
+    <ServisDashboardWidgets
+      cycle_avg={widgets.cycle_avg}
+      sla_breach={widgets.sla_breach}
+      month_profit={widgets.month_profit}
+      rating_avg={widgets.rating_avg}
+      rating_count={widgets.rating_count}
+    />
+  );
+}
+
+async function StatusStripBlock({
+  statsP,
+  status,
+}: {
+  statsP: ReturnType<typeof getServisStats>;
+  status: string | undefined;
+}) {
+  const stats = await statsP;
+  return <StatusKpiStrip counts={stats.by_status} activeStatus={status ?? undefined} />;
+}
+
+function KpiStripSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-20 rounded-lg" />
+      ))}
+    </div>
+  );
+}
+
+async function KpiCardsBlock({
+  statsP,
+  gecikme,
+  ay,
+  fromKey,
+}: {
+  statsP: ReturnType<typeof getServisStats>;
+  gecikme: boolean;
+  ay: string | undefined;
+  fromKey: string | undefined;
+}) {
+  const stats = await statsP;
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Link
+        href="/servis?gecikme=1"
+        className={`glass block rounded-lg border bg-card/40 p-3 transition hover:border-rose-400/60 ${gecikme ? "ring-1 ring-rose-400/60" : ""}`}
+      >
+        <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          <AlertTriangle className="h-3.5 w-3.5" /> Gecikən
+        </div>
+        <div className="mt-1 text-xl font-bold tabular-nums text-rose-400">{stats.late}</div>
+      </Link>
+      <div className="glass rounded-lg border bg-card/40 p-3">
+        <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          <Wrench className="h-3.5 w-3.5" /> Orta təmir günü
+        </div>
+        <div className="mt-1 text-xl font-bold tabular-nums">{stats.avg_days}</div>
+      </div>
+      <Link
+        href="/servis?ay=current"
+        className={`glass block rounded-lg border bg-card/40 p-3 transition hover:border-emerald-400/60 ${ay === "current" ? "ring-1 ring-emerald-400/60" : ""}`}
+      >
+        <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          <CircleDollarSign className="h-3.5 w-3.5" /> Bu ay gəlir
+        </div>
+        <div className="mt-1 text-xl font-bold tabular-nums text-emerald-400">{formatMoney(stats.month_revenue)}</div>
+      </Link>
+      <Link
+        href="/servis?from=7d"
+        className={`glass block rounded-lg border bg-card/40 p-3 transition hover:border-sky-400/60 ${fromKey === "7d" ? "ring-1 ring-sky-400/60" : ""}`}
+      >
+        <div className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          <Wrench className="h-3.5 w-3.5" /> Son 7 gün qəbul
+        </div>
+        <div className="mt-1 text-xl font-bold tabular-nums">{stats.week_in}</div>
+      </Link>
+    </div>
+  );
+}
+
+async function SummaryCards({ statsP }: { statsP: ReturnType<typeof getServisStats> }) {
+  const stats = await statsP;
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <Link href="/servis/problemli-mehsullar" className="block">
+        <Card className="glass transition hover:border-primary/30">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-md bg-secondary text-muted-foreground">
+                <PackageSearch className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="font-semibold">Problemli məhsullar</div>
+                <div className="text-xs text-muted-foreground">Məhsul-əsaslı servis qruplama</div>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href="/servis/zemanet" className="block">
+        <Card className="glass transition hover:border-primary/30">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-md bg-secondary text-muted-foreground">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="font-semibold">Zəmanətlər</div>
+                <div className="text-xs text-muted-foreground">Talon idarəetməsi, QR & public view</div>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
+      <Link href="/servis/hesabat" className="block">
+        <Card className="glass transition hover:border-primary/30">
+          <CardContent className="flex items-center justify-between gap-3 py-4">
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-md bg-secondary text-muted-foreground">
+                <BarChart3 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold">Bu ay servis hesabatı</div>
+                <div className="mt-0.5 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                  <span>Aktiv: <span className="font-medium text-foreground">{stats.acig}</span></span>
+                  <span>Hazır: <span className="font-medium text-success">{stats.hazir}</span></span>
+                  <span>Gəlir: <span className="font-medium text-foreground">{formatMoney(stats.month_revenue)}</span></span>
+                </div>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
+  );
+}
+
+async function RowsCount({ rowsP }: { rowsP: ReturnType<typeof getServisRequests> }) {
+  const rows = await rowsP;
+  return (
+    <div className="text-xs text-muted-foreground">
+      Cəmi: <span className="font-medium text-foreground">{rows.length}</span> sifariş
+    </div>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="space-y-2">
+      <Skeleton className="h-10 w-full rounded-md" />
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-14 w-full rounded-md" />
+      ))}
+    </div>
+  );
+}
+
+async function TableBlock({
+  rowsP,
+  filiallarP,
+  markalarP,
+  kateqoriyalarP,
+  view,
+  sp,
+  filterParams,
+}: {
+  rowsP: ReturnType<typeof getServisRequests>;
+  filiallarP: ReturnType<typeof getFiliallar>;
+  markalarP: ReturnType<typeof getMarkaOptionsForServis>;
+  kateqoriyalarP: ReturnType<typeof getKateqoriyaOptionsForServis>;
+  view: "list" | "kanban";
+  sp: SP;
+  filterParams: {
+    q: string | undefined;
+    status: string | undefined;
+    prioritet: string | undefined;
+    zemanet: boolean;
+    gecikme: boolean;
+    odenilmis: boolean;
+    filialId: number | undefined;
+    markaId: number | undefined;
+    kateqoriyaId: number | undefined;
+  };
+}) {
+  const [rows, filiallar, markalar, kateqoriyalar] = await Promise.all([
+    rowsP, filiallarP, markalarP, kateqoriyalarP,
+  ]);
+  const { q, status, prioritet, zemanet, gecikme, odenilmis, filialId, markaId, kateqoriyaId } = filterParams;
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
+        <Wrench className="mb-2 h-8 w-8 text-muted-foreground/50" />
+        <h3 className="font-semibold">Servis sifarişi tapılmadı</h3>
+        <p className="mt-1 max-w-md text-sm text-muted-foreground">{`Filtrləri sıfırlayın və ya "Yeni servis qəbul" düyməsi ilə başlayın.`}</p>
+      </div>
+    );
+  }
+  if (view === "kanban") return <ServisKanban rows={rows} />;
+  return (
+    <ServisTable
+      rows={rows}
+      filiallar={filiallar.map((f) => ({ id: f.id, ad: f.ad }))}
+      markalar={markalar.map((m) => ({ id: m.id, ad: m.ad }))}
+      kateqoriyalar={kateqoriyalar.map((k) => ({ id: k.id, ad: k.ad }))}
+      initial={{
+        q: q ?? "",
+        status: status ?? "",
+        prioritet: prioritet ?? "",
+        zemanet,
+        gecikme,
+        odenilmis,
+        filial: filialId != null ? String(filialId) : "",
+        marka: markaId != null ? String(markaId) : "",
+        kateqoriya: kateqoriyaId != null ? String(kateqoriyaId) : "",
+        from: pickStr(sp, "from") ?? "",
+        to: pickStr(sp, "to") ?? "",
+      }}
+    />
+  );
+}
+
+async function ChartsBlock({
+  dailyP,
+  heatmapP,
+}: {
+  dailyP: ReturnType<typeof getDailyServisCounts>;
+  heatmapP: ReturnType<typeof getHourlyHeatmap>;
+}) {
+  const [daily, heatmap] = await Promise.all([dailyP, heatmapP]);
+  return (
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <div className="glass rounded-lg border border-border bg-card/40 p-3">
+        <div className="mb-2 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          Daily qəbul / təhvil (son 30 gün)
+        </div>
+        <DailyServisChart data={daily} />
+      </div>
+      <div className="glass overflow-hidden rounded-lg border border-border bg-card/40 p-3">
+        <div className="mb-2 text-[10.5px] font-medium uppercase tracking-wider text-muted-foreground">
+          Saatlıq heatmap (qəbul tezliyi, son 90 gün)
+        </div>
+        <HourlyHeatmap data={heatmap} />
+      </div>
+    </div>
+  );
+}
+
+async function LeaderboardBlock({
+  leaderboardP,
+}: {
+  leaderboardP: ReturnType<typeof getTechnicianLeaderboard>;
+}) {
+  const leaderboard = await leaderboardP;
+  return <TechnicianLeaderboard rows={leaderboard} />;
 }

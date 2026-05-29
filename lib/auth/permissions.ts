@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { prismaUnscoped } from "@/lib/db/prisma";
 
 /**
@@ -42,9 +43,18 @@ export function hasAllPermissions(userIcazeler: string[], ...codes: PermissionCo
 
 /** Load permission codes for a role from the DB (unscoped — global catalog). */
 export async function loadPermissionsForRole(rolId: number): Promise<string[]> {
-  const rows = await prismaUnscoped.rol_icazeleri.findMany({
-    where: { rol_id: rolId },
-    include: { icazeler: { select: { kod: true } } },
-  });
-  return rows.map((r) => r.icazeler.kod).filter(Boolean);
+  // Rollar nadir hallarda dəyişir — 5 dəqiqə cross-request cache.
+  // Rol icazələri yeniləndikdə revalidateTag(`role-perms:${rolId}`) çağırılmalıdır.
+  const cached = unstable_cache(
+    async () => {
+      const rows = await prismaUnscoped.rol_icazeleri.findMany({
+        where: { rol_id: rolId },
+        include: { icazeler: { select: { kod: true } } },
+      });
+      return rows.map((r) => r.icazeler.kod).filter(Boolean);
+    },
+    ["role-perms", String(rolId)],
+    { revalidate: 300, tags: [`role-perms:${rolId}`] },
+  );
+  return cached();
 }

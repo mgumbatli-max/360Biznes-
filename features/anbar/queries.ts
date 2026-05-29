@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { searchProductIdsSpaceInsensitive } from "@/lib/db/space-insensitive-search";
@@ -291,6 +292,9 @@ export async function getProducts(
   page = 1,
   pageSize = 50
 ): Promise<{ items: ProductListRow[]; total: number }> {
+  // Hard cap — pageSize=99999 ilə search/sort blocking DB sorğusunu önləyir.
+  pageSize = Math.min(Math.max(1, pageSize), 100);
+  page = Math.max(1, page);
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
@@ -514,36 +518,75 @@ export async function getProducts(
 }
 
 /**
- * Kateqoriya / marka / vahid — referans dataları nadir dəyişir, hər səhifə
- * yüklənəndə fetch etmək israfdır. React `cache()` ilə eyni request boyu
- * dedupe — eyni page render-də 5 dəfə getCategoryOptions çağırılsa belə
- * yalnız 1 DB query gedir. (Tenant-scoped — withTenant request-bound.)
+ * Kateqoriya / marka / vahid — referans dataları nadir dəyişir.
+ *
+ * İki səviyyəli cache:
+ *   1) `unstable_cache` — cross-request, sahibkar-key-li, 120s TTL.
+ *      Eyni tenant-in 100 ardıcıl naviqasiyası 1 DB query edir.
+ *   2) `cache()` (React) — eyni request boyu dedupe (auth/tenant lookup
+ *      cost-unu azaldır).
+ *
+ * Tenant ID-ni request-də həll edib unstable_cache-ə parametr kimi veririk —
+ * unstable_cache içindən cookie/headers-ə girmək olmur. `prismaUnscoped`
+ * istifadə edirik, çünki sahibkar_id filter-i sorğunun özündə var.
+ *
+ * Invalidation: marka/kateqoriya/vahid yaradan-yeniləyən action-lar
+ * `revalidateTag("ref:<tenant>:<kind>")` çağıracaq (TTL fallback 120s).
  */
+const fetchCategoryOptionsCached = (tenantId: string) =>
+  unstable_cache(
+    async () =>
+      prismaUnscoped.kateqoriyalar.findMany({
+        where: { sahibkar_id: tenantId },
+        orderBy: { ad: "asc" },
+        select: { id: true, ad: true, ust_id: true },
+      }),
+    ["ref-categories", tenantId],
+    { revalidate: 120, tags: [`ref:${tenantId}:categories`] },
+  );
+
+const fetchBrandOptionsCached = (tenantId: string) =>
+  unstable_cache(
+    async () =>
+      prismaUnscoped.markalar.findMany({
+        where: { sahibkar_id: tenantId, aktiv: true },
+        orderBy: { ad: "asc" },
+        select: { id: true, ad: true },
+      }),
+    ["ref-brands", tenantId],
+    { revalidate: 120, tags: [`ref:${tenantId}:brands`] },
+  );
+
+const fetchUnitOptionsCached = (tenantId: string) =>
+  unstable_cache(
+    async () =>
+      prismaUnscoped.olcu_vahidleri.findMany({
+        where: { sahibkar_id: tenantId },
+        orderBy: { ad: "asc" },
+        select: { id: true, ad: true, qisa_ad: true },
+      }),
+    ["ref-units", tenantId],
+    { revalidate: 120, tags: [`ref:${tenantId}:units`] },
+  );
+
 export const getCategoryOptions = cache(async () => {
   return withTenant(async () => {
-    return prisma.kateqoriyalar.findMany({
-      orderBy: { ad: "asc" },
-      select: { id: true, ad: true, ust_id: true },
-    });
+    const { sahibkarId } = requireTenant();
+    return fetchCategoryOptionsCached(sahibkarId)();
   });
 });
 
 export const getBrandOptions = cache(async () => {
   return withTenant(async () => {
-    return prisma.markalar.findMany({
-      where: { aktiv: true },
-      orderBy: { ad: "asc" },
-      select: { id: true, ad: true },
-    });
+    const { sahibkarId } = requireTenant();
+    return fetchBrandOptionsCached(sahibkarId)();
   });
 });
 
 export const getUnitOptions = cache(async () => {
   return withTenant(async () => {
-    return prisma.olcu_vahidleri.findMany({
-      orderBy: { ad: "asc" },
-      select: { id: true, ad: true, qisa_ad: true },
-    });
+    const { sahibkarId } = requireTenant();
+    return fetchUnitOptionsCached(sahibkarId)();
   });
 });
 

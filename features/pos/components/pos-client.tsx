@@ -1105,9 +1105,9 @@ export function PosClient({
   ].filter(Boolean) as { key: TierName; label: string }[];
 
   return (
-    <div className="grid h-full grid-cols-1 gap-3 overflow-hidden p-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid h-full grid-cols-1 gap-2 overflow-y-auto p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-3 lg:overflow-hidden">
       {/* ====================== LEFT COLUMN ====================== */}
-      <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-full">
         {/* Top bar: active session strip + UNIFIED search input */}
         <div className="shrink-0 space-y-2 px-3 pt-3">
           <SessionStrip
@@ -1132,7 +1132,7 @@ export function PosClient({
               value={searchQ}
               autoFocus
               placeholder="Barkod / ad / SKU / kod yaz və ya skan et — Enter ilə əlavə et"
-              className="h-14 rounded-lg border-2 border-rose-300 bg-white pl-14 pr-12 text-sm font-medium placeholder:text-rose-300/80 focus-visible:border-rose-400 focus-visible:ring-rose-200"
+              className="h-12 sm:h-14 rounded-lg border-2 border-rose-300 bg-white pl-14 pr-12 text-sm font-medium placeholder:text-rose-300/80 focus-visible:border-rose-400 focus-visible:ring-rose-200"
               onChange={(e) => setSearchQ(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
@@ -1278,7 +1278,7 @@ export function PosClient({
 
         {/* Cart list — only this scrolls */}
         <div className="mt-2 flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
             {cart.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center px-6 py-10 text-center">
                 <div className="mb-2 grid h-12 w-12 place-items-center rounded-full bg-rose-100 text-rose-600">
@@ -1303,7 +1303,7 @@ export function PosClient({
                     <li
                       key={l.uid}
                       className={cn(
-                        "grid grid-cols-[24px_minmax(0,1fr)_auto_auto_auto_auto_88px_auto] items-center gap-3 border-b border-slate-100 px-3 py-2 transition hover:bg-slate-50/60",
+                        "grid grid-cols-[20px_minmax(120px,1fr)_auto_auto_auto_auto_72px_auto] sm:grid-cols-[24px_minmax(0,1fr)_auto_auto_auto_auto_88px_auto] items-center gap-2 sm:gap-3 border-b border-slate-100 px-2 py-2 sm:px-3 transition hover:bg-slate-50/60",
                         belowMin && "bg-rose-50/40",
                       )}
                     >
@@ -1336,7 +1336,7 @@ export function PosClient({
                         <button
                           type="button"
                           onClick={() => updateLineQty(idx, -1)}
-                          className="grid h-7 w-7 place-items-center text-slate-600 hover:bg-slate-100"
+                          className="grid h-8 w-8 sm:h-7 sm:w-7 place-items-center text-slate-600 hover:bg-slate-100"
                           aria-label="Azalt"
                         >
                           <Minus className="h-3.5 w-3.5" />
@@ -1359,12 +1359,12 @@ export function PosClient({
                               ),
                             )
                           }
-                          className="h-7 w-10 border-0 bg-transparent text-center text-sm font-medium tabular-nums focus:outline-none"
+                          className="h-8 w-10 sm:h-7 border-0 bg-transparent text-center text-sm font-medium tabular-nums focus:outline-none"
                         />
                         <button
                           type="button"
                           onClick={() => updateLineQty(idx, 1)}
-                          className="grid h-7 w-7 place-items-center text-slate-600 hover:bg-slate-100"
+                          className="grid h-8 w-8 sm:h-7 sm:w-7 place-items-center text-slate-600 hover:bg-slate-100"
                           aria-label="Artır"
                         >
                           <Plus className="h-3.5 w-3.5" />
@@ -1380,7 +1380,7 @@ export function PosClient({
                           setLinePrice(idx, Number(e.target.value) || 0)
                         }
                         className={cn(
-                          "h-7 w-20 rounded-md border bg-white px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-rose-300",
+                          "h-8 w-16 sm:h-7 sm:w-20 rounded-md border bg-white px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-rose-300",
                           belowMin ? "border-rose-300" : "border-slate-200",
                           !can.changePrice && "cursor-not-allowed opacity-60",
                         )}
@@ -1461,16 +1461,18 @@ export function PosClient({
 
           {/* Bottom keyboard hint strip */}
           <div className="flex items-center gap-3 border-t border-slate-100 px-3 py-2 text-[10.5px] text-slate-500">
-            <KeyHint k="F2" l="Müştəri" />
-            <KeyHint k="F3" l="Barkod" />
-            <KeyHint k="F6" l="Endirim" />
-            <KeyHint k="F9" l="Tamamla" />
-            <KeyHint k="F11" l="Növbəti" />
-            <KeyHint k="Esc" l="Boşalt" />
+            <div className="hidden md:flex items-center gap-3">
+              <KeyHint k="F2" l="Müştəri" />
+              <KeyHint k="F3" l="Barkod" />
+              <KeyHint k="F6" l="Endirim" />
+              <KeyHint k="F9" l="Tamamla" />
+              <KeyHint k="F11" l="Növbəti" />
+              <KeyHint k="Esc" l="Boşalt" />
+            </div>
             <button
               type="button"
               onClick={() => setParkedOpen(true)}
-              className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-600 hover:border-rose-300 hover:text-rose-700"
+              className="ml-auto inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-600 hover:border-rose-300 hover:text-rose-700"
             >
               <Inbox className="h-3 w-3" />
               Qaralamalar ({parked.length})
@@ -1483,7 +1485,7 @@ export function PosClient({
       </section>
 
       {/* ====================== RIGHT COLUMN ====================== */}
-      <aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-full">
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
           {/* Customer */}
           <div>
@@ -2253,12 +2255,12 @@ function SessionStrip({
   }, [kassaInfo.acilis_tarixi]);
 
   return (
-    <div className="flex h-9 items-center gap-2 rounded-md border border-rose-100 bg-rose-50 px-2 text-[12px]">
+    <div className="flex min-h-9 flex-wrap items-center gap-2 rounded-md border border-rose-100 bg-rose-50 px-2 py-1 text-[12px]">
       <div className="grid h-5 w-5 place-items-center rounded bg-rose-500 text-white">
         <Wallet className="h-3 w-3" />
       </div>
       <span className="font-medium text-slate-900">Aktiv sessiya</span>
-      <span className="text-slate-500">
+      <span className="hidden text-slate-500 sm:inline">
         Açıldı: {opened} · Açılış: {formatMoney(kassaInfo.acilis_qaligi)}
       </span>
       {/* KPI strip: satış sayı + cəmi + nağd/kart/bank/borc */}

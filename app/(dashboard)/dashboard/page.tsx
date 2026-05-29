@@ -122,7 +122,7 @@ export default async function DashboardPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{greet}</p>
               );
             })()}
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
               <span className="gradient-text">{u.ad_soyad.split(" ")[0]}</span>
               <span className="ml-2 text-foreground">👋</span>
             </h1>
@@ -182,42 +182,45 @@ export default async function DashboardPage() {
       </header>
 
       {/* Hər Suspense müstəqil stream olur — shell instant render olunur,
-          ən yavaş sorğu yalnız öz blokunu gecikdirir, qalanları bloklamır. */}
-      <Suspense fallback={<HeroSkeleton />}>
-        <HeroSection />
-      </Suspense>
+          ən yavaş sorğu yalnız öz blokunu gecikdirir, qalanları bloklamır.
+          stagger-children: bölmələr 60ms gecikmə ilə kaskadla görünür (modern feel). */}
+      <div className="space-y-8 stagger-children">
+        <Suspense fallback={<HeroSkeleton />}>
+          <HeroSection />
+        </Suspense>
 
-      <Suspense fallback={null}>
-        <CriticalAlertsSection />
-      </Suspense>
+        <Suspense fallback={null}>
+          <CriticalAlertsSection />
+        </Suspense>
 
-      <Suspense fallback={<ChartSkeleton h={260} />}>
-        <LowStockSection />
-      </Suspense>
+        <Suspense fallback={<ChartSkeleton h={260} />}>
+          <LowStockSection />
+        </Suspense>
 
-      <Suspense fallback={<ChartSkeleton h={220} />}>
-        <TopFiveSection />
-      </Suspense>
+        <Suspense fallback={<ChartSkeleton h={220} />}>
+          <TopFiveSection />
+        </Suspense>
 
-      <Suspense fallback={<ChartSkeleton h={300} />}>
-        <RecentSalesActivity />
-      </Suspense>
+        <Suspense fallback={<ChartSkeleton h={300} />}>
+          <RecentSalesActivity />
+        </Suspense>
 
-      <Suspense fallback={<ChartSkeleton h={300} />}>
-        <BusinessFeedSection />
-      </Suspense>
+        <Suspense fallback={<ChartSkeleton h={300} />}>
+          <BusinessFeedSection />
+        </Suspense>
 
-      <Suspense fallback={null}>
-        <WebhookOrdersSection />
-      </Suspense>
+        <Suspense fallback={null}>
+          <WebhookOrdersSection />
+        </Suspense>
 
-      <Suspense fallback={null}>
-        <SyncHealthSection />
-      </Suspense>
+        <Suspense fallback={null}>
+          <SyncHealthSection />
+        </Suspense>
 
-      <Suspense fallback={null}>
-        <DashboardEmptyState />
-      </Suspense>
+        <Suspense fallback={null}>
+          <DashboardEmptyState />
+        </Suspense>
+      </div>
     </div>
   );
 }

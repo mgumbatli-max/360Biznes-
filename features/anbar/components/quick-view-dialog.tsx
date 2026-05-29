@@ -102,7 +102,7 @@ export function QuickViewDialog({
                 {data.sekil_url ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={data.sekil_url} alt={data.ad} className="h-full w-full object-cover" />
+                    <img loading="lazy" decoding="async" src={data.sekil_url} alt={data.ad} className="h-full w-full object-cover" />
                     <div className="absolute inset-0 grid place-items-center bg-black/0 opacity-0 transition hover:bg-black/30 hover:opacity-100">
                       <ZoomIn className="h-4 w-4 text-white" />
                     </div>
@@ -272,7 +272,7 @@ export function QuickViewDialog({
           <DialogContent className="md:max-w-3xl bg-black/95 border-none p-2">
             <DialogTitle className="sr-only">{data.ad}</DialogTitle>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={data.sekil_url} alt={data.ad} className="mx-auto max-h-[80vh] w-auto" />
+            <img loading="lazy" decoding="async" src={data.sekil_url} alt={data.ad} className="mx-auto max-h-[80vh] w-auto" />
           </DialogContent>
         </Dialog>
       )}

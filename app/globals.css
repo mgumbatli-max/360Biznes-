@@ -168,8 +168,29 @@
   --radius-xl: var(--radius-xl);
 }
 
-html { color-scheme: light; }
+html {
+  color-scheme: light;
+  /* iOS-da naviqasiyada bounce effekti söndür — modern app feel */
+  overscroll-behavior-y: none;
+  /* Touch device-larda sözcükləri seçməyə icazə ver, lakin tap zamanı highlight olmasın */
+  -webkit-tap-highlight-color: transparent;
+  /* In-page anchor naviqasiyaları üçün smooth scroll — modern UX.
+     Yalnız user motion-a uyğundursa (a11y). */
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
 html.dark { color-scheme: dark; }
+
+/* Touch-active feedback — buttonlarda dərhal pressed feeling.
+   Hover yoxdursa (touch device), :active stilini saxla. */
+@media (hover: none) {
+  button, [role="button"], a {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation; /* double-tap-zoom-u söndür, iOS-da 300ms delay-i həll edir */
+  }
+}
 
 body {
   background: hsl(var(--background));
@@ -177,7 +198,9 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 0.18s ease, color 0.18s ease;
+}
+html {
+  transition: background-color 0.18s ease-out, color 0.18s ease-out;
 }
 
 * { border-color: hsl(var(--border)); }
@@ -201,10 +224,22 @@ body {
 }
 
 .glass {
-  background: hsl(var(--card) / 0.65);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: hsl(var(--card) / 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid hsl(var(--border) / 0.6);
+  /* GPU isolation — paint olunan layer ayrı saxla, scroll-da reflow azalt */
+  will-change: backdrop-filter;
+  contain: paint;
+}
+
+/* Mobil: blur cost-u çox yüksək, kompensasiya üçün opacity artırırıq */
+@media (max-width: 768px) {
+  .glass {
+    background: hsl(var(--card) / 0.92);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
 }
 
 .brand-glow { box-shadow: var(--brand-glow); }
@@ -214,6 +249,16 @@ body {
   50% { box-shadow: 0 0 0 8px hsl(var(--primary) / 0); }
 }
 .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+
+/* Subtle pulse — Tailwind default 100%→50% opacity-i çox parlaqdır,
+   skeleton flash hissi yaradır. Bizim variant 100%→70% — daha yumşaq. */
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+.animate-pulse {
+  animation: subtle-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
 
 /* Page enter animation — applied to dashboard main content area */
 @keyframes fade-up {
@@ -227,6 +272,75 @@ body {
   to { opacity: 1; }
 }
 .animate-fade-in { animation: fade-in 0.4s ease-out both; }
+
+/* Modern stagger animation — uşaq element-lərə sıralı görünmə effekti.
+   İstifadə: parent-də .stagger-children, uşaqlar avtomatik gecikmə ilə fade-up.
+   Yalnız ilk 12 uşaq üçün — performans üçün çox dərinə getmirik. */
+.stagger-children > * {
+  opacity: 0;
+  animation: fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.stagger-children > *:nth-child(1)  { animation-delay: 40ms;  }
+.stagger-children > *:nth-child(2)  { animation-delay: 100ms; }
+.stagger-children > *:nth-child(3)  { animation-delay: 160ms; }
+.stagger-children > *:nth-child(4)  { animation-delay: 220ms; }
+.stagger-children > *:nth-child(5)  { animation-delay: 280ms; }
+.stagger-children > *:nth-child(6)  { animation-delay: 340ms; }
+.stagger-children > *:nth-child(7)  { animation-delay: 380ms; }
+.stagger-children > *:nth-child(8)  { animation-delay: 420ms; }
+.stagger-children > *:nth-child(n+9) { animation-delay: 460ms; }
+
+/* View Transitions API — Next 16 ilə iOS-style slide transitions.
+   Köhnə səhifə sola sürüşür, yeni səhifə sağdan gəlir (push navigation).
+   Spring easing — Apple-like fluid motion. */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.32s;
+    /* iOS standard spring curve */
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+    /* GPU acceleration */
+    will-change: transform, opacity;
+  }
+  ::view-transition-old(root) {
+    animation-name: vt-slide-out-left;
+  }
+  ::view-transition-new(root) {
+    animation-name: vt-slide-in-right;
+  }
+  /* Geri naviqasiya (back) — əksinə slide */
+  ::view-transition-old(back),
+  ::view-transition-new(back) {
+    animation-duration: 0.32s;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+}
+
+@keyframes vt-slide-out-left {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-30px); }
+}
+@keyframes vt-slide-in-right {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Mobil: daha çevik və qısa keçid — touch device fast feedback */
+@media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.24s;
+  }
+}
+
+/* Reduced motion — animasiyaları söndür */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 /* Subtle scale-on-hover for clickable cards (use sparingly) */
 .hover-lift {

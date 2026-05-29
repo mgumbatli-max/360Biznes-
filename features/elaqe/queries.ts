@@ -208,7 +208,30 @@ export async function getContactDetail(id: string) {
   return withTenant(async () => {
     return prisma.kontragentler.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        ad: true,
+        nov: true,
+        voen: true,
+        fin_kod: true,
+        telefon: true,
+        telefon2: true,
+        email: true,
+        unvan: true,
+        sirket_adi: true,
+        sheher: true,
+        olke: true,
+        valyuta: true,
+        borc: true,
+        borc_limiti: true,
+        qiymet_tipi: true,
+        menecer_id: true,
+        aktiv: true,
+        qara_siyahi: true,
+        funnel_status: true,
+        son_temas: true,
+        yaradildi: true,
+        qeyd: true,
         istifadeciler: { select: { id: true, ad_soyad: true } },
       },
     });

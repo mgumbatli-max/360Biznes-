@@ -26,7 +26,7 @@ async function SidebarShell({ user }: { user: SessionUser }) {
   const [reminderCount, nezaretBadge, sahibkarVisible] = await Promise.all([
     getMyActiveReminders().catch(() => 0),
     getNezaretSidebarTotal().catch(() => ({ count: 0, tone: "emerald" as const })),
-    getSahibkarSidebarVisible(user.rol_id),
+    getSahibkarSidebarVisible(user.rol_id).catch(() => true),
   ]);
   const badges: SidebarBadges = {};
   if (reminderCount > 0) badges["/tapshiriqlar"] = { count: reminderCount, tone: "rose" };

@@ -115,7 +115,7 @@ export function PostsList({
                   {/* Şəkil önbax */}
                   {p.sekil_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.sekil_url} alt="" className="h-14 w-14 shrink-0 rounded-md border border-border/40 object-cover" />
+                    <img loading="lazy" decoding="async" src={p.sekil_url} alt="" className="h-14 w-14 shrink-0 rounded-md border border-border/40 object-cover" />
                   ) : (
                     <div className="grid h-14 w-14 shrink-0 place-items-center rounded-md bg-secondary/40 text-muted-foreground/40">
                       <ImageIcon className="h-5 w-5" />

@@ -287,6 +287,45 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
         console.error("[webhook] telegram göndərilə bilmədi:", e);
       }
 
+      // 10b. Email bildiriş (opsiyonel — env-də provider + sahibkar email qoyulubsa)
+      try {
+        const { getEmailConfigForSahibkar } = await import("@/features/email/actions");
+        const { sendEmail, isEmailRealMode } = await import("@/lib/email/adapter");
+        const em = await getEmailConfigForSahibkar(sahibkarId);
+        if (isEmailRealMode() && em.recipient && em.events.includes("webhook_order")) {
+          const itemsHtml = body.items
+            .slice(0, 10)
+            .map((it) => `<tr><td>${it.sku ?? "?"}</td><td>×${it.miqdar}</td><td>${it.qiymet}₼</td></tr>`)
+            .join("");
+          const more = body.items.length > 10 ? `<p><em>... və ${body.items.length - 10} item daha</em></p>` : "";
+          const warn = anyShort ? `<p style="color:#dc2626"><strong>⚠️ Bəzi məhsulların stoku yetmir</strong></p>` : "";
+          const baseUrl = process.env.NEXTAUTH_URL ?? "";
+          await sendEmail({
+            to: em.recipient,
+            subject: `🛒 Yeni ${kanal} sifariş — ${cem.toFixed(2)} ₼`,
+            html: `
+              <div style="font-family:system-ui,sans-serif;max-width:640px;padding:24px;background:#f8fafc">
+                <h1 style="color:#0f172a;margin:0 0 16px">🛒 Yeni sifariş — ${kanal.toUpperCase()}</h1>
+                <table style="width:100%;border-collapse:collapse;background:white;border-radius:8px">
+                  <tr><td style="padding:8px"><strong>Məbləğ:</strong></td><td style="padding:8px">${cem.toFixed(2)} ₼</td></tr>
+                  <tr><td style="padding:8px"><strong>Müştəri:</strong></td><td style="padding:8px">${body.musteri?.ad ?? "—"}</td></tr>
+                  <tr><td style="padding:8px"><strong>Telefon:</strong></td><td style="padding:8px">${body.musteri?.telefon ?? "—"}</td></tr>
+                  <tr><td style="padding:8px"><strong>External:</strong></td><td style="padding:8px"><code>${body.external_id}</code></td></tr>
+                </table>
+                <h3 style="color:#0f172a;margin-top:24px">Item-lər</h3>
+                <table style="width:100%;border-collapse:collapse;background:white">
+                  <thead><tr style="background:#e2e8f0"><th style="padding:8px;text-align:left">SKU</th><th style="padding:8px">Miqdar</th><th style="padding:8px">Qiymət</th></tr></thead>
+                  <tbody>${itemsHtml}</tbody>
+                </table>
+                ${more}${warn}
+                ${baseUrl ? `<a href="${baseUrl}/ticaret/satislar/${satis.id}" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#0f172a;color:white;text-decoration:none;border-radius:8px">ERP-də aç →</a>` : ""}
+              </div>`,
+          });
+        }
+      } catch (e) {
+        console.error("[webhook] email göndərilə bilmədi:", e);
+      }
+
       // 11. Stok dəyişən məhsulları DIGƏR kanallara avtomatik sync — arxa fonda
       try {
         const { emitStockChange } = await import("@/lib/stock-change-emitter");

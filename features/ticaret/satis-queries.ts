@@ -101,6 +101,10 @@ export async function getSales(
   page = 1,
   pageSize = 50
 ): Promise<{ items: SaleListItem[]; total: number }> {
+  // Server-tərəfli hard cap — malicious / yanlışca verilən pageSize=10000 DB-ni
+  // və serializasiyanı bloklamasın deyə. 100 sətir UI üçün də praktiki maksimum.
+  pageSize = Math.min(Math.max(1, pageSize), 100);
+  page = Math.max(1, page);
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = { qaralama: { not: true } };

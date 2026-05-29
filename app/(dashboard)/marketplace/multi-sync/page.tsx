@@ -212,7 +212,7 @@ export default async function MultiSyncPage({ searchParams }: { searchParams: Pr
                         <div className="flex items-center gap-2">
                           {c.sekil_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={c.sekil_url} alt={c.ad} className="h-8 w-8 rounded object-cover" />
+                            <img loading="lazy" decoding="async" src={c.sekil_url} alt={c.ad} className="h-8 w-8 rounded object-cover" />
                           ) : (
                             <div className="grid h-8 w-8 place-items-center rounded bg-secondary text-muted-foreground/50">
                               <Package className="h-4 w-4" />

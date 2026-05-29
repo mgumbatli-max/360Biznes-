@@ -3,10 +3,6 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
-export async function getContactDetail(id: string) {
-  return withTenant(async () => prisma.kontragentler.findUnique({ where: { id } }));
-}
-
 export async function getContactSalesHistory(id: string, limit = 30) {
   return withTenant(async () =>
     prisma.satis_sifarisleri.findMany({

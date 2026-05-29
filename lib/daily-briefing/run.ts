@@ -7,6 +7,14 @@ import { getInaktivMusteriler } from "@/features/elaqe/inaktiv-queries";
 import { generateBorcTasks } from "./borc-tasks";
 
 /**
+ * In-process LRU — sahibkar üzrə "bu gün artıq icra olunub" qeydi.
+ * Hər navigasiyada DB check etməyi qarşısını alır (Vercel function instance həyatı boyunca).
+ * Map key: sahibkar_id, value: tarix (YYYY-MM-DD) — eyni gün təkrar yoxlanılmır.
+ */
+const dailyBriefingCheckCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 500; // Vercel function-da bir neçə tenant per instance
+
+/**
  * Səhər brifinq — gündə bir dəfə tetiklenen avto-bildiriş generatoru.
  *
  * Necə işləyir:
@@ -29,13 +37,26 @@ export async function runDailyBriefing(): Promise<void> {
     const { sahibkarId } = requireTenant();
     const todayStr = new Date().toISOString().slice(0, 10);
 
+    // In-memory cache: bu instance bu gün artıq yoxlayıb mı?
+    // Hər navigation-da `ayarlar` cədvəlinə DB query etməyi sıfıra endirir.
+    if (dailyBriefingCheckCache.get(sahibkarId) === todayStr) return;
+
     try {
-      // Bu gün artıq icra olunubmu?
+      // Bu gün artıq icra olunubmu? (DB-də yoxla, sonra in-memory yadda saxla)
       const flag = await prisma.ayarlar.findFirst({
         where: { sahibkar_id: sahibkarId, qrup: "daily_briefing", acar: "son_tarix" },
         select: { deyer: true },
       });
-      if (flag?.deyer === todayStr) return; // artıq edilib
+      if (flag?.deyer === todayStr) {
+        // Daha sonrakı navigasiyalarda hətta DB query də etmə
+        if (dailyBriefingCheckCache.size >= MAX_CACHE_SIZE) {
+          // Sadə FIFO — ən köhnə girişi sil
+          const firstKey = dailyBriefingCheckCache.keys().next().value;
+          if (firstKey) dailyBriefingCheckCache.delete(firstKey);
+        }
+        dailyBriefingCheckCache.set(sahibkarId, todayStr);
+        return;
+      }
 
       // Sahibkar və adminləri tap
       const recipients = await prisma.istifadeciler.findMany({
@@ -190,4 +211,6 @@ async function markDone(sahibkarId: string, todayStr: string): Promise<void> {
     },
     update: { deyer: todayStr, yenilendi: new Date() },
   });
+  // İn-memory cache-i də yenilə — bu instance daha bu gün DB query etməsin
+  dailyBriefingCheckCache.set(sahibkarId, todayStr);
 }

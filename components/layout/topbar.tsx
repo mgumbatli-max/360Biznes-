@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Menu } from "lucide-react";
 import { useSidebar } from "@/stores/sidebar";
 import { UserMenu } from "./user-menu";
@@ -26,7 +27,7 @@ const EMPTY_MY_WORK: MyWorkData = {
   totals: { tasks: 0, reminders: 0, approvals: 0 },
 };
 
-export function Topbar({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK }: Props) {
+function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK }: Props) {
   const setMobileOpen = useSidebar((s) => s.setMobileOpen);
 
   return (
@@ -35,7 +36,7 @@ export function Topbar({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_W
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground md:hidden"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary/80 md:hidden"
           aria-label="Naviqasiya menyusu"
         >
           <Menu className="h-5 w-5" />
@@ -60,3 +61,7 @@ export function Topbar({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_W
     </header>
   );
 }
+
+// Layout hər navigation-da re-render olur; props (user/alerts/myWork) stabil
+// olduqda Topbar yenidən render olmasın.
+export const Topbar = memo(TopbarComponent);
