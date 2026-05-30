@@ -50,7 +50,7 @@ export function QuickActionsFab() {
   }, [open]);
 
   return (
-    <div ref={ref} className="fixed bottom-6 right-6 z-40 print:hidden">
+    <div ref={ref} className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] right-4 z-40 md:bottom-6 md:right-6 print:hidden">
       {open && (
         <div className="mb-3 flex flex-col items-end gap-2 animate-fade-up">
           {ACTIONS.map((a) => {

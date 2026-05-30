@@ -54,7 +54,7 @@ function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
           "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-200",
           "md:sticky md:top-0 md:h-screen md:translate-x-0",
           collapsed ? "md:w-[72px]" : "md:w-64",
-          "w-72",
+          "w-72 pt-safe pb-safe", // iOS notch + home bar
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >

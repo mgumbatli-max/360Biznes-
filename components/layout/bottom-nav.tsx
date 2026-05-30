@@ -1,0 +1,97 @@
+"use client";
+
+import { memo } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LayoutDashboard, Package, ScanLine, Users, Menu } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useSidebar } from "@/stores/sidebar";
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  external?: boolean;
+  /** Bu route prefiks-i altında olan səhifələrdə də aktiv görünsün. */
+  alsoActive?: string[];
+};
+
+const ITEMS: NavItem[] = [
+  { href: "/dashboard", label: "Əsas", icon: LayoutDashboard },
+  { href: "/anbar", label: "Anbar", icon: Package, alsoActive: ["/anbar"] },
+  { href: "/pos", label: "POS", icon: ScanLine, external: true },
+  { href: "/elaqe", label: "Müştəri", icon: Users, alsoActive: ["/elaqe", "/crm"] },
+];
+
+/**
+ * Mobil bottom navigation — yalnız `md:hidden` (768px-dən aşağı).
+ * iOS safe-area home bar ilə uyumlu. 5-ci slot menyu açmaq üçün
+ * mövcud sidebar-a bağlanır (yeni state yaratmadan).
+ */
+function BottomNavComponent() {
+  const pathname = usePathname();
+  const setMobileOpen = useSidebar((s) => s.setMobileOpen);
+
+  return (
+    <nav
+      aria-label="Əsas naviqasiya"
+      className={cn(
+        "fixed bottom-0 left-0 right-0 z-30 md:hidden",
+        "border-t border-border/60 bg-card/95 backdrop-blur-lg",
+        "pb-safe", // iOS home bar
+      )}
+    >
+      <ul className="flex h-15 items-stretch">
+        {ITEMS.map((item) => {
+          const Icon = item.icon;
+          const active =
+            pathname === item.href ||
+            (item.alsoActive?.some((p) => pathname === p || pathname.startsWith(p + "/")) ?? false);
+          return (
+            <li key={item.href} className="flex-1">
+              <Link
+                href={item.href}
+                target={item.external ? "_blank" : undefined}
+                rel={item.external ? "noopener" : undefined}
+                prefetch={!item.external}
+                className={cn(
+                  "relative flex h-full flex-col items-center justify-center gap-0.5 px-1 py-2",
+                  "text-[10px] font-medium transition-colors active:bg-secondary/40",
+                  active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {active && (
+                  <span
+                    aria-hidden
+                    className="absolute top-0 left-1/2 h-[3px] w-10 -translate-x-1/2 rounded-b-full"
+                    style={{ background: "var(--brand-gradient)" }}
+                  />
+                )}
+                <Icon className={cn("h-5 w-5 transition-transform", active && "scale-110 text-primary-light")} />
+                <span className="leading-none">{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+        {/* 5-ci slot — sidebar trigger */}
+        <li className="flex-1">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Bütün menyu"
+            className={cn(
+              "relative flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 py-2",
+              "text-[10px] font-medium text-muted-foreground transition-colors",
+              "hover:text-foreground active:bg-secondary/40",
+            )}
+          >
+            <Menu className="h-5 w-5" />
+            <span className="leading-none">Menyu</span>
+          </button>
+        </li>
+      </ul>
+    </nav>
+  );
+}
+
+export const BottomNav = memo(BottomNavComponent);

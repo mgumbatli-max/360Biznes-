@@ -6,6 +6,7 @@ import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { BottomNav } from "@/components/layout/bottom-nav";
 import { EmbedDetector } from "@/components/layout/embed-detector";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { PermissionsProvider } from "@/components/providers/permissions-provider";
@@ -114,10 +115,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 <TopbarShell user={session.user} />
               </Suspense>
             </div>
-            <main className="flex-1 overflow-x-hidden p-4 md:p-6 animate-fade-in">{children}</main>
+            <main className="flex-1 overflow-x-hidden p-4 pb-safe-20 md:p-6 md:pb-6 animate-fade-in">{children}</main>
             <KeyboardShortcuts />
           </div>
           <QuickActionsFab />
+          <BottomNav />
         </div>
       </PermissionsProvider>
     </AuthSessionProvider>

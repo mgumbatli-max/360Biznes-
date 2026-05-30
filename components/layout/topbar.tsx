@@ -31,7 +31,7 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
   const setMobileOpen = useSidebar((s) => s.setMobileOpen);
 
   return (
-    <header className="glass sticky top-0 z-20 border-b border-border/60">
+    <header className="glass sticky top-0 z-20 border-b border-border/60 pt-safe">
       <div className="flex h-14 items-center gap-2 px-4 md:px-6">
         <button
           type="button"
@@ -50,11 +50,16 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
-          <CommandPaletteTrigger />
-          <ThemeToggle />
+          {/* Mobile: gizlət — yer az, command palette sidebar-da; tema dropdown-da */}
+          <div className="hidden md:contents">
+            <CommandPaletteTrigger />
+            <ThemeToggle />
+          </div>
           <MyWork data={myWork} />
           <NotificationBell items={alerts} unreadCount={unreadCount} />
-          <Clock />
+          <div className="hidden sm:contents">
+            <Clock />
+          </div>
           <UserMenu user={user} />
         </div>
       </div>
