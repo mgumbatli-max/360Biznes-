@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
@@ -338,34 +339,43 @@ export async function getRoleDetail(rolId: number) {
   });
 }
 
+const fetchMerkezStatsCached = (sahibkarId: string) =>
+  unstable_cache(
+    async () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const [aktivFilial, passivFilial, aktivKassa, todaySales, userCount, branchTotal] = await Promise.all([
+        prismaUnscoped.filiallar.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
+        prismaUnscoped.filiallar.count({ where: { sahibkar_id: sahibkarId, aktiv: false } }),
+        prismaUnscoped.kassalar.count({ where: { sahibkar_id: sahibkarId, baglanis_tarixi: null } }),
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: today } },
+          _sum: { umumi_mebleg: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.istifadeciler.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
+        prismaUnscoped.filiallar.count({ where: { sahibkar_id: sahibkarId } }),
+      ]);
+
+      return {
+        aktivFilial,
+        passivFilial,
+        branchTotal,
+        aktivKassa,
+        userCount,
+        todaySalesAmount: Number(todaySales._sum.umumi_mebleg ?? 0),
+        todaySalesCount: todaySales._count._all,
+      };
+    },
+    ["merkez-stats", sahibkarId],
+    { revalidate: 120, tags: [`ayar:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+  );
+
 export async function getMerkezStats() {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const [aktivFilial, passivFilial, aktivKassa, todaySales, userCount, branchTotal] = await Promise.all([
-      prisma.filiallar.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
-      prisma.filiallar.count({ where: { sahibkar_id: sahibkarId, aktiv: false } }),
-      prisma.kassalar.count({ where: { sahibkar_id: sahibkarId, baglanis_tarixi: null } }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { sahibkar_id: sahibkarId, tarix: { gte: today } },
-        _sum: { umumi_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.istifadeciler.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
-      prisma.filiallar.count({ where: { sahibkar_id: sahibkarId } }),
-    ]);
-
-    return {
-      aktivFilial,
-      passivFilial,
-      branchTotal,
-      aktivKassa,
-      userCount,
-      todaySalesAmount: Number(todaySales._sum.umumi_mebleg ?? 0),
-      todaySalesCount: todaySales._count._all,
-    };
+    return fetchMerkezStatsCached(sahibkarId)();
   });
 }
 

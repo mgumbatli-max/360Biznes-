@@ -742,124 +742,132 @@ export type ElaqeDashboard = {
   risk_musteri: { id: string; ad: string; borc: number; gun: number }[];
 };
 
+const fetchElaqeDashboardCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<ElaqeDashboard> => {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+      const thisMonth = now.getMonth() + 1;
+      const yatmisLimit = new Date(); yatmisLimit.setDate(yatmisLimit.getDate() - 90);
+
+      const [
+        cemi,
+        musteri,
+        techizatci,
+        qaraSiyahi,
+        borcluList,
+        followupBugun,
+        followupGecikmis,
+        followupAcig,
+        leadAktiv,
+        topRaw,
+        riskRaw,
+        dogumRaw,
+      ] = await Promise.all([
+        prismaUnscoped.kontragentler.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
+        prismaUnscoped.kontragentler.count({ where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: ["musteri", "her_ikisi"] } } }),
+        prismaUnscoped.kontragentler.count({ where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: ["techizatci", "her_ikisi"] } } }),
+        prismaUnscoped.kontragentler.count({ where: { sahibkar_id: sahibkarId, qara_siyahi: true } }),
+        prismaUnscoped.kontragentler.findMany({
+          where: { sahibkar_id: sahibkarId, aktiv: true, alacaq: { gt: 0 } },
+          select: { alacaq: true, son_temas: true, borc_limiti: true },
+        }),
+        prismaUnscoped.contact_followups.count({
+          where: { sahibkar_id: sahibkarId, status: "gozleyir", vaxt: { gte: today, lt: tomorrow } },
+        }),
+        prismaUnscoped.contact_followups.count({
+          where: { sahibkar_id: sahibkarId, status: "gozleyir", vaxt: { lt: today } },
+        }),
+        prismaUnscoped.contact_followups.count({ where: { sahibkar_id: sahibkarId, status: "gozleyir" } }),
+        prismaUnscoped.leads.count({ where: { sahibkar_id: sahibkarId, status: { notIn: ["bagh_legv", "bagh_qazand", "qazand"] } } }).catch(() => 0),
+        prismaUnscoped.$queryRaw<{ musteri_id: string; ad: string; sayi: bigint; dovriyye: Prisma.Decimal }[]>`
+          SELECT s.musteri_id, k.ad, COUNT(*)::bigint AS sayi, COALESCE(SUM(s.son_mebleg), 0) AS dovriyye
+            FROM satis_sifarisleri s
+            JOIN kontragentler k ON k.id = s.musteri_id
+           WHERE s.sahibkar_id = ${sahibkarId}::uuid
+             AND s.status <> 'legv'
+             AND s.tarix >= NOW() - INTERVAL '90 days'
+           GROUP BY s.musteri_id, k.ad
+           ORDER BY dovriyye DESC
+           LIMIT 8
+        `.catch(() => []),
+        prismaUnscoped.kontragentler.findMany({
+          where: { sahibkar_id: sahibkarId, aktiv: true, alacaq: { gt: 0 } },
+          select: { id: true, ad: true, alacaq: true, son_temas: true },
+          orderBy: { alacaq: "desc" },
+          take: 30,
+        }),
+        prismaUnscoped.$queryRaw<{ count: bigint }[]>`
+          SELECT COUNT(*)::bigint AS count
+            FROM kontragentler
+           WHERE sahibkar_id = ${sahibkarId}::uuid
+             AND aktiv = true
+             AND dogum_tarixi IS NOT NULL
+             AND EXTRACT(MONTH FROM dogum_tarixi) = ${thisMonth}
+        `.catch(() => [{ count: 0n }]),
+      ]);
+
+      const yatmisCount = await prismaUnscoped.kontragentler.count({
+        where: {
+          sahibkar_id: sahibkarId,
+          aktiv: true,
+          nov: { in: ["musteri", "her_ikisi"] },
+          OR: [
+            { son_temas: null },
+            { son_temas: { lt: yatmisLimit } },
+          ],
+        },
+      });
+
+      const borc_cemi = borcluList.reduce((s, r) => s + Number(r.alacaq ?? 0), 0);
+      let gec_borc_say = 0;
+      const nowTs = Date.now();
+      for (const r of borcluList) {
+        const days = r.son_temas ? Math.floor((nowTs - r.son_temas.getTime()) / 86400000) : 999;
+        if (days > 30) gec_borc_say++;
+      }
+
+      const risk_musteri = riskRaw
+        .map((r) => {
+          const gun = r.son_temas ? Math.floor((nowTs - r.son_temas.getTime()) / 86400000) : 999;
+          return { id: r.id, ad: r.ad, borc: Number(r.alacaq ?? 0), gun };
+        })
+        .filter((r) => r.gun > 30)
+        .sort((a, b) => b.borc - a.borc)
+        .slice(0, 8);
+
+      return {
+        cemi,
+        musteri,
+        techizatci,
+        qara_siyahi: qaraSiyahi,
+        borclu_say: borcluList.length,
+        borc_cemi,
+        gec_borc_say,
+        followup_bugun: followupBugun,
+        followup_gecikmis: followupGecikmis,
+        followup_acig: followupAcig,
+        lead_aktiv: leadAktiv,
+        dogum_bu_ay: Number(dogumRaw[0]?.count ?? 0),
+        yatmis_say: yatmisCount,
+        top_musteri: topRaw.map((r) => ({
+          id: r.musteri_id,
+          ad: r.ad,
+          satis_say: Number(r.sayi),
+          dovriyye: Number(r.dovriyye),
+        })),
+        risk_musteri,
+      };
+    },
+    ["elaqe-dashboard", sahibkarId],
+    { revalidate: 60, tags: [`elaqe:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+  );
+
 export async function getElaqeDashboard(): Promise<ElaqeDashboard> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-    const thisMonth = now.getMonth() + 1; // 1-12
-    const yatmisLimit = new Date(); yatmisLimit.setDate(yatmisLimit.getDate() - 90);
-
-    const [
-      cemi,
-      musteri,
-      techizatci,
-      qaraSiyahi,
-      borcluList,
-      followupBugun,
-      followupGecikmis,
-      followupAcig,
-      leadAktiv,
-      topRaw,
-      riskRaw,
-      dogumRaw,
-    ] = await Promise.all([
-      prisma.kontragentler.count({ where: { aktiv: true } }),
-      prisma.kontragentler.count({ where: { aktiv: true, nov: { in: ["musteri", "her_ikisi"] } } }),
-      prisma.kontragentler.count({ where: { aktiv: true, nov: { in: ["techizatci", "her_ikisi"] } } }),
-      prisma.kontragentler.count({ where: { qara_siyahi: true } }),
-      prisma.kontragentler.findMany({
-        where: { aktiv: true, alacaq: { gt: 0 } },
-        select: { alacaq: true, son_temas: true, borc_limiti: true },
-      }),
-      prisma.contact_followups.count({
-        where: { status: "gozleyir", vaxt: { gte: today, lt: tomorrow } },
-      }),
-      prisma.contact_followups.count({
-        where: { status: "gozleyir", vaxt: { lt: today } },
-      }),
-      prisma.contact_followups.count({ where: { status: "gozleyir" } }),
-      prisma.leads.count({ where: { status: { notIn: ["bagh_legv", "bagh_qazand", "qazand"] } } }).catch(() => 0),
-      prisma.$queryRaw<{ musteri_id: string; ad: string; sayi: bigint; dovriyye: Prisma.Decimal }[]>`
-        SELECT s.musteri_id, k.ad, COUNT(*)::bigint AS sayi, COALESCE(SUM(s.son_mebleg), 0) AS dovriyye
-          FROM satis_sifarisleri s
-          JOIN kontragentler k ON k.id = s.musteri_id
-         WHERE s.sahibkar_id = ${sahibkarId}::uuid
-           AND s.status <> 'legv'
-           AND s.tarix >= NOW() - INTERVAL '90 days'
-         GROUP BY s.musteri_id, k.ad
-         ORDER BY dovriyye DESC
-         LIMIT 8
-      `.catch(() => []),
-      prisma.kontragentler.findMany({
-        where: { aktiv: true, alacaq: { gt: 0 } },
-        select: { id: true, ad: true, alacaq: true, son_temas: true },
-        orderBy: { alacaq: "desc" },
-        take: 30,
-      }),
-      prisma.$queryRaw<{ count: bigint }[]>`
-        SELECT COUNT(*)::bigint AS count
-          FROM kontragentler
-         WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND aktiv = true
-           AND dogum_tarixi IS NOT NULL
-           AND EXTRACT(MONTH FROM dogum_tarixi) = ${thisMonth}
-      `.catch(() => [{ count: 0n }]),
-    ]);
-
-    const yatmisCount = await prisma.kontragentler.count({
-      where: {
-        aktiv: true,
-        nov: { in: ["musteri", "her_ikisi"] },
-        OR: [
-          { son_temas: null },
-          { son_temas: { lt: yatmisLimit } },
-        ],
-      },
-    });
-
-    const borc_cemi = borcluList.reduce((s, r) => s + Number(r.alacaq ?? 0), 0);
-    let gec_borc_say = 0;
-    const nowTs = Date.now();
-    for (const r of borcluList) {
-      const days = r.son_temas ? Math.floor((nowTs - r.son_temas.getTime()) / 86400000) : 999;
-      if (days > 30) gec_borc_say++;
-    }
-
-    // Filter risk customers: only those whose son_temas > 30 days
-    const risk_musteri = riskRaw
-      .map((r) => {
-        const gun = r.son_temas ? Math.floor((nowTs - r.son_temas.getTime()) / 86400000) : 999;
-        return { id: r.id, ad: r.ad, borc: Number(r.alacaq ?? 0), gun };
-      })
-      .filter((r) => r.gun > 30)
-      .sort((a, b) => b.borc - a.borc)
-      .slice(0, 8);
-
-    return {
-      cemi,
-      musteri,
-      techizatci,
-      qara_siyahi: qaraSiyahi,
-      borclu_say: borcluList.length,
-      borc_cemi,
-      gec_borc_say,
-      followup_bugun: followupBugun,
-      followup_gecikmis: followupGecikmis,
-      followup_acig: followupAcig,
-      lead_aktiv: leadAktiv,
-      dogum_bu_ay: Number(dogumRaw[0]?.count ?? 0),
-      yatmis_say: yatmisCount,
-      top_musteri: topRaw.map((r) => ({
-        id: r.musteri_id,
-        ad: r.ad,
-        satis_say: Number(r.sayi),
-        dovriyye: Number(r.dovriyye),
-      })),
-      risk_musteri,
-    };
+    return fetchElaqeDashboardCached(sahibkarId)();
   });
 }
 
