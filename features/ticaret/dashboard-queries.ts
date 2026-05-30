@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
@@ -49,101 +50,125 @@ function asNumber(v: unknown) {
   return Number(v);
 }
 
+type TradeKpisRaw = Omit<TradeKpis, "satish" | "alish" | "qaytarma"> & {
+  satish: TradeKpis["satish"];
+  alish: TradeKpis["alish"];
+  qaytarma: TradeKpis["qaytarma"];
+};
+
+// Cache-li raw KPI — stealth-siz, 30s TTL (transactional data).
+// Tag `dashboard:${sahibkarId}` artıq satış/alış action-larında invalidate olunur.
+const fetchTradeKpisRawCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<TradeKpisRaw> => {
+      const now = new Date();
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+      const [
+        sBugun, sAy, kredit, aBugun, aAy, aAciq, qAy, qGoz, tAktiv, tCevr,
+      ] = await Promise.all([
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true }, status: { not: "legv" } },
+          _sum: { son_mebleg: true, xalis_meblegh: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, qaralama: { not: true }, status: { not: "legv" } },
+          _sum: { son_mebleg: true, xalis_meblegh: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, odenis_nov: "nisye", qaralama: { not: true }, status: { not: "legv" } },
+          _sum: { son_mebleg: true, odenilmis: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.alis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: today }, status: { not: "legv" } },
+          _sum: { umumi_mebleg: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.alis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, status: { not: "legv" } },
+          _sum: { umumi_mebleg: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.alis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, status: { in: ["gozlemede", "tesdiqlendi", "yolda"] } },
+          _sum: { umumi_mebleg: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.qaytarma_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart } },
+          _sum: { umumi_mebleg: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.qaytarma_sifarisleri.count({ where: { sahibkar_id: sahibkarId, status: "tesdiqlenmemis" } }),
+        prismaUnscoped.teklifler.count({ where: { sahibkar_id: sahibkarId, status: { in: ["qaralama", "gonderildi", "qebul"] } } }),
+        prismaUnscoped.teklifler.count({ where: { sahibkar_id: sahibkarId, satish_id: { not: null } } }),
+      ]);
+
+      const kreditBorc = asNumber(kredit._sum.son_mebleg) - asNumber(kredit._sum.odenilmis);
+      const tTotal = tAktiv + tCevr;
+      const konversiya = tTotal > 0 ? Math.round((tCevr / tTotal) * 100) : 0;
+
+      return {
+        satish: {
+          bugun_say: sBugun._count._all,
+          bugun_meb: asNumber(sBugun._sum.son_mebleg),
+          bugun_xalis: asNumber(sBugun._sum.xalis_meblegh),
+          ay_say: sAy._count._all,
+          ay_meb: asNumber(sAy._sum.son_mebleg),
+          ay_xalis: asNumber(sAy._sum.xalis_meblegh),
+          kredit_say: kredit._count._all,
+          kredit_borc: kreditBorc,
+        },
+        alish: {
+          bugun_say: aBugun._count._all,
+          bugun_meb: asNumber(aBugun._sum.umumi_mebleg),
+          ay_say: aAy._count._all,
+          ay_meb: asNumber(aAy._sum.umumi_mebleg),
+          aciq_say: aAciq._count._all,
+          aciq_meb: asNumber(aAciq._sum.umumi_mebleg),
+        },
+        qaytarma: {
+          say: qAy._count._all,
+          meb: asNumber(qAy._sum.umumi_mebleg),
+          gozleyen: qGoz,
+        },
+        teklif: { aktiv: tAktiv, cevrildi: tCevr, konversiya },
+      };
+    },
+    ["trade-kpis", sahibkarId],
+    { revalidate: 30, tags: [`dashboard:${sahibkarId}`, `satis:${sahibkarId}`, `alis:${sahibkarId}`] },
+  );
+
 export async function getTradeKpis(): Promise<TradeKpis> {
   return withTenant(async () => {
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    const [
-      sBugun,
-      sAy,
-      kredit,
-      aBugun,
-      aAy,
-      aAciq,
-      qAy,
-      qGoz,
-      tAktiv,
-      tCevr,
-    ] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: today }, qaralama: { not: true }, status: { not: "legv" } },
-        _sum: { son_mebleg: true, xalis_meblegh: true },
-        _count: { _all: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, qaralama: { not: true }, status: { not: "legv" } },
-        _sum: { son_mebleg: true, xalis_meblegh: true },
-        _count: { _all: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { odenis_nov: "nisye", qaralama: { not: true }, status: { not: "legv" } },
-        _sum: { son_mebleg: true, odenilmis: true },
-        _count: { _all: true },
-      }),
-      prisma.alis_sifarisleri.aggregate({
-        where: { tarix: { gte: today }, status: { not: "legv" } },
-        _sum: { umumi_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.alis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, status: { not: "legv" } },
-        _sum: { umumi_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.alis_sifarisleri.aggregate({
-        where: { status: { in: ["gozlemede", "tesdiqlendi", "yolda"] } },
-        _sum: { umumi_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.qaytarma_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart } },
-        _sum: { umumi_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.qaytarma_sifarisleri.count({ where: { status: "tesdiqlenmemis" } }),
-      prisma.teklifler.count({ where: { status: { in: ["qaralama", "gonderildi", "qebul"] } } }),
-      prisma.teklifler.count({ where: { satish_id: { not: null } } }),
+    const { sahibkarId } = requireTenant();
+    const [raw, stealth] = await Promise.all([
+      fetchTradeKpisRawCached(sahibkarId)(),
+      getStealthState(),
     ]);
-
-    const kreditBorc = asNumber(kredit._sum.son_mebleg) - asNumber(kredit._sum.odenilmis);
-    const tTotal = tAktiv + tCevr;
-    const konversiya = tTotal > 0 ? Math.round((tCevr / tTotal) * 100) : 0;
-
-    const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
-
     return {
       satish: {
-        bugun_say: sBugun._count._all,
-        bugun_meb: asNumber(sBugun._sum.son_mebleg) * s,
-        bugun_xalis: asNumber(sBugun._sum.xalis_meblegh) * s,
-        ay_say: sAy._count._all,
-        ay_meb: asNumber(sAy._sum.son_mebleg) * s,
-        ay_xalis: asNumber(sAy._sum.xalis_meblegh) * s,
-        kredit_say: kredit._count._all,
-        kredit_borc: kreditBorc * s,
+        ...raw.satish,
+        bugun_meb: raw.satish.bugun_meb * s,
+        bugun_xalis: raw.satish.bugun_xalis * s,
+        ay_meb: raw.satish.ay_meb * s,
+        ay_xalis: raw.satish.ay_xalis * s,
+        kredit_borc: raw.satish.kredit_borc * s,
       },
       alish: {
-        bugun_say: aBugun._count._all,
-        bugun_meb: asNumber(aBugun._sum.umumi_mebleg) * s,
-        ay_say: aAy._count._all,
-        ay_meb: asNumber(aAy._sum.umumi_mebleg) * s,
-        aciq_say: aAciq._count._all,
-        aciq_meb: asNumber(aAciq._sum.umumi_mebleg) * s,
+        ...raw.alish,
+        bugun_meb: raw.alish.bugun_meb * s,
+        ay_meb: raw.alish.ay_meb * s,
+        aciq_meb: raw.alish.aciq_meb * s,
       },
-      qaytarma: {
-        say: qAy._count._all,
-        meb: asNumber(qAy._sum.umumi_mebleg) * s,
-        gozleyen: qGoz,
-      },
-      teklif: {
-        aktiv: tAktiv,
-        cevrildi: tCevr,
-        konversiya,
-      },
+      qaytarma: { ...raw.qaytarma, meb: raw.qaytarma.meb * s },
+      teklif: raw.teklif,
     };
   });
 }

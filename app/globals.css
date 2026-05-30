@@ -91,8 +91,11 @@
   --secondary: 226 38% 18%;
   --secondary-foreground: 220 50% 96%;
 
-  --muted: 226 30% 18%;
-  --muted-foreground: 218 18% 68%;
+  /* Muted dark — saturation azaldıldı (30% → 8%), göy "flash" effekti aradan qaldırıldı.
+     Hue eyni qalır ki, müəyyən elementlərdə incə blue tint qorunsun, amma skeleton/placeholder
+     səviyyəsində neytral boz görünür. */
+  --muted: 226 8% 18%;
+  --muted-foreground: 218 14% 70%;
 
   --success: 160 60% 52%;
   --success-foreground: 220 50% 98%;
@@ -271,7 +274,7 @@ html {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-.animate-fade-in { animation: fade-in 0.4s ease-out both; }
+.animate-fade-in { animation: fade-in 0.2s ease-out both; }
 
 /* Modern stagger animation — uşaq element-lərə sıralı görünmə effekti.
    İstifadə: parent-də .stagger-children, uşaqlar avtomatik gecikmə ilə fade-up.
@@ -296,10 +299,9 @@ html {
 @media (prefers-reduced-motion: no-preference) {
   ::view-transition-old(root),
   ::view-transition-new(root) {
-    animation-duration: 0.32s;
-    /* iOS standard spring curve */
+    /* 180ms — snappier; 320ms-də səhifə "yavaş açılır" hissi var idi */
+    animation-duration: 0.18s;
     animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
-    /* GPU acceleration */
     will-change: transform, opacity;
   }
   ::view-transition-old(root) {
@@ -308,20 +310,19 @@ html {
   ::view-transition-new(root) {
     animation-name: vt-slide-in-right;
   }
-  /* Geri naviqasiya (back) — əksinə slide */
   ::view-transition-old(back),
   ::view-transition-new(back) {
-    animation-duration: 0.32s;
+    animation-duration: 0.18s;
     animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
   }
 }
 
 @keyframes vt-slide-out-left {
   from { opacity: 1; transform: translateX(0); }
-  to   { opacity: 0; transform: translateX(-30px); }
+  to   { opacity: 0; transform: translateX(-12px); }
 }
 @keyframes vt-slide-in-right {
-  from { opacity: 0; transform: translateX(30px); }
+  from { opacity: 0; transform: translateX(12px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 
@@ -329,7 +330,7 @@ html {
 @media (max-width: 768px) and (prefers-reduced-motion: no-preference) {
   ::view-transition-old(root),
   ::view-transition-new(root) {
-    animation-duration: 0.24s;
+    animation-duration: 0.14s;
   }
 }
 

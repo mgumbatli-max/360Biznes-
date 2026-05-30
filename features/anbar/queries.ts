@@ -34,48 +34,75 @@ export type AnbarValueKpis = {
   bron_aktiv: number;
 };
 
+type AnbarValueKpisRaw = {
+  satis_deyeri: number;
+  maya_deyeri: number;
+  satilmayan_60: number;
+  olu_stok: number;
+  bron_aktiv: number;
+};
+
+const fetchAnbarValueKpisRawCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<AnbarValueKpisRaw> => {
+      const [vals, satilmayan, olu, bron] = await Promise.all([
+        prismaUnscoped.$queryRaw<{ satis_deyeri: number; maya_deyeri: number }[]>`
+          SELECT
+            COALESCE(SUM(s.miqdar * COALESCE(m.satis_qiymeti, 0)), 0)::float AS satis_deyeri,
+            COALESCE(SUM(s.miqdar * COALESCE(s.son_qiymet, m.alish_qiymeti, 0)), 0)::float AS maya_deyeri
+            FROM stok s
+            JOIN mehsullar m ON m.id = s.mehsul_id
+           WHERE s.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+        `,
+        prismaUnscoped.$queryRaw<{ c: bigint }[]>`
+          SELECT COUNT(DISTINCT m.id)::bigint AS c
+            FROM mehsullar m
+            LEFT JOIN stok s ON s.mehsul_id = m.id AND s.sahibkar_id = m.sahibkar_id
+           WHERE m.sahibkar_id = ${sahibkarId}::uuid
+             AND m.aktiv = TRUE
+             AND COALESCE(s.miqdar,0) > 0
+             AND (m.son_satis_de IS NULL OR m.son_satis_de < NOW() - INTERVAL '60 days')
+        `,
+        prismaUnscoped.$queryRaw<{ c: bigint }[]>`
+          SELECT COUNT(DISTINCT m.id)::bigint AS c
+            FROM mehsullar m
+            LEFT JOIN stok s ON s.mehsul_id = m.id AND s.sahibkar_id = m.sahibkar_id
+           WHERE m.sahibkar_id = ${sahibkarId}::uuid
+             AND m.aktiv = TRUE
+             AND COALESCE(s.miqdar,0) > 0
+             AND (m.son_satis_de IS NULL OR m.son_satis_de < NOW() - INTERVAL '90 days')
+        `,
+        prismaUnscoped.stok_bron.count({ where: { sahibkar_id: sahibkarId, status: "aktiv" } }),
+      ]);
+      const v = vals[0] ?? { satis_deyeri: 0, maya_deyeri: 0 };
+      return {
+        satis_deyeri: Number(v.satis_deyeri),
+        maya_deyeri: Number(v.maya_deyeri),
+        satilmayan_60: Number(satilmayan[0]?.c ?? 0),
+        olu_stok: Number(olu[0]?.c ?? 0),
+        bron_aktiv: bron,
+      };
+    },
+    ["anbar-value-kpis", sahibkarId],
+    { revalidate: 60, tags: [`dashboard:${sahibkarId}`, `stok:${sahibkarId}`] },
+  );
+
 export async function getAnbarValueKpis(): Promise<AnbarValueKpis> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const [vals, satilmayan, olu, bron] = await Promise.all([
-      prisma.$queryRaw<{ satis_deyeri: number; maya_deyeri: number }[]>`
-        SELECT
-          COALESCE(SUM(s.miqdar * COALESCE(m.satis_qiymeti, 0)), 0)::float AS satis_deyeri,
-          COALESCE(SUM(s.miqdar * COALESCE(s.son_qiymet, m.alish_qiymeti, 0)), 0)::float AS maya_deyeri
-          FROM stok s
-          JOIN mehsullar m ON m.id = s.mehsul_id
-         WHERE s.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-      `,
-      prisma.$queryRaw<{ c: bigint }[]>`
-        SELECT COUNT(DISTINCT m.id)::bigint AS c
-          FROM mehsullar m
-          LEFT JOIN stok s ON s.mehsul_id = m.id AND s.sahibkar_id = m.sahibkar_id
-         WHERE m.sahibkar_id = ${sahibkarId}::uuid
-           AND m.aktiv = TRUE
-           AND COALESCE(s.miqdar,0) > 0
-           AND (m.son_satis_de IS NULL OR m.son_satis_de < NOW() - INTERVAL '60 days')
-      `,
-      prisma.$queryRaw<{ c: bigint }[]>`
-        SELECT COUNT(DISTINCT m.id)::bigint AS c
-          FROM mehsullar m
-          LEFT JOIN stok s ON s.mehsul_id = m.id AND s.sahibkar_id = m.sahibkar_id
-         WHERE m.sahibkar_id = ${sahibkarId}::uuid
-           AND m.aktiv = TRUE
-           AND COALESCE(s.miqdar,0) > 0
-           AND (m.son_satis_de IS NULL OR m.son_satis_de < NOW() - INTERVAL '90 days')
-      `,
-      prisma.stok_bron.count({ where: { status: "aktiv" } }),
+    // Stealth scale cookie-dən gəlir — cache-dən kənarda tətbiq olunur.
+    const [raw, stealth] = await Promise.all([
+      fetchAnbarValueKpisRawCached(sahibkarId)(),
+      getStealthState(),
     ]);
-    const v = vals[0] ?? { satis_deyeri: 0, maya_deyeri: 0 };
-    const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
     return {
-      satis_deyeri: Number(v.satis_deyeri) * s,
-      maya_deyeri: Number(v.maya_deyeri) * s,
-      potensial_menfeet: (Number(v.satis_deyeri) - Number(v.maya_deyeri)) * s,
-      satilmayan_60: Number(satilmayan[0]?.c ?? 0),
-      olu_stok: Number(olu[0]?.c ?? 0),
-      bron_aktiv: bron,
+      satis_deyeri: raw.satis_deyeri * s,
+      maya_deyeri: raw.maya_deyeri * s,
+      potensial_menfeet: (raw.satis_deyeri - raw.maya_deyeri) * s,
+      satilmayan_60: raw.satilmayan_60,
+      olu_stok: raw.olu_stok,
+      bron_aktiv: raw.bron_aktiv,
     };
   });
 }
@@ -88,76 +115,93 @@ export type AnbarByWarehouse = {
   satis_deyeri: number;
 };
 
+const fetchAnbarByWarehouseCached = (sahibkarId: string) =>
+  unstable_cache(
+    async () => {
+      const rows = await prismaUnscoped.$queryRaw<
+        { id: number; ad: string; mehsul_say: bigint; umumi_miqdar: number; satis_deyeri: number }[]
+      >`
+        SELECT a.id, a.ad,
+               COUNT(DISTINCT s.mehsul_id)::bigint AS mehsul_say,
+               COALESCE(SUM(s.miqdar), 0)::float AS umumi_miqdar,
+               COALESCE(SUM(s.miqdar * COALESCE(m.satis_qiymeti, 0)), 0)::float AS satis_deyeri
+          FROM anbarlar a
+          LEFT JOIN stok s ON s.anbar_id = a.id AND s.sahibkar_id = a.sahibkar_id
+          LEFT JOIN mehsullar m ON m.id = s.mehsul_id
+         WHERE a.sahibkar_id = ${sahibkarId}::uuid AND COALESCE(a.aktiv, TRUE) = TRUE
+         GROUP BY a.id, a.ad
+         ORDER BY satis_deyeri DESC
+         LIMIT 8
+      `;
+      return rows.map((r) => ({
+        id: r.id,
+        ad: r.ad,
+        mehsul_say: Number(r.mehsul_say),
+        umumi_miqdar: Number(r.umumi_miqdar),
+        satis_deyeri: Number(r.satis_deyeri),
+      }));
+    },
+    ["anbar-by-warehouse", sahibkarId],
+    { revalidate: 60, tags: [`dashboard:${sahibkarId}`, `stok:${sahibkarId}`] },
+  );
+
 export async function getAnbarByWarehouse(): Promise<AnbarByWarehouse[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const rows = await prisma.$queryRaw<
-      { id: number; ad: string; mehsul_say: bigint; umumi_miqdar: number; satis_deyeri: number }[]
-    >`
-      SELECT a.id, a.ad,
-             COUNT(DISTINCT s.mehsul_id)::bigint AS mehsul_say,
-             COALESCE(SUM(s.miqdar), 0)::float AS umumi_miqdar,
-             COALESCE(SUM(s.miqdar * COALESCE(m.satis_qiymeti, 0)), 0)::float AS satis_deyeri
-        FROM anbarlar a
-        LEFT JOIN stok s ON s.anbar_id = a.id AND s.sahibkar_id = a.sahibkar_id
-        LEFT JOIN mehsullar m ON m.id = s.mehsul_id
-       WHERE a.sahibkar_id = ${sahibkarId}::uuid AND COALESCE(a.aktiv, TRUE) = TRUE
-       GROUP BY a.id, a.ad
-       ORDER BY satis_deyeri DESC
-       LIMIT 8
-    `;
-    return rows.map((r) => ({
-      id: r.id,
-      ad: r.ad,
-      mehsul_say: Number(r.mehsul_say),
-      umumi_miqdar: Number(r.umumi_miqdar),
-      satis_deyeri: Number(r.satis_deyeri),
-    }));
+    return fetchAnbarByWarehouseCached(sahibkarId)();
   });
 }
 
 export type AnbarByBrand = { id: number; ad: string; mehsul_say: number; deyer: number };
 
+const fetchAnbarByBrandCached = (sahibkarId: string) =>
+  unstable_cache(
+    async () => {
+      const rows = await prismaUnscoped.$queryRaw<
+        { id: number; ad: string; mehsul_say: bigint; deyer: number }[]
+      >`
+        SELECT br.id, br.ad,
+               COUNT(DISTINCT m.id)::bigint AS mehsul_say,
+               COALESCE(SUM(s.miqdar * COALESCE(m.satis_qiymeti, 0)), 0)::float AS deyer
+          FROM markalar br
+          JOIN mehsullar m ON m.marka_id = br.id
+          LEFT JOIN stok s ON s.mehsul_id = m.id AND s.sahibkar_id = m.sahibkar_id
+         WHERE br.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+         GROUP BY br.id, br.ad
+         ORDER BY deyer DESC
+         LIMIT 10
+      `;
+      return rows.map((r) => ({
+        id: r.id,
+        ad: r.ad,
+        mehsul_say: Number(r.mehsul_say),
+        deyer: Number(r.deyer),
+      }));
+    },
+    ["anbar-by-brand", sahibkarId],
+    { revalidate: 60, tags: [`dashboard:${sahibkarId}`, `stok:${sahibkarId}`] },
+  );
+
 export async function getAnbarByBrand(): Promise<AnbarByBrand[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const rows = await prisma.$queryRaw<
-      { id: number; ad: string; mehsul_say: bigint; deyer: number }[]
-    >`
-      SELECT br.id, br.ad,
-             COUNT(DISTINCT m.id)::bigint AS mehsul_say,
-             COALESCE(SUM(s.miqdar * COALESCE(m.satis_qiymeti, 0)), 0)::float AS deyer
-        FROM markalar br
-        JOIN mehsullar m ON m.marka_id = br.id
-        LEFT JOIN stok s ON s.mehsul_id = m.id AND s.sahibkar_id = m.sahibkar_id
-       WHERE br.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-       GROUP BY br.id, br.ad
-       ORDER BY deyer DESC
-       LIMIT 10
-    `;
-    return rows.map((r) => ({
-      id: r.id,
-      ad: r.ad,
-      mehsul_say: Number(r.mehsul_say),
-      deyer: Number(r.deyer),
-    }));
+    return fetchAnbarByBrandCached(sahibkarId)();
   });
 }
 
-export async function getAnbarKpis(): Promise<AnbarKpis> {
-  return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
-
-    const [productsCount, stockTotals, problems, rezervAgg] = await Promise.all([
-      prisma.mehsullar.count({ where: { aktiv: true } }),
-      prisma.$queryRaw<{ total_qty: number; total_value: number }[]>`
-        SELECT COALESCE(SUM(s.miqdar), 0)::float AS total_qty,
-               COALESCE(SUM(s.miqdar * COALESCE(s.son_qiymet, m.alish_qiymeti, 0)), 0)::float AS total_value
-          FROM stok s
-          JOIN mehsullar m ON m.id = s.mehsul_id
-         WHERE s.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-      `,
-      prisma.$queryRaw<{ zero_stok: bigint; low_stok: bigint; barkodsuz: bigint; mayasiz: bigint; sekilsiz: bigint; qiymetsiz: bigint }[]>`
+const fetchAnbarKpisCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<AnbarKpis> => {
+      const [productsCount, stockTotals, problems, rezervAgg] = await Promise.all([
+        prismaUnscoped.mehsullar.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
+        prismaUnscoped.$queryRaw<{ total_qty: number; total_value: number }[]>`
+          SELECT COALESCE(SUM(s.miqdar), 0)::float AS total_qty,
+                 COALESCE(SUM(s.miqdar * COALESCE(s.son_qiymet, m.alish_qiymeti, 0)), 0)::float AS total_value
+            FROM stok s
+            JOIN mehsullar m ON m.id = s.mehsul_id
+           WHERE s.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+        `,
+        prismaUnscoped.$queryRaw<{ zero_stok: bigint; low_stok: bigint; barkodsuz: bigint; mayasiz: bigint; sekilsiz: bigint; qiymetsiz: bigint }[]>`
         WITH stok_per_mehsul AS (
           SELECT m.id, COALESCE(SUM(s.miqdar), 0) AS qty
             FROM mehsullar m
@@ -196,25 +240,37 @@ export async function getAnbarKpis(): Promise<AnbarKpis> {
           ) AS qiymetsiz
         FROM stok_per_mehsul spm
       `,
-      // stok_bron uses `sayi` for the reserved quantity (not `miqdar`)
-      prisma.stok_bron.aggregate({ _sum: { sayi: true } }),
-    ]);
+        // stok_bron uses `sayi` for the reserved quantity (not `miqdar`)
+        prismaUnscoped.stok_bron.aggregate({
+          where: { sahibkar_id: sahibkarId },
+          _sum: { sayi: true },
+        }),
+      ]);
 
-    const totals = stockTotals[0] ?? { total_qty: 0, total_value: 0 };
-    const p = problems[0] ?? { zero_stok: 0n, low_stok: 0n, barkodsuz: 0n, mayasiz: 0n, sekilsiz: 0n, qiymetsiz: 0n };
+      const totals = stockTotals[0] ?? { total_qty: 0, total_value: 0 };
+      const p = problems[0] ?? { zero_stok: 0n, low_stok: 0n, barkodsuz: 0n, mayasiz: 0n, sekilsiz: 0n, qiymetsiz: 0n };
 
-    return {
-      toplam_mehsul: productsCount,
-      toplam_stok_vahid: Number(totals.total_qty),
-      toplam_stok_deyer: Number(totals.total_value),
-      zero_stok: Number(p.zero_stok),
-      low_stok: Number(p.low_stok),
-      rezerv_vahid: Number(rezervAgg._sum.sayi ?? 0),
-      barkodsuz: Number(p.barkodsuz),
-      mayasiz: Number(p.mayasiz),
-      sekilsiz: Number(p.sekilsiz),
-      qiymetsiz: Number(p.qiymetsiz),
-    };
+      return {
+        toplam_mehsul: productsCount,
+        toplam_stok_vahid: Number(totals.total_qty),
+        toplam_stok_deyer: Number(totals.total_value),
+        zero_stok: Number(p.zero_stok),
+        low_stok: Number(p.low_stok),
+        rezerv_vahid: Number(rezervAgg._sum.sayi ?? 0),
+        barkodsuz: Number(p.barkodsuz),
+        mayasiz: Number(p.mayasiz),
+        sekilsiz: Number(p.sekilsiz),
+        qiymetsiz: Number(p.qiymetsiz),
+      };
+    },
+    ["anbar-kpis", sahibkarId],
+    { revalidate: 60, tags: [`dashboard:${sahibkarId}`, `stok:${sahibkarId}`] },
+  );
+
+export async function getAnbarKpis(): Promise<AnbarKpis> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return fetchAnbarKpisCached(sahibkarId)();
   });
 }
 

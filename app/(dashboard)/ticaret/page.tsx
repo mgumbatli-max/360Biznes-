@@ -32,44 +32,28 @@ import { AttentionWidget } from "@/features/anbar/components/attention-widget";
 import { SalesForecastWidget } from "@/features/ticaret/components/sales-forecast-widget";
 import { CrossSellWidget } from "@/features/ticaret/components/cross-sell-widget";
 import { ErrorSilentWrapper } from "@/components/error-silent-wrapper";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Suspense } from "react";
 import { formatNumber, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Ticarət" };
-export const dynamic = "force-dynamic";
 
-export default async function TicaretHubPage() {
-  const [kpis, chart, men, pro, target, attention, insights, funnel] = await Promise.all([
-    getTradeKpis(),
-    getSalesByDay(30),
-    getTopSellers(5),
-    getTopProducts(5),
-    getTargetProgress(),
-    getAttentionProducts(5),
-    getTradeInsights(),
-    getSalesFunnel(),
-  ]);
+/* Streaming sections — KPI section ən vacib, dərhal stream, qalanlar paralel. */
 
-  const maxBar = Math.max(1, ...chart.map((d) => d.meb));
-
+async function InsightsSection() {
+  const insights = await getTradeInsights();
+  if (insights.length === 0) return null;
   return (
-    <div className="mx-auto max-w-7xl">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Ticarət</h1>
-        <div className="flex items-center gap-2">
-          <NewOperationButton />
-          <RefreshButton />
-        </div>
-      </div>
+    <div className="mt-5">
+      <TradeInsights insights={insights} />
+    </div>
+  );
+}
 
-      <TicaretSubNav active="/ticaret" />
-
-      {/* AI Smart Insights (NEW) */}
-      {insights.length > 0 && (
-        <div className="mt-5">
-          <TradeInsights insights={insights} />
-        </div>
-      )}
-
+async function KpiSection() {
+  const kpis = await getTradeKpis();
+  return (
+    <>
       <h3 className="mt-6 mb-3 text-sm font-semibold tracking-tight">Bugün</h3>
       <div className="grid grid-cols-2 gap-6 border-y border-border py-5 md:grid-cols-3 lg:grid-cols-4">
         <Kpi
@@ -172,28 +156,44 @@ export default async function TicaretHubPage() {
           href="/ticaret/teklif"
         />
       </div>
+    </>
+  );
+}
 
-      <div className="mt-5 grid grid-cols-1 gap-3.5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <SalesTargetWidget data={target} />
+function KpiSkeleton() {
+  return (
+    <div className="space-y-5">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="grid grid-cols-2 gap-6 border-y border-border py-5 md:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, j) => (
+            <Skeleton key={j} className="h-16 rounded-md" />
+          ))}
         </div>
-        <AttentionWidget items={attention} mode="ticaret" />
-      </div>
+      ))}
+    </div>
+  );
+}
 
-      {/* AI Forecast + Cross-Sell — yeni intellektual widget-lər */}
-      <div className="mt-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-        <ErrorSilentWrapper name="forecast">
-          <SalesForecastWidget />
-        </ErrorSilentWrapper>
-        <ErrorSilentWrapper name="cross-sell">
-          <CrossSellWidget />
-        </ErrorSilentWrapper>
+async function TargetAttentionSection() {
+  const [target, attention] = await Promise.all([getTargetProgress(), getAttentionProducts(5)]);
+  return (
+    <div className="mt-5 grid grid-cols-1 gap-3.5 lg:grid-cols-3">
+      <div className="lg:col-span-2">
+        <SalesTargetWidget data={target} />
       </div>
+      <AttentionWidget items={attention} mode="ticaret" />
+    </div>
+  );
+}
 
-      <div className="mt-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
-          <h4 className="mb-3 text-sm font-semibold tracking-tight">Son 30 gün satış</h4>
-          {chart.length === 0 ? (
+async function ChartAndSellersSection() {
+  const [chart, men] = await Promise.all([getSalesByDay(30), getTopSellers(5)]);
+  const maxBar = Math.max(1, ...chart.map((d) => d.meb));
+  return (
+    <div className="mt-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-3">
+      <div className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+        <h4 className="mb-3 text-sm font-semibold tracking-tight">Son 30 gün satış</h4>
+        {chart.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">Bu dövrdə satış yoxdur.</div>
           ) : (
             <div className="flex h-40 items-end gap-[3px] pt-2">
@@ -231,62 +231,76 @@ export default async function TicaretHubPage() {
           </ul>
         </div>
       </div>
+    );
+}
 
-      <div className="mt-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h4 className="mb-3 text-sm font-semibold tracking-tight">Top məhsullar (cari ay)</h4>
-          <ul className="space-y-0">
-            {pro.length === 0 && <li className="py-2 text-sm text-muted-foreground">Bu ay satılan məhsul yoxdur</li>}
-            {pro.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0">
-                <span className="min-w-0 flex-1 truncate font-medium">
-                  {p.ad}
-                  <small className="ml-1 text-muted-foreground">
-                    ({formatNumber(p.miqdar, 1)} əd{p.kod ? ` · ${p.kod}` : ""})
-                  </small>
-                </span>
-                <span className="font-semibold tabular-nums text-success">{formatNumber(p.meb)}₼</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+async function TopProductsAndFunnelSection() {
+  const [pro, funnel] = await Promise.all([getTopProducts(5), getSalesFunnel()]);
+  return (
+    <div className="mt-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h4 className="mb-3 text-sm font-semibold tracking-tight">Top məhsullar (cari ay)</h4>
+        <ul className="space-y-0">
+          {pro.length === 0 && <li className="py-2 text-sm text-muted-foreground">Bu ay satılan məhsul yoxdur</li>}
+          {pro.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0">
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {p.ad}
+                <small className="ml-1 text-muted-foreground">
+                  ({formatNumber(p.miqdar, 1)} əd{p.kod ? ` · ${p.kod}` : ""})
+                </small>
+              </span>
+              <span className="font-semibold tabular-nums text-success">{formatNumber(p.meb)}₼</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <SalesFunnel data={funnel} />
+    </div>
+  );
+}
 
-        <SalesFunnel data={funnel} />
-        {/* Legacy block kept for backward compat (hidden) */}
-        <div className="hidden rounded-xl border border-border bg-card p-4">
-          <h4 className="mb-3 text-sm font-semibold tracking-tight">Təklif → satış konversiyası</h4>
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-success/15 text-success">
-                <CheckCircle2 className="h-4 w-4" />
-              </span>
-              <div>
-                <div className="text-muted-foreground text-xs">Satışa çevrildi</div>
-                <div className="font-semibold tabular-nums">{kpis.teklif.cevrildi}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-info/15 text-info">
-                <FileText className="h-4 w-4" />
-              </span>
-              <div>
-                <div className="text-muted-foreground text-xs">Aktiv təklif</div>
-                <div className="font-semibold tabular-nums">{kpis.teklif.aktiv}</div>
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-muted-foreground text-xs">Konversiya</div>
-              <div className="text-2xl font-bold tabular-nums text-primary-light">{kpis.teklif.konversiya}%</div>
-            </div>
-          </div>
-          <Link
-            href="/ticaret/teklif"
-            className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-          >
-            Bütün təkliflərə bax
-          </Link>
+export default function TicaretHubPage() {
+  return (
+    <div className="mx-auto max-w-7xl">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Ticarət</h1>
+        <div className="flex items-center gap-2">
+          <NewOperationButton />
+          <RefreshButton />
         </div>
       </div>
+
+      <TicaretSubNav active="/ticaret" />
+
+      <Suspense fallback={null}>
+        <InsightsSection />
+      </Suspense>
+
+      <Suspense fallback={<KpiSkeleton />}>
+        <KpiSection />
+      </Suspense>
+
+      <Suspense fallback={<Skeleton className="mt-5 h-44 rounded-xl" />}>
+        <TargetAttentionSection />
+      </Suspense>
+
+      <div className="mt-3.5 grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+        <ErrorSilentWrapper name="forecast">
+          <SalesForecastWidget />
+        </ErrorSilentWrapper>
+        <ErrorSilentWrapper name="cross-sell">
+          <CrossSellWidget />
+        </ErrorSilentWrapper>
+      </div>
+
+      <Suspense fallback={<Skeleton className="mt-3.5 h-56 rounded-xl" />}>
+        <ChartAndSellersSection />
+      </Suspense>
+
+      <Suspense fallback={<Skeleton className="mt-3.5 h-56 rounded-xl" />}>
+        <TopProductsAndFunnelSection />
+      </Suspense>
     </div>
   );
 }

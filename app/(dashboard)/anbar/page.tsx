@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -35,24 +36,33 @@ import {
 import { getLowStockProducts } from "@/features/anbar/attention-queries";
 import { AttentionWidget } from "@/features/anbar/components/attention-widget";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber, formatCompactMoney, formatCompactNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Anbar" };
-export const dynamic = "force-dynamic";
 
-export default async function AnbarDashboardPage() {
-  const [kpis, vals, byWh, byBr, categories, brands, units, lowStock] = await Promise.all([
-    getAnbarKpis(),
-    getAnbarValueKpis(),
-    getAnbarByWarehouse(),
-    getAnbarByBrand(),
+/* ------------------------------------------------------------------ */
+/*  Streaming sections — şablon: shell instant, hər blok öz Suspense-i */
+/*  ilə paralel stream olur. KPI-lar 60s cache-li olduğundan təkrar    */
+/*  ziyarətlər heç DB-yə getmir.                                       */
+/* ------------------------------------------------------------------ */
+
+async function HeaderActions() {
+  const [categories, brands, units] = await Promise.all([
     getCategoryOptions(),
     getBrandOptions(),
     getUnitOptions(),
-    getLowStockProducts(5),
   ]);
+  return <ProductWizard categories={categories} brands={brands} units={units} />;
+}
 
-  // Sürətli problem qiymətləndirməsi — hansı problemlər var, badge üçün
+function HeaderActionsFallback() {
+  return <Skeleton className="h-9 w-32 rounded-md" />;
+}
+
+async function OverviewSection() {
+  const [kpis, vals] = await Promise.all([getAnbarKpis(), getAnbarValueKpis()]);
+
   const problems = [
     { key: "sekilsiz",   label: "Şəkilsiz",   value: kpis.sekilsiz,   icon: ImageIcon,    href: "/anbar/hesabat?mod=sekilsiz" },
     { key: "barkodsuz",  label: "Barkodsuz",  value: kpis.barkodsuz,  icon: ScanBarcode,  href: "/anbar/hesabat?mod=barkodsuz" },
@@ -61,8 +71,6 @@ export default async function AnbarDashboardPage() {
   ];
   const activeProblems = problems.filter((p) => p.value > 0);
   const allClean = activeProblems.length === 0;
-
-  // Ən kritik problem — hero strip-də göstərmək üçün
   const topProblem = [...problems].sort((a, b) => b.value - a.value)[0];
   const heroInsight =
     kpis.zero_stok > 0
@@ -74,17 +82,7 @@ export default async function AnbarDashboardPage() {
       : null;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Anbar</h1>
-        <div className="flex items-center gap-1.5">
-          <RefreshButton />
-          <ProductWizard categories={categories} brands={brands} units={units} />
-        </div>
-      </div>
-
-      <AnbarSubNav active="/anbar" />
-
+    <>
       {/* ── AI Insight Strip ── */}
       {heroInsight && (
         <Link
@@ -114,49 +112,21 @@ export default async function AnbarDashboardPage() {
             {formatCompactMoney(vals.satis_deyeri)}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
-            <SubStat
-              label="Maya dəyəri"
-              value={formatCompactMoney(vals.maya_deyeri)}
-              fullValue={`${formatNumber(vals.maya_deyeri, 2)} ₼`}
-              icon={Wallet}
-            />
-            <SubStat
-              label="Potensial mənfəət"
-              value={"+" + formatCompactMoney(vals.potensial_menfeet)}
-              fullValue={`${formatNumber(vals.potensial_menfeet, 2)} ₼`}
-              icon={TrendingUp}
-              tone="success"
-            />
-            <SubStat
-              label="Cəmi məhsul"
-              value={formatCompactNumber(kpis.toplam_mehsul)}
-              fullValue={`${formatNumber(kpis.toplam_mehsul, 0)} ədəd`}
-              icon={Package}
-            />
+            <SubStat label="Maya dəyəri" value={formatCompactMoney(vals.maya_deyeri)} fullValue={`${formatNumber(vals.maya_deyeri, 2)} ₼`} icon={Wallet} />
+            <SubStat label="Potensial mənfəət" value={"+" + formatCompactMoney(vals.potensial_menfeet)} fullValue={`${formatNumber(vals.potensial_menfeet, 2)} ₼`} icon={TrendingUp} tone="success" />
+            <SubStat label="Cəmi məhsul" value={formatCompactNumber(kpis.toplam_mehsul)} fullValue={`${formatNumber(kpis.toplam_mehsul, 0)} ədəd`} icon={Package} />
           </div>
         </div>
 
-        {/* Quick actions */}
         <div className="rounded-2xl border border-border bg-card p-4">
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Sürətli əməliyyat
           </div>
           <div className="space-y-1.5">
             {kpis.sekilsiz > 0 && (
-              <QuickAction
-                icon={Sparkles}
-                title="AI ilə şəkil yarat"
-                desc={`${kpis.sekilsiz} məhsul şəkilsizdir`}
-                href="/anbar/anomali/bulk-fix"
-                tone="primary"
-              />
+              <QuickAction icon={Sparkles} title="AI ilə şəkil yarat" desc={`${kpis.sekilsiz} məhsul şəkilsizdir`} href="/anbar/anomali/bulk-fix" tone="primary" />
             )}
-            <QuickAction
-              icon={ClipboardCheck}
-              title="Sayım başlat"
-              desc="Faktiki stoku yoxla"
-              href="/anbar/inventar"
-            />
+            <QuickAction icon={ClipboardCheck} title="Sayım başlat" desc="Faktiki stoku yoxla" href="/anbar/inventar" />
             <QuickAction
               icon={AlertCircle}
               title="Aşağı stoku gör"
@@ -172,38 +142,10 @@ export default async function AnbarDashboardPage() {
       <div>
         <h3 className="mb-2 text-sm font-semibold tracking-tight">Stok vəziyyəti</h3>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatusCard
-            label="Stokda var"
-            icon={CheckCircle2}
-            value={kpis.toplam_mehsul - kpis.zero_stok}
-            sub={`${formatCompactNumber(kpis.toplam_stok_vahid)} ədəd`}
-            tone="success"
-            href="/anbar/mehsullar?stok_status=var"
-          />
-          <StatusCard
-            label="Az stok"
-            icon={AlertCircle}
-            value={kpis.low_stok}
-            sub={kpis.low_stok > 0 ? "diqqət lazım" : "hamı qaydadır"}
-            tone={kpis.low_stok > 0 ? "warning" : "neutral"}
-            href="/anbar/mehsullar?stok_status=az"
-          />
-          <StatusCard
-            label="Stok yoxdur"
-            icon={XCircle}
-            value={kpis.zero_stok}
-            sub={kpis.zero_stok > 0 ? "sifariş tələbli" : "yoxdur"}
-            tone={kpis.zero_stok > 0 ? "danger" : "neutral"}
-            href="/anbar/mehsullar?stok_status=yox"
-          />
-          <StatusCard
-            label="Aktiv bron"
-            icon={Bookmark}
-            value={vals.bron_aktiv}
-            sub={vals.bron_aktiv > 0 ? "müştəri saxlanışı" : "bron yoxdur"}
-            tone={vals.bron_aktiv > 0 ? "info" : "neutral"}
-            href="/anbar/bron"
-          />
+          <StatusCard label="Stokda var" icon={CheckCircle2} value={kpis.toplam_mehsul - kpis.zero_stok} sub={`${formatCompactNumber(kpis.toplam_stok_vahid)} ədəd`} tone="success" href="/anbar/mehsullar?stok_status=var" />
+          <StatusCard label="Az stok" icon={AlertCircle} value={kpis.low_stok} sub={kpis.low_stok > 0 ? "diqqət lazım" : "hamı qaydadır"} tone={kpis.low_stok > 0 ? "warning" : "neutral"} href="/anbar/mehsullar?stok_status=az" />
+          <StatusCard label="Stok yoxdur" icon={XCircle} value={kpis.zero_stok} sub={kpis.zero_stok > 0 ? "sifariş tələbli" : "yoxdur"} tone={kpis.zero_stok > 0 ? "danger" : "neutral"} href="/anbar/mehsullar?stok_status=yox" />
+          <StatusCard label="Aktiv bron" icon={Bookmark} value={vals.bron_aktiv} sub={vals.bron_aktiv > 0 ? "müştəri saxlanışı" : "bron yoxdur"} tone={vals.bron_aktiv > 0 ? "info" : "neutral"} href="/anbar/bron" />
         </div>
       </div>
 
@@ -212,22 +154,8 @@ export default async function AnbarDashboardPage() {
         <div>
           <h3 className="mb-2 text-sm font-semibold tracking-tight">Stok yaşlanması</h3>
           <div className="grid grid-cols-2 gap-3">
-            <StatusCard
-              label="60+ gündür satılmır"
-              icon={Clock}
-              value={vals.satilmayan_60}
-              sub="hesabatı aç"
-              tone={vals.satilmayan_60 > 20 ? "warning" : "info"}
-              href="/anbar/hesabat?mod=60gun"
-            />
-            <StatusCard
-              label="Ölü stok (90+ gün)"
-              icon={AlertTriangle}
-              value={vals.olu_stok}
-              sub="dondurulmuş kapital"
-              tone="danger"
-              href="/anbar/hesabat?mod=olu"
-            />
+            <StatusCard label="60+ gündür satılmır" icon={Clock} value={vals.satilmayan_60} sub="hesabatı aç" tone={vals.satilmayan_60 > 20 ? "warning" : "info"} href="/anbar/hesabat?mod=60gun" />
+            <StatusCard label="Ölü stok (90+ gün)" icon={AlertTriangle} value={vals.olu_stok} sub="dondurulmuş kapital" tone="danger" href="/anbar/hesabat?mod=olu" />
           </div>
         </div>
       )}
@@ -266,59 +194,113 @@ export default async function AnbarDashboardPage() {
           </div>
         )}
       </div>
+    </>
+  );
+}
 
-      <AttentionWidget items={lowStock} mode="anbar" />
+function OverviewFallback() {
+  return (
+    <div className="space-y-5">
+      <Skeleton className="h-44 w-full rounded-2xl" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-24 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-      {/* ── Anbar / Marka breakdown ── */}
-      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-            <Package className="h-3.5 w-3.5 text-muted-foreground" /> Anbar üzrə
-          </h4>
-          <ul className="space-y-0">
-            {byWh.length === 0 && <li className="py-2 text-sm text-muted-foreground">Anbar yoxdur</li>}
-            {byWh.map((w) => (
-              <li
-                key={w.id}
-                className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-medium">{w.ad}</span>
-                  <small className="ml-1.5 text-muted-foreground">
-                    {w.mehsul_say} məhsul · {formatCompactNumber(w.umumi_miqdar)} ədəd
-                  </small>
-                </span>
-                <span className="font-semibold tabular-nums" title={`${formatNumber(w.satis_deyeri, 2)} ₼`}>
-                  {formatCompactMoney(w.satis_deyeri)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+async function AttentionSection() {
+  const lowStock = await getLowStockProducts(5);
+  return <AttentionWidget items={lowStock} mode="anbar" />;
+}
 
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-            <Tag className="h-3.5 w-3.5 text-muted-foreground" /> Marka üzrə
-          </h4>
-          <ul className="space-y-0">
-            {byBr.length === 0 && <li className="py-2 text-sm text-muted-foreground">Marka yoxdur</li>}
-            {byBr.map((b) => (
-              <li
-                key={b.id}
-                className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-medium">{b.ad}</span>
-                  <small className="ml-1.5 text-muted-foreground">{b.mehsul_say} məhsul</small>
-                </span>
-                <span className="font-semibold tabular-nums" title={`${formatNumber(b.deyer, 2)} ₼`}>
-                  {formatCompactMoney(b.deyer)}
-                </span>
-              </li>
-            ))}
-          </ul>
+async function BreakdownSection() {
+  const [byWh, byBr] = await Promise.all([getAnbarByWarehouse(), getAnbarByBrand()]);
+  return (
+    <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+          <Package className="h-3.5 w-3.5 text-muted-foreground" /> Anbar üzrə
+        </h4>
+        <ul className="space-y-0">
+          {byWh.length === 0 && <li className="py-2 text-sm text-muted-foreground">Anbar yoxdur</li>}
+          {byWh.map((w) => (
+            <li key={w.id} className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0">
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">{w.ad}</span>
+                <small className="ml-1.5 text-muted-foreground">
+                  {w.mehsul_say} məhsul · {formatCompactNumber(w.umumi_miqdar)} ədəd
+                </small>
+              </span>
+              <span className="font-semibold tabular-nums" title={`${formatNumber(w.satis_deyeri, 2)} ₼`}>
+                {formatCompactMoney(w.satis_deyeri)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+          <Tag className="h-3.5 w-3.5 text-muted-foreground" /> Marka üzrə
+        </h4>
+        <ul className="space-y-0">
+          {byBr.length === 0 && <li className="py-2 text-sm text-muted-foreground">Marka yoxdur</li>}
+          {byBr.map((b) => (
+            <li key={b.id} className="flex items-center justify-between gap-2 border-b border-border/40 py-2 text-sm last:border-0">
+              <span className="min-w-0 flex-1 truncate">
+                <span className="font-medium">{b.ad}</span>
+                <small className="ml-1.5 text-muted-foreground">{b.mehsul_say} məhsul</small>
+              </span>
+              <span className="font-semibold tabular-nums" title={`${formatNumber(b.deyer, 2)} ₼`}>
+                {formatCompactMoney(b.deyer)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function BreakdownFallback() {
+  return (
+    <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+      <Skeleton className="h-56 rounded-xl" />
+      <Skeleton className="h-56 rounded-xl" />
+    </div>
+  );
+}
+
+export default function AnbarDashboardPage() {
+  // Shell instant render olunur — hər data bloku öz Suspense-ində paralel stream olur.
+  return (
+    <div className="mx-auto max-w-7xl space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Anbar</h1>
+        <div className="flex items-center gap-1.5">
+          <RefreshButton />
+          <Suspense fallback={<HeaderActionsFallback />}>
+            <HeaderActions />
+          </Suspense>
         </div>
       </div>
+
+      <AnbarSubNav active="/anbar" />
+
+      <Suspense fallback={<OverviewFallback />}>
+        <OverviewSection />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <AttentionSection />
+      </Suspense>
+
+      <Suspense fallback={<BreakdownFallback />}>
+        <BreakdownSection />
+      </Suspense>
     </div>
   );
 }
@@ -370,10 +352,7 @@ function StatusCard({
     neutral: { wrap: "border-border bg-card",                  text: "text-muted-foreground",                  iconBg: "bg-secondary" },
   }[tone];
   return (
-    <Link
-      href={href}
-      className={`flex items-center gap-3 rounded-xl border p-3.5 transition hover:shadow-sm ${palette.wrap}`}
-    >
+    <Link href={href} className={`flex items-center gap-3 rounded-xl border p-3.5 transition hover:shadow-sm ${palette.wrap}`}>
       <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${palette.iconBg} ${palette.text}`}>
         <Icon className="h-4 w-4" />
       </div>
@@ -408,10 +387,7 @@ function QuickAction({
     default: "bg-secondary text-muted-foreground",
   }[tone];
   return (
-    <Link
-      href={href}
-      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-secondary/60"
-    >
+    <Link href={href} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-secondary/60">
       <div className={`grid h-8 w-8 place-items-center rounded-md ${iconCls}`}>
         <Icon className="h-4 w-4" />
       </div>

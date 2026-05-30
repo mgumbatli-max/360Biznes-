@@ -35,7 +35,6 @@ import { getCashFlowForecast } from "@/features/maliyye/cashflow-queries";
 import { formatCompactMoney, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maliyyə" };
-export const dynamic = "force-dynamic";
 
 type SP = { forecast?: string };
 
