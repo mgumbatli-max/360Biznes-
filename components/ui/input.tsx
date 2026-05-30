@@ -2,10 +2,24 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+/** Type → ən uyğun mobil inputMode. iOS/Android-da düzgün klaviatura açır. */
+const TYPE_TO_INPUT_MODE: Record<string, React.HTMLAttributes<HTMLInputElement>["inputMode"]> = {
+  number: "decimal",   // numeric pad + decimal (vergül/nöqtə)
+  tel: "tel",          // telefon dial pad
+  email: "email",      // @ + . üçün xüsusi key
+  url: "url",          // / + . üçün xüsusi key
+  search: "search",    // klaviatura return key "axtar"
+}
+
+function Input({ className, type, inputMode, ...props }: React.ComponentProps<"input">) {
+  // Type-əsasli inputMode auto-əlavə (istifadəçi öz inputMode-u vermirsə)
+  const effectiveInputMode =
+    inputMode ?? (type ? TYPE_TO_INPUT_MODE[type] : undefined)
+
   return (
     <input
       type={type}
+      inputMode={effectiveInputMode}
       data-slot="input"
       className={cn(
         // Mobile-da 44px touch target (Apple HIG/WCAG AA), desktop-da 36px

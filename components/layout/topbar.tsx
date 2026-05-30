@@ -1,8 +1,45 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { useSidebar } from "@/stores/sidebar";
+import { cn } from "@/lib/utils";
+
+/**
+ * Mobile scroll-direction hook — istifadəçi aşağı scroll edirsə topbar-ı
+ * gizlət, yuxarı scroll edəndə geri göstər. Daha çox content görünür.
+ * Yalnız mobile-da fəaldır (768px-dən aşağı).
+ */
+function useHideOnScrollDown() {
+  const [hidden, setHidden] = useState(false);
+  const lastY = useRef(0);
+  const ticking = useRef(false);
+
+  useEffect(() => {
+    // Yalnız mobil
+    if (window.matchMedia("(min-width: 768px)").matches) return;
+
+    const onScroll = () => {
+      if (ticking.current) return;
+      ticking.current = true;
+      window.requestAnimationFrame(() => {
+        const y = window.scrollY;
+        const delta = y - lastY.current;
+        // 80px-dən az scroll-da topbar həmişə görünsün
+        if (y < 80) setHidden(false);
+        else if (delta > 6) setHidden(true);
+        else if (delta < -6) setHidden(false);
+        lastY.current = y;
+        ticking.current = false;
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return hidden;
+}
 import { UserMenu } from "./user-menu";
 import { Breadcrumb } from "./breadcrumb";
 import { Clock } from "./clock";
@@ -29,9 +66,16 @@ const EMPTY_MY_WORK: MyWorkData = {
 
 function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK }: Props) {
   const setMobileOpen = useSidebar((s) => s.setMobileOpen);
+  const hidden = useHideOnScrollDown();
 
   return (
-    <header className="glass sticky top-0 z-20 border-b border-border/60 pt-safe">
+    <header
+      className={cn(
+        "glass sticky top-0 z-20 border-b border-border/60 pt-safe transition-transform duration-200",
+        // Mobile-da scroll-down zamanı yuxarı sürüş — md+-də həmişə görünür
+        hidden && "-translate-y-full md:translate-y-0",
+      )}
+    >
       <div className="flex h-14 items-center gap-2 px-4 md:px-6">
         <button
           type="button"

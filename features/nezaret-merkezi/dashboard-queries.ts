@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
@@ -41,126 +42,128 @@ export type RiskDashboardData = {
   automation_errors_24h: number;
 };
 
-export async function getRiskDashboard(): Promise<RiskDashboardData> {
-  return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
-    const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const day = new Date(now.getTime() - 24 * 3600 * 1000);
+const fetchRiskDashboardCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<RiskDashboardData> => {
+      const now = new Date();
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const day = new Date(now.getTime() - 24 * 3600 * 1000);
 
-    const [
-      alert_open, alert_kritik, alert_today, alert_resolved_today,
-      tesdiq_gozleyen, tesdiq_kritik, tesdiq_today_completed,
-      task_overdue,
-      stock_zero, stock_low,
-      debtors,
-      late_today,
-      service_stalled,
-      mp_pending,
-      top_cats_raw,
-      recurring_raw,
-      alerts_24h,
-      active_rules,
-      automation_runs_24h, automation_errors_24h,
-    ] = await Promise.all([
-      prisma.alerts.count({ where: { status: { in: ["yeni", "baxilir"] } } }),
-      prisma.alerts.count({ where: { status: { in: ["yeni", "baxilir"] }, seviyye: "kritik" } }),
-      prisma.alerts.count({ where: { first_seen_at: { gte: todayStart } } }),
-      prisma.alerts.count({ where: { status: "hell_olundu", resolved_at: { gte: todayStart } } }),
+      const [
+        alert_open, alert_kritik, alert_today, alert_resolved_today,
+        tesdiq_gozleyen, tesdiq_kritik, tesdiq_today_completed,
+        task_overdue,
+        stock_zero, stock_low,
+        debtors,
+        late_today,
+        service_stalled,
+        mp_pending,
+        top_cats_raw,
+        recurring_raw,
+        alerts_24h,
+        active_rules,
+        automation_runs_24h, automation_errors_24h,
+      ] = await Promise.all([
+        prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, status: { in: ["yeni", "baxilir"] } } }),
+        prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, status: { in: ["yeni", "baxilir"] }, seviyye: "kritik" } }),
+        prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, first_seen_at: { gte: todayStart } } }),
+        prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, status: "hell_olundu", resolved_at: { gte: todayStart } } }),
 
-      prisma.tesdiq_telep.count({ where: { status: "gozleyir" } }),
-      prisma.tesdiq_telep.count({ where: { status: "gozleyir", prioritet: { in: ["yuxsek", "kritik"] } } }),
-      prisma.tesdiq_telep.count({ where: { status: { in: ["tesdiq", "red"] }, netice_tarix: { gte: todayStart } } }),
+        prismaUnscoped.tesdiq_telep.count({ where: { sahibkar_id: sahibkarId, status: "gozleyir" } }),
+        prismaUnscoped.tesdiq_telep.count({ where: { sahibkar_id: sahibkarId, status: "gozleyir", prioritet: { in: ["yuxsek", "kritik"] } } }),
+        prismaUnscoped.tesdiq_telep.count({ where: { sahibkar_id: sahibkarId, status: { in: ["tesdiq", "red"] }, netice_tarix: { gte: todayStart } } }),
 
-      prisma.tapshiriqlar.count({ where: { deadline: { lt: now }, status: { notIn: ["tamamlandi", "legv"] } } }),
+        prismaUnscoped.tapshiriqlar.count({ where: { sahibkar_id: sahibkarId, deadline: { lt: now }, status: { notIn: ["tamamlandi", "legv"] } } }),
 
-      prisma.$queryRaw<{ c: bigint }[]>`
-        SELECT COUNT(DISTINCT m.id)::bigint AS c
-          FROM mehsullar m WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-            AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) = 0
-      `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0)),
-      prisma.$queryRaw<{ c: bigint }[]>`
-        SELECT COUNT(DISTINCT m.id)::bigint AS c
-          FROM mehsullar m WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-            AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) BETWEEN 1 AND 5
-      `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0)),
+        prismaUnscoped.$queryRaw<{ c: bigint }[]>`
+          SELECT COUNT(DISTINCT m.id)::bigint AS c
+            FROM mehsullar m WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+              AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) = 0
+        `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0)),
+        prismaUnscoped.$queryRaw<{ c: bigint }[]>`
+          SELECT COUNT(DISTINCT m.id)::bigint AS c
+            FROM mehsullar m WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+              AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) BETWEEN 1 AND 5
+        `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0)),
 
-      prisma.kontragentler.aggregate({
-        where: { aktiv: true, alacaq: { gt: 0 } },
-        _count: { _all: true },
-        _sum: { alacaq: true },
-      }),
+        prismaUnscoped.kontragentler.aggregate({
+          where: { sahibkar_id: sahibkarId, aktiv: true, alacaq: { gt: 0 } },
+          _count: { _all: true },
+          _sum: { alacaq: true },
+        }),
 
-      prisma.alerts.count({
-        where: {
-          kateqoriya_kod: { in: ["isci_gec", "isci_devamiyyet"] },
-          first_seen_at: { gte: todayStart },
-        },
-      }).catch(() => 0),
+        prismaUnscoped.alerts.count({
+          where: {
+            sahibkar_id: sahibkarId,
+            kateqoriya_kod: { in: ["isci_gec", "isci_devamiyyet"] },
+            first_seen_at: { gte: todayStart },
+          },
+        }).catch(() => 0),
 
-      prisma.alerts.count({
-        where: {
-          kateqoriya_kod: { in: ["servis_gecikme", "servis"] },
-          status: { in: ["yeni", "baxilir"] },
-        },
-      }).catch(() => 0),
+        prismaUnscoped.alerts.count({
+          where: {
+            sahibkar_id: sahibkarId,
+            kateqoriya_kod: { in: ["servis_gecikme", "servis"] },
+            status: { in: ["yeni", "baxilir"] },
+          },
+        }).catch(() => 0),
 
-      prisma.alerts.count({
-        where: {
-          kateqoriya_kod: { in: ["marketplace", "mp_gecikme"] },
-          status: { in: ["yeni", "baxilir"] },
-        },
-      }).catch(() => 0),
+        prismaUnscoped.alerts.count({
+          where: {
+            sahibkar_id: sahibkarId,
+            kateqoriya_kod: { in: ["marketplace", "mp_gecikme"] },
+            status: { in: ["yeni", "baxilir"] },
+          },
+        }).catch(() => 0),
 
-      prisma.alerts.groupBy({
-        by: ["kateqoriya_kod"],
-        where: { status: { in: ["yeni", "baxilir"] } },
-        _count: { _all: true },
-        orderBy: { _count: { kateqoriya_kod: "desc" } },
-        take: 6,
-      }),
+        prismaUnscoped.alerts.groupBy({
+          by: ["kateqoriya_kod"],
+          where: { sahibkar_id: sahibkarId, status: { in: ["yeni", "baxilir"] } },
+          _count: { _all: true },
+          orderBy: { _count: { kateqoriya_kod: "desc" } },
+          take: 6,
+        }),
 
-      prisma.alerts.groupBy({
-        by: ["rule_kod"],
-        where: { rule_kod: { not: null }, first_seen_at: { gte: new Date(now.getTime() - 7 * 24 * 3600 * 1000) } },
-        _count: { _all: true },
-        orderBy: { _count: { rule_kod: "desc" } },
-        take: 5,
-      }),
+        prismaUnscoped.alerts.groupBy({
+          by: ["rule_kod"],
+          where: { sahibkar_id: sahibkarId, rule_kod: { not: null }, first_seen_at: { gte: new Date(now.getTime() - 7 * 24 * 3600 * 1000) } },
+          _count: { _all: true },
+          orderBy: { _count: { rule_kod: "desc" } },
+          take: 5,
+        }),
 
-      prisma.alerts.count({ where: { first_seen_at: { gte: day } } }),
+        prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, first_seen_at: { gte: day } } }),
 
-      prisma.avto_qayda.count({ where: { aktiv: true } }),
-      prisma.avto_log.count({ where: { yaradildi: { gte: day } } }),
-      prisma.avto_log.count({ where: { yaradildi: { gte: day }, status: { not: "ok" } } }),
-    ]);
+        prismaUnscoped.avto_qayda.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
+        prismaUnscoped.avto_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: day } } }),
+        prismaUnscoped.avto_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: day }, status: { not: "ok" } } }),
+      ]);
 
-    // Resolve category names
-    const catCodes = top_cats_raw.map((c) => c.kateqoriya_kod);
-    const catRows = catCodes.length > 0
-      ? await prisma.alert_categories.findMany({ where: { kod: { in: catCodes } }, select: { kod: true, ad: true, emoji: true } })
-      : [];
-    const catMap = new Map(catRows.map((c) => [c.kod, c]));
+      // alert_categories — global table, tenant-siz
+      const catCodes = top_cats_raw.map((c) => c.kateqoriya_kod);
+      const catRows = catCodes.length > 0
+        ? await prismaUnscoped.alert_categories.findMany({ where: { kod: { in: catCodes } }, select: { kod: true, ad: true, emoji: true } })
+        : [];
+      const catMap = new Map(catRows.map((c) => [c.kod, c]));
 
-    // Example basliq per recurring rule
-    const ruleKods = recurring_raw.map((r) => r.rule_kod).filter((k): k is string => !!k);
-    const ruleExamples = ruleKods.length > 0
-      ? await prisma.alerts.findMany({
-          where: { rule_kod: { in: ruleKods } },
-          distinct: ["rule_kod"],
-          select: { rule_kod: true, basliq: true },
-        })
-      : [];
-    const ruleExMap = new Map(ruleExamples.map((r) => [r.rule_kod!, r.basliq]));
+      const ruleKods = recurring_raw.map((r) => r.rule_kod).filter((k): k is string => !!k);
+      const ruleExamples = ruleKods.length > 0
+        ? await prismaUnscoped.alerts.findMany({
+            where: { sahibkar_id: sahibkarId, rule_kod: { in: ruleKods } },
+            distinct: ["rule_kod"],
+            select: { rule_kod: true, basliq: true },
+          })
+        : [];
+      const ruleExMap = new Map(ruleExamples.map((r) => [r.rule_kod!, r.basliq]));
 
-    const overdue_debt_count = await prisma.$queryRaw<{ c: bigint }[]>`
-      SELECT COUNT(*)::bigint AS c
-        FROM kontragentler
-       WHERE sahibkar_id = ${sahibkarId}::uuid
-         AND COALESCE(borc, 0) > 0
-         AND (CURRENT_DATE - GREATEST(yenilendi::date, yaradildi::date)) > 30
-    `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0));
+      const overdue_debt_count = await prismaUnscoped.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*)::bigint AS c
+          FROM kontragentler
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND COALESCE(borc, 0) > 0
+           AND (CURRENT_DATE - GREATEST(yenilendi::date, yaradildi::date)) > 30
+      `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0));
 
     return {
       alert_open, alert_kritik, alert_today, alert_resolved_today,
@@ -187,5 +190,14 @@ export async function getRiskDashboard(): Promise<RiskDashboardData> {
       active_rules,
       automation_runs_24h, automation_errors_24h,
     };
+  },
+  ["risk-dashboard", sahibkarId],
+  { revalidate: 60, tags: [`nezaret:${sahibkarId}`, `dashboard:${sahibkarId}`, `alerts:${sahibkarId}`] },
+);
+
+export async function getRiskDashboard(): Promise<RiskDashboardData> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return fetchRiskDashboardCached(sahibkarId)();
   });
 }

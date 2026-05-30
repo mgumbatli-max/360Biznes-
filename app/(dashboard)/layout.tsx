@@ -7,6 +7,7 @@ import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { PullToRefresh } from "@/components/layout/pull-to-refresh";
 import { EmbedDetector } from "@/components/layout/embed-detector";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { PermissionsProvider } from "@/components/providers/permissions-provider";
@@ -120,6 +121,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           <QuickActionsFab />
           <BottomNav />
+          <PullToRefresh />
         </div>
       </PermissionsProvider>
     </AuthSessionProvider>

@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { isMockMode } from "@/lib/ai/anthropic";
@@ -242,53 +243,62 @@ export async function getBusinessContext(mode: "owner" | "employee" = "employee"
  * Daily AI insight feed — derives a short list of plain-language insights
  * from cached business metrics. Real Claude integration may layer on top.
  */
+const fetchDailyInsightsCached = (sahibkarId: string) =>
+  unstable_cache(
+    async () => {
+      const now = new Date();
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterdayStart = new Date(dayStart.getTime() - 24 * 3600 * 1000);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+      const [
+        todaySales, yesterdaySales, monthSales, prevMonthSales,
+        openTasks, negStock, noImage,
+      ] = await Promise.all([
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: dayStart }, status: { not: "legv" } },
+          _sum: { son_mebleg: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: yesterdayStart, lt: dayStart }, status: { not: "legv" } },
+          _sum: { son_mebleg: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, status: { not: "legv" } },
+          _sum: { son_mebleg: true },
+        }),
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: prevMonthStart, lte: prevMonthEnd }, status: { not: "legv" } },
+          _sum: { son_mebleg: true },
+        }),
+        prismaUnscoped.sahibkar_tapshiriq.count({
+          where: { sahibkar_id: sahibkarId, status: { in: ["acig", "isleyir"] } },
+        }).catch(() => 0),
+        prismaUnscoped.$queryRaw<{ c: number }[]>`
+          SELECT COUNT(*)::int AS c FROM stok WHERE sahibkar_id = ${sahibkarId}::uuid AND miqdar < 0
+        `.catch(() => [{ c: 0 }]),
+        prismaUnscoped.mehsullar.count({
+          where: { sahibkar_id: sahibkarId, OR: [{ sekil_url: null }, { sekil_url: "" }], aktiv: true },
+        }).catch(() => 0),
+      ]);
+
+      return { todaySales, yesterdaySales, monthSales, prevMonthSales, openTasks, negStock, noImage };
+    },
+    ["ai-daily-insights", sahibkarId],
+    { revalidate: 300, tags: [`ai:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+  );
+
 export async function getDailyInsights() {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const now = new Date();
-    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterdayStart = new Date(dayStart.getTime() - 24 * 3600 * 1000);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-
-    const [
-      todaySales,
-      yesterdaySales,
-      monthSales,
-      prevMonthSales,
-      openTasks,
-      negStock,
-      noImage,
-    ] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: dayStart }, status: { not: "legv" } },
-        _sum: { son_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: yesterdayStart, lt: dayStart }, status: { not: "legv" } },
-        _sum: { son_mebleg: true },
-        _count: { _all: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, status: { not: "legv" } },
-        _sum: { son_mebleg: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: prevMonthStart, lte: prevMonthEnd }, status: { not: "legv" } },
-        _sum: { son_mebleg: true },
-      }),
-      prisma.sahibkar_tapshiriq.count({
-        where: { sahibkar_id: sahibkarId, status: { in: ["acig", "isleyir"] } },
-      }).catch(() => 0),
-      prisma.$queryRaw<{ c: number }[]>`
-        SELECT COUNT(*)::int AS c FROM stok WHERE sahibkar_id = ${sahibkarId}::uuid AND miqdar < 0
-      `.catch(() => [{ c: 0 }]),
-      prisma.mehsullar.count({
-        where: { OR: [{ sekil_url: null }, { sekil_url: "" }], aktiv: true },
-      }).catch(() => 0),
-    ]);
+    const {
+      todaySales, yesterdaySales, monthSales, prevMonthSales,
+      openTasks, negStock, noImage,
+    } = await fetchDailyInsightsCached(sahibkarId)();
 
     const today = Number(todaySales._sum.son_mebleg ?? 0);
     const yesterday = Number(yesterdaySales._sum.son_mebleg ?? 0);
