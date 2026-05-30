@@ -292,8 +292,8 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
           </Button>
         </div>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-sm">
+      <div className="overflow-x-auto" data-h-scroll-hint>
+        <table className="w-full min-w-[720px] text-sm" data-stack-on-mobile>
           <thead className="border-b border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
             <tr>
               {order.map((key) => {
@@ -329,10 +329,17 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
               <tr key={c.id} className={`border-b border-border/30 transition hover:bg-secondary/40 ${!c.aktiv ? "opacity-60" : ""}`}>
                 {order.map((key) => {
                   if (!isVisible(key)) return null;
+                  // Hər td üçün label — data-stack-on-mobile mobile-da kart kimi göstərir
+                  const _label = key === "ad" ? "Ad / Şirkət"
+                    : key === "borc" ? "Borc"
+                    : key === "yaradildi" ? "Tarix"
+                    : key === "son_temas" ? "Son əlaqə"
+                    : key === "eml" ? undefined
+                    : COLUMNS.find((c) => c.key === key)?.label;
                   switch (key) {
                     case "select":
                       return (
-                        <td key={key} className="w-8 px-2 py-2.5">
+                        <td key={key} data-label={_label} className="w-8 px-2 py-2.5">
                           <input
                             type="checkbox"
                             className="h-3.5 w-3.5 accent-primary"
@@ -344,7 +351,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "ad":
                       return (
-                        <td key={key} className="px-3 py-2.5">
+                        <td key={key} data-label={_label} className="px-3 py-2.5">
                           <Link href={detailPath(c)} className="font-medium hover:text-primary-light">
                             {c.ad}
                           </Link>
@@ -358,7 +365,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "tip":
                       return (
-                        <td key={key} className="px-3 py-2.5">
+                        <td key={key} data-label={_label} className="px-3 py-2.5">
                           <Badge variant="outline" className="text-[10px]">
                             {c.nov === "her_ikisi" ? "Hər ikisi" : c.nov === "musteri" ? "Müştəri" : "Təchizatçı"}
                           </Badge>
@@ -366,7 +373,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "elaqe":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-xs">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-xs">
                           {c.telefon && (
                             <a href={`tel:${c.telefon}`} className="flex items-center gap-1 text-muted-foreground hover:text-primary-light">
                               <Phone className="h-3 w-3" /> {c.telefon}
@@ -381,7 +388,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "voen_fin":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-xs font-mono text-muted-foreground">
                           {c.voen && (
                             <button onClick={() => copyVoen(c.voen!)} className="hover:text-foreground inline-flex items-center gap-1">
                               <CopyIcon className="h-3 w-3" /> {c.voen}
@@ -393,7 +400,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "unvan":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">
                           {c.sheher && <div className="font-medium text-foreground">{c.sheher}</div>}
                           {c.unvan ? (
                             <div className="inline-flex items-start gap-1">
@@ -405,19 +412,19 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "qiymet_tipi":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-xs capitalize">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-xs capitalize">
                           {c.qiymet_tipi ?? "—"}
                         </td>
                       );
                     case "borc_limiti":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-right text-xs tabular-nums">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-right text-xs tabular-nums">
                           {c.borc_limiti !== null ? formatMoney(c.borc_limiti) : <span className="text-muted-foreground">—</span>}
                         </td>
                       );
                     case "borc":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-right">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-right">
                           {c.borc > 0 ? (
                             <span className="tabular-nums font-semibold text-warning">{formatMoney(c.borc)}</span>
                           ) : c.borc < 0 ? (
@@ -429,25 +436,25 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "menecer":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">
                           {c.menecer_ad ?? "—"}
                         </td>
                       );
                     case "yaradildi":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">
                           {formatDate(c.yaradildi)}
                         </td>
                       );
                     case "son_temas":
                       return (
-                        <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">
+                        <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">
                           {formatDate(c.son_temas)}
                         </td>
                       );
                     case "status":
                       return (
-                        <td key={key} className="px-3 py-2.5">
+                        <td key={key} data-label={_label} className="px-3 py-2.5">
                           {c.aktiv ? (
                             <Badge variant="outline" className="text-[10px] text-success">Aktiv</Badge>
                           ) : (
@@ -457,7 +464,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                       );
                     case "eml":
                       return (
-                        <td key={key} className="px-3 py-2.5">
+                        <td key={key} data-label={_label} className="px-3 py-2.5">
                           <div className="flex items-center justify-end gap-0.5">
                             <Link
                               href={detailPath(c)}
