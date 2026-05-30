@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Store, ShoppingBag, RefreshCcw, Wallet, Plus } from "lucide-react";
@@ -5,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectDialog } from "@/features/marketplace/components/connect-dialog";
 import { AccountCard } from "@/features/marketplace/components/account-card";
 import { MarketplaceSubNav } from "@/components/marketplace-subnav";
@@ -16,7 +18,6 @@ import {
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Marketplace" };
-export const dynamic = "force-dynamic";
 
 const PLATFORM_HINTS: Array<{ platform: string; label: string; tone: string }> = [
   { platform: "bolt", label: "Bolt Food", tone: "bg-success/10 text-success" },
@@ -26,35 +27,10 @@ const PLATFORM_HINTS: Array<{ platform: string; label: string; tone: string }> =
   { platform: "progo", label: "ProGo", tone: "bg-primary/10 text-primary-light" },
 ];
 
-export default async function MarketplacePage() {
-  const [accounts, stats, recentOrders] = await Promise.all([
-    getMarketplaceAccounts(),
-    getMarketplaceStats(),
-    getRecentMarketplaceOrders(8),
-  ]);
-
+async function StatsSection() {
+  const stats = await getMarketplaceStats();
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
-      <MarketplaceSubNav active="/marketplace" />
-
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Marketplace mərkəzi</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Bolt, Wolt, Yango, Tap, ProGo və digər platformaların inteqrasiyası.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild size="sm" variant="outline">
-            <Link href="/ticaret/satislar">
-              <ShoppingBag className="h-4 w-4" /> Yeni satış
-            </Link>
-          </Button>
-          <ConnectDialog />
-        </div>
-      </header>
-
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
           icon={Store}
           label="Cəm hesab"
@@ -82,7 +58,23 @@ export default async function MarketplacePage() {
           tone={stats.syncs_24h > 0 ? "info" : "neutral"}
         />
       </section>
+  );
+}
 
+function StatsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+  );
+}
+
+async function AccountsSection() {
+  const accounts = await getMarketplaceAccounts();
+  return (
+    <>
       {accounts.length === 0 ? (
         <Card className="glass">
           <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center">
@@ -111,7 +103,15 @@ export default async function MarketplacePage() {
           ))}
         </div>
       )}
+    </>
+  );
+}
 
+async function RecentOrdersSection() {
+  const recentOrders = await getRecentMarketplaceOrders(8);
+  if (recentOrders.length === 0) return null;
+  return (
+    <>
       {recentOrders.length > 0 && (
         <Card className="glass">
           <CardContent className="p-0">
@@ -162,6 +162,43 @@ export default async function MarketplacePage() {
           </CardContent>
         </Card>
       )}
+    </>
+  );
+}
+
+export default function MarketplacePage() {
+  return (
+    <div className="mx-auto max-w-7xl space-y-5">
+      <MarketplaceSubNav active="/marketplace" />
+
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Marketplace mərkəzi</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Bolt, Wolt, Yango, Tap, ProGo və digər platformaların inteqrasiyası.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm" variant="outline">
+            <Link href="/ticaret/satislar">
+              <ShoppingBag className="h-4 w-4" /> Yeni satış
+            </Link>
+          </Button>
+          <ConnectDialog />
+        </div>
+      </header>
+
+      <Suspense fallback={<StatsSkeleton />}>
+        <StatsSection />
+      </Suspense>
+
+      <Suspense fallback={<Skeleton className="h-32 rounded-xl" />}>
+        <AccountsSection />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <RecentOrdersSection />
+      </Suspense>
     </div>
   );
 }

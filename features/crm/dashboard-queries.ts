@@ -1,6 +1,8 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 
 export type CrmDashboardKpi = {
   active_leads: number;
@@ -13,41 +15,52 @@ export type CrmDashboardKpi = {
   lost_leads: number;
 };
 
+const fetchCrmKpisCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<CrmDashboardKpi> => {
+      const now = new Date();
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const endOfWeek = new Date();
+      endOfWeek.setDate(endOfWeek.getDate() + 7);
+
+      const [active, won, lost, monthNew, dealAgg, openTasks, followupWeek] = await Promise.all([
+        prismaUnscoped.leads.count({ where: { sahibkar_id: sahibkarId, status: { notIn: ["qazandi", "itirdi"] } } }),
+        prismaUnscoped.leads.count({ where: { sahibkar_id: sahibkarId, status: "qazandi" } }),
+        prismaUnscoped.leads.count({ where: { sahibkar_id: sahibkarId, status: "itirdi" } }),
+        prismaUnscoped.leads.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: startMonth } } }),
+        prismaUnscoped.leads.aggregate({
+          where: { sahibkar_id: sahibkarId, status: "qazandi" },
+          _avg: { budce: true },
+        }),
+        prismaUnscoped.tapshiriqlar.count({ where: { sahibkar_id: sahibkarId, status: { notIn: ["tamamlandi", "legv"] } } }).catch(() => 0),
+        prismaUnscoped.leads.count({
+          where: {
+            sahibkar_id: sahibkarId,
+            novbeti_elaqe: { gte: new Date(), lt: endOfWeek },
+          },
+        }),
+      ]);
+
+      const totalLeads = active + won + lost;
+      return {
+        active_leads: active,
+        this_month_leads: monthNew,
+        conversion: totalLeads > 0 ? (won / totalLeads) * 100 : 0,
+        avg_deal: Number(dealAgg._avg.budce ?? 0),
+        open_tasks: openTasks,
+        followup_this_week: followupWeek,
+        won_leads: won,
+        lost_leads: lost,
+      };
+    },
+    ["crm-dashboard-kpis", sahibkarId],
+    { revalidate: 60, tags: [`crm:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+  );
+
 export async function getDashboardKpis(): Promise<CrmDashboardKpi> {
   return withTenant(async () => {
-    const now = new Date();
-    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfWeek = new Date();
-    endOfWeek.setDate(endOfWeek.getDate() + 7);
-
-    const [active, won, lost, monthNew, dealAgg, openTasks, followupWeek] = await Promise.all([
-      prisma.leads.count({ where: { status: { notIn: ["qazandi", "itirdi"] } } }),
-      prisma.leads.count({ where: { status: "qazandi" } }),
-      prisma.leads.count({ where: { status: "itirdi" } }),
-      prisma.leads.count({ where: { yaradildi: { gte: startMonth } } }),
-      prisma.leads.aggregate({
-        where: { status: "qazandi" },
-        _avg: { budce: true },
-      }),
-      prisma.tapshiriqlar.count({ where: { status: { notIn: ["tamamlandi", "legv"] } } }).catch(() => 0),
-      prisma.leads.count({
-        where: {
-          novbeti_elaqe: { gte: new Date(), lt: endOfWeek },
-        },
-      }),
-    ]);
-
-    const totalLeads = active + won + lost;
-    return {
-      active_leads: active,
-      this_month_leads: monthNew,
-      conversion: totalLeads > 0 ? (won / totalLeads) * 100 : 0,
-      avg_deal: Number(dealAgg._avg.budce ?? 0),
-      open_tasks: openTasks,
-      followup_this_week: followupWeek,
-      won_leads: won,
-      lost_leads: lost,
-    };
+    const { sahibkarId } = requireTenant();
+    return fetchCrmKpisCached(sahibkarId)();
   });
 }
 
