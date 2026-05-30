@@ -1,6 +1,8 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 
 export type AuditFilter = {
   q?: string;
@@ -61,25 +63,35 @@ export async function getAuditLog(filter: AuditFilter, page = 1, pageSize = 50) 
   });
 }
 
+const fetchAuditStatsCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<AuditStats> => {
+      const since = new Date(Date.now() - 24 * 3600 * 1000);
+      const [total, yarat, silme, xeta] = await Promise.all([
+        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since } } }),
+        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, emeliyyat: "YARAT" } }),
+        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, emeliyyat: "SIL" } }),
+        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, status: { not: "ugur" } } }),
+      ]);
+      const nightRows = await prismaUnscoped.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM audit_log
+        WHERE sahibkar_id = ${sahibkarId}::uuid
+          AND yaradildi >= ${since}
+          AND EXTRACT(HOUR FROM yaradildi) >= 0
+          AND EXTRACT(HOUR FROM yaradildi) < 6
+      `.catch(() => []);
+      const gece = nightRows[0] ? Number(nightRows[0].count) : 0;
+      return { total_24h: total, yarat_24h: yarat, silme_24h: silme, xeta_24h: xeta, gece_24h: gece };
+    },
+    ["audit-stats", sahibkarId],
+    { revalidate: 60, tags: [`audit:${sahibkarId}`] },
+  );
+
 export async function getAuditStats(): Promise<AuditStats> {
   return withTenant(async () => {
-    const since = new Date(Date.now() - 24 * 3600 * 1000);
-    const [total, yarat, silme, xeta] = await Promise.all([
-      prisma.audit_log.count({ where: { yaradildi: { gte: since } } }),
-      prisma.audit_log.count({ where: { yaradildi: { gte: since }, emeliyyat: "YARAT" } }),
-      prisma.audit_log.count({ where: { yaradildi: { gte: since }, emeliyyat: "SIL" } }),
-      prisma.audit_log.count({ where: { yaradildi: { gte: since }, status: { not: "ugur" } } }),
-    ]);
-    // night ops (00:00-06:00 local). Use raw query, but for now approximate by counting all in last 24h hour=0..6
-    const nightRows = await prisma.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*)::bigint AS count
-      FROM audit_log
-      WHERE yaradildi >= ${since}
-        AND EXTRACT(HOUR FROM yaradildi) >= 0
-        AND EXTRACT(HOUR FROM yaradildi) < 6
-    `.catch(() => []);
-    const gece = nightRows[0] ? Number(nightRows[0].count) : 0;
-    return { total_24h: total, yarat_24h: yarat, silme_24h: silme, xeta_24h: xeta, gece_24h: gece };
+    const { sahibkarId } = requireTenant();
+    return fetchAuditStatsCached(sahibkarId)();
   });
 }
 

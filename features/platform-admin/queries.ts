@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { prismaUnscoped } from "@/lib/db/prisma";
 
 export type PlatformKpis = {
@@ -13,50 +14,55 @@ export type PlatformKpis = {
   total_users: number;
 };
 
-export async function getPlatformKpis(): Promise<PlatformKpis> {
-  const now = new Date();
-  const sevenDays = new Date(now);
-  sevenDays.setDate(now.getDate() + 7);
+// Global scope — bir tek platform-wide cache (tenant-key yox)
+export const getPlatformKpis = unstable_cache(
+  async (): Promise<PlatformKpis> => {
+    const now = new Date();
+    const sevenDays = new Date(now);
+    sevenDays.setDate(now.getDate() + 7);
 
-  const [total, active, allAbune, expiring, expired, users] = await Promise.all([
-    prismaUnscoped.sahibkarlar.count(),
-    prismaUnscoped.sahibkarlar.count({ where: { status: "aktiv" } }),
-    prismaUnscoped.abuneler.findMany({
-      where: { status: "aktiv", bitme: { gte: now } },
-      include: { abune_planlari: true },
-    }),
-    prismaUnscoped.abuneler.count({
-      where: { status: "aktiv", bitme: { gte: now, lte: sevenDays } },
-    }),
-    prismaUnscoped.abuneler.count({
-      where: { bitme: { lt: now } },
-    }),
-    prismaUnscoped.istifadeciler.count({ where: { aktiv: true } }),
-  ]);
+    const [total, active, allAbune, expiring, expired, users] = await Promise.all([
+      prismaUnscoped.sahibkarlar.count(),
+      prismaUnscoped.sahibkarlar.count({ where: { status: "aktiv" } }),
+      prismaUnscoped.abuneler.findMany({
+        where: { status: "aktiv", bitme: { gte: now } },
+        include: { abune_planlari: true },
+      }),
+      prismaUnscoped.abuneler.count({
+        where: { status: "aktiv", bitme: { gte: now, lte: sevenDays } },
+      }),
+      prismaUnscoped.abuneler.count({
+        where: { bitme: { lt: now } },
+      }),
+      prismaUnscoped.istifadeciler.count({ where: { aktiv: true } }),
+    ]);
 
-  let trial = 0;
-  let paid = 0;
-  let mrr = 0;
-  for (const a of allAbune) {
-    if (a.novu === "sinaq") trial++;
-    else {
-      paid++;
-      mrr += Number(a.abune_planlari?.ayl_q_qiymet ?? 0);
+    let trial = 0;
+    let paid = 0;
+    let mrr = 0;
+    for (const a of allAbune) {
+      if (a.novu === "sinaq") trial++;
+      else {
+        paid++;
+        mrr += Number(a.abune_planlari?.ayl_q_qiymet ?? 0);
+      }
     }
-  }
 
-  return {
-    total_tenants: total,
-    active_tenants: active,
-    trial_tenants: trial,
-    paid_tenants: paid,
-    expiring_soon: expiring,
-    expired,
-    mrr,
-    arr: mrr * 12,
-    total_users: users,
-  };
-}
+    return {
+      total_tenants: total,
+      active_tenants: active,
+      trial_tenants: trial,
+      paid_tenants: paid,
+      expiring_soon: expiring,
+      expired,
+      mrr,
+      arr: mrr * 12,
+      total_users: users,
+    };
+  },
+  ["platform-kpis"],
+  { revalidate: 300, tags: ["platform-admin"] },
+);
 
 export type TenantRow = {
   id: string;

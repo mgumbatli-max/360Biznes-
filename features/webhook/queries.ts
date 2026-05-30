@@ -1,6 +1,8 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 
 export type WebhookListItem = {
   id: string;
@@ -69,18 +71,28 @@ export async function getWebhooks(filter?: {
   });
 }
 
+const fetchWebhookStatsCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<WebhookStats> => {
+      const since24 = new Date(Date.now() - 24 * 3600 * 1000);
+      const [total, aktiv, last24, fail24] = await Promise.all([
+        prismaUnscoped.webhook_endpoints.count({ where: { sahibkar_id: sahibkarId } }),
+        prismaUnscoped.webhook_endpoints.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
+        prismaUnscoped.webhook_delivery.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since24 } } }),
+        prismaUnscoped.webhook_delivery.count({
+          where: { sahibkar_id: sahibkarId, yaradildi: { gte: since24 }, http_status: { gte: 400 } },
+        }),
+      ]);
+      return { total, aktiv, passiv: total - aktiv, last24, fail24 };
+    },
+    ["webhook-stats", sahibkarId],
+    { revalidate: 60, tags: [`webhook:${sahibkarId}`] },
+  );
+
 export async function getWebhookStats(): Promise<WebhookStats> {
   return withTenant(async () => {
-    const since24 = new Date(Date.now() - 24 * 3600 * 1000);
-    const [total, aktiv, last24, fail24] = await Promise.all([
-      prisma.webhook_endpoints.count(),
-      prisma.webhook_endpoints.count({ where: { aktiv: true } }),
-      prisma.webhook_delivery.count({ where: { yaradildi: { gte: since24 } } }),
-      prisma.webhook_delivery.count({
-        where: { yaradildi: { gte: since24 }, http_status: { gte: 400 } },
-      }),
-    ]);
-    return { total, aktiv, passiv: total - aktiv, last24, fail24 };
+    const { sahibkarId } = requireTenant();
+    return fetchWebhookStatsCached(sahibkarId)();
   });
 }
 

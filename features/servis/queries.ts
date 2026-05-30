@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -152,67 +153,78 @@ export async function getServisRequests(filter: ServisListFilter = {}): Promise<
   });
 }
 
+const fetchServisStatsCached = (sahibkarId: string) =>
+  unstable_cache(
+    async () => {
+      const now = new Date();
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - 7);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      const [open, weekIn, weekOut, late, avgDays, monthRevenue, byStatus] = await Promise.all([
+        prismaUnscoped.servis_qeydleri.count({ where: { sahibkar_id: sahibkarId, status: { in: OPEN_STATUSES as unknown as string[] } } }),
+        prismaUnscoped.servis_qeydleri.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: weekStart } } }),
+        prismaUnscoped.servis_qeydleri.count({
+          where: { sahibkar_id: sahibkarId, status: "musteriye_tehvil", qapanma_tarixi: { gte: weekStart } },
+        }),
+        prismaUnscoped.servis_qeydleri.count({
+          where: {
+            sahibkar_id: sahibkarId,
+            status: { in: OPEN_STATUSES as unknown as string[] },
+            texmini_tehvil: { lt: now },
+          },
+        }),
+        prismaUnscoped.$queryRaw<{ avg: number | null }[]>`
+          SELECT AVG(EXTRACT(EPOCH FROM (qapanma_tarixi - yaradildi)) / 86400)::float AS avg
+            FROM servis_qeydleri
+           WHERE sahibkar_id = ${sahibkarId}::uuid
+             AND qapanma_tarixi IS NOT NULL
+             AND yaradildi IS NOT NULL
+             AND status = 'musteriye_tehvil'
+        `,
+        prismaUnscoped.servis_qeydleri.aggregate({
+          where: { sahibkar_id: sahibkarId, qapanma_tarixi: { gte: monthStart } },
+          _sum: { musteriden_alinan: true },
+        }),
+        prismaUnscoped.servis_qeydleri.groupBy({
+          by: ["status"],
+          where: { sahibkar_id: sahibkarId },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const [ready, delivered, totalRevenue] = await Promise.all([
+        prismaUnscoped.servis_qeydleri.count({ where: { sahibkar_id: sahibkarId, status: "temir_edildi" } }),
+        prismaUnscoped.servis_qeydleri.count({ where: { sahibkar_id: sahibkarId, status: "musteriye_tehvil" } }),
+        prismaUnscoped.servis_qeydleri.aggregate({ where: { sahibkar_id: sahibkarId }, _sum: { musteriden_alinan: true } }),
+      ]);
+
+      const statusCounts: Record<string, number> = {};
+      for (const g of byStatus) {
+        if (g.status) statusCounts[g.status] = g._count._all;
+      }
+
+      return {
+        acig: open,
+        hazir: ready,
+        teslim: delivered,
+        gelir_cemi: Number(totalRevenue._sum.musteriden_alinan ?? 0),
+        week_in: weekIn,
+        week_out: weekOut,
+        late,
+        avg_days: avgDays[0]?.avg ? Number(avgDays[0].avg.toFixed(1)) : 0,
+        month_revenue: Number(monthRevenue._sum.musteriden_alinan ?? 0),
+        by_status: statusCounts,
+      };
+    },
+    ["servis-stats", sahibkarId],
+    { revalidate: 60, tags: [`servis:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+  );
+
 export async function getServisStats() {
   return withTenant(async () => {
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - 7);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [open, weekIn, weekOut, late, avgDays, monthRevenue, byStatus] = await Promise.all([
-      prisma.servis_qeydleri.count({ where: { status: { in: OPEN_STATUSES as unknown as string[] } } }),
-      prisma.servis_qeydleri.count({ where: { yaradildi: { gte: weekStart } } }),
-      prisma.servis_qeydleri.count({
-        where: { status: "musteriye_tehvil", qapanma_tarixi: { gte: weekStart } },
-      }),
-      prisma.servis_qeydleri.count({
-        where: {
-          status: { in: OPEN_STATUSES as unknown as string[] },
-          texmini_tehvil: { lt: now },
-        },
-      }),
-      prisma.$queryRaw<{ avg: number | null }[]>`
-        SELECT AVG(EXTRACT(EPOCH FROM (qapanma_tarixi - yaradildi)) / 86400)::float AS avg
-          FROM servis_qeydleri
-         WHERE qapanma_tarixi IS NOT NULL
-           AND yaradildi IS NOT NULL
-           AND status = 'musteriye_tehvil'
-      `,
-      prisma.servis_qeydleri.aggregate({
-        where: { qapanma_tarixi: { gte: monthStart } },
-        _sum: { musteriden_alinan: true },
-      }),
-      prisma.servis_qeydleri.groupBy({
-        by: ["status"],
-        _count: { _all: true },
-      }),
-    ]);
-
-    // Legacy KPIs that the existing scaffold relies on:
-    const [ready, delivered, totalRevenue] = await Promise.all([
-      prisma.servis_qeydleri.count({ where: { status: "temir_edildi" } }),
-      prisma.servis_qeydleri.count({ where: { status: "musteriye_tehvil" } }),
-      prisma.servis_qeydleri.aggregate({ _sum: { musteriden_alinan: true } }),
-    ]);
-
-    // Per-status counts map (status_kod → count)
-    const statusCounts: Record<string, number> = {};
-    for (const g of byStatus) {
-      if (g.status) statusCounts[g.status] = g._count._all;
-    }
-
-    return {
-      acig: open,
-      hazir: ready,
-      teslim: delivered,
-      gelir_cemi: Number(totalRevenue._sum.musteriden_alinan ?? 0),
-      week_in: weekIn,
-      week_out: weekOut,
-      late,
-      avg_days: avgDays[0]?.avg ? Number(avgDays[0].avg.toFixed(1)) : 0,
-      month_revenue: Number(monthRevenue._sum.musteriden_alinan ?? 0),
-      by_status: statusCounts,
-    };
+    const { sahibkarId } = requireTenant();
+    return fetchServisStatsCached(sahibkarId)();
   });
 }
 
