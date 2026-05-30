@@ -5,7 +5,6 @@ import { getAnbarOptions } from "@/features/ticaret/satis-yeni-queries";
 import { getAccounts } from "@/features/maliyye/account-queries";
 
 export const metadata: Metadata = { title: "Marketdən satış" };
-export const dynamic = "force-dynamic";
 
 export default async function MarketPosPage() {
   const session = await auth();

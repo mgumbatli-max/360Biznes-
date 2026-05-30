@@ -22,7 +22,7 @@ export default async function MarketPosStandaloneLayout({
   return (
     <AuthSessionProvider>
       <PermissionsProvider icazeler={icazeler}>
-        <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900">
+        <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 pt-safe pb-safe">
           <MarketPosHeader
             user={{
               ad_soyad: session.user.ad_soyad,

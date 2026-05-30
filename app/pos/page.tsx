@@ -18,7 +18,6 @@ import { getPosPriceSettings } from "@/features/ayarlar/pos-qiymet";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 
 export const metadata: Metadata = { title: "POS — İsti satış" };
-export const dynamic = "force-dynamic";
 
 export default async function PosPage() {
   const session = await auth();

@@ -8,7 +8,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Zəmanət talonu" };
-export const dynamic = "force-dynamic";
 
 async function getData(satisId: string) {
   return withTenant(async () => {

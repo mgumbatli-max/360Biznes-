@@ -512,3 +512,68 @@ table[data-sticky-head] thead {
   top: 0;
 }
 html.embed-mode table[data-sticky-head] thead { top: 0; }
+
+/* ─────────────────────────────────────────────
+   Horizontal scroll hint — mobile-da cədvəl konteynerlərinə
+   sağ tərəfdən fade gradient əlavə edir ki, "daha çox content var" hissi yaransın.
+   İstifadə: `<div data-h-scroll-hint className="overflow-x-auto">...`
+   ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  [data-h-scroll-hint] {
+    position: relative;
+    /* Gradient mask sağ tərəfdə fade — daxili məzmun kəsilməz, görüntü süzülür.
+       JS-siz pure CSS həll. Sağa scroll edəndə avtomatik yenilənmir, amma
+       istifadəçiyə "scroll lazımdır" siqnalı verir. */
+    -webkit-mask-image: linear-gradient(to right, #000 0%, #000 88%, transparent 100%);
+    mask-image: linear-gradient(to right, #000 0%, #000 88%, transparent 100%);
+  }
+}
+
+/* ─────────────────────────────────────────────
+   Card-list — mobile-da cədvəl yerinə kart görünüşü.
+   `<table data-stack-on-mobile>` istifadə etdiyiniz cədvəllər avtomatik
+   <768px-də vertical stack-ə çevrilir. Hər <td> əvvəlki <th>-in label-ini
+   data-label attribute-i kimi göstərir (manual əlavə lazımdır).
+   ───────────────────────────────────────────── */
+@media (max-width: 640px) {
+  table[data-stack-on-mobile],
+  table[data-stack-on-mobile] thead,
+  table[data-stack-on-mobile] tbody,
+  table[data-stack-on-mobile] tr,
+  table[data-stack-on-mobile] th,
+  table[data-stack-on-mobile] td {
+    display: block;
+  }
+  table[data-stack-on-mobile] thead {
+    /* Header görünməz, vizual itki yox — yalnız semantic məqsədli */
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+  }
+  table[data-stack-on-mobile] tr {
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: hsl(var(--card));
+  }
+  table[data-stack-on-mobile] td {
+    border: none;
+    padding: 0.25rem 0;
+    position: relative;
+    padding-left: 40%;
+    min-height: 1.5rem;
+  }
+  table[data-stack-on-mobile] td[data-label]::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 0;
+    top: 0.25rem;
+    width: 35%;
+    font-weight: 600;
+    font-size: 0.75rem;
+    color: hsl(var(--muted-foreground));
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+}

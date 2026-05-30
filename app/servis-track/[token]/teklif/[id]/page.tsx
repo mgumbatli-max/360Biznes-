@@ -9,7 +9,6 @@ import { formatMoney, formatDate } from "@/lib/utils";
 import { CustomerQuoteApproval } from "./quote-approval";
 
 export const metadata: Metadata = { title: "Servis qiymət təklifi" };
-export const dynamic = "force-dynamic";
 
 export default async function CustomerQuotePage({
   params,

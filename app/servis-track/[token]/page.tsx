@@ -17,7 +17,6 @@ import { SERVIS_STATUS_LABELS } from "@/features/servis/types";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Servis izlə" };
-export const dynamic = "force-dynamic";
 
 export default async function ServisTrackPage({
   params,

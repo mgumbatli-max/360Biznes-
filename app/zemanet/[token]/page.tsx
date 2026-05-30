@@ -7,7 +7,6 @@ import { getZemanetByToken } from "@/features/servis/queries";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Zəmanət təsdiqi" };
-export const dynamic = "force-dynamic";
 
 export default async function ZemanetPublicPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

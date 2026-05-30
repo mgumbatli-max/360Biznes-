@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { X, PanelLeftClose, PanelLeftOpen, Bell } from "lucide-react";
@@ -10,6 +10,59 @@ import { useSidebar } from "@/stores/sidebar";
 import { usePermissions } from "@/components/providers/permissions-provider";
 import { ThemeToggle } from "./theme-toggle";
 import type { SessionUser } from "@/lib/auth/types";
+
+/** Sidebar açıq vəziyyətdə sola-swipe ilə bağlanma — mobile gesture.
+ *  Live drag preview (translateX), 60px və ya 25% drawer-genişliyi threshold. */
+function useSwipeToClose(open: boolean, close: () => void) {
+  const startX = useRef<number | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const dragging = useRef(false);
+
+  useEffect(() => {
+    if (!open) {
+      setDragX(0);
+      return;
+    }
+    const onStart = (e: TouchEvent) => {
+      startX.current = e.touches[0]?.clientX ?? null;
+      dragging.current = true;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!dragging.current || startX.current === null) return;
+      const x = e.touches[0]?.clientX ?? 0;
+      const delta = x - startX.current;
+      // Yalnız sola sürüş — sağa pozitiv olur, biz onu ignor edirik
+      if (delta < 0) {
+        setDragX(Math.max(-288, delta)); // max sidebar width (w-72 = 288px)
+      } else {
+        setDragX(0);
+      }
+    };
+    const onEnd = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      startX.current = null;
+      // 60px və ya drawer-width-in 25%-i — hansı kiçikdir
+      const threshold = Math.min(60, 288 * 0.25);
+      if (dragX < -threshold) {
+        close();
+      }
+      setDragX(0);
+    };
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchmove", onMove, { passive: true });
+    document.addEventListener("touchend", onEnd, { passive: true });
+    document.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+  }, [open, dragX, close]);
+
+  return dragX;
+}
 
 type Props = {
   user: SessionUser;
@@ -22,6 +75,7 @@ function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
   const pathname = usePathname();
   const icazeler = usePermissions();
   const { collapsed, mobileOpen, setMobileOpen, toggleCollapsed } = useSidebar();
+  const dragX = useSwipeToClose(mobileOpen, () => setMobileOpen(false));
 
   // NAV_SECTIONS filtering — yalnız rol/icazələr/sahibkar görünüş dəyişəndə yenidən hesabla.
   // Hər navigation-da 30+ nav item üçün canSeeNavItem() çağırışını qənaət edir.
@@ -50,6 +104,12 @@ function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
       )}
 
       <aside
+        style={
+          // Live drag preview yalnız mobile-da, drag aktiv olduqda
+          mobileOpen && dragX !== 0
+            ? { transform: `translateX(${dragX}px)`, transition: "none" }
+            : undefined
+        }
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width,transform] duration-200",
           "md:sticky md:top-0 md:h-screen md:translate-x-0",

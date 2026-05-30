@@ -116,7 +116,12 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      // Mobile: sticky top + arxa fon (bottom-sheet scroll edəndə başlıq görünür)
+      className={cn(
+        "flex flex-col gap-2 text-center sm:text-left",
+        "sticky -top-5 -mx-5 -mt-5 z-10 bg-background/95 px-5 pt-5 pb-2 backdrop-blur sm:static sm:m-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none",
+        className
+      )}
       {...props}
     />
   )

@@ -26,7 +26,7 @@ export default async function PosStandaloneLayout({
     <AuthSessionProvider>
       <PermissionsProvider icazeler={icazeler}>
         <NavigationTracker />
-        <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900">
+        <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 pt-safe pb-safe">
           <PosHeader user={{ ad_soyad: session.user.ad_soyad, sahibkar_ad: session.user.sahibkar_ad }} />
           <OfflineBanner />
           <main className="min-h-0 flex-1 overflow-hidden">{children}</main>

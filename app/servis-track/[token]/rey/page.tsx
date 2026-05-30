@@ -6,7 +6,6 @@ import { getServisTrackByToken } from "@/features/servis/queries";
 import { CustomerReviewForm } from "./review-form";
 
 export const metadata: Metadata = { title: "Servis dəyərləndirməsi" };
-export const dynamic = "force-dynamic";
 
 export default async function CustomerReviewPage({
   params,
