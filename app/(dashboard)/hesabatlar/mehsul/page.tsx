@@ -18,7 +18,6 @@ import { parseDateRange, formatDateInput } from "@/features/hesabatlar/shared";
 import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Məhsul hesabatı" };
-export const dynamic = "force-dynamic";
 
 type SP = { from?: string; to?: string; preset?: string; kateqoriya?: string; marka?: string; anbar?: string; q?: string };
 

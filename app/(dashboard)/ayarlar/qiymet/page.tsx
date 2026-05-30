@@ -14,7 +14,6 @@ import {
 } from "@/features/ayarlar/components/qiymet-qayda-dialog";
 
 export const metadata: Metadata = { title: "Qiymət siyasəti" };
-export const dynamic = "force-dynamic";
 
 async function getPriceTypes() {
   return withTenant(async () => {

@@ -11,7 +11,6 @@ import { DEFAULT_SECRET_CODE } from "@/features/sahibkar/constants";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 
 export const metadata: Metadata = { title: "Sahibkar ayarları" };
-export const dynamic = "force-dynamic";
 
 async function loadConfig() {
   return withTenant(async () => {

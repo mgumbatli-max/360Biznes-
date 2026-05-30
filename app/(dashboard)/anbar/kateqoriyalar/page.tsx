@@ -9,7 +9,6 @@ import { NewCategorySheet } from "@/features/anbar/components/new-category-sheet
 import { formatCompactNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Kateqoriyalar — Anbar" };
-export const dynamic = "force-dynamic";
 
 async function loadKateqoriyalar(): Promise<CategoryNode[]> {
   return withTenant(async () => {

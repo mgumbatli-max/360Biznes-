@@ -32,7 +32,6 @@ import {
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Əlaqələr — bütün kontragentlər" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;

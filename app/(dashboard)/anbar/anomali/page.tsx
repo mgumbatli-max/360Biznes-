@@ -12,7 +12,6 @@ import { ProductInline } from "@/features/anbar/components/product-inline";
 import { BarcodeFix, CostFix, SalePriceFix, ImageFix } from "@/features/anbar/components/quick-fix-cells";
 
 export const metadata: Metadata = { title: "Anomaliyalar" };
-export const dynamic = "force-dynamic";
 
 type SimpleProduct = { id: string; ad: string; kod: string | null; sekil_url?: string | null; barkod?: string | null };
 

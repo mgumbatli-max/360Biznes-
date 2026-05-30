@@ -8,7 +8,6 @@ import { getSahibkarState } from "@/lib/sahibkar/guard";
 import { getBackupTables } from "@/features/sahibkar/backup/queries";
 
 export const metadata: Metadata = { title: "Backup və eksport" };
-export const dynamic = "force-dynamic";
 
 const GROUP_LABELS: Record<string, { label: string; emoji: string }> = {
   satis: { label: "Satış", emoji: "🧾" },

@@ -4,7 +4,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { LabelPrintClient } from "./client";
 
 export const metadata: Metadata = { title: "Etiket çapı" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = { ids?: string };
 

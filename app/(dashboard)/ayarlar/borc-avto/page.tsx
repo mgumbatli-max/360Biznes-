@@ -11,7 +11,6 @@ import { getActiveUsers } from "@/features/crm/leadler-queries";
 import { saveBorcAvtoSettings } from "@/features/ayarlar/borc-avto-actions";
 
 export const metadata: Metadata = { title: "Borc avto-tapşırıq" };
-export const dynamic = "force-dynamic";
 
 async function loadCfg() {
   return withTenant(async () => {

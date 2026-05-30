@@ -9,7 +9,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { TEMPLATES } from "@/features/inteqrasiya/templates";
 
 export const metadata: Metadata = { title: "İdxal tarixçəsi" };
-export const dynamic = "force-dynamic";
 
 async function getHistory() {
   return withTenant(async () => {

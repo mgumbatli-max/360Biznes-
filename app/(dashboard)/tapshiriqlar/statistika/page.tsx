@@ -11,7 +11,6 @@ import { getTaskAnalytics } from "@/features/tapshiriqlar/stats-queries";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıqlar — Statistika" };
-export const dynamic = "force-dynamic";
 
 const STATUS_LABEL: Record<string, string> = {
   yeni: "Yeni", icrada: "İcradadır", gozlemede: "Yoxlanılır", tamamlandi: "Tamamlandı", legv: "Ləğv",

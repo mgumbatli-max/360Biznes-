@@ -18,7 +18,6 @@ import { parseDateRange, formatDateInput } from "@/features/hesabatlar/shared";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Müştəri hesabatı" };
-export const dynamic = "force-dynamic";
 
 const PAYMENT_LABELS: Record<string, string> = { negd: "Nağd", kart: "Kart", kecirme: "Bank köçürmə", nisye: "Nisyə" };
 

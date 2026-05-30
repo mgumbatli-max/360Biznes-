@@ -14,7 +14,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıqlar — Modul bağlantı" };
-export const dynamic = "force-dynamic";
 
 const MODULE_META: Record<string, { icon: typeof Package; color: string }> = {
   mehsul:        { icon: Package,    color: "from-cyan-500 to-sky-500" },

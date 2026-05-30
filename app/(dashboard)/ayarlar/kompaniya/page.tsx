@@ -6,7 +6,6 @@ import { CompanyForm } from "@/features/ayar/components/company-form";
 import { getCompany, getCompanyProfileCompleteness } from "@/features/ayar/queries";
 
 export const metadata: Metadata = { title: "Şirkət profili" };
-export const dynamic = "force-dynamic";
 
 export default async function KompaniyaPage() {
   const [company, completeness] = await Promise.all([getCompany(), getCompanyProfileCompleteness()]);

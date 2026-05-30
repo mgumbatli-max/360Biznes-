@@ -18,7 +18,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { Wallet } from "lucide-react";
 
 export const metadata: Metadata = { title: "Maya analizi" };
-export const dynamic = "force-dynamic";
 
 export default async function MayaPage() {
   await requireSahibkarSession();

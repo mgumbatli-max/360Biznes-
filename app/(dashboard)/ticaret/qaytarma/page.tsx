@@ -28,7 +28,6 @@ import {
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Qaytarmalar" };
-export const dynamic = "force-dynamic";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   tesdiqlenmemis: { label: "Gözləyir", cls: "bg-warning/15 text-warning border-warning/30" },

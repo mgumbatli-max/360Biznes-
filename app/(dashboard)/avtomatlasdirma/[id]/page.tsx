@@ -14,7 +14,6 @@ import { RuleCard } from "@/features/avtomatlasdirma/components/rule-card";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Qayda detalı" };
-export const dynamic = "force-dynamic";
 
 type SafeShert = { logic?: "and" | "or"; conditions?: { field: string; operator: string; value: number }[]; scope?: { type: string }[] };
 type SafeAction = { actions?: { kod: string }[]; notification?: { recipients?: string[]; channels?: string[]; template?: string } };

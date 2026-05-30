@@ -6,7 +6,6 @@ import { DuplicateCard } from "@/features/elaqe/components/duplicate-card";
 import { AutoMergeButton } from "@/features/elaqe/components/auto-merge-button";
 
 export const metadata: Metadata = { title: "Dublikat tapan" };
-export const dynamic = "force-dynamic";
 
 export default async function DublikatPage() {
   const pairs = await findDuplicates();

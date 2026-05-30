@@ -15,7 +15,6 @@ import {
 } from "@/features/team/queries";
 
 export const metadata: Metadata = { title: "Team — Söhbətlər" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ k?: string }>;
 

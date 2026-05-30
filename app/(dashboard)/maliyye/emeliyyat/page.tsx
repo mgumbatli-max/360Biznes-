@@ -8,7 +8,6 @@ import { getQuickRefs } from "@/features/maliyye/queries";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maliyyə əməliyyatları" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;

@@ -26,7 +26,6 @@ import { getMarketplaceStats } from "@/features/maliyye/marketplace-queries";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maliyyə hesabatları" };
-export const dynamic = "force-dynamic";
 
 const AYLAR = ["Yanvar","Fevral","Mart","Aprel","May","İyun","İyul","Avqust","Sentyabr","Oktyabr","Noyabr","Dekabr"];
 

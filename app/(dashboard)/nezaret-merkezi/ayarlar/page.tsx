@@ -13,7 +13,6 @@ import { loadTesdiqCfg } from "@/features/tesdiq/settings";
 import { updateTesdiqSettings, resetTesdiqSettings } from "@/features/tesdiq/settings-actions";
 
 export const metadata: Metadata = { title: "Nəzarət Mərkəzi — Ayarlar" };
-export const dynamic = "force-dynamic";
 
 type RuleRow = {
   key: string;

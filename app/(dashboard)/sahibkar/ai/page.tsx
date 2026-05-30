@@ -8,7 +8,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import type { ChatTurn } from "@/features/ai/types";
 
 export const metadata: Metadata = { title: "Sahibkar AI Köməkçisi" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarAiPage() {
   // PIN qoruması — yalnız sahibkar rolu və açıq sahibkar sessiyası

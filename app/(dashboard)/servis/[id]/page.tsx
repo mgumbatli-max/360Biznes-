@@ -40,7 +40,6 @@ import { EhtiyatHisseTab } from "@/features/servis/components/ehtiyat-hisse-tab"
 import { NotifyTab } from "@/features/servis/components/notify-tab";
 
 export const metadata: Metadata = { title: "Servis detayı" };
-export const dynamic = "force-dynamic";
 
 export default async function ServisDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

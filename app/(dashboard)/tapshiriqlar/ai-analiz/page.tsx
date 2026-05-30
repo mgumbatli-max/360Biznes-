@@ -9,7 +9,6 @@ import { aiAnalyzePerformance } from "@/features/tapshiriqlar/ai-actions";
 import { BonusCalculator } from "@/features/tapshiriqlar/components/bonus-calculator";
 
 export const metadata: Metadata = { title: "Tapşırıq AI Analiz" };
-export const dynamic = "force-dynamic";
 
 export default async function TapshiriqAiAnalizPage() {
   const session = await auth();

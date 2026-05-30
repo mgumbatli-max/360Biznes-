@@ -9,7 +9,6 @@ import { getAccounts } from "@/features/maliyye/account-queries";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Pul axını" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = { dovr?: string; range?: string };
 

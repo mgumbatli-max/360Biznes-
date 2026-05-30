@@ -8,7 +8,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { MpKomisyonDialog } from "@/features/ayarlar/components/mp-komisyon-dialog";
 
 export const metadata: Metadata = { title: "Marketplace komissiya" };
-export const dynamic = "force-dynamic";
 
 const PLATFORM_DEFAULTS: Array<{ platform: string; faiz: number; emoji: string; aciqlama: string }> = [
   { platform: "bolt", faiz: 25, emoji: "🚖", aciqlama: "Bolt Food" },

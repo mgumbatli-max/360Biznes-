@@ -11,7 +11,6 @@ import { getTaskDetail } from "@/features/tapshiriqlar/detail-queries";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıq detayı" };
-export const dynamic = "force-dynamic";
 
 const ROL_LABEL: Record<string, string> = {
   mesul: "Məsul",

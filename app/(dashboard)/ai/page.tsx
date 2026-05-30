@@ -17,7 +17,6 @@ import { ChatClient } from "@/features/ai/components/chat-client";
 import type { ChatTurn } from "@/features/ai/types";
 
 export const metadata: Metadata = { title: "AI Mərkəzi" };
-export const dynamic = "force-dynamic";
 
 // Hər feature chat-ə pre-filled prompt ilə yönlədir — ortaq AI infrastrukturu
 // (ChatClient + getBusinessContext) hər bir feature üçün ayrı səhifə tələb etmir.

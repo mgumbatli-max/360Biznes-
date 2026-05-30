@@ -28,7 +28,6 @@ import { formatMoney, formatNumber } from "@/lib/utils";
 import { ErrorSilentWrapper } from "@/components/error-silent-wrapper";
 
 export const metadata: Metadata = { title: "Sahibkar bölməsi" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarHomePage() {
   await requireSahibkarSession();

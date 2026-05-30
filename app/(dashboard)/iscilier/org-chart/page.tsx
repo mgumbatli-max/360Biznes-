@@ -5,7 +5,6 @@ import { OrgChartView } from "@/features/iscilier/components/org-chart";
 import { getOrgChart } from "@/features/iscilier/hr-queries";
 
 export const metadata: Metadata = { title: "Org chart — Heyət strukturu" };
-export const dynamic = "force-dynamic";
 
 export default async function OrgChartPage({
   searchParams,

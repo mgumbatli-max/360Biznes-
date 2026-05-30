@@ -12,7 +12,6 @@ import { KpiDashboardTable } from "@/features/iscilier/components/kpi-dashboard-
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "KPI Dashboard" };
-export const dynamic = "force-dynamic";
 
 const MONTH_LABELS = [
   "Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun",

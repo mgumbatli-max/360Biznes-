@@ -9,7 +9,6 @@ import { DeleteTemplateButton } from "@/features/crm/components/delete-template-
 import { TemplatePreview } from "@/features/crm/components/template-preview";
 
 export const metadata: Metadata = { title: "Mesaj şablonları" };
-export const dynamic = "force-dynamic";
 
 const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",

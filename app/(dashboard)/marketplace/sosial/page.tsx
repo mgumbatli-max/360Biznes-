@@ -8,7 +8,6 @@ import { SocialAccountCard } from "@/features/marketplace/components/social-acco
 import { getSocialAccounts, getSocialStats, SOCIAL_CHANNELS } from "@/features/marketplace/social-queries";
 
 export const metadata: Metadata = { title: "Sosial hesablar" };
-export const dynamic = "force-dynamic";
 
 export default async function SocialAccountsPage() {
   const [accounts, stats] = await Promise.all([

@@ -14,7 +14,6 @@ import { SeverityBadge, StatusBadge } from "@/features/alerts/components/severit
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Xəbərdarlıq detalı" };
-export const dynamic = "force-dynamic";
 
 export default async function AlertDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

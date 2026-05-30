@@ -8,7 +8,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Yol vergisi" };
-export const dynamic = "force-dynamic";
 
 async function getYolVergisiSummary() {
   return withTenant(async () => {

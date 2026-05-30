@@ -11,7 +11,6 @@ import { ImpersonateButton } from "@/features/platform-admin/components/imperson
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tenant detayı" };
-export const dynamic = "force-dynamic";
 
 export default async function TenantDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePlatformAdmin();

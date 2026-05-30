@@ -16,7 +16,6 @@ import { parseDateRange, formatDateInput, rangeLabel } from "@/features/hesabatl
 import { formatMoney, formatNumber, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İdxal/Alış hesabatı" };
-export const dynamic = "force-dynamic";
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   gozlemede: { label: "Gözləmədə", cls: "border-warning/30 bg-warning/10 text-warning" },

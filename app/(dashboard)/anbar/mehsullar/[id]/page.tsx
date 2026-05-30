@@ -37,7 +37,6 @@ import { getMehsulKanalQiymetler } from "@/features/qiymet-kanal/queries";
 import { MehsulKanalQiymetTable } from "@/features/qiymet-kanal/components/mehsul-kanal-qiymet-table";
 
 export const metadata: Metadata = { title: "Məhsul detayı" };
-export const dynamic = "force-dynamic";
 
 const MOVEMENT_LABEL: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; tone: string }> = {
   medaxil: { label: "Mədaxil", icon: ArrowDownToLine, tone: "text-success" },

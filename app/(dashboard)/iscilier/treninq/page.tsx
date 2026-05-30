@@ -8,7 +8,6 @@ import { getEmployees } from "@/features/iscilier/queries";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Treninq" };
-export const dynamic = "force-dynamic";
 
 export default async function TreninqPage() {
   const [treninqler, qeydler, stats, employees] = await Promise.all([

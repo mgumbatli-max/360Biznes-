@@ -13,7 +13,6 @@ import { updateTesdiqSettings, resetTesdiqSettings } from "@/features/tesdiq/set
 import { getActiveUsers } from "@/features/crm/leadler-queries";
 
 export const metadata: Metadata = { title: "Təsdiq mərkəzi — Ayarlar" };
-export const dynamic = "force-dynamic";
 
 type RuleConfig = {
   key: string;

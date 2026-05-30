@@ -9,7 +9,6 @@ import { BronFilters } from "@/features/anbar/bron/components/bron-filters";
 import { EmptyState } from "@/components/ui/empty-state";
 
 export const metadata: Metadata = { title: "Bron" };
-export const dynamic = "force-dynamic";
 
 type SP = { status?: string; q?: string; anbar?: string; musteri?: string; from?: string; to?: string };
 

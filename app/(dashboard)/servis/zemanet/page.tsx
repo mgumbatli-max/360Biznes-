@@ -7,7 +7,6 @@ import { ZemanetDialog } from "@/features/servis/components/zemanet-dialog";
 import { getZemanetler, getZemanetStats } from "@/features/servis/queries";
 
 export const metadata: Metadata = { title: "Zəmanətlər" };
-export const dynamic = "force-dynamic";
 
 export default async function ZemanetPage() {
   const [rows, stats] = await Promise.all([getZemanetler(), getZemanetStats()]);

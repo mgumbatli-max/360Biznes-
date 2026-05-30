@@ -11,7 +11,6 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 
 export const metadata: Metadata = { title: "Stok hərəkətləri" };
-export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
 

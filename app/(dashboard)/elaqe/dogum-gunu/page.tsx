@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { getUpcomingBirthdays } from "@/features/elaqe/birthday-queries";
 
 export const metadata: Metadata = { title: "Doğum günü mərkəzi" };
-export const dynamic = "force-dynamic";
 
 const MONTHS = [
   "Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun",

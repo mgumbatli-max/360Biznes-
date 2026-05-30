@@ -41,7 +41,6 @@ import { getTechnicianLeaderboard } from "@/features/maliyye/queries";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Servis" };
-export const dynamic = "force-dynamic";
 
 type SP = Record<string, string | string[] | undefined>;
 

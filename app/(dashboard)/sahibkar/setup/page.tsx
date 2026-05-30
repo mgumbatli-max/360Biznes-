@@ -10,7 +10,6 @@ import { PinInput } from "@/features/sahibkar/components/pin-input";
 import { DEFAULT_SECRET_CODE } from "@/features/sahibkar/constants";
 
 export const metadata: Metadata = { title: "Sahibkar — İlk qurum" };
-export const dynamic = "force-dynamic";
 
 export default async function PinSetupPage() {
   const session = await auth();

@@ -31,7 +31,6 @@ import { CriticalAlertsSection } from "@/features/dashboard/sections/critical-al
 import { getDashboardKpis } from "@/features/dashboard/queries";
 
 export const metadata: Metadata = { title: "Dashboard" };
-export const dynamic = "force-dynamic";
 
 function HeroSkeleton() {
   return (

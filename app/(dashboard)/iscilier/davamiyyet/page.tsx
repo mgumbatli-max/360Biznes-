@@ -4,7 +4,6 @@ import { DavamiyyetPanel } from "@/features/iscilier/components/davamiyyet-panel
 import { getDavamiyyetData } from "@/features/iscilier/davamiyyet-queries";
 
 export const metadata: Metadata = { title: "Davamiyyət" };
-export const dynamic = "force-dynamic";
 
 export default async function DavamiyyetPage({
   searchParams,

@@ -5,7 +5,6 @@ import { getMaliyyeThresholds } from "@/features/maliyye/extended-queries";
 import { MaliyyeThresholdForm } from "@/features/maliyye/components/threshold-form";
 
 export const metadata: Metadata = { title: "Maliyyə təsdiq hədləri" };
-export const dynamic = "force-dynamic";
 
 export default async function MaliyyeThresholdPage() {
   const limits = await getMaliyyeThresholds();

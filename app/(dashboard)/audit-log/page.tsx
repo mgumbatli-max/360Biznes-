@@ -42,7 +42,6 @@ import { AuditDetailModal, AuditRowLink } from "@/features/audit-log/components/
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Audit log & Təhlükəsizlik" };
-export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 50;
 

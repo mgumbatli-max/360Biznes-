@@ -19,7 +19,6 @@ async function ensureGeneralChannel() {
 }
 
 export const metadata: Metadata = { title: "Team modulu — Ayarlar" };
-export const dynamic = "force-dynamic";
 
 export default async function TeamAyarPage() {
   const ayar = await getTeamAyar();

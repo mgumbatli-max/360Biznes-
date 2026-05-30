@@ -8,7 +8,6 @@ import { formatMoney } from "@/lib/utils";
 import { PlanDialog } from "@/features/platform-admin/components/plan-dialog";
 
 export const metadata: Metadata = { title: "Paketlər" };
-export const dynamic = "force-dynamic";
 
 async function getPlansWithUsage() {
   const plans = await prismaUnscoped.abune_planlari.findMany({

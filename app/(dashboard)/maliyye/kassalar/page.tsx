@@ -11,7 +11,6 @@ import { getKassalar, getKassaStats } from "@/features/maliyye/kassa-queries";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Kassalar" };
-export const dynamic = "force-dynamic";
 
 export default async function KassalarPage() {
   const [rows, stats] = await Promise.all([getKassalar(), getKassaStats()]);

@@ -11,7 +11,6 @@ import { formatDate } from "@/lib/utils";
 import { getTemplates } from "@/features/crm/queries";
 
 export const metadata: Metadata = { title: "Broadcast" };
-export const dynamic = "force-dynamic";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   gozlemede: { label: "Gözləmədə", cls: "bg-warning/15 text-warning border-warning/30" },

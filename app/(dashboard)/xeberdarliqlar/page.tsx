@@ -21,7 +21,6 @@ import {
 } from "@/features/alerts/queries";
 
 export const metadata: Metadata = { title: "Xəbərdarlıqlar — Risk paneli" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;

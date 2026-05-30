@@ -11,7 +11,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { cn, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maliyyə hesabları" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ view?: string }>;
 

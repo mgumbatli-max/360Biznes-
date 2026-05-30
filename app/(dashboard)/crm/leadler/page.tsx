@@ -6,7 +6,6 @@ import { getLeadsByStage, getLeadsListRows, getActiveUsers } from "@/features/cr
 import type { LeadStatus } from "@/features/crm/types";
 
 export const metadata: Metadata = { title: "Leadlər" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   view?: string;

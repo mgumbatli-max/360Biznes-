@@ -9,7 +9,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Gündəlik snapshot" };
-export const dynamic = "force-dynamic";
 
 type SnapshotJson = { revenue?: number; orders?: number; open_tasks?: number };
 

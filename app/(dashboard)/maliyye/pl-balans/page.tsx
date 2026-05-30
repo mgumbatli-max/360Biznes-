@@ -23,7 +23,6 @@ import {
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "P&L / Balans" };
-export const dynamic = "force-dynamic";
 
 function pct(v: number) {
   return `${v >= 0 ? "" : ""}${v.toFixed(1)}%`;

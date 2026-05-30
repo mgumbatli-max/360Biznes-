@@ -7,7 +7,6 @@ import {
 } from "@/features/ticaret/commission-queries";
 
 export const metadata: Metadata = { title: "Komissiya qaydaları" };
-export const dynamic = "force-dynamic";
 
 export default async function KomissiyaQaydalariPage() {
   const [tiers, bonus] = await Promise.all([getCommissionTiers(), getBonusOnTarget()]);

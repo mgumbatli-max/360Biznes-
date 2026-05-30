@@ -7,7 +7,6 @@ import { getEmployeeFullDetail, getEmployeeBordroHistory } from "@/features/isci
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maaş bordrosu (çap)" };
-export const dynamic = "force-dynamic";
 
 const MONTH_LABELS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 

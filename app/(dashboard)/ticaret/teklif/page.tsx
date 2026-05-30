@@ -15,7 +15,6 @@ import {
 import { cn, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Təkliflər" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;

@@ -7,7 +7,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { getMobileWidgets } from "@/features/sahibkar/mobile-widget-actions";
 
 export const metadata: Metadata = { title: "Sahibkar (mobil)" };
-export const dynamic = "force-dynamic";
 
 export default async function MobileOwnerPage() {
   await requireSahibkarSession();

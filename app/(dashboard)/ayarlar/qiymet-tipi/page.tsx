@@ -11,7 +11,6 @@ import { FORMULA_NOV_OPTIONS, FORMULA_BAZA_OPTIONS } from "@/features/ayarlar/qi
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Qiymət tipləri" };
-export const dynamic = "force-dynamic";
 
 async function getPriceTypes() {
   return withTenant(async () => {

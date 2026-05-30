@@ -15,7 +15,6 @@ import { thisMonthRange } from "@/features/hesabatlar/shared";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Pul axını hesabatı" };
-export const dynamic = "force-dynamic";
 
 const PAYMENT_LABELS: Record<string, string> = { negd: "Nağd", kart: "Kart", kecirme: "Bank köçürmə", nisye: "Nisyə" };
 const CRITICAL_BALANCE = 5000;

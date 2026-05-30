@@ -9,7 +9,6 @@ import { getDataHealth } from "@/features/sahibkar/owner-queries";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 
 export const metadata: Metadata = { title: "Data sağlamlığı" };
-export const dynamic = "force-dynamic";
 
 const PRIO_TONE: Record<string, string> = {
   yuksek: "text-danger",

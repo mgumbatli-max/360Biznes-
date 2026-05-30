@@ -8,7 +8,6 @@ import { formatDate, formatMoney } from "@/lib/utils";
 import { RecurringActions, RunRecurringButton } from "@/features/maliyye/components/recurring-actions";
 
 export const metadata: Metadata = { title: "Təkrarlanan əməliyyatlar" };
-export const dynamic = "force-dynamic";
 
 const TEZLIK_LABEL: Record<string, string> = {
   weekly: "Həftəlik",

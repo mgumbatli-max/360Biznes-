@@ -4,7 +4,6 @@ import { OperationForm } from "@/features/maliyye/components/operation-form";
 import { getQuickRefs } from "@/features/maliyye/queries";
 
 export const metadata: Metadata = { title: "Yeni əməliyyat" };
-export const dynamic = "force-dynamic";
 
 export default async function YeniEmeliyyatPage({
   searchParams,

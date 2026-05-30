@@ -10,7 +10,6 @@ import { XercKateqoriyaDialog } from "@/features/ayarlar/components/xerc-kateqor
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Xərc kateqoriyaları" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ view?: string }>;
 

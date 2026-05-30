@@ -14,7 +14,6 @@ import {
 } from "@/features/ayar/queries";
 
 export const metadata: Metadata = { title: "İstifadəçilər" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ selected?: string; tab?: string }>;
 

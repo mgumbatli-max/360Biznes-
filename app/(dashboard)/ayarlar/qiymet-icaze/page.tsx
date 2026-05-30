@@ -4,7 +4,6 @@ import { getAllRoleAllowedTiers } from "@/features/ayarlar/qiymet-icaze";
 import { QiymetIcazeClient } from "@/features/ayarlar/components/qiymet-icaze-client";
 
 export const metadata: Metadata = { title: "Qiymət icazələri" };
-export const dynamic = "force-dynamic";
 
 export default async function QiymetIcazePage() {
   const rows = await getAllRoleAllowedTiers();

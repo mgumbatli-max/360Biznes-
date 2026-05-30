@@ -8,7 +8,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getKonsList, getKonsOptions } from "@/features/anbar/konsiqnasiya/queries";
 
 export const metadata: Metadata = { title: "Konsiqnasiya" };
-export const dynamic = "force-dynamic";
 
 type SP = { q?: string; istiqamet?: string; kontragent?: string; status?: string };
 

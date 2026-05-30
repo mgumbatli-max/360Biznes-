@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmployeeDialog } from "@/features/iscilier/components/employee-dialog";
 import { EmployeesTable } from "@/features/iscilier/components/employees-table";
 import { Button } from "@/components/ui/button";
@@ -31,17 +33,46 @@ import {
 import { getHeadcountStats } from "@/features/iscilier/hr-queries";
 
 export const metadata: Metadata = { title: "Əməkdaşlar" };
-export const dynamic = "force-dynamic";
 
-export default async function IscilierPage() {
-  const [items, headcount, roles, filiallar, vezifeler] = await Promise.all([
+async function HeaderActions() {
+  const [roles, filiallar] = await Promise.all([getRoleOptions(), getFilialOptions()]);
+  return <EmployeeDialog roles={roles} filiallar={filiallar} />;
+}
+
+async function HeadcountSection() {
+  const headcount = await getHeadcountStats();
+  return (
+    <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <KpiCard icon={Users} label="Cəmi" value={String(headcount.total)} subline={`${headcount.aktiv} aktiv`} />
+      <KpiCard icon={BadgeCheck} label="Aktiv" value={String(headcount.aktiv)} subline="Sistemə daxil ola bilən" tone="success" />
+      <KpiCard icon={Plane} label="Məzuniyyətdə" value={String(headcount.mezuniyyetde)} subline="Bu gün" tone={headcount.mezuniyyetde > 0 ? "warning" : "neutral"} />
+      <KpiCard icon={UserPlus} label="Bu ay yeni" value={String(headcount.bu_ay_yeni)} subline="İşə başlama" tone="info" />
+      <KpiCard icon={UserMinus} label="İşdən çıxmış" value={String(headcount.isden_cixmis_90)} subline="Son 90 gün" tone={headcount.isden_cixmis_90 > 0 ? "danger" : "neutral"} />
+    </section>
+  );
+}
+
+function HeadcountSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+  );
+}
+
+async function EmployeesSection() {
+  const [items, roles, filiallar, vezifeler] = await Promise.all([
     getEmployees({}),
-    getHeadcountStats(),
     getRoleOptions(),
     getFilialOptions(),
     getVezifeOptions(),
   ]);
+  return <EmployeesTable items={items} roles={roles} filiallar={filiallar} vezifeler={vezifeler} />;
+}
 
+export default function IscilierPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -60,18 +91,15 @@ export default async function IscilierPage() {
               <User className="h-4 w-4" /> Mənim profilim
             </Button>
           </Link>
-          <EmployeeDialog roles={roles} filiallar={filiallar} />
+          <Suspense fallback={<Skeleton className="h-9 w-32 rounded-md" />}>
+            <HeaderActions />
+          </Suspense>
         </div>
       </header>
 
-      {/* Headcount strip */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <KpiCard icon={Users} label="Cəmi" value={String(headcount.total)} subline={`${headcount.aktiv} aktiv`} />
-        <KpiCard icon={BadgeCheck} label="Aktiv" value={String(headcount.aktiv)} subline="Sistemə daxil ola bilən" tone="success" />
-        <KpiCard icon={Plane} label="Məzuniyyətdə" value={String(headcount.mezuniyyetde)} subline="Bu gün" tone={headcount.mezuniyyetde > 0 ? "warning" : "neutral"} />
-        <KpiCard icon={UserPlus} label="Bu ay yeni" value={String(headcount.bu_ay_yeni)} subline="İşə başlama" tone="info" />
-        <KpiCard icon={UserMinus} label="İşdən çıxmış" value={String(headcount.isden_cixmis_90)} subline="Son 90 gün" tone={headcount.isden_cixmis_90 > 0 ? "danger" : "neutral"} />
-      </section>
+      <Suspense fallback={<HeadcountSkeleton />}>
+        <HeadcountSection />
+      </Suspense>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
         <SubLink href="/iscilier/maas" icon={Wallet} title="Maaş" desc="Bordro" />
@@ -86,8 +114,9 @@ export default async function IscilierPage() {
         <SubLink href="/iscilier/budce" icon={PieChart} title="Büdcə" desc="Headcount plan" />
       </div>
 
-
-      <EmployeesTable items={items} roles={roles} filiallar={filiallar} vezifeler={vezifeler} />
+      <Suspense fallback={<Skeleton className="h-96 rounded-xl" />}>
+        <EmployeesSection />
+      </Suspense>
     </div>
   );
 }

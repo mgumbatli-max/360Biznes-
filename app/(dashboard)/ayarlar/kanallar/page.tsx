@@ -13,7 +13,6 @@ import { KanalListTable } from "@/features/qiymet-kanal/components/kanal-list-ta
 import { KanalFormDialog } from "@/features/qiymet-kanal/components/kanal-form-dialog";
 
 export const metadata: Metadata = { title: "Satış kanalları" };
-export const dynamic = "force-dynamic";
 
 export default async function KanallarPage() {
   const [kanallar, apiKeyStatus, stats, extras, webhookStatus, outboundStats, retryQueues] =

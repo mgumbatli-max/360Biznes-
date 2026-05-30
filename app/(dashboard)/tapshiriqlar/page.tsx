@@ -21,7 +21,6 @@ import {
 } from "@/features/tapshiriqlar/queries";
 
 export const metadata: Metadata = { title: "Tapşırıqlar" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   scope?: string;

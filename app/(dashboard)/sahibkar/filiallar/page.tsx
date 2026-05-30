@@ -10,7 +10,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Filiallar" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarFiliallarPage() {
   await requireSahibkarSession();

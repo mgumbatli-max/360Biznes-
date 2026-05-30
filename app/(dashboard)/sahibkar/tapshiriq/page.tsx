@@ -10,7 +10,6 @@ import { EntityLinkBadge, toEntityLinkNov } from "@/features/sahibkar/components
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sahibkar tapşırıqları" };
-export const dynamic = "force-dynamic";
 
 type ColumnSpec = {
   key: string;

@@ -6,7 +6,6 @@ import { MezuniyyetPanel } from "@/features/iscilier/components/mezuniyyet-panel
 import { getLeaveRequests, getLeaveStats, getLeaveBalances, getEmployees } from "@/features/iscilier/queries";
 
 export const metadata: Metadata = { title: "Məzuniyyət" };
-export const dynamic = "force-dynamic";
 
 export default async function MezuniyyetPage({
   searchParams,

@@ -14,7 +14,6 @@ import { AuditOutboxWidget } from "@/features/sahibkar/components/audit-outbox-w
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Audit log — Sahibkar" };
-export const dynamic = "force-dynamic";
 
 type SP = {
   q?: string;

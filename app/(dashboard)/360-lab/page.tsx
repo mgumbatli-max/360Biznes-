@@ -8,7 +8,6 @@ import { LAB_FEATURES, LAB_CATEGORIES, type LabFeature } from "@/features/lab/ca
 import { getActiveFeatures } from "@/features/lab/state";
 
 export const metadata: Metadata = { title: "360 LAB — Eksperimental zona" };
-export const dynamic = "force-dynamic";
 
 type SP = { tab?: string };
 

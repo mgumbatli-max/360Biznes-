@@ -25,7 +25,6 @@ import {
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satınalma Planlama" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ tab?: string; status?: string; search?: string }>;
 

@@ -11,7 +11,6 @@ import { isMockMode } from "@/lib/ai/anthropic";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "AI Cavab" };
-export const dynamic = "force-dynamic";
 
 async function getAiLogs() {
   return withTenant(async () =>

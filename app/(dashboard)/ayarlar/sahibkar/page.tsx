@@ -9,7 +9,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sahibkar profili" };
-export const dynamic = "force-dynamic";
 
 async function getSahibkarInfo() {
   return withTenant(async () => {

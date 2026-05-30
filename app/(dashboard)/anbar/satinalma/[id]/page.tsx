@@ -24,7 +24,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Təklif detalı" };
-export const dynamic = "force-dynamic";
 
 const STATUS_INFO: Record<string, { label: string; cls: string }> = {
   draft: { label: "Draft", cls: "text-muted-foreground border-border" },

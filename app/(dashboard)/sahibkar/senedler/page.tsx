@@ -8,7 +8,6 @@ import { getSenedTree, getBreadcrumb } from "@/features/sahibkar/senedler/querie
 import { SenedlerExplorer } from "@/features/sahibkar/senedler/components/senedler-explorer";
 
 export const metadata: Metadata = { title: "Sahibkar Sənədlər" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarSenedlerPage({
   searchParams,

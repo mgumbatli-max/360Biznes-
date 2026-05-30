@@ -26,7 +26,6 @@ import { listWebhookSecretStatus } from "@/features/qiymet-kanal/webhook-actions
 import { listKanalApiKeyStatus } from "@/features/qiymet-kanal/api-key-actions";
 
 export const metadata: Metadata = { title: "Sync sağlamlığı" };
-export const dynamic = "force-dynamic";
 
 function timeAgo(iso: string | null): string {
   if (!iso) return "—";

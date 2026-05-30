@@ -16,7 +16,6 @@ import {
 } from "@/features/ayar/queries";
 
 export const metadata: Metadata = { title: "Filiallar" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ selected?: string; tab?: string; dm?: string }>;
 

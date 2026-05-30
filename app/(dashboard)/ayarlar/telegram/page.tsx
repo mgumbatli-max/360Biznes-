@@ -4,7 +4,6 @@ import { getTelegramSettings } from "@/features/telegram/actions";
 import { TelegramConfigForm } from "@/features/telegram/components/telegram-config-form";
 
 export const metadata: Metadata = { title: "Telegram bildirişləri" };
-export const dynamic = "force-dynamic";
 
 export default async function TelegramPage() {
   const settings = await getTelegramSettings();

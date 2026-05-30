@@ -10,7 +10,6 @@ import { getDebtors, getQuickRefs, getOpenSalesForCustomer } from "@/features/ma
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Debitor (Müştəri borcu)" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = { q?: string; gecik?: string; sort?: string };
 

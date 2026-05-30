@@ -67,7 +67,6 @@ import { ObjectTasksTab } from "@/features/tapshiriqlar/components/object-tasks-
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Kontragent detayı" };
-export const dynamic = "force-dynamic";
 
 function CardSkeleton({ h = 120 }: { h?: number }) {
   return <Skeleton style={{ height: h }} className="w-full rounded-xl" />;

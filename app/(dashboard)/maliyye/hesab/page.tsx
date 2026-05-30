@@ -8,7 +8,6 @@ import { getAccounts, getAccountStats } from "@/features/maliyye/account-queries
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Hesablar" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = { kateqoriya?: string };
 

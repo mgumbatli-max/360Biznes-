@@ -28,7 +28,6 @@ import { getEmployeeExtras } from "@/features/iscilier/hr-queries";
 import type { EmployeeRow } from "@/features/iscilier/types";
 
 export const metadata: Metadata = { title: "İşçi profili" };
-export const dynamic = "force-dynamic";
 
 export default async function EmployeeDetailPage({
   params,

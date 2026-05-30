@@ -11,7 +11,6 @@ import { BirthdayRemindersButton } from "@/features/elaqe/components/birthday-re
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Əlaqə hesabatı" };
-export const dynamic = "force-dynamic";
 
 export default async function HesabatPage() {
   const r = await getElaqeReport();

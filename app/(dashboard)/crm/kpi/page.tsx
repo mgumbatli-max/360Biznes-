@@ -8,7 +8,6 @@ import { formatMoney } from "@/lib/utils";
 import { KpiRangeTabs } from "@/features/crm/components/kpi-range-tabs";
 
 export const metadata: Metadata = { title: "CRM KPI" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ range?: string }>;
 

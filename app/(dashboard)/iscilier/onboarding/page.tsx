@@ -5,7 +5,6 @@ import { OnboardingWizard } from "@/features/iscilier/components/onboarding-wiza
 import { getRoleOptions, getFilialOptions } from "@/features/iscilier/queries";
 
 export const metadata: Metadata = { title: "Onboarding — Yeni işçi" };
-export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage() {
   const [roles, filiallar] = await Promise.all([getRoleOptions(), getFilialOptions()]);

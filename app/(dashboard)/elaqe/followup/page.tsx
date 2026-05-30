@@ -12,7 +12,6 @@ import { formatDate } from "@/lib/utils";
 import type { FollowupRow } from "@/features/elaqe/queries";
 
 export const metadata: Metadata = { title: "Follow-up" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = { filter?: string };
 

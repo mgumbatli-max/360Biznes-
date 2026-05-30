@@ -9,7 +9,6 @@ import { thisMonthRange } from "@/features/hesabatlar/shared";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Servis hesabatı" };
-export const dynamic = "force-dynamic";
 
 async function getServisOverview() {
   return withTenant(async () => {

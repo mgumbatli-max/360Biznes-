@@ -6,7 +6,6 @@ import { KreditYeniClient } from "@/features/ticaret/components/kredit-yeni-clie
 import { getAnbarOptions } from "@/features/ticaret/satis-yeni-queries";
 
 export const metadata: Metadata = { title: "Kreditlə satış (yeni)" };
-export const dynamic = "force-dynamic";
 
 export default async function KreditYeniPage() {
   const anbarlar = await getAnbarOptions();

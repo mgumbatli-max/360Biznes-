@@ -20,7 +20,6 @@ import { SandboxTrendForecast } from "@/features/lab/sandboxes/sandbox-trend-for
 import { SandboxOcr } from "@/features/lab/sandboxes/sandbox-ocr";
 import { SandboxExecutive } from "@/features/lab/sandboxes/sandbox-executive";
 
-export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;

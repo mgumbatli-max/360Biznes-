@@ -9,7 +9,6 @@ import { getWebhookOrders } from "@/features/qiymet-kanal/webhook-orders-queries
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Webhook sifarişləri" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   kanal?: string;

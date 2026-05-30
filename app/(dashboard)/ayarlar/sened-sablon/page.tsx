@@ -9,7 +9,6 @@ import { formatDate } from "@/lib/utils";
 import { SenedSablonPreview } from "@/features/ayarlar/components/sened-sablon-preview";
 
 export const metadata: Metadata = { title: "Sənəd şablonları" };
-export const dynamic = "force-dynamic";
 
 const QRUP_LABELS: Record<string, string> = {
   faktura: "Faktura",

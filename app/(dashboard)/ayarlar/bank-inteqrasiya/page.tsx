@@ -8,7 +8,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
 export const metadata: Metadata = { title: "Bank inteqrasiya" };
-export const dynamic = "force-dynamic";
 
 async function getHistory() {
   return withTenant(async () => {

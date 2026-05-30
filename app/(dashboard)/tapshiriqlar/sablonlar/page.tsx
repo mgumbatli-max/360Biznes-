@@ -8,7 +8,6 @@ import { TemplateCardButton } from "@/features/tapshiriqlar/components/template-
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıqlar — Şablonlar" };
-export const dynamic = "force-dynamic";
 
 const CATEGORY_LABEL: Record<TaskTemplate["category"], { label: string; cls: string }> = {
   daily:      { label: "Gündəlik",  cls: "border-amber-500/30 bg-amber-500/10 text-amber-500" },

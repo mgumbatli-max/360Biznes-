@@ -7,7 +7,6 @@ import { RoleCreateDialog } from "@/features/ayar/components/role-dialogs";
 import { getRoles } from "@/features/ayar/queries";
 
 export const metadata: Metadata = { title: "Rollar və icazələr" };
-export const dynamic = "force-dynamic";
 
 export default async function RollarPage() {
   const rows = await getRoles();

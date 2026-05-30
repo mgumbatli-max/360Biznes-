@@ -16,7 +16,6 @@ import { formatMoney } from "@/lib/utils";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 
 export const metadata: Metadata = { title: "Satışlar" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;

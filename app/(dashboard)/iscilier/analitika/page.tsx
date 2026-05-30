@@ -8,7 +8,6 @@ import { getEmployeeStats } from "@/features/iscilier/queries";
 import { generateInsight } from "@/features/iscilier/analitika-insight";
 
 export const metadata: Metadata = { title: "HR Analitika" };
-export const dynamic = "force-dynamic";
 
 export default async function AnalitikaPage() {
   const [data, stats] = await Promise.all([getAnalitika(), getEmployeeStats()]);

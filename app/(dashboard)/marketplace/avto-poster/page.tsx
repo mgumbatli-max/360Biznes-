@@ -16,7 +16,6 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 
 export const metadata: Metadata = { title: "Avto-Poster" };
-export const dynamic = "force-dynamic";
 
 type SP = { status?: string; hesab?: string };
 

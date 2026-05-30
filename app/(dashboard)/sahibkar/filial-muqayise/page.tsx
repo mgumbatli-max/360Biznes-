@@ -23,7 +23,6 @@ function TrendSparkline({ values, color = "var(--brand-from, #6366f1)" }: { valu
 }
 
 export const metadata: Metadata = { title: "Filial müqayisəsi" };
-export const dynamic = "force-dynamic";
 
 export default async function FilialMuqayisePage() {
   await requireSahibkarSession();

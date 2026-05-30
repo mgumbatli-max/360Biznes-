@@ -12,7 +12,6 @@ import {
 } from "@/features/servis/queries";
 
 export const metadata: Metadata = { title: "Problemli məhsullar — Servis" };
-export const dynamic = "force-dynamic";
 
 type SP = Record<string, string | string[] | undefined>;
 

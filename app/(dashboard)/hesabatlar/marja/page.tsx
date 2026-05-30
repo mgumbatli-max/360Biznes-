@@ -19,7 +19,6 @@ import { formatMoney, formatNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Marja hesabatı" };
-export const dynamic = "force-dynamic";
 
 type SP = {
   from?: string;

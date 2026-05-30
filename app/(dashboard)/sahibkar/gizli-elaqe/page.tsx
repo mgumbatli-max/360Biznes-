@@ -10,7 +10,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { EntityLinkInput, EntityLinkBadge, toEntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
 
 export const metadata: Metadata = { title: "Gizli əlaqələr — Sahibkar" };
-export const dynamic = "force-dynamic";
 
 type SP = { q?: string; nov?: string; olke?: string };
 

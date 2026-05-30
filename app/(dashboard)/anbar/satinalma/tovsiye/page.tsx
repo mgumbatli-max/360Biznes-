@@ -12,7 +12,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satınalma Planlama" };
-export const dynamic = "force-dynamic";
 
 async function getRecommendations(f: { techizatci?: string; kritiklik?: string; kateqoriya?: string; xeber?: string } = {}) {
   return withTenant(async () => {

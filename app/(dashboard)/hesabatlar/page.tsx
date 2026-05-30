@@ -39,7 +39,6 @@ import { thisMonthRange, lastMonthRange } from "@/features/hesabatlar/shared";
 import { formatMoney, formatNumber, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Hesabatlar — Executive Hub" };
-export const dynamic = "force-dynamic";
 
 const CARDS: {
   href: string;

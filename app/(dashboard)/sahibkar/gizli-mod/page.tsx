@@ -8,7 +8,6 @@ import { getStealthState } from "@/lib/stealth/server";
 import { setStealthMode } from "@/lib/stealth/actions";
 
 export const metadata: Metadata = { title: "Gizli mod" };
-export const dynamic = "force-dynamic";
 
 export default async function GizliModPage() {
   const state = await getSahibkarState();

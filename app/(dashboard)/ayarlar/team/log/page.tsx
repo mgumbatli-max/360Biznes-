@@ -21,7 +21,6 @@ import { getMessageLog, getMessageLogStats } from "@/features/team/queries";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Team mesaj logu" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{
   search?: string;

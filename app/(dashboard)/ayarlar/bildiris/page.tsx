@@ -22,7 +22,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Bildiriş & AI tənzimləmələri" };
-export const dynamic = "force-dynamic";
 
 async function getRulesWithRoles() {
   return withTenant(async () => {

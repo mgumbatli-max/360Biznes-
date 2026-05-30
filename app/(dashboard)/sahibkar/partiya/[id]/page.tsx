@@ -14,7 +14,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Partiya detalı" };
-export const dynamic = "force-dynamic";
 
 export default async function PartiyaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireSahibkarSession();

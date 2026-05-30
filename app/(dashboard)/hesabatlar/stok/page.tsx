@@ -14,7 +14,6 @@ import { getReorderList } from "@/features/hesabatlar/mehsul-queries";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Stok hesabatı" };
-export const dynamic = "force-dynamic";
 
 export default async function StokReportPage() {
   const [byAnbar, byCat, movement, counters, reorder, aging] = await Promise.all([

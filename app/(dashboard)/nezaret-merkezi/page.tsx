@@ -13,7 +13,6 @@ import { getRiskDashboard } from "@/features/nezaret-merkezi/dashboard-queries";
 import { cn, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Nəzarət Mərkəzi — Dashboard" };
-export const dynamic = "force-dynamic";
 
 export default async function NezaretMerkeziPage() {
   const [badges, data] = await Promise.all([

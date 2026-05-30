@@ -17,7 +17,6 @@ import { getStokKpis, getStokRows, getRecentMovements, type StokFilter } from "@
 import { formatDate, formatMoney, formatNumber, formatCompactMoney, formatCompactNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Stok vəziyyəti" };
-export const dynamic = "force-dynamic";
 
 type SP = { q?: string; anbar?: string; status?: string };
 

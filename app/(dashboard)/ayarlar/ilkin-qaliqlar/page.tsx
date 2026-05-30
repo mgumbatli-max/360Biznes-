@@ -25,7 +25,6 @@ import { getIlkinQaliqStats } from "@/features/ayar/queries";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İlkin qalıqlar" };
-export const dynamic = "force-dynamic";
 
 const STEPS = [
   { key: "kassa", label: "Kassa & Bank qalıqları", icon: Wallet },

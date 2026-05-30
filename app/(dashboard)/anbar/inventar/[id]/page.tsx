@@ -10,7 +10,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İnventar detalı" };
-export const dynamic = "force-dynamic";
 
 async function getInventar(id: string) {
   return withTenant(() =>

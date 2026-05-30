@@ -31,7 +31,6 @@ import { ImportUploader } from "@/features/inteqrasiya/components/import-uploade
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İnteqrasiya mərkəzi" };
-export const dynamic = "force-dynamic";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   mehsul: Package,

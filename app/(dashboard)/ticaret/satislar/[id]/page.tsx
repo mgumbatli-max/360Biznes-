@@ -18,7 +18,6 @@ import { getLinkedTasksForSale } from "@/features/ticaret/satis-actions";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satış detayı" };
-export const dynamic = "force-dynamic";
 
 export default async function SatisDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

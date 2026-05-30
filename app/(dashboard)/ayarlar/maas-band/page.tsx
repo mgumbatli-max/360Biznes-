@@ -4,7 +4,6 @@ import { MaasBandPanel } from "@/features/iscilier/components/maas-band-panel";
 import { getMaasBands } from "@/features/iscilier/maas-band-queries";
 
 export const metadata: Metadata = { title: "Maaş aralığı" };
-export const dynamic = "force-dynamic";
 
 export default async function MaasBandPage() {
   const bands = await getMaasBands();

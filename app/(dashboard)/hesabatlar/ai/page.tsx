@@ -7,7 +7,6 @@ import { buildAiInsights } from "@/features/hesabatlar/ai-insights";
 import { AiGenerateButton } from "@/features/hesabatlar/components/ai-generate-button";
 
 export const metadata: Metadata = { title: "AI Insights" };
-export const dynamic = "force-dynamic";
 
 const ICON_MAP = {
   info: Info,

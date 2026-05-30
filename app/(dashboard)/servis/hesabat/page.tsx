@@ -22,7 +22,6 @@ import {
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Servis hesabatı" };
-export const dynamic = "force-dynamic";
 
 export default async function ServisHesabatPage() {
   const [data, cycle, bottleneck, costRev, defekt, source] = await Promise.all([

@@ -10,7 +10,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıqlar — Layihələr" };
-export const dynamic = "force-dynamic";
 
 type LayiheRow = {
   layihe: string;

@@ -7,7 +7,6 @@ import { getSalesHeatmap } from "@/features/ticaret/heatmap-queries";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satış istilik xəritəsi" };
-export const dynamic = "force-dynamic";
 
 const DOW = ["B", "Be", "Ça", "Çə", "Cə", "Cü", "Şə"]; // Sun..Sat in Azeri short
 

@@ -13,7 +13,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 
 export const metadata: Metadata = { title: "Alışlar" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;

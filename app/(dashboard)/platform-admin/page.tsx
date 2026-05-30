@@ -17,7 +17,6 @@ import { getPlatformKpis, getExpiringTrials, getRevenueByPlan } from "@/features
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Platform Admin" };
-export const dynamic = "force-dynamic";
 
 export default async function PlatformAdminPage() {
   await requirePlatformAdmin();

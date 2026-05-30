@@ -10,7 +10,6 @@ import { SERVIS_STATUS_LABELS } from "@/features/servis/types";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Servis SLA" };
-export const dynamic = "force-dynamic";
 
 export default async function ServisSLAPage() {
   const data = await getSLAOverview();

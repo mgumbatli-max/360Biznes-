@@ -16,7 +16,6 @@ import { ProblemFilters } from "@/features/anbar/hesabat/components/problem-filt
 import { formatDate, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Anbar hesabatları" };
-export const dynamic = "force-dynamic";
 
 type SP = {
   mod?: string;

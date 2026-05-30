@@ -8,7 +8,6 @@ import { ViewToggle, type ViewMode } from "@/components/ui/view-toggle";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 
 export const metadata: Metadata = { title: "Sahibkar qeydləri" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarQeydPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   await requireSahibkarSession();

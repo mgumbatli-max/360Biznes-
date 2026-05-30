@@ -11,7 +11,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Bank cıxarışları" };
-export const dynamic = "force-dynamic";
 
 async function getStatements() {
   return withTenant(async () =>

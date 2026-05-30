@@ -6,7 +6,6 @@ import { InboxList } from "@/features/crm/components/inbox-list";
 import { getChats, getInboxStats } from "@/features/crm/inbox-queries";
 
 export const metadata: Metadata = { title: "Inbox" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ kanal?: string; q?: string; unread?: string }>;
 

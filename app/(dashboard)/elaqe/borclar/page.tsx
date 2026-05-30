@@ -20,7 +20,6 @@ import { getQuickRefs, getOpenSalesForCustomer } from "@/features/maliyye/querie
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Borc mərkəzi" };
-export const dynamic = "force-dynamic";
 
 export default async function BorclarPage({
   searchParams,

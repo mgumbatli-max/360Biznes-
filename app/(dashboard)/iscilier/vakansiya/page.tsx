@@ -6,7 +6,6 @@ import { VakansiyaPanel } from "@/features/iscilier/components/vakansiya-panel";
 import { listVakansiya, listNamizedler, getVakansiyaStats } from "@/features/iscilier/vakansiya-queries";
 
 export const metadata: Metadata = { title: "Vakansiya" };
-export const dynamic = "force-dynamic";
 
 export default async function VakansiyaPage() {
   const [vaks, nams, stats] = await Promise.all([

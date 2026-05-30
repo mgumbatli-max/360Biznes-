@@ -8,7 +8,6 @@ import { prismaUnscoped } from "@/lib/db/prisma";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Cross-tenant audit" };
-export const dynamic = "force-dynamic";
 
 async function getAuditLog(filter: { tenant?: string; q?: string }) {
   const where: Record<string, unknown> = {};

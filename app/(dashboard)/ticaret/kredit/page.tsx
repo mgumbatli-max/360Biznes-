@@ -15,7 +15,6 @@ import { getQuickRefs } from "@/features/maliyye/queries";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Kreditlə satışlar" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   q?: string;

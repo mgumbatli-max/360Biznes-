@@ -10,7 +10,6 @@ import {
 } from "@/features/ayarlar/satis-tesdiq";
 
 export const metadata: Metadata = { title: "Endirim təsdiq qaydaları" };
-export const dynamic = "force-dynamic";
 
 async function save(formData: FormData) {
   "use server";

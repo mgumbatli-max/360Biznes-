@@ -9,7 +9,6 @@ import { getInaktivMusteriler } from "@/features/elaqe/inaktiv-queries";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İnaktiv müştərilər" };
-export const dynamic = "force-dynamic";
 
 type SP = { min?: string };
 

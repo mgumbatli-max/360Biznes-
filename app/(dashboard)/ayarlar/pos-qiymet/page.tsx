@@ -4,7 +4,6 @@ import { getPosPriceSettings } from "@/features/ayarlar/pos-qiymet";
 import { PosQiymetClient } from "@/features/ayarlar/components/pos-qiymet-client";
 
 export const metadata: Metadata = { title: "POS qiymət görünüş ayarları" };
-export const dynamic = "force-dynamic";
 
 export default async function PosQiymetPage() {
   const initial = await getPosPriceSettings();

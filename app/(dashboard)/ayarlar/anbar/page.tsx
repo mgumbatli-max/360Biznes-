@@ -7,7 +7,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { AnbarDialog } from "@/features/ayarlar/components/anbar-dialog";
 
 export const metadata: Metadata = { title: "Anbar ayarları" };
-export const dynamic = "force-dynamic";
 
 async function getAnbarlar() {
   return withTenant(async () =>

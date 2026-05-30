@@ -9,7 +9,6 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { BulkImageGrid } from "@/features/anbar/anomali/components/bulk-image-grid";
 
 export const metadata: Metadata = { title: "Bulk şəkil yarat" };
-export const dynamic = "force-dynamic";
 
 type SP = { page?: string };
 

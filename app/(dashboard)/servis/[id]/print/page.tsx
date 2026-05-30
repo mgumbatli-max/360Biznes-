@@ -6,7 +6,6 @@ import { formatDate, formatMoney } from "@/lib/utils";
 import { PrintTrigger } from "@/features/servis/components/print-trigger";
 
 export const metadata: Metadata = { title: "Servis qəbz çapı" };
-export const dynamic = "force-dynamic";
 
 type SP = Record<string, string | string[] | undefined>;
 

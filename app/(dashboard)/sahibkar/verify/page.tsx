@@ -8,7 +8,6 @@ import { touchPinSession } from "@/lib/sahibkar/session";
 import { getAttemptStatus } from "@/lib/sahibkar/rate-limit";
 
 export const metadata: Metadata = { title: "Sahibkar — Giriş" };
-export const dynamic = "force-dynamic";
 
 export default async function PinVerifyPage() {
   const session = await auth();

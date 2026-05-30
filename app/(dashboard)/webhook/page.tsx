@@ -14,7 +14,6 @@ import { WEBHOOK_PRESETS, WEBHOOK_EVENTS } from "@/features/webhook/catalog";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Webhook — Avtomatik bildirişlər" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = { event?: string; aktiv?: string };
 

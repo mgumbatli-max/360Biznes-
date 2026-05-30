@@ -11,7 +11,6 @@ import { parseDateRange, formatDateInput, rangeLabel, lastMonthRange, thisMonthR
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maliyyə hesabatı (P&L)" };
-export const dynamic = "force-dynamic";
 
 type SP = { from?: string; to?: string; preset?: string };
 

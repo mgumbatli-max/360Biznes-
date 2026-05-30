@@ -8,7 +8,6 @@ import { getChats, getThread, getChatById } from "@/features/crm/inbox-queries";
 import { getTemplates } from "@/features/crm/queries";
 
 export const metadata: Metadata = { title: "Söhbət" };
-export const dynamic = "force-dynamic";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ kanal?: string; q?: string }>;

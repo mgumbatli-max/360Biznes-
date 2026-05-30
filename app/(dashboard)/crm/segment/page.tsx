@@ -8,7 +8,6 @@ import { AiSegmentBuilder } from "@/features/crm/components/ai-segment-builder";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Müştəri Seqmentasiya" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ seq?: string }>;
 

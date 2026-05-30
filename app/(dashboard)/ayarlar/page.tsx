@@ -6,7 +6,6 @@ import { SettingsGrid } from "@/features/ayar/components/settings-grid";
 import { getCompany, getMerkezStats, getCompanyProfileCompleteness } from "@/features/ayar/queries";
 
 export const metadata: Metadata = { title: "Ayarlar" };
-export const dynamic = "force-dynamic";
 
 /**
  * Ayarlar Hub — minimalist, axtarış-əsaslı:

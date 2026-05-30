@@ -12,7 +12,6 @@ import { BranchDialog } from "@/features/sahibkar/components/branch-dialog";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Filial detalı" };
-export const dynamic = "force-dynamic";
 
 export default async function BranchDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireSahibkarSession();

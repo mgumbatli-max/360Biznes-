@@ -7,7 +7,6 @@ import { PriceRulesButton } from "@/features/anbar/qiymet/components/price-rules
 import { getQiymetList } from "@/features/anbar/qiymet/queries";
 
 export const metadata: Metadata = { title: "Qiymət mərkəzi" };
-export const dynamic = "force-dynamic";
 
 type SP = { q?: string };
 

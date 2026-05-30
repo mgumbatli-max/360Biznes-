@@ -5,7 +5,6 @@ import { SkillsMatrixView } from "@/features/iscilier/components/skills-matrix";
 import { getSkillsMatrix, getOrgChart } from "@/features/iscilier/hr-queries";
 
 export const metadata: Metadata = { title: "Bacarıqlar matriksi" };
-export const dynamic = "force-dynamic";
 
 export default async function SkillsPage({
   searchParams,

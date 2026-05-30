@@ -9,7 +9,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Idxal partiyaları" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarPartiyaPage() {
   await requireSahibkarSession();

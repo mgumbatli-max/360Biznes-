@@ -33,7 +33,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Hesab ayarları" };
-export const dynamic = "force-dynamic";
 
 const SUB_TABS = [
   { key: "profil", label: "Profil", icon: User },

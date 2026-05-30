@@ -9,7 +9,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sahibkar hesabatı" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarHesabatPage() {
   await requireSahibkarSession();

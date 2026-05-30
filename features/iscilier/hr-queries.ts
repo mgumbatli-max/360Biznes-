@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseQeydTags } from "./hr-tags";
@@ -34,39 +35,50 @@ export async function getEmployeeExtras(id: string): Promise<ProfileExtras> {
   });
 }
 
+const fetchHeadcountStatsCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<HeadcountStats> => {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const dayStart = new Date(now);
+      dayStart.setHours(0, 0, 0, 0);
+      const days90 = new Date(dayStart);
+      days90.setDate(days90.getDate() - 90);
+
+      const [total, aktiv, onLeaveToday, leftLast90, newThisMonth] = await Promise.all([
+        prismaUnscoped.istifadeciler.count({ where: { sahibkar_id: sahibkarId } }),
+        prismaUnscoped.istifadeciler.count({ where: { sahibkar_id: sahibkarId, aktiv: true, isden_cixdi: null } }),
+        prismaUnscoped.isci_mezuniyyet
+          .count({
+            where: {
+              sahibkar_id: sahibkarId,
+              baslama: { lte: dayStart },
+              bitme: { gte: dayStart },
+              status: "tesdiq",
+            },
+          })
+          .catch(() => 0),
+        prismaUnscoped.istifadeciler.count({ where: { sahibkar_id: sahibkarId, isden_cixdi: { gte: days90 } } }),
+        prismaUnscoped.istifadeciler.count({ where: { sahibkar_id: sahibkarId, ise_baslama: { gte: monthStart } } }),
+      ]);
+
+      return {
+        total,
+        aktiv,
+        mezuniyyetde: onLeaveToday,
+        isden_cixmis_90: leftLast90,
+        bu_ay_yeni: newThisMonth,
+      };
+    },
+    ["headcount-stats", sahibkarId],
+    { revalidate: 120, tags: [`hr:${sahibkarId}`] },
+  );
+
 /** Headcount strip stats. */
 export async function getHeadcountStats(): Promise<HeadcountStats> {
   return withTenant(async () => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const dayStart = new Date(now);
-    dayStart.setHours(0, 0, 0, 0);
-    const days90 = new Date(dayStart);
-    days90.setDate(days90.getDate() - 90);
-
-    const [total, aktiv, onLeaveToday, leftLast90, newThisMonth] = await Promise.all([
-      prisma.istifadeciler.count(),
-      prisma.istifadeciler.count({ where: { aktiv: true, isden_cixdi: null } }),
-      prisma.isci_mezuniyyet
-        .count({
-          where: {
-            baslama: { lte: dayStart },
-            bitme: { gte: dayStart },
-            status: "tesdiq",
-          },
-        })
-        .catch(() => 0),
-      prisma.istifadeciler.count({ where: { isden_cixdi: { gte: days90 } } }),
-      prisma.istifadeciler.count({ where: { ise_baslama: { gte: monthStart } } }),
-    ]);
-
-    return {
-      total,
-      aktiv,
-      mezuniyyetde: onLeaveToday,
-      isden_cixmis_90: leftLast90,
-      bu_ay_yeni: newThisMonth,
-    };
+    const { sahibkarId } = requireTenant();
+    return fetchHeadcountStatsCached(sahibkarId)();
   });
 }
 

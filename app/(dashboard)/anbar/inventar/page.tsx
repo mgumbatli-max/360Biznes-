@@ -13,7 +13,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İnventar / Fiziki sayım" };
-export const dynamic = "force-dynamic";
 
 type SP = { status?: string; anbar?: string; from?: string; to?: string };
 

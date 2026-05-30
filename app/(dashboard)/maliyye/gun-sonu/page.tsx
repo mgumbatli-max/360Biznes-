@@ -18,7 +18,6 @@ import { AlertTriangle, CheckCircle, AlertCircle as AlertCircleIcon, ChevronRigh
 import Link from "next/link";
 
 export const metadata: Metadata = { title: "Gün sonu" };
-export const dynamic = "force-dynamic";
 
 export default async function GunSonuPage() {
   const [today, history, checks] = await Promise.all([

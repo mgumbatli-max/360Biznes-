@@ -12,7 +12,6 @@ import { formatMoney, formatDate } from "@/lib/utils";
 import { PlanChangeDialog } from "@/features/ayarlar/components/plan-change-dialog";
 
 export const metadata: Metadata = { title: "Abunə" };
-export const dynamic = "force-dynamic";
 
 async function getSubscriptionInfo() {
   return withTenant(async () => {

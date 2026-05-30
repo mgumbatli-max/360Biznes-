@@ -26,7 +26,6 @@ import { getMarketplaceAccounts } from "@/features/marketplace/queries";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Marketplace Multi-Sync" };
-export const dynamic = "force-dynamic";
 
 type SP = { platform?: string; status?: string; q?: string };
 

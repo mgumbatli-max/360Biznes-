@@ -7,7 +7,6 @@ import { getBudce } from "@/features/iscilier/budce-queries";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Büdcə və headcount" };
-export const dynamic = "force-dynamic";
 
 export default async function BudcePage() {
   const data = await getBudce();

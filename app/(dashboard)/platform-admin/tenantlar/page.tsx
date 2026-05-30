@@ -8,7 +8,6 @@ import { getTenants } from "@/features/platform-admin/queries";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tenantlar" };
-export const dynamic = "force-dynamic";
 
 const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
   aktiv: { label: "Aktiv", cls: "bg-success/15 text-success border-success/30" },

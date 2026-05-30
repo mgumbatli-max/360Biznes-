@@ -7,7 +7,6 @@ import { getFunnelFilters } from "@/features/crm/funnel-queries";
 import { FunnelView } from "@/features/crm/components/funnel-view";
 
 export const metadata: Metadata = { title: "Sifariş axını (Funnel)" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ menecer?: string; menbe?: string; from?: string; to?: string }>;
 

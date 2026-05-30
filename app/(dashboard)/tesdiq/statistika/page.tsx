@@ -11,7 +11,6 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Təsdiq mərkəzi — Statistika" };
-export const dynamic = "force-dynamic";
 
 async function loadStats() {
   return withTenant(async () => {

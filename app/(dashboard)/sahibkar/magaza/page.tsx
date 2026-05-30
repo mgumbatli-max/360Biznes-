@@ -8,7 +8,6 @@ import { SectionExplainer } from "@/features/sahibkar/components/section-explain
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Mağaza müqayisəsi" };
-export const dynamic = "force-dynamic";
 
 export default async function MagazaPage() {
   await requireSahibkarSession();

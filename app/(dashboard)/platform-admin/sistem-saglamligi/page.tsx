@@ -7,7 +7,6 @@ import { prismaUnscoped } from "@/lib/db/prisma";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sistem sağlamlığı" };
-export const dynamic = "force-dynamic";
 
 async function getHealthMetrics() {
   const now = new Date();

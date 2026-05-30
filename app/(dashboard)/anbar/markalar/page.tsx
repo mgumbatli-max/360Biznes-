@@ -11,7 +11,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getBrands, type BrandFilter } from "@/features/anbar/queries";
 
 export const metadata: Metadata = { title: "Markalar" };
-export const dynamic = "force-dynamic";
 
 type SP = {
   q?: string;

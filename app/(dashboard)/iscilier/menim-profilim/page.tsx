@@ -25,7 +25,6 @@ import {
 import { getEmployeeDocuments } from "@/features/iscilier/documents-queries";
 
 export const metadata: Metadata = { title: "Mənim profilim" };
-export const dynamic = "force-dynamic";
 
 const MONTH_LABELS = [
   "Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun",

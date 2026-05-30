@@ -9,7 +9,6 @@ import { getTransfers, getTransferOptions } from "@/features/anbar/transfer/quer
 import { formatDate, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Anbar transferi" };
-export const dynamic = "force-dynamic";
 
 type SP = { status?: string; kaynak?: string; hedef?: string; from?: string; to?: string };
 

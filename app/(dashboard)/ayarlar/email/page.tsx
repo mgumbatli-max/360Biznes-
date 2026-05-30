@@ -4,7 +4,6 @@ import { getEmailSettings } from "@/features/email/actions";
 import { EmailConfigForm } from "@/features/email/components/email-config-form";
 
 export const metadata: Metadata = { title: "Email bildirişləri" };
-export const dynamic = "force-dynamic";
 
 export default async function EmailPage() {
   const settings = await getEmailSettings();

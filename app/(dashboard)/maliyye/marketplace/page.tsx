@@ -12,7 +12,6 @@ import {
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Marketplace ödənişləri" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = { platforma?: string; status?: string; from?: string; to?: string };
 

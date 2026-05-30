@@ -7,7 +7,6 @@ import { getRecentReturns, getAnbarOptions } from "@/features/ticaret/qaytarma-t
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tez qaytarma" };
-export const dynamic = "force-dynamic";
 
 export default async function QaytarmaTezPage() {
   const [history, anbarlar] = await Promise.all([getRecentReturns(10), getAnbarOptions()]);

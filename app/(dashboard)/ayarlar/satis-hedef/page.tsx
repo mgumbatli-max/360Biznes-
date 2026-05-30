@@ -12,7 +12,6 @@ import {
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satış hədəfi" };
-export const dynamic = "force-dynamic";
 
 async function saveTarget(formData: FormData) {
   "use server";

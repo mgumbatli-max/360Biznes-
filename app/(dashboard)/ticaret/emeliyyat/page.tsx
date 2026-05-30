@@ -11,7 +11,6 @@ import {
 } from "@/features/ticaret/emeliyyat-queries";
 
 export const metadata: Metadata = { title: "Əməliyyatlar" };
-export const dynamic = "force-dynamic";
 
 type SearchParams = {
   nov?: string;

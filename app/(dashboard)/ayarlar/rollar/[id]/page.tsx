@@ -15,7 +15,6 @@ import { getRoleDetail, getAllPermissionsGrouped } from "@/features/ayar/queries
 import { RolePermissionsMatrix } from "@/features/ayar/components/role-permissions-matrix";
 
 export const metadata: Metadata = { title: "Rol detalı" };
-export const dynamic = "force-dynamic";
 
 export default async function RoleDetailPage({
   params,

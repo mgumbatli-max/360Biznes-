@@ -8,7 +8,6 @@ import { formatDate } from "@/lib/utils";
 import { BackupRestoreButton } from "@/features/ayarlar/components/backup-restore-button";
 
 export const metadata: Metadata = { title: "Backup" };
-export const dynamic = "force-dynamic";
 
 async function getBackups() {
   return withTenant(async () =>

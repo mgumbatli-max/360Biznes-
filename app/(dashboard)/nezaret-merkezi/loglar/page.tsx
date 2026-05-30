@@ -12,7 +12,6 @@ import { getUnifiedLog } from "@/features/nezaret-merkezi/log-queries";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Nəzarət Mərkəzi — Loglar" };
-export const dynamic = "force-dynamic";
 
 type SP = {
   source?: string;

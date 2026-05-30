@@ -15,7 +15,6 @@ import { getNezaretBadges } from "@/features/nezaret-merkezi/counts";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Avtomatlaşdırma Mərkəzi" };
-export const dynamic = "force-dynamic";
 
 type SP = {
   view?: string;

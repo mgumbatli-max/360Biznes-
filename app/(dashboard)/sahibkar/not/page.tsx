@@ -8,7 +8,6 @@ import { NoteDialog, DeleteNoteButton } from "@/features/sahibkar/components/not
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Sahibkar qeydləri" };
-export const dynamic = "force-dynamic";
 
 export default async function SahibkarNotPage() {
   await requireSahibkarSession();

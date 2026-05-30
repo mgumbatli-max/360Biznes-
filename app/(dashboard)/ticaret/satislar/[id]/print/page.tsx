@@ -8,7 +8,6 @@ import { PrintControls } from "@/features/ticaret/components/print-controls";
 import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satış qəbzi" };
-export const dynamic = "force-dynamic";
 
 async function getCompany() {
   return withTenant(async () => {

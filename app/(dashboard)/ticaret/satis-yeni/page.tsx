@@ -11,7 +11,6 @@ import {
 } from "@/features/ticaret/satis-yeni-queries";
 
 export const metadata: Metadata = { title: "Yeni satış (Sifariş)" };
-export const dynamic = "force-dynamic";
 
 export default async function SatisYeniPage() {
   const session = await auth();

@@ -19,7 +19,6 @@ import { NezaretMerkeziTabs } from "@/features/nezaret-merkezi/components/tabs";
 import { getNezaretBadges } from "@/features/nezaret-merkezi/counts";
 
 export const metadata: Metadata = { title: "Təsdiq Mərkəzi" };
-export const dynamic = "force-dynamic";
 
 const STATUS: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
   gozleyir: { label: "Gözləyir", cls: "bg-amber-500/15 text-amber-500 border-amber-500/30", icon: Clock },

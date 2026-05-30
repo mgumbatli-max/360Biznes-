@@ -13,7 +13,6 @@ import { getAktivlikDashboard } from "@/features/sahibkar/aktivlik-queries";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Əməkdaş aktivlik nəzarəti" };
-export const dynamic = "force-dynamic";
 
 type SP = { days?: string };
 

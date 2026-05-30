@@ -5,7 +5,6 @@ import { MaasExportButton } from "@/features/iscilier/components/maas-export-but
 import { getMaasTable } from "@/features/iscilier/maas-queries";
 
 export const metadata: Metadata = { title: "Maaş bordrosu" };
-export const dynamic = "force-dynamic";
 
 const MONTH_LABELS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 
