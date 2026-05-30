@@ -1,6 +1,7 @@
 "use client";
 
 import { toast as sonnerToast, type ExternalToast } from "sonner";
+import { hapticError, hapticSuccess, hapticWarning } from "@/lib/haptics";
 
 /**
  * Sonner toast wrapper — eyni mesajın 3-cü dəfə spam olmasını blok edir.
@@ -28,6 +29,12 @@ function emit(
   const key = dedupKey(kind, message);
   const now = Date.now();
   const prev = seen.get(key);
+  // Haptic feedback yalnız yeni toast üçün — dedup-da yox
+  if (!prev || prev.until <= now) {
+    if (kind === "error") hapticError();
+    else if (kind === "success") hapticSuccess();
+    else if (kind === "warning") hapticWarning();
+  }
   if (prev && prev.until > now) {
     const nextCount = prev.count + 1;
     const display = `${message} (×${nextCount})`;

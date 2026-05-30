@@ -28,10 +28,13 @@ export const metadata: Metadata = {
 
 // Mobil görünüş — themeColor, viewport-fit notch dəstəyi.
 // userScalable: true (accessibility üçün zoom qalmalıdır — disable etmirik).
+// interactiveWidget: "resizes-content" — klaviatura açılanda layout sıxlanır,
+// bottom-nav və FAB klaviaturanın altında qalmır.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },

@@ -8,6 +8,8 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { PullToRefresh } from "@/components/layout/pull-to-refresh";
+import { PwaInstallPrompt } from "@/components/layout/pwa-install-prompt";
+import { OfflineIndicator } from "@/components/layout/offline-indicator";
 import { EmbedDetector } from "@/components/layout/embed-detector";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { PermissionsProvider } from "@/components/providers/permissions-provider";
@@ -122,6 +124,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <QuickActionsFab />
           <BottomNav />
           <PullToRefresh />
+          <PwaInstallPrompt />
+          <OfflineIndicator />
         </div>
       </PermissionsProvider>
     </AuthSessionProvider>
