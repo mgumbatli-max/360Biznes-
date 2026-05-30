@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
 import {
   Store,
   Share2,
@@ -29,7 +30,7 @@ export function MarketplaceSubNav({ active }: { active: string }) {
   return (
     <div className="mb-4 space-y-2" data-subnav>
       <div className="flex min-w-0 rounded-xl border border-border bg-secondary/40 p-1">
-        <div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
+        <ScrollActiveIntoView className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
           {TABS.map((tab) => {
             const isOn =
               tab.href === active ||
@@ -38,6 +39,7 @@ export function MarketplaceSubNav({ active }: { active: string }) {
               <Link
                 key={tab.href}
                 href={tab.href}
+                data-active={isOn ? "true" : undefined}
                 className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                   isOn
                     ? "bg-background text-primary shadow-sm"
@@ -50,7 +52,7 @@ export function MarketplaceSubNav({ active }: { active: string }) {
               </Link>
             );
           })}
-        </div>
+        </ScrollActiveIntoView>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
+import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
 import {
   Activity,
   Wallet,
@@ -158,9 +159,10 @@ export function MaliyyeSubNav({ active }: { active: string }) {
       <div className="flex items-center gap-2">
         {/* Primary group bar */}
         <div className="flex min-w-0 flex-1 rounded-xl border border-border bg-secondary/40 p-1">
-          <div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
+          <ScrollActiveIntoView className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
             <Link
               href={DASHBOARD_TAB.href}
+              data-active={isDashboard ? "true" : undefined}
               className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                 isDashboard
                   ? "bg-background text-primary shadow-sm"
@@ -178,6 +180,7 @@ export function MaliyyeSubNav({ active }: { active: string }) {
                 <Link
                   key={g.key}
                   href={href}
+                  data-active={isOn ? "true" : undefined}
                   className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                     isOn
                       ? "bg-background text-primary shadow-sm"
@@ -189,7 +192,7 @@ export function MaliyyeSubNav({ active }: { active: string }) {
                 </Link>
               );
             })}
-          </div>
+          </ScrollActiveIntoView>
         </div>
 
         {/* "Yeni əməliyyat" — vahid yeradılış nöqtəsi */}
@@ -210,13 +213,14 @@ export function MaliyyeSubNav({ active }: { active: string }) {
           <span className="hidden text-[10px] font-semibold uppercase tracking-wider text-muted-foreground md:inline">
             {activeGroup.label}
           </span>
-          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-thin">
+          <ScrollActiveIntoView className="flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-thin">
             {activeGroup.tabs.map((t) => {
               const isOn = isTabActive(t, active);
               return (
                 <Link
                   key={t.href}
                   href={t.href}
+                  data-active={isOn ? "true" : undefined}
                   className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
                     isOn
                       ? "bg-primary/10 text-primary"
@@ -228,7 +232,7 @@ export function MaliyyeSubNav({ active }: { active: string }) {
                 </Link>
               );
             })}
-          </div>
+          </ScrollActiveIntoView>
         </div>
       )}
     </div>

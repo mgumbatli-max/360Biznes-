@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
 import {
   LayoutDashboard,
   Users,
@@ -50,13 +51,14 @@ export function CrmSubNav({ active }: { active: string }) {
         )}
       </nav>
       <div className="flex rounded-xl border border-border bg-secondary/40 p-1">
-        <div className="flex flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
+        <ScrollActiveIntoView className="flex flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
           {CRM_TABS.map((tab) => {
             const isOn = tab.href === active;
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
+                data-active={isOn ? "true" : undefined}
                 className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                   isOn
                     ? "bg-background text-primary shadow-sm"
@@ -68,7 +70,7 @@ export function CrmSubNav({ active }: { active: string }) {
               </Link>
             );
           })}
-        </div>
+        </ScrollActiveIntoView>
       </div>
     </div>
   );
