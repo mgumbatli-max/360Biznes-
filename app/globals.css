@@ -563,6 +563,10 @@ html.embed-mode table[data-sticky-head] thead { top: 0; }
     position: relative;
     padding-left: 40%;
     min-height: 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    word-break: break-word;
   }
   table[data-stack-on-mobile] td[data-label]::before {
     content: attr(data-label);
@@ -571,9 +575,27 @@ html.embed-mode table[data-sticky-head] thead { top: 0; }
     top: 0.25rem;
     width: 35%;
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: hsl(var(--muted-foreground));
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    line-height: 1.2;
   }
+  /* İlk td (adətən name/identifier) — label hide, full width, başlıq kimi göstər */
+  table[data-stack-on-mobile] tr > td:first-child {
+    padding-left: 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid hsl(var(--border) / 0.4);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+  }
+  table[data-stack-on-mobile] tr > td:first-child::before { display: none; }
+  /* Son td (adətən action buttons) — label hide */
+  table[data-stack-on-mobile] tr > td:last-child {
+    padding-left: 0;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid hsl(var(--border) / 0.4);
+  }
+  table[data-stack-on-mobile] tr > td:last-child::before { display: none; }
 }

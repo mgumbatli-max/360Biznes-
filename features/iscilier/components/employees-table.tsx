@@ -165,8 +165,8 @@ export function EmployeesTable({
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-card/40">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto" data-h-scroll-hint>
+            <table className="w-full text-sm" data-stack-on-mobile>
               <thead className="border-b border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
                 <tr>
                   {cols.order.map((key) => {
@@ -189,10 +189,12 @@ export function EmployeesTable({
                     <tr key={e.id} className={`border-b border-border/30 transition hover:bg-secondary/40 ${e.status === "passiv" || e.status === "cixib" ? "opacity-60" : ""}`}>
                       {cols.order.map((key) => {
                         if (!cols.isVisible(key)) return null;
+                        // Hər td üçün label — data-stack-on-mobile mobile-da göstərir
+                        const _label = COLUMN_DEFS.find((c) => c.key === key)?.label;
                         switch (key) {
                           case "ad_soyad":
                             return (
-                              <td key={key} className="px-3 py-2.5">
+                              <td key={key} data-label={_label} className="px-3 py-2.5">
                                 <div className="flex items-center gap-2">
                                   <Avatar className="h-8 w-8">
                                     <AvatarFallback className="bg-secondary text-xs font-semibold">
@@ -207,10 +209,10 @@ export function EmployeesTable({
                               </td>
                             );
                           case "vezife":
-                            return <td key={key} className="px-3 py-2.5">{e.vezife ?? "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5">{e.vezife ?? "—"}</td>;
                           case "rol":
                             return (
-                              <td key={key} className="px-3 py-2.5">
+                              <td key={key} data-label={_label} className="px-3 py-2.5">
                                 <Badge variant="outline" className="text-[10px]">{e.rol_ad}</Badge>
                               </td>
                             );
@@ -219,7 +221,7 @@ export function EmployeesTable({
                             const att = e.attendance_pct ?? 0;
                             const tgt = e.target_pct;
                             return (
-                              <td key={key} className="px-3 py-2.5">
+                              <td key={key} data-label={_label} className="px-3 py-2.5">
                                 <div className="flex flex-wrap items-center gap-1">
                                   {sales > 0 && (
                                     <Badge variant="outline" className="border-success/30 text-success text-[10px]">
@@ -250,40 +252,40 @@ export function EmployeesTable({
                             );
                           }
                           case "sobe":
-                            return <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">—</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">—</td>;
                           case "filial":
-                            return <td key={key} className="px-3 py-2.5 text-xs">{e.default_filial_ad ?? "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs">{e.default_filial_ad ?? "—"}</td>;
                           case "telefon":
                             return (
-                              <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">
+                              <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">
                                 {e.telefon ? (
                                   <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{e.telefon}</span>
                                 ) : "—"}
                               </td>
                             );
                           case "email":
-                            return <td key={key} className="px-3 py-2.5 text-xs">{e.email}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs">{e.email}</td>;
                           case "ise_baslama":
-                            return <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">{e.ise_baslama ? formatDate(e.ise_baslama) : "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">{e.ise_baslama ? formatDate(e.ise_baslama) : "—"}</td>;
                           case "maas":
-                            return <td key={key} className="px-3 py-2.5 text-right tabular-nums">{e.aylik_maas > 0 ? formatMoney(e.aylik_maas) : "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-right tabular-nums">{e.aylik_maas > 0 ? formatMoney(e.aylik_maas) : "—"}</td>;
                           case "status":
                             return (
-                              <td key={key} className="px-3 py-2.5">
+                              <td key={key} data-label={_label} className="px-3 py-2.5">
                                 <Badge variant="outline" className={s.cls + " text-[10px]"}>{s.label}</Badge>
                               </td>
                             );
                           case "son_giris":
-                            return <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground">{e.son_giris ? formatDate(e.son_giris) : "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground">{e.son_giris ? formatDate(e.son_giris) : "—"}</td>;
                           case "fin_kod":
-                            return <td key={key} className="px-3 py-2.5 text-xs">{e.fin_kod ?? "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs">{e.fin_kod ?? "—"}</td>;
                           case "dogum":
-                            return <td key={key} className="px-3 py-2.5 text-xs">{e.dogum_tarixi ? formatDate(e.dogum_tarixi) : "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs">{e.dogum_tarixi ? formatDate(e.dogum_tarixi) : "—"}</td>;
                           case "unvan":
-                            return <td key={key} className="px-3 py-2.5 text-xs text-muted-foreground max-w-xs truncate">{e.unvan ?? "—"}</td>;
+                            return <td key={key} data-label={_label} className="px-3 py-2.5 text-xs text-muted-foreground max-w-xs truncate">{e.unvan ?? "—"}</td>;
                           case "bank":
                             return (
-                              <td key={key} className="px-3 py-2.5 text-xs">
+                              <td key={key} data-label={_label} className="px-3 py-2.5 text-xs">
                                 {e.bank_ad || e.bank_hesab ? (
                                   <div>
                                     {e.bank_ad && <div>{e.bank_ad}</div>}
@@ -294,7 +296,7 @@ export function EmployeesTable({
                             );
                           case "eml":
                             return (
-                              <td key={key} className="px-3 py-2.5">
+                              <td key={key} data-label={_label} className="px-3 py-2.5">
                                 <div className="flex items-center justify-end gap-0.5">
                                   <Link href={`/iscilier/${e.id}`} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground" title="Profil">
                                     <ExternalLink className="h-3.5 w-3.5" />
