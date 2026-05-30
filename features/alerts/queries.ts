@@ -1,6 +1,8 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 
 export type AlertSeverity = "info" | "xeber" | "risk" | "kritik";
 export type AlertStatus = "yeni" | "baxilir" | "snoozed" | "hell_olundu" | "legv";
@@ -43,33 +45,43 @@ export type AlertStats = {
 
 const OPEN_STATUSES = ["yeni", "baxilir"];
 
+const fetchAlertStatsCached = (sahibkarId: string) =>
+  unstable_cache(
+    async (): Promise<AlertStats> => {
+      const now = new Date();
+      const today = new Date(now);
+      today.setHours(0, 0, 0, 0);
+
+      const [open, kritik, snoozed, todayNew, resolvedToday] = await Promise.all([
+        prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, status: { in: OPEN_STATUSES } } }),
+        prismaUnscoped.alerts.count({
+          where: { sahibkar_id: sahibkarId, status: { in: OPEN_STATUSES }, seviyye: "kritik" },
+        }),
+        prismaUnscoped.alerts.count({
+          where: { sahibkar_id: sahibkarId, status: "snoozed", snoozed_until: { gt: now } },
+        }),
+        prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, first_seen_at: { gte: today } } }),
+        prismaUnscoped.alerts.count({
+          where: { sahibkar_id: sahibkarId, status: "hell_olundu", resolved_at: { gte: today } },
+        }),
+      ]);
+
+      return {
+        open_count: open,
+        kritik_count: kritik,
+        snoozed_count: snoozed,
+        today_count: todayNew,
+        resolved_today_count: resolvedToday,
+      };
+    },
+    ["alert-stats", sahibkarId],
+    { revalidate: 30, tags: [`alerts:${sahibkarId}`] },
+  );
+
 export async function getAlertStats(): Promise<AlertStats> {
   return withTenant(async () => {
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-
-    const [open, kritik, snoozed, todayNew, resolvedToday] = await Promise.all([
-      prisma.alerts.count({ where: { status: { in: OPEN_STATUSES } } }),
-      prisma.alerts.count({
-        where: { status: { in: OPEN_STATUSES }, seviyye: "kritik" },
-      }),
-      prisma.alerts.count({
-        where: { status: "snoozed", snoozed_until: { gt: now } },
-      }),
-      prisma.alerts.count({ where: { first_seen_at: { gte: today } } }),
-      prisma.alerts.count({
-        where: { status: "hell_olundu", resolved_at: { gte: today } },
-      }),
-    ]);
-
-    return {
-      open_count: open,
-      kritik_count: kritik,
-      snoozed_count: snoozed,
-      today_count: todayNew,
-      resolved_today_count: resolvedToday,
-    };
+    const { sahibkarId } = requireTenant();
+    return fetchAlertStatsCached(sahibkarId)();
   });
 }
 

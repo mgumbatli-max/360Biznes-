@@ -1,43 +1,66 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
 
+const fetchOwnerDashboardRawCached = (sahibkarId: string) =>
+  unstable_cache(
+    async () => {
+      const today = new Date();
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+      const [salesAgg, stockValueRow, isciAgg, branchCount, cashRow] = await Promise.all([
+        prismaUnscoped.satis_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, status: { not: "legv" }, qaralama: { not: true } },
+          _sum: { son_mebleg: true },
+        }),
+        prismaUnscoped.$queryRaw<{ deyer: number }[]>`
+          SELECT COALESCE(SUM(s.miqdar * COALESCE(s.son_qiymet, m.alish_qiymeti, 0)), 0)::float AS deyer
+            FROM stok s JOIN mehsullar m ON m.id = s.mehsul_id
+           WHERE s.sahibkar_id = ${sahibkarId}::uuid
+        `,
+        prismaUnscoped.istifadeciler.aggregate({
+          where: { sahibkar_id: sahibkarId, aktiv: true },
+          _sum: { aylik_maas: true },
+          _count: { _all: true },
+        }),
+        prismaUnscoped.filiallar.count({ where: { sahibkar_id: sahibkarId, aktiv: true } }),
+        prismaUnscoped.kassa_emeliyyatlari.aggregate({
+          where: { sahibkar_id: sahibkarId, odenis_nov: "negd", tarix: { gte: monthStart } },
+          _sum: { mebleg: true },
+        }),
+      ]);
+
+      return {
+        revenue_this_month: Number(salesAgg._sum.son_mebleg ?? 0),
+        stock_value: Number(stockValueRow[0]?.deyer ?? 0),
+        total_salary: Number(isciAgg._sum.aylik_maas ?? 0),
+        isci_count: isciAgg._count._all,
+        branch_count: branchCount,
+        cash_in_this_month: Number(cashRow._sum.mebleg ?? 0),
+      };
+    },
+    ["owner-dashboard", sahibkarId],
+    { revalidate: 120, tags: [`dashboard:${sahibkarId}`, `sahibkar:${sahibkarId}`] },
+  );
+
 export async function getOwnerDashboard() {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const today = new Date();
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-
-    const [salesAgg, stockValueRow, isciAgg, branchCount, cashRow] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, status: { not: "legv" }, qaralama: { not: true } },
-        _sum: { son_mebleg: true },
-      }),
-      prisma.$queryRaw<{ deyer: number }[]>`
-        SELECT COALESCE(SUM(s.miqdar * COALESCE(s.son_qiymet, m.alish_qiymeti, 0)), 0)::float AS deyer
-          FROM stok s JOIN mehsullar m ON m.id = s.mehsul_id
-         WHERE s.sahibkar_id = ${sahibkarId}::uuid
-      `,
-      prisma.istifadeciler.aggregate({ where: { aktiv: true }, _sum: { aylik_maas: true }, _count: { _all: true } }),
-      prisma.filiallar.count({ where: { aktiv: true } }),
-      prisma.kassa_emeliyyatlari.aggregate({
-        where: { odenis_nov: "negd", tarix: { gte: monthStart } },
-        _sum: { mebleg: true },
-      }),
+    const [raw, stealth] = await Promise.all([
+      fetchOwnerDashboardRawCached(sahibkarId)(),
+      getStealthState(),
     ]);
-
-    const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
-
     return {
-      revenue_this_month: Number(salesAgg._sum.son_mebleg ?? 0) * s,
-      stock_value: Number(stockValueRow[0]?.deyer ?? 0) * s,
-      total_salary: Number(isciAgg._sum.aylik_maas ?? 0) * s,
-      isci_count: isciAgg._count._all,
-      branch_count: branchCount,
-      cash_in_this_month: Number(cashRow._sum.mebleg ?? 0) * s,
+      revenue_this_month: raw.revenue_this_month * s,
+      stock_value: raw.stock_value * s,
+      total_salary: raw.total_salary * s,
+      isci_count: raw.isci_count,
+      branch_count: raw.branch_count,
+      cash_in_this_month: raw.cash_in_this_month * s,
     };
   });
 }
