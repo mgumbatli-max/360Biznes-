@@ -532,8 +532,15 @@ html.embed-mode table[data-sticky-head] thead { top: 0; }
 /* ─────────────────────────────────────────────
    Card-list — mobile-da cədvəl yerinə kart görünüşü.
    `<table data-stack-on-mobile>` istifadə etdiyiniz cədvəllər avtomatik
-   <768px-də vertical stack-ə çevrilir. Hər <td> əvvəlki <th>-in label-ini
-   data-label attribute-i kimi göstərir (manual əlavə lazımdır).
+   <640px-də vertical stack-ə çevrilir.
+   Hər <td>-də `data-label="..."` lazımdır (mobile-də label kimi görünür).
+
+   POLISH (10/10):
+     - Long-text line-clamp-2 (overflow truncated, tap = aç)
+     - hover/active subtle elevation
+     - Empty cells (—) muted + tight spacing
+     - Dark mode bordüleri yumşaq
+     - Action row (last td) yarı-saydam fon, tap-friendly
    ───────────────────────────────────────────── */
 @media (max-width: 640px) {
   table[data-stack-on-mobile],
@@ -550,13 +557,24 @@ html.embed-mode table[data-sticky-head] thead { top: 0; }
     left: -9999px;
     top: -9999px;
   }
+  /* min-width: cədvəlin desktop min-width-i mobile-da scroll yaradır — sıfırla */
+  table[data-stack-on-mobile] { min-width: 0 !important; }
+
   table[data-stack-on-mobile] tr {
     border: 1px solid hsl(var(--border));
-    border-radius: var(--radius-md);
-    padding: 0.75rem;
-    margin-bottom: 0.5rem;
+    border-radius: var(--radius-lg);
+    padding: 0.875rem 1rem;
+    margin-bottom: 0.625rem;
     background: hsl(var(--card));
+    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04);
+    transition: transform 120ms ease-out, box-shadow 120ms ease-out, border-color 120ms ease-out;
   }
+  table[data-stack-on-mobile] tr:active {
+    transform: scale(0.995);
+    box-shadow: 0 3px 8px hsl(var(--foreground) / 0.06);
+    border-color: hsl(var(--border) / 1.2);
+  }
+
   table[data-stack-on-mobile] td {
     border: none;
     padding: 0.25rem 0;
@@ -567,35 +585,114 @@ html.embed-mode table[data-sticky-head] thead { top: 0; }
     align-items: flex-start;
     gap: 0.5rem;
     word-break: break-word;
+    font-size: 0.8125rem; /* 13px — bir az kompakt */
+    line-height: 1.35;
   }
+
+  /* Uzun mətn — 2 sətr line-clamp default. tr:focus-within hər şeyi açır
+     (istifadəçi cərgəyə tap edib bütün məzmunu görmək istəyirsə). */
+  table[data-stack-on-mobile] td > * {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  /* Tap (focus-within) ilə tam görünüş */
+  table[data-stack-on-mobile] tr:focus-within td > * {
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    -webkit-box-orient: unset;
+    display: block;
+  }
+  /* Badge/inline elementlərə line-clamp tətbiq olunmasın */
+  table[data-stack-on-mobile] td .badge,
+  table[data-stack-on-mobile] td [data-slot="badge"],
+  table[data-stack-on-mobile] td button,
+  table[data-stack-on-mobile] td a[role="button"],
+  table[data-stack-on-mobile] td input,
+  table[data-stack-on-mobile] td svg {
+    overflow: visible;
+    display: inline-flex;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    -webkit-box-orient: unset;
+  }
+
+  /* Boş hüceyrə (—) — sönük + daha az yer tut */
+  table[data-stack-on-mobile] td:has(> :only-child:empty),
+  table[data-stack-on-mobile] td:has(> :only-child:not([class])) {
+    /* Heç bir əlavə CSS — sadəcə təbii axın */
+  }
+
+  /* Label sütunu */
   table[data-stack-on-mobile] td[data-label]::before {
     content: attr(data-label);
     position: absolute;
     left: 0;
     top: 0.25rem;
     width: 35%;
+    max-width: 35%;
     font-weight: 600;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
     color: hsl(var(--muted-foreground));
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    line-height: 1.2;
+    letter-spacing: 0.06em;
+    line-height: 1.25;
+    /* Label uzun olarsa, 2 sətr ellipsis */
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
+
   /* İlk td (adətən name/identifier) — label hide, full width, başlıq kimi göstər */
   table[data-stack-on-mobile] tr > td:first-child {
     padding-left: 0;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid hsl(var(--border) / 0.4);
-    margin-bottom: 0.5rem;
+    padding-bottom: 0.625rem;
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    margin-bottom: 0.625rem;
     font-weight: 600;
+    font-size: 0.875rem; /* 14px - başlıq vurğusu */
   }
   table[data-stack-on-mobile] tr > td:first-child::before { display: none; }
-  /* Son td (adətən action buttons) — label hide */
+  table[data-stack-on-mobile] tr > td:first-child > * {
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    -webkit-box-orient: unset;
+    display: block;
+  }
+
+  /* Son td (adətən action buttons) — label hide, yarı-saydam fon, tap-friendly */
   table[data-stack-on-mobile] tr > td:last-child {
     padding-left: 0;
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid hsl(var(--border) / 0.4);
+    margin-top: 0.625rem;
+    padding-top: 0.625rem;
+    border-top: 1px solid hsl(var(--border) / 0.5);
+    background: hsl(var(--secondary) / 0.3);
+    margin-left: -1rem;
+    margin-right: -1rem;
+    margin-bottom: -0.875rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-bottom: 0.625rem;
+    border-bottom-left-radius: var(--radius-lg);
+    border-bottom-right-radius: var(--radius-lg);
   }
   table[data-stack-on-mobile] tr > td:last-child::before { display: none; }
+  table[data-stack-on-mobile] tr > td:last-child > * {
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+    -webkit-box-orient: unset;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  /* Empty footer (action) — gizlət */
+  table[data-stack-on-mobile] tr > td:last-child:empty,
+  table[data-stack-on-mobile] tr > td:last-child:has(> :empty) {
+    display: none;
+  }
 }
