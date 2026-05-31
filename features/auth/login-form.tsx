@@ -41,7 +41,6 @@ export function LoginForm({ searchParamsPromise }: Props) {
         return;
       }
       router.push(callbackUrl);
-      router.refresh();
     });
   }
 

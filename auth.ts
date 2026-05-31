@@ -37,24 +37,45 @@ const config = {
         password: { label: "Şifrə", type: "password" },
       },
       async authorize(raw) {
+        const t0 = Date.now();
         const parsed = LoginSchema.safeParse(raw);
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
 
+        // `select` ilə yalnız lazımi sahələr — Prisma daha az JOIN edir,
+        // payload kiçik olur. `include` bütün sütunları gətirir.
         const user = await prismaUnscoped.istifadeciler.findFirst({
           where: { email: email.toLowerCase().trim(), aktiv: true },
-          include: {
+          select: {
+            id: true,
+            email: true,
+            ad_soyad: true,
+            sifre_hash: true,
+            sahibkar_id: true,
+            rol_id: true,
             sahibkarlar: {
-              include: {
-                abuneler: { orderBy: { yaradildi: "desc" }, take: 1, include: { abune_planlari: true } },
+              select: {
+                ad: true,
+                status: true,
+                abuneler: {
+                  orderBy: { yaradildi: "desc" },
+                  take: 1,
+                  select: {
+                    bitme: true,
+                    status: true,
+                    abune_planlari: { select: { kod: true, ad: true } },
+                  },
+                },
               },
             },
-            roles: true,
+            roles: { select: { ad: true } },
           },
         });
+        const tDb = Date.now();
         if (!user) return null;
 
         const ok = await verifyPassword(password, user.sifre_hash);
+        const tBcrypt = Date.now();
         if (!ok) return null;
 
         // Tenant must be active
@@ -67,11 +88,15 @@ const config = {
 
         const rolId = user.rol_id ?? 0;
 
-        // Touch last-login timestamp
-        await prismaUnscoped.istifadeciler.update({
-          where: { id: user.id },
-          data: { son_giris: new Date() },
-        });
+        // Touch last-login timestamp — fire-and-forget, login cavabını bloklamasın.
+        void prismaUnscoped.istifadeciler
+          .update({ where: { id: user.id }, data: { son_giris: new Date() } })
+          .catch(() => {});
+
+        // Diagnostic — Vercel log-larında axtarır: "[auth] timing"
+        console.log(
+          `[auth] timing db=${tDb - t0}ms bcrypt=${tBcrypt - tDb}ms total=${Date.now() - t0}ms`,
+        );
 
         // NOTE: Permissions are deliberately NOT included here. With 307+
         // codes the JWT exceeds the 4KB cookie limit and gets chunked, which
