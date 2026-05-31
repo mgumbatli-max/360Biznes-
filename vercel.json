@@ -2,18 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/cron/audit-outbox-retry",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/process-outbound-retry",
-      "schedule": "*/2 * * * *"
-    },
-    {
-      "path": "/api/cron/full-sync-channels",
-      "schedule": "0 * * * *"
-    },
-    {
       "path": "/api/cron/daily-email-summary",
       "schedule": "0 4 * * *"
     }
