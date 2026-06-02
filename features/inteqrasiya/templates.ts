@@ -448,6 +448,35 @@ export const TEMPLATES: Record<string, TemplateDef> = {
   },
 };
 
+// kassa-baslangic — hesab/kassa açılış balansı
+TEMPLATES["kassa-baslangic"] = {
+  key: "kassa-baslangic",
+  title: "Kassa / hesab başlanğıc balansı",
+  filename: "360biznes_kassa_baslangic_sablon.xlsx",
+  desc: "Kassa, bank hesabları və ilkin balanslar",
+  sheetName: "Hesablar",
+  tabColor: "FF06B6D4",
+  target: "maliye_hesablari",
+  columns: [
+    { key: "ad", header: "Hesab adı", width: 28, required: true, hint: "Mərkəzi kassa, ABB cari hesab və s." },
+    { key: "nov", header: "Növ", width: 14, required: true, hint: "negd / bank / kart" },
+    { key: "valyuta", header: "Valyuta", width: 10, hint: "AZN (default), USD, EUR" },
+    { key: "qaliq", header: "İlkin balans", width: 16, required: true },
+    { key: "bank_adi", header: "Bank adı", width: 22, hint: "Yalnız bank/kart üçün" },
+    { key: "hesab_nomresi", header: "Hesab nömrəsi / IBAN", width: 32 },
+    { key: "qeyd", header: "Qeyd", width: 30 },
+  ],
+  samples: [
+    { ad: "Mərkəzi kassa", nov: "negd", valyuta: "AZN", qaliq: 5000, qeyd: "Açılış balansı" },
+    { ad: "ABB cari hesab", nov: "bank", valyuta: "AZN", qaliq: 25000, bank_adi: "ABB", hesab_nomresi: "AZ21NABZ00000000000123456789" },
+  ],
+  instructions: [
+    "Mövcud hesab adı varsa balans yenilənir",
+    "Yeni hesab yaradılır, ilkin balans daxili maliyyə əməliyyatı kimi yazılır",
+    "Növ: negd / bank / kart (lowercase)",
+  ],
+};
+
 export const TEMPLATE_KEYS = Object.keys(TEMPLATES);
 
 export function getTemplate(key: string): TemplateDef | null {

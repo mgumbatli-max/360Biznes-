@@ -69,6 +69,7 @@ const CATEGORY_MAP: Record<string, string> = {
   satis: "trade",
   servis: "trade",
   "kassa-baslangic": "finance",
+  // kassa-baslangic icon və tone üçün ICONS / TONES-də mövcuddur
 };
 
 const CATEGORIES = [
