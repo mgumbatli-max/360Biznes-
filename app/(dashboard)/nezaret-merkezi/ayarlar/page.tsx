@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   Settings, ShieldCheck, Radar, Workflow, ChevronRight,
   Percent, AlertTriangle, Tag, RotateCcw, Trash2, CreditCard, DollarSign, Boxes,
   Clock, Bell, History as HistoryIcon, Save, RefreshCw,
 } from "lucide-react";
+import { auth } from "@/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NezaretMerkeziTabs } from "@/features/nezaret-merkezi/components/tabs";
 import { getNezaretBadges } from "@/features/nezaret-merkezi/counts";
 import { loadTesdiqCfg } from "@/features/tesdiq/settings";
 import { updateTesdiqSettings, resetTesdiqSettings } from "@/features/tesdiq/settings-actions";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 
 export const metadata: Metadata = { title: "Nəzarət Mərkəzi — Ayarlar" };
 
@@ -26,6 +29,16 @@ type RuleRow = {
 };
 
 export default async function NezaretAyarlarPage() {
+  const session = await auth();
+  if (!session?.user) return null;
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && (!icazeler.includes("nezaret.oxu") || !icazeler.includes("nezaret.ayarlar"))) {
+    redirect("/tapshiriqlar");
+  }
+
   const [badges, cfg] = await Promise.all([
     getNezaretBadges(),
     loadTesdiqCfg(),

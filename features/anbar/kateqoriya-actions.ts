@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
 
 const CreateSchema = z.object({
   ad: z.string().trim().min(1, "Ad mütləqdir").max(100),
@@ -23,11 +24,11 @@ const UpdateSchema = CreateSchema.extend({
 type ActionResult = { ok: true; id?: number } | { ok: false; error: string };
 
 /**
- * Kateqoriya yarat / yenilə / sil — yalnız sahibkar (rol_id=9) və admin (rol_id=1)
- * tərəfindən edilə bilər. Adi əməkdaş kataloq strukturuna toxuna bilməz.
+ * Kateqoriya yarat / yenilə / sil — yalnız sahibkar və admin tərəfindən edilə bilər.
+ * Adi əməkdaş kataloq strukturuna toxuna bilməz.
  */
-function isAllowed(rolId: number, icazeler: string[]): boolean {
-  if (rolId === 1 || rolId === 9) return true;
+function isAllowed(rolAd: string | undefined, icazeler: string[]): boolean {
+  if (rolAd === "admin" || rolAd === "sahibkar") return true;
   return icazeler.includes("anbar.kateqoriya_idare");
 }
 
@@ -37,8 +38,8 @@ export async function createKateqoriya(input: FormData): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış məlumat" };
 
   return withTenant(async () => {
-    const { sahibkarId, rolId, icazeler } = requireTenant();
-    if (!isAllowed(rolId, icazeler)) {
+    const { sahibkarId, rolAd, icazeler } = requireTenant();
+    if (!isAllowed(rolAd, icazeler)) {
       return { ok: false, error: "Yalnız sahibkar və admin kateqoriya əlavə edə bilər" };
     }
     try {
@@ -50,6 +51,7 @@ export async function createKateqoriya(input: FormData): Promise<ActionResult> {
         },
         select: { id: true },
       });
+      await audit("yarat", "kateqoriya", row.id, { yeni_data: { ad: parsed.data.ad, ust_id: parsed.data.ust_id ?? null } });
       revalidatePath("/anbar/kateqoriyalar");
       revalidateTag(`ref:${sahibkarId}:categories`, "max");
       return { ok: true, id: row.id };
@@ -66,14 +68,19 @@ export async function updateKateqoriya(input: FormData): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış məlumat" };
 
   return withTenant(async () => {
-    const { rolId, icazeler } = requireTenant();
-    if (!isAllowed(rolId, icazeler)) {
+    const { rolAd, icazeler } = requireTenant();
+    if (!isAllowed(rolAd, icazeler)) {
       return { ok: false, error: "Yalnız sahibkar və admin kateqoriya redaktə edə bilər" };
     }
     try {
+      const before = await prisma.kateqoriyalar.findUnique({ where: { id: parsed.data.id }, select: { ad: true, ust_id: true } });
       await prisma.kateqoriyalar.update({
         where: { id: parsed.data.id },
         data: { ad: parsed.data.ad, ust_id: parsed.data.ust_id ?? null },
+      });
+      await audit("yenile", "kateqoriya", parsed.data.id, {
+        evvelki_data: before as Record<string, unknown> | null,
+        yeni_data: { ad: parsed.data.ad, ust_id: parsed.data.ust_id ?? null },
       });
       revalidatePath("/anbar/kateqoriyalar");
       revalidateTag(`ref:${requireTenant().sahibkarId}:categories`, "max");
@@ -94,14 +101,20 @@ export async function renameKateqoriya(id: number, ad: string): Promise<ActionRe
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış məlumat" };
 
   return withTenant(async () => {
-    const { rolId, icazeler } = requireTenant();
-    if (!isAllowed(rolId, icazeler)) {
+    const { rolAd, icazeler } = requireTenant();
+    if (!isAllowed(rolAd, icazeler)) {
       return { ok: false, error: "Yalnız sahibkar və admin adı dəyişə bilər" };
     }
     try {
+      const before = await prisma.kateqoriyalar.findUnique({ where: { id: parsed.data.id }, select: { ad: true } });
       await prisma.kateqoriyalar.update({
         where: { id: parsed.data.id },
         data: { ad: parsed.data.ad },
+      });
+      await audit("yenile", "kateqoriya", parsed.data.id, {
+        evvelki_data: { ad: before?.ad ?? null },
+        yeni_data: { ad: parsed.data.ad },
+        sebeb: "rename",
       });
       revalidatePath("/anbar/kateqoriyalar");
       revalidateTag(`ref:${requireTenant().sahibkarId}:categories`, "max");
@@ -115,8 +128,8 @@ export async function renameKateqoriya(id: number, ad: string): Promise<ActionRe
 
 export async function deleteKateqoriya(id: number): Promise<ActionResult> {
   return withTenant(async () => {
-    const { rolId, icazeler } = requireTenant();
-    if (!isAllowed(rolId, icazeler)) {
+    const { rolAd, icazeler } = requireTenant();
+    if (!isAllowed(rolAd, icazeler)) {
       return { ok: false, error: "Yalnız sahibkar və admin kateqoriya silə bilər" };
     }
     try {
@@ -129,7 +142,12 @@ export async function deleteKateqoriya(id: number): Promise<ActionResult> {
       if (subs > 0) {
         return { ok: false, error: `${subs} alt-kateqoriya var — əvvəl onları silin` };
       }
+      const before = await prisma.kateqoriyalar.findUnique({ where: { id }, select: { ad: true, ust_id: true } });
       await prisma.kateqoriyalar.delete({ where: { id } });
+      await audit("sil", "kateqoriya", id, {
+        evvelki_data: before as Record<string, unknown> | null,
+        sebeb: "hard delete (boş kateqoriya)",
+      });
       revalidatePath("/anbar/kateqoriyalar");
       revalidateTag(`ref:${requireTenant().sahibkarId}:categories`, "max");
       return { ok: true };

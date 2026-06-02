@@ -25,6 +25,9 @@ export default async function EmeliyyatPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm();
+
   const sp = await searchParams;
   const filter: OperationFilter = {
     search: sp.q,

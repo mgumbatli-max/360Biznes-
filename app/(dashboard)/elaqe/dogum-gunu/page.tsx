@@ -32,6 +32,9 @@ function whatsappLink(phone: string | null, ad: string, tip: "musteri" | "techiz
 }
 
 export default async function DogumGunuPage() {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("musteri.oxu");
+
   const rows = await getUpcomingBirthdays(30);
   const bugun = rows.filter((r) => r.gun_qalib === 0);
   const heftelik = rows.filter((r) => r.gun_qalib > 0 && r.gun_qalib <= 7);

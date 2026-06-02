@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { auth } from "@/auth";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getPurchases } from "@/features/ticaret/alis-queries";
+import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -11,14 +12,25 @@ export async function GET(req: NextRequest) {
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
 
   const sp = req.nextUrl.searchParams;
-  const { items } = await withTenant(() =>
-    getPurchases({
+  const filterForAudit = {
+    search: sp.get("q") ?? undefined,
+    status: sp.get("status") ? [sp.get("status") as string] : [],
+    from: sp.get("from") ?? null,
+    to: sp.get("to") ?? null,
+  };
+  const { items } = await withTenant(async () => {
+    const r = await getPurchases({
       search: sp.get("q") ?? undefined,
       status: sp.get("status") ? [sp.get("status") as string] : [],
       from: sp.get("from") ? new Date(sp.get("from") as string) : undefined,
       to: sp.get("to") ? new Date(sp.get("to") + "T23:59:59") : undefined,
-    }, 1, 5000)
-  );
+    }, 1, 5000);
+    await audit("export", "alis_export", null, {
+      yeni_data: { count: r.items.length, filter: filterForAudit },
+      sebeb: "Alış siyahısı Excel-ə ixrac edildi",
+    });
+    return r;
+  });
 
   const wb = new ExcelJS.Workbook();
   const sheet = wb.addWorksheet("Alışlar");

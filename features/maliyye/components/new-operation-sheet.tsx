@@ -18,6 +18,8 @@ type Props = {
   triggerClassName?: string;
   /** External control of the picker dialog (lets parent reuse it without rendering its own trigger). */
   initialOpen?: boolean;
+  /** Trigger düyməsini gizlədir — yalnız event/URL ilə açıla bilər (subnav-dakı düymə üçün). */
+  hideTrigger?: boolean;
 };
 
 /**
@@ -32,6 +34,7 @@ export function NewOperationSheet({
   kontragentler,
   triggerLabel = "Yeni əməliyyat",
   triggerClassName,
+  hideTrigger = false,
 }: Props) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -82,18 +85,20 @@ export function NewOperationSheet({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setPickerOpen(true)}
-        className={
-          triggerClassName ??
-          "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white shadow-sm hover:shadow"
-        }
-        style={!triggerClassName ? { background: "var(--brand-gradient)" } : undefined}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        <span>{triggerLabel}</span>
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className={
+            triggerClassName ??
+            "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white shadow-sm hover:shadow"
+          }
+          style={!triggerClassName ? { background: "var(--brand-gradient)" } : undefined}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span>{triggerLabel}</span>
+        </button>
+      )}
 
       {/* Step 1: type picker — uses existing dialog but intercepts the choice */}
       <OpPickerOverlay open={pickerOpen} onOpenChange={setPickerOpen} onPick={onPick} />

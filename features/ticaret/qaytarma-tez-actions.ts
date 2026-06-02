@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { findSaleByCode, type SaleByCodeResult } from "./sale-lookup";
+import { requireTicaretActionPerm } from "./access-guard";
+import { audit } from "@/lib/audit/log";
 
 export type ScanLookupResult =
   | {
@@ -107,6 +109,9 @@ type ActionResult = { ok: true; id: string; nomre: string } | { ok: false; error
  * Increments stock for the chosen warehouse, writes anbar_hereketleri.
  */
 export async function fastReturn(input: FastReturnInput): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm("qaytarma.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   if (!input.mehsul_id) return { ok: false, error: "Məhsul seçilməyib" };
   if (!Number.isFinite(input.miqdar) || input.miqdar <= 0) return { ok: false, error: "Miqdar düzgün deyil" };
   if (!input.sebeb?.trim()) return { ok: false, error: "Səbəb göstərilməlidir" };
@@ -207,6 +212,19 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
         console.error("[fastReturn.emitStockChange]", e);
       }
 
+      await audit("yarat", "qaytarma_sifarisi", result.id, {
+        yeni_data: {
+          nomre: result.nomre,
+          nov: "musteri",
+          mehsul_id: input.mehsul_id,
+          miqdar: input.miqdar,
+          vahid_qiymet: input.vahid_qiymet,
+          musteri_id: input.musteri_id ?? null,
+          original_sale_id: input.original_sale_id ?? null,
+        },
+        sebeb: `Tez qaytarma: ${input.sebeb}`,
+      });
+
       return { ok: true, id: result.id, nomre: result.nomre };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta baş verdi" };
@@ -255,6 +273,9 @@ type ReturnFullSaleResult =
 export async function returnFullSale(
   input: ReturnFullSaleInput,
 ): Promise<ReturnFullSaleResult> {
+  const permCheck = await requireTicaretActionPerm("qaytarma.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   if (!input.satis_id) return { ok: false, error: "Satış ID göstərilməyib" };
   if (!input.sebeb?.trim()) return { ok: false, error: "Səbəb göstərilməlidir" };
 
@@ -418,6 +439,17 @@ export async function returnFullSale(
       revalidatePath("/ticaret/qaytarma/tez");
       revalidatePath("/ticaret/satislar");
       revalidatePath("/ticaret");
+      await audit("yarat", "qaytarma_sifarisi", result.id, {
+        yeni_data: {
+          nomre: result.nomre,
+          satis_id: input.satis_id,
+          reversed_finance: result.reversedFinance,
+          satir_count: input.satir_ids?.length ?? 0,
+        },
+        sebeb: input.satir_ids?.length
+          ? `Hissəvi qaytarma: ${input.sebeb}`
+          : `Tam qaytarma: ${input.sebeb}`,
+      });
       return {
         ok: true,
         id: result.id,

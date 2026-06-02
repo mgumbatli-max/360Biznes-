@@ -27,6 +27,9 @@ export default async function KreditPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("kredit.oxu");
+
   const sp = await searchParams;
   const [stats, items, musteriBorc, refs] = await Promise.all([
     getKreditStats(),

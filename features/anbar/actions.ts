@@ -6,6 +6,22 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
+import { auth } from "@/auth";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { audit, diffObjects } from "@/lib/audit/log";
+
+/** Anbar üçün ortaq icazə yoxlaması (sahibkar/admin/owner default keçir). */
+async function requireAnbarActionPerm(perm: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Giriş tələb olunur" };
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  if (rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin")) {
+    return { ok: true };
+  }
+  const perms = await getRequestPermissions();
+  if (!perms.includes(perm)) return { ok: false, error: `Bu əməliyyat üçün «${perm}» icazəsi lazımdır` };
+  return { ok: true };
+}
 
 const ProductSchema = z.object({
   id: z.string().uuid().optional(),
@@ -74,6 +90,11 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
     const flags = ["aktiv","serial_lazim","imei_lazim","partiya_lazim","servis_lazim","bron_icaze","rezerv_icaze","konsiq_icaze","edv_daxil","yol_vergisi","etiketsiz"];
     for (const f of flags) if (!(f in raw)) (raw as Record<string, unknown>)[f] = false;
   }
+  // İcazə yoxlaması — yarat / redaktə
+  const isEdit = !!(raw as { id?: string }).id;
+  const permCheck = await requireAnbarActionPerm(isEdit ? "mehsul.duzelt" : "mehsul.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   const parsed = ProductSchema.safeParse(raw);
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
@@ -180,8 +201,28 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
           });
           pendingApproval = true;
         } else {
+          // Audit üçün əvvəlki snapshot (yalnız dəyişəcək sahələr)
+          const beforeForAudit = await prisma.mehsullar.findUnique({
+            where: { id: d.id },
+            select: {
+              ad: true, kod: true, barkod: true, alish_qiymeti: true, satis_qiymeti: true,
+              min_satis_qiymeti: true, topdan_qiymeti: true, vip_qiymeti: true,
+              partnyor_qiymeti: true, endirimli_qiymet: true, kritik_stok: true,
+              kateqoriya_id: true, marka_id: true, model: true, aktiv: true,
+            },
+          });
           const updated = await prisma.mehsullar.update({ where: { id: d.id }, data });
           id = updated.id;
+          const diff = diffObjects(
+            serializeForJson(beforeForAudit),
+            serializeForJson(data as unknown as Record<string, unknown>),
+          );
+          if (diff) {
+            await audit("yenile", "mehsul", id, {
+              evvelki_data: diff.before,
+              yeni_data: diff.after,
+            });
+          }
         }
       } else {
         // ── CREATE ────────────────────────────────────────────────
@@ -194,6 +235,9 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
           },
         });
         id = created.id;
+        await audit("yarat", "mehsul", id, {
+          yeni_data: { ad: d.ad, kod: d.kod, barkod: d.barkod, satis_qiymeti: d.satis_qiymeti, alish_qiymeti: d.alish_qiymeti, pending_approval: needsApproval },
+        });
         if (needsApproval) {
           await createApprovalRequest({
             emeliyyat_nov: "mehsul_yaratma",
@@ -243,10 +287,21 @@ function serializeForJson<T extends Record<string, unknown>>(o: T | null | undef
 }
 
 export async function deleteProduct(id: string): Promise<ActionResult> {
+  const permCheck = await requireAnbarActionPerm("mehsul.sil");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   return withTenant(async () => {
     try {
       const { sahibkarId } = requireTenant();
+      const snapshot = await prisma.mehsullar.findUnique({
+        where: { id },
+        select: { ad: true, kod: true, barkod: true, satis_qiymeti: true, alish_qiymeti: true, aktiv: true },
+      });
       await prisma.mehsullar.update({ where: { id }, data: { aktiv: false } });
+      await audit("sil", "mehsul", id, {
+        evvelki_data: serializeForJson(snapshot),
+        sebeb: "soft delete (aktiv=false)",
+      });
       revalidateTag(`ref:${sahibkarId}:mehsullar`, "max");
       revalidateTag(`dashboard:${sahibkarId}`, "max");
       return { ok: true };
@@ -358,6 +413,18 @@ export async function bulkUpdateProducts(
         count = r.count;
       }
       const { sahibkarId } = requireTenant();
+      // Bulk operasiya — hər ID üçün ayrıca audit log yazırıq ki, hər
+      // məhsulun history-si gəzilərkən bu kütləvi dəyişiklik də görünsün.
+      // Resurs_id-ləri yaymaq əvəzinə bir "bulk" log + N "yenile" log yazırıq.
+      await audit("yenile", "mehsul_bulk", null, {
+        yeni_data: { op: d.op, ids_count: d.ids.length, payload: { ...d, ids: undefined } as unknown as Record<string, unknown> },
+        sebeb: `Kütləvi əməliyyat: ${d.op}`,
+      });
+      for (const id of d.ids) {
+        await audit("yenile", "mehsul", id, {
+          yeni_data: { bulk_op: d.op },
+        });
+      }
       revalidateTag(`ref:${sahibkarId}:mehsullar`, "max");
       revalidateTag(`dashboard:${sahibkarId}`, "max");
       revalidateTag(`stok:${sahibkarId}`, "max");
@@ -396,11 +463,15 @@ export async function saveBrand(input: FormData): Promise<ActionResult<{ id: num
       };
       let id: number;
       if (d.id) {
+        const before = await prisma.markalar.findUnique({ where: { id: d.id }, select: { ad: true, aktiv: true, qeyd: true } });
         const updated = await prisma.markalar.update({ where: { id: d.id }, data });
         id = updated.id;
+        const diff = diffObjects(before as Record<string, unknown> | null, data as Record<string, unknown>);
+        if (diff) await audit("yenile", "marka", id, { evvelki_data: diff.before, yeni_data: diff.after });
       } else {
         const created = await prisma.markalar.create({ data: { sahibkar_id: sahibkarId, ...data } });
         id = created.id;
+        await audit("yarat", "marka", id, { yeni_data: { ad: d.ad } });
       }
       revalidateTag(`ref:${sahibkarId}:brands`, "max");
       return { ok: true, data: { id } };
@@ -415,7 +486,9 @@ export async function deleteBrand(id: number): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      const before = await prisma.markalar.findUnique({ where: { id }, select: { ad: true, aktiv: true } });
       await prisma.markalar.update({ where: { id }, data: { aktiv: false } });
+      await audit("sil", "marka", id, { evvelki_data: before as Record<string, unknown> | null, sebeb: "soft delete" });
       revalidateTag(`ref:${sahibkarId}:brands`, "max");
       return { ok: true };
     } catch (e) {

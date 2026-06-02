@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import ExcelJS from "exceljs";
 import { auth } from "@/auth";
 import { getProducts, type ProductFilter } from "@/features/anbar/queries";
+import { withTenant } from "@/lib/db/with-tenant";
+import { audit } from "@/lib/audit/log";
 
 function asArray(v: string | string[] | null): string[] {
   if (!v) return [];
@@ -24,6 +26,12 @@ export async function GET(req: NextRequest) {
 
   // Fetch ALL pages (capped at 10k for safety)
   const { items } = await getProducts(filter, 1, 10000);
+  await withTenant(async () => {
+    await audit("export", "mehsul_export", null, {
+      yeni_data: { count: items.length, filter },
+      sebeb: "Məhsul siyahısı Excel-ə ixrac edildi",
+    });
+  });
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "360Biznes";

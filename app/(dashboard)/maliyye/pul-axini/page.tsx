@@ -13,6 +13,9 @@ export const metadata: Metadata = { title: "Pul axını" };
 type SearchParams = { dovr?: string; range?: string };
 
 export default async function PulAxiniPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("maliyye.hesabat");
+
   const sp = await searchParams;
   const dovr = (sp.dovr as CashflowPeriod) ?? "gun";
   const range = Math.max(7, Math.min(180, Number(sp.range ?? (dovr === "ay" ? 12 : dovr === "hefte" ? 12 : 30))));

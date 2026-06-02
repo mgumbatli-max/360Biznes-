@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { ShoppingCart, AlertCircle } from "lucide-react";
 import { auth } from "@/auth";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -22,6 +23,18 @@ export const metadata: Metadata = { title: "POS — İsti satış" };
 export default async function PosPage() {
   const session = await auth();
   if (!session?.user) return null;
+
+  // Master icazə yoxlaması — `pos.access` yoxdursa POS girişi rədd olunur.
+  // Sahibkar / admin avtomatik dəstəklənir (sahibkar bütün icazələrə malikdir).
+  const requestPerms = await getRequestPermissions();
+  const rolAdLower = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAdLower.includes("sahibkar") ||
+    rolAdLower.includes("owner") ||
+    rolAdLower.includes("admin");
+  if (!isOwnerOrAdmin && !requestPerms.includes("pos.access")) {
+    redirect("/tapshiriqlar");
+  }
 
   const [active, filiallar, anbar, saticilar] = await Promise.all([
     getActiveKassa(),
@@ -63,25 +76,24 @@ export default async function PosPage() {
     );
   }
 
-  const [initialQuickProducts, allowedTiers, posSettings, icazeler] =
+  const [initialQuickProducts, allowedTiers, posSettings] =
     await Promise.all([
       getQuickProducts(anbar.id, 10),
       getRoleAllowedTiers(session.user.rol_id ?? 0),
       getPosPriceSettings(),
-      getRequestPermissions(),
     ]);
+  const icazeler = requestPerms;
 
-  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
   const isOwner =
-    rolAd.includes("sahibkar") ||
-    rolAd.includes("owner") ||
+    rolAdLower.includes("sahibkar") ||
+    rolAdLower.includes("owner") ||
     icazeler.includes("pos.view_cost") ||
     icazeler.includes("pos.view_margin");
   const isAdmin =
     isOwner ||
-    rolAd.includes("admin") ||
-    rolAd.includes("müdir") ||
-    rolAd.includes("mudir") ||
+    rolAdLower.includes("admin") ||
+    rolAdLower.includes("müdir") ||
+    rolAdLower.includes("mudir") ||
     icazeler.includes("pos.view_min_price");
 
   return (

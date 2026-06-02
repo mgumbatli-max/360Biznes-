@@ -43,6 +43,9 @@ export default async function AlislarPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("alis.oxu");
+
   const sp = await searchParams;
   const filter: PurchaseFilter = {
     search: sp.q,

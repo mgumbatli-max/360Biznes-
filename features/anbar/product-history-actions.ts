@@ -19,8 +19,8 @@ export async function deleteProductHistoryEntry(
   return withTenant(async () => {
     const ctx = requireTenant();
     const canDelete =
-      ctx.rolId === 1 ||
-      ctx.rolId === 9 ||
+      ctx.rolAd === "admin" ||
+      ctx.rolAd === "sahibkar" ||
       (ctx.icazeler?.includes("audit_log.sil") ?? false);
     if (!canDelete) return { ok: false, error: "İcazəniz yoxdur" };
 

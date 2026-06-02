@@ -1,11 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { audit } from "@/lib/audit/log";
 
 // Form data only has strings; `z.coerce.boolean()` treats "false" as true
 // (any non-empty string is truthy). Use this helper instead for live toggles.
@@ -121,6 +122,9 @@ export async function changePassword(input: FormData): Promise<ActionResult> {
       where: { id: istifadeciId },
       data: { sifre_hash: newHash, yenilendi: new Date() },
     });
+    await audit("yenile", "istifadeci_sifre", istifadeciId, {
+      sebeb: "İstifadəçi öz şifrəsini dəyişdi",
+    });
     return { ok: true };
   });
 }
@@ -142,11 +146,20 @@ export async function saveRolePerms(input: FormData): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // Multi-tenant: yalnız sahibkarın ÖZ rolu redaktə oluna bilər.
+      // Sistem rolları (template kataloqu) artıq UI-də görünmür və daxili də olsa,
+      // sahibkara aid olmadığı üçün burada əlçatmaz qalır.
       const rol = await prisma.roles.findFirst({
-        where: { id: rolId, OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
+        where: { id: rolId, sahibkar_id: sahibkarId, sistem: false },
       });
-      if (!rol) return { ok: false, error: "Rol tapılmadı" };
-      if (rol.sistem) return { ok: false, error: "Sistem rolu redaktə edilə bilməz" };
+      if (!rol) return { ok: false, error: "Rol tapılmadı və ya icazəniz çatmır" };
+
+      // Audit üçün əvvəlki icazələri çək
+      const prevPerms = await prisma.rol_icazeleri.findMany({
+        where: { rol_id: rolId },
+        select: { icaze_id: true },
+      });
+      const prevIds = prevPerms.map((p) => p.icaze_id);
 
       await prisma.$transaction([
         prisma.rol_icazeleri.deleteMany({ where: { rol_id: rolId } }),
@@ -155,6 +168,20 @@ export async function saveRolePerms(input: FormData): Promise<ActionResult> {
           skipDuplicates: true,
         }),
       ]);
+      await audit("icaze_dəyişdir", "rol", rolId, {
+        evvelki_data: { icaze_ids: prevIds.sort((a, b) => a - b), count: prevIds.length },
+        yeni_data: {
+          icaze_ids: ids.sort((a, b) => a - b),
+          count: ids.length,
+          added: ids.filter((i) => !prevIds.includes(i)),
+          removed: prevIds.filter((i) => !ids.includes(i)),
+        },
+        sebeb: `Rol icazələri yeniləndi (${rol.ad})`,
+      });
+      // Permissions per role 300s cache-də saxlanır — invalidate et ki, bu rol
+      // sahibi olan istifadəçilər dərhal yeni icazə paketi ilə yenilənsinlər.
+      // Next 16: revalidateTag iki arqument istəyir — "max" = stale-while-revalidate.
+      revalidateTag(`role-perms:${rolId}`, "max");
       revalidatePath("/ayarlar/rollar");
       revalidatePath(`/ayarlar/rollar/${rolId}`);
       return { ok: true };
@@ -172,7 +199,9 @@ const RoleSchema = z.object({
   reng: z.string().max(20).optional().or(z.literal("")),
 });
 
-export async function saveRole(input: FormData): Promise<ActionResult> {
+export async function saveRole(
+  input: FormData,
+): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
   const parsed = RoleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -184,18 +213,34 @@ export async function saveRole(input: FormData): Promise<ActionResult> {
         aciqlamaq: d.aciqlamaq?.trim() || null,
         reng: d.reng?.trim() || null,
       };
+      let resultId: number;
       if (d.id) {
-        const existing = await prisma.roles.findUnique({ where: { id: d.id } });
-        if (!existing) return { ok: false, error: "Rol tapılmadı" };
-        if (existing.sistem) return { ok: false, error: "Sistem rolu redaktə edilə bilməz" };
-        await prisma.roles.update({ where: { id: d.id }, data });
+        // Yalnız sahibkarın öz rolu redaktə oluna bilər
+        const existing = await prisma.roles.findFirst({
+          where: { id: d.id, sahibkar_id: sahibkarId, sistem: false },
+        });
+        if (!existing) return { ok: false, error: "Rol tapılmadı və ya icazəniz çatmır" };
+        const updated = await prisma.roles.update({ where: { id: d.id }, data });
+        resultId = updated.id;
+        await audit("yenile", "rol", resultId, {
+          evvelki_data: { ad: existing.ad, aciqlamaq: existing.aciqlamaq, reng: existing.reng },
+          yeni_data: data,
+          sebeb: "Rol məlumatları yeniləndi",
+        });
       } else {
-        await prisma.roles.create({
+        // Boş rol yaradılanda heç bir icazə yoxdur — istifadəçi detal səhifəsinə
+        // yönləndirilir ki, dərhal icazələri seçə bilsin.
+        const created = await prisma.roles.create({
           data: { ...data, sahibkar_id: sahibkarId, sistem: false },
+        });
+        resultId = created.id;
+        await audit("yarat", "rol", resultId, {
+          yeni_data: data,
+          sebeb: "Yeni rol yaradıldı",
         });
       }
       revalidatePath("/ayarlar/rollar");
-      return { ok: true };
+      return { ok: true, id: resultId };
     } catch (e) {
       console.error("[saveRole]", e);
       return { ok: false, error: "Yadda saxlanmadı" };
@@ -207,17 +252,44 @@ const RoleTemplateSchema = z.object({
   template: z.enum(["satici", "anbardar", "kassir", "menecer", "muhasib", "kuryer"]),
 });
 
-// Permission code patterns per template — uses icaze.kod matching
+// Permission code patterns per template — uses icaze.kod matching.
+// Hər şablon ROL TİPİNƏ UYĞUN dashboard.* alt-icazələri də avtomatik daxil edir,
+// belə ki, "Kassir (custom)" rolu yaradıldıqdan sonra kassir əməkdaş dashboard-u
+// boş tapmayacaq — öz iş axını üçün uyğun bölmələri görəcək.
 const TEMPLATE_PERMISSIONS: Record<string, RegExp[]> = {
-  satici: [/^satis\./, /^musteri\.view/, /^musteri\.create/, /^mehsul\.view/, /^stok\.view/, /^kassa\./, /^qaytarma\.view/, /^qaytarma\.create/],
-  anbardar: [/^anbar\./, /^stok\./, /^mehsul\./, /^transfer\./, /^inventar\./, /^alis\.view/, /^alis\.qebul/, /^serial\./],
-  kassir: [/^kassa\./, /^satis\./, /^odenis\./, /^cek\./, /^vergi\.cek/, /^musteri\.view/],
-  menecer: [/^satis\./, /^alis\./, /^musteri\./, /^anbar\.view/, /^stok\.view/, /^hesabat\./, /^kpi\./, /^endirim\./, /^tesdiq\./, /^kontragent\./],
-  muhasib: [/^maliyye\./, /^hesab\./, /^xerc\./, /^odenis\./, /^bank\./, /^qaime\./, /^hesabat\./, /^vergi\./, /^borc\./],
-  kuryer: [/^catdirma\./, /^satis\.view/, /^musteri\.view/, /^xerite\./],
+  satici: [
+    /^satis\./, /^musteri\.view/, /^musteri\.create/, /^mehsul\.view/, /^stok\.view/,
+    /^kassa\./, /^qaytarma\.view/, /^qaytarma\.create/,
+    /^dashboard\.(oxu|aktivlik|tapshiriq|insight|alerts)$/,
+  ],
+  anbardar: [
+    /^anbar\./, /^stok\./, /^mehsul\./, /^transfer\./, /^inventar\./,
+    /^alis\.view/, /^alis\.qebul/, /^serial\./,
+    /^dashboard\.(oxu|stok|tapshiriq|alerts|insight|sync)$/,
+  ],
+  kassir: [
+    /^kassa\./, /^satis\./, /^odenis\./, /^cek\./, /^vergi\.cek/, /^musteri\.view/,
+    /^dashboard\.(oxu|aktivlik|insight|tapshiriq)$/,
+  ],
+  menecer: [
+    /^satis\./, /^alis\./, /^musteri\./, /^anbar\.view/, /^stok\.view/, /^hesabat\./,
+    /^kpi\./, /^endirim\./, /^tesdiq\./, /^kontragent\./,
+    /^dashboard\.(oxu|insight|kpi|cashflow|tapshiriq|aktivlik|alerts|charts|top5|feed)$/,
+  ],
+  muhasib: [
+    /^maliyye\./, /^hesab\./, /^xerc\./, /^odenis\./, /^bank\./, /^qaime\./,
+    /^hesabat\./, /^vergi\./, /^borc\./,
+    /^dashboard\.(oxu|insight|kpi|cashflow|charts|alerts)$/,
+  ],
+  kuryer: [
+    /^catdirma\./, /^satis\.view/, /^musteri\.view/, /^xerite\./,
+    /^dashboard\.(oxu|tapshiriq|insight)$/,
+  ],
 };
 
-export async function createRoleFromTemplate(input: FormData): Promise<ActionResult> {
+export async function createRoleFromTemplate(
+  input: FormData,
+): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
   const parsed = RoleTemplateSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Şablon yanlışdır" };
 
@@ -259,7 +331,7 @@ export async function createRoleFromTemplate(input: FormData): Promise<ActionRes
       }
 
       revalidatePath("/ayarlar/rollar");
-      return { ok: true };
+      return { ok: true, id: rol.id };
     } catch (e) {
       console.error("[createRoleFromTemplate]", e);
       return { ok: false, error: "Şablondan yaradılmadı" };
@@ -272,7 +344,9 @@ const RoleCloneSchema = z.object({
   ad: z.string().min(2).max(50),
 });
 
-export async function cloneRole(input: FormData): Promise<ActionResult> {
+export async function cloneRole(
+  input: FormData,
+): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
   const parsed = RoleCloneSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
@@ -301,7 +375,7 @@ export async function cloneRole(input: FormData): Promise<ActionResult> {
         });
       }
       revalidatePath("/ayarlar/rollar");
-      return { ok: true };
+      return { ok: true, id: newRol.id };
     } catch (e) {
       console.error("[cloneRole]", e);
       return { ok: false, error: "Klonlanmadı" };
@@ -313,12 +387,14 @@ export async function deleteRole(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
-      const existing = await prisma.roles.findUnique({ where: { id } });
-      if (!existing) return { ok: false, error: "Rol tapılmadı" };
-      if (existing.sistem) return { ok: false, error: "Sistem rolu silinə bilməz" };
+      const existing = await prisma.roles.findFirst({
+        where: { id, sahibkar_id: sahibkarId, sistem: false },
+      });
+      if (!existing) return { ok: false, error: "Rol tapılmadı və ya icazəniz çatmır" };
       const userCount = await prisma.istifadeciler.count({ where: { rol_id: id } });
-      if (userCount > 0) return { ok: false, error: `Bu rolda ${userCount} istifadəçi var` };
+      if (userCount > 0) return { ok: false, error: `Bu rolda ${userCount} istifadəçi var — əvvəlcə onları başqa rola köçür` };
       await prisma.roles.delete({ where: { id } });
       revalidatePath("/ayarlar/rollar");
       return { ok: true };

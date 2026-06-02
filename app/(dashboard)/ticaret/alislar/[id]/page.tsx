@@ -42,6 +42,9 @@ async function getPurchaseDetail(id: string) {
 }
 
 export default async function PurchaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("alis.oxu");
+
   const { id } = await params;
   // Critical-path: yalnız alış detalı — başlıq, sətirlər, totallar bu məlumatla
   // qurulur. Əlavə xərclər və bağlı tapşırıqlar ayrı Suspense-lərdə yüklənir.

@@ -93,6 +93,10 @@ export async function updateRule(id: number, definition: z.input<typeof CreateRu
 
   return withTenant(async () => {
     try {
+      // Sistem qaydaları redaktə oluna bilməz — klonla
+      const existing = await prisma.avto_qayda.findFirst({ where: { id } });
+      if (!existing) return { ok: false, error: "Qayda tapılmadı" };
+      if (existing.sistem_qayda) return { ok: false, error: "Sistem qaydası redaktə oluna bilməz — Klonla düyməsi ilə kopya yarat" };
       await prisma.avto_qayda.update({
         where: { id },
         data: {
@@ -136,12 +140,296 @@ export async function toggleRule(id: number, aktiv: boolean): Promise<ActionResu
 export async function deleteRule(id: number): Promise<ActionResult> {
   return withTenant(async () => {
     try {
+      // Sistem qaydaları silinə bilməz
+      const existing = await prisma.avto_qayda.findFirst({ where: { id } });
+      if (!existing) return { ok: false, error: "Qayda tapılmadı" };
+      if (existing.sistem_qayda) return { ok: false, error: "Sistem qaydası silinə bilməz" };
       await prisma.avto_qayda.delete({ where: { id } });
       revalidatePath("/avtomatlasdirma");
       return { ok: true };
     } catch (e) {
       console.error("[deleteRule]", e);
       return { ok: false, error: "Silinmədi" };
+    }
+  });
+}
+
+/**
+ * Mövcud qaydanı klonlayır — eyni şərt, scope, action, bildiriş, lakin yeni ad.
+ * Yeni qayda PASSİV olaraq yaradılır ki, sahibkar redaktə etdikdən sonra
+ * aktivləşdirsin (təsadüfən eyni hadisəyə cüt qayda yayılmasın deyə).
+ */
+export async function cloneRule(id: number): Promise<ActionResult> {
+  return withTenant(async () => {
+    try {
+      const { sahibkarId, istifadeciId } = requireTenant();
+      const src = await prisma.avto_qayda.findFirst({ where: { id, sahibkar_id: sahibkarId } });
+      if (!src) return { ok: false, error: "Qayda tapılmadı" };
+
+      const created = await prisma.avto_qayda.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          ad: `${src.ad} (kopya)`.slice(0, 200),
+          tesvir: src.tesvir,
+          modul: src.modul,
+          trigger_kod: src.trigger_kod,
+          shert_json: src.shert_json ?? undefined,
+          action_json: src.action_json ?? undefined,
+          hedef_filial_id: src.hedef_filial_id,
+          hedef_ist_id: src.hedef_ist_id,
+          prioritet: src.prioritet,
+          bildiris_kanal: src.bildiris_kanal,
+          tekrarlanma: src.tekrarlanma,
+          aktiv: false, // klon passiv başlayır
+          sistem_qayda: false,
+          ai_teklifi: false,
+          yaradan_id: istifadeciId,
+          qeyd: src.qeyd,
+        },
+        select: { id: true },
+      });
+
+      revalidatePath("/avtomatlasdirma");
+      return { ok: true, id: created.id };
+    } catch (e) {
+      console.error("[cloneRule]", e);
+      return { ok: false, error: "Klonlanmadı" };
+    }
+  });
+}
+
+/**
+ * Çoxlu qaydanı eyni anda aktiv/passiv et. Filtrli siyahıdan və ya seçilmiş
+ * qaydalardan istifadə olunur. Sistem qaydaları (sistem_qayda=true) toxunulmur.
+ */
+export async function bulkToggleRules(ids: number[], aktiv: boolean): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  if (!Array.isArray(ids) || ids.length === 0) return { ok: false, error: "Qayda seçilməyib" };
+  return withTenant(async () => {
+    try {
+      const { sahibkarId } = requireTenant();
+      const result = await prisma.avto_qayda.updateMany({
+        where: { id: { in: ids }, sahibkar_id: sahibkarId, sistem_qayda: false },
+        data: { aktiv, yenilendi: new Date() },
+      });
+      revalidatePath("/avtomatlasdirma");
+      return { ok: true, count: result.count };
+    } catch (e) {
+      console.error("[bulkToggleRules]", e);
+      return { ok: false, error: "Toplu əməliyyat alınmadı" };
+    }
+  });
+}
+
+/**
+ * Çoxlu qaydanı eyni anda sil. Sistem qaydaları silinmir.
+ */
+export async function bulkDeleteRules(ids: number[]): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  if (!Array.isArray(ids) || ids.length === 0) return { ok: false, error: "Qayda seçilməyib" };
+  return withTenant(async () => {
+    try {
+      const { sahibkarId } = requireTenant();
+      const result = await prisma.avto_qayda.deleteMany({
+        where: { id: { in: ids }, sahibkar_id: sahibkarId, sistem_qayda: false },
+      });
+      revalidatePath("/avtomatlasdirma");
+      return { ok: true, count: result.count };
+    } catch (e) {
+      console.error("[bulkDeleteRules]", e);
+      return { ok: false, error: "Toplu silinmə alınmadı" };
+    }
+  });
+}
+
+/**
+ * Verilmiş qaydanın trigger_kod-una görə uyğun gələn obyektləri tapır.
+ * `testRule` (dry-run) və `runRuleNow` (real icra) bu helper-i çağırır.
+ * Heç bir log / mutasiya etmir — sadəcə match nəticəsi.
+ */
+async function findMatchedEntities(
+  sahibkarId: string,
+  rule: { trigger_kod: string; shert_json: unknown },
+): Promise<{ matched: number; examples: { id: string; label: string }[]; meta: { label: string } }> {
+  const shertJson = (rule.shert_json ?? {}) as { conditions?: { field: string; operator: string; value: number }[] };
+  const conditions = shertJson.conditions ?? [];
+  const meta = TRIGGER_TO_QUERY[rule.trigger_kod] ?? { label: "obyekt" };
+  let matched = 0;
+  const examples: { id: string; label: string }[] = [];
+
+  try {
+    switch (rule.trigger_kod) {
+      case "stok_az": {
+        const limit = conditions.find((c) => c.field === "stok_miqdar")?.value ?? 5;
+        const rows = await prisma.$queryRaw<{ mehsul_id: string; ad: string; q: number }[]>`
+          SELECT m.id::text AS mehsul_id, m.ad,
+                 COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) AS q
+            FROM mehsullar m
+           WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+             AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) < ${limit}
+             AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) > 0
+           LIMIT 100`;
+        matched = rows.length;
+        for (const row of rows.slice(0, 5)) examples.push({ id: row.mehsul_id, label: `${row.ad} (qalıq: ${row.q})` });
+        break;
+      }
+      case "stok_bit": {
+        const rows = await prisma.$queryRaw<{ id: string; ad: string }[]>`
+          SELECT m.id::text, m.ad
+            FROM mehsullar m
+           WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+             AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) = 0
+           LIMIT 100`;
+        matched = rows.length;
+        for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: row.ad });
+        break;
+      }
+      case "borc_gecikdi": {
+        const gun = conditions.find((c) => c.field === "borc_gun")?.value ?? 7;
+        const since = new Date();
+        since.setDate(since.getDate() - gun);
+        const rows = await prisma.kontragentler.findMany({
+          where: { aktiv: true, alacaq: { gt: 0 }, yenilendi: { lt: since } },
+          select: { id: true, ad: true, alacaq: true },
+          take: 100,
+        });
+        matched = rows.length;
+        for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: `${row.ad} (${Number(row.alacaq).toFixed(0)} ₼)` });
+        break;
+      }
+      case "tap_gecikdi": {
+        const rows = await prisma.tapshiriqlar.findMany({
+          where: { deadline: { lt: new Date() }, status: { notIn: ["tamamlandi", "legv"] } },
+          select: { id: true, basliq: true },
+          take: 100,
+        });
+        matched = rows.length;
+        for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: row.basliq });
+        break;
+      }
+      case "mehsul_uzun_satilmadi": {
+        const gun = conditions.find((c) => c.field === "son_satish_gun")?.value ?? 60;
+        const rows = await prisma.$queryRaw<{ id: string; ad: string }[]>`
+          SELECT m.id::text, m.ad
+            FROM mehsullar m
+           WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+             AND NOT EXISTS (
+               SELECT 1 FROM satis_sifaris_satirlari sls
+               JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
+               WHERE sls.mehsul_id = m.id
+                 AND ss.tarix >= CURRENT_DATE - (${gun} || ' days')::interval
+                 AND ss.status != 'legv'
+             )
+             AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) > 0
+           LIMIT 100`;
+        matched = rows.length;
+        for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: row.ad });
+        break;
+      }
+      default:
+        matched = 0;
+    }
+  } catch (qe) {
+    console.warn("[findMatchedEntities failed]", qe);
+  }
+
+  return { matched, examples, meta };
+}
+
+/**
+ * Manual icra — qaydanı right-now işlət (cron gözləməklə deyil).
+ * test mode-undan fərqli: tapılmış hər obyektə görə HƏQİQİ alert yaradır.
+ * Bu, "tapdı amma heç bir şey etmədi" problemi həll edir.
+ */
+export async function runRuleNow(id: number): Promise<{ ok: true; matched: number; alertsCreated: number; logId?: string } | { ok: false; error: string }> {
+  return withTenant(async () => {
+    try {
+      const { sahibkarId, istifadeciId } = requireTenant();
+      const rule = await prisma.avto_qayda.findFirst({ where: { id } });
+      if (!rule) return { ok: false, error: "Qayda tapılmadı" };
+      if (!rule.aktiv) return { ok: false, error: "Qayda passivdir — əvvəlcə aktivləşdirin" };
+
+      // 1. Uyğun obyektləri tap (heç bir log artırmadan)
+      const matchResult = await findMatchedEntities(sahibkarId, rule);
+
+      // 2. Hər match üçün xəbərdarlıq yarat (yalnız "xeberdarliq" action varsa)
+      const actionJson = (rule.action_json ?? {}) as { actions?: { kod: string }[] };
+      const actionList = actionJson.actions ?? [];
+      const wantsAlert = actionList.some((a) => a.kod === "xeberdarliq" || a.kod === "bildiris");
+      let alertsCreated = 0;
+      if (wantsAlert && matchResult.matched > 0) {
+        const seviyye = rule.prioritet === "kritik" ? "kritik" : rule.prioritet === "yuxsek" ? "yuxsek" : "orta";
+        // Trigger_kod-dan alert kateqoriyasına map
+        const TRIGGER_TO_CAT: Record<string, string> = {
+          stok_az: "stok", stok_bit: "stok",
+          mehsul_uzun_satilmadi: "mehsul_perf",
+          satish_mayadan_ashagi: "satis", satish_yarandi: "satis", boyuk_endirim: "satis", qiymet_deyisdi: "satis",
+          alish_yarandi: "alish", odenis_gecikdi: "alish",
+          borc_gecikdi: "borc",
+          bank_uygunsuz: "bank",
+          tap_gecikdi: "tapshiriq",
+          isci_gec_geldi: "isci", isci_gelmedi: "isci",
+          servis_status_deyismedi: "servis",
+          qaytarma_yarandi: "qaytarma",
+          mp_sifaris_gecikdi: "marketplace",
+          kassa_baglanmadi: "sistem",
+        };
+        const catKod = TRIGGER_TO_CAT[rule.trigger_kod] ?? "sistem";
+        const cat = await prisma.alert_categories.findFirst({ where: { kod: catKod }, select: { id: true, kod: true } });
+        if (cat) {
+          for (const ex of matchResult.examples) {
+            try {
+              await prisma.alerts.create({
+                data: {
+                  sahibkar_id: sahibkarId,
+                  kateqoriya_id: cat.id,
+                  kateqoriya_kod: cat.kod,
+                  rule_id: rule.id,
+                  rule_kod: rule.trigger_kod,
+                  basliq: `${rule.ad}: ${ex.label}`.slice(0, 255),
+                  tesvir: rule.tesvir ?? "Manual icra nəticəsində yaradıldı",
+                  seviyye,
+                  status: "yeni",
+                  obyekt_nov: matchResult.meta.label.slice(0, 40),
+                  obyekt_id: ex.id.slice(0, 60),
+                  obyekt_basliq: ex.label.slice(0, 255),
+                },
+              });
+              alertsCreated++;
+            } catch (alertErr) {
+              console.warn("[runRuleNow alert create]", alertErr);
+            }
+          }
+        } else {
+          console.warn(`[runRuleNow] alert_categories kod="${catKod}" tapılmadı`);
+        }
+      }
+
+      // 3. Real icra log (status=ok, manual flaq)
+      const log = await prisma.avto_log.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          qayda_id: id,
+          trigger_kod: rule.trigger_kod,
+          status: "ok",
+          xeta_metn: null,
+          shert_match: { matched: matchResult.matched, target: matchResult.meta.label },
+          action_netice: { manual: true, by: istifadeciId, alertsCreated },
+        },
+        select: { id: true },
+      });
+
+      // 4. İcra sayğacını TƏK dəfə artır (testRule artırmır)
+      await prisma.avto_qayda.update({
+        where: { id },
+        data: { son_islem: new Date(), islem_say: { increment: 1 } },
+      });
+
+      revalidatePath("/avtomatlasdirma");
+      revalidatePath(`/avtomatlasdirma/${id}`);
+      revalidatePath("/xeberdarliqlar");
+      return { ok: true, matched: matchResult.matched, alertsCreated, logId: log.id.toString() };
+    } catch (e) {
+      console.error("[runRuleNow]", e);
+      return { ok: false, error: "Manual icra alınmadı" };
     }
   });
 }
@@ -180,152 +468,71 @@ const TRIGGER_TO_QUERY: Record<string, { label: string }> = {
   qaytarma_yarandi: { label: "qaytarma" },
 };
 
+const ACTION_LABELS: Record<string, string> = {
+  xeberdarliq: "Xəbərdarlıq yarat",
+  tapshiriq: "Tapşırıq yarat",
+  bildiris: "ERP bildirişi",
+  whatsapp: "WhatsApp göndər",
+  telegram: "Telegram göndər",
+  email: "Email göndər",
+  sms: "SMS göndər",
+  tesdiq: "Təsdiq Mərkəzinə göndər",
+  block: "Əməliyyatı blokla",
+  kpi_artir: "KPI artır",
+  kpi_azalt: "KPI azalt",
+  cerime: "Cərimə",
+  bonus: "Bonus",
+  qeyd: "Qeyd əlavə et",
+  yonlendir: "Yönləndir",
+};
+
 export async function testRule(id: number): Promise<TestRunResult> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
-      const r = await prisma.avto_qayda.findUnique({ where: { id } });
+      const r = await prisma.avto_qayda.findFirst({ where: { id } });
       if (!r) return { ok: false, error: "Qayda tapılmadı" };
 
-      const shertJson = (r.shert_json ?? {}) as { conditions?: { field: string; operator: string; value: number }[] };
-      const conditions = shertJson.conditions ?? [];
-
-      const meta = TRIGGER_TO_QUERY[r.trigger_kod] ?? { label: "obyekt" };
-      let matched = 0;
-      const examples: { id: string; label: string }[] = [];
-
-      // Run a basic simulation for the most common trigger types
-      try {
-        switch (r.trigger_kod) {
-          case "stok_az": {
-            const limit = conditions.find((c) => c.field === "stok_miqdar")?.value ?? 5;
-            const rows = await prisma.$queryRaw<{ mehsul_id: string; ad: string; q: number }[]>`
-              SELECT m.id::text AS mehsul_id, m.ad,
-                     COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) AS q
-                FROM mehsullar m
-               WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-                 AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) < ${limit}
-                 AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) > 0
-               LIMIT 100`;
-            matched = rows.length;
-            for (const row of rows.slice(0, 5)) examples.push({ id: row.mehsul_id, label: `${row.ad} (qalıq: ${row.q})` });
-            break;
-          }
-          case "stok_bit": {
-            const rows = await prisma.$queryRaw<{ id: string; ad: string }[]>`
-              SELECT m.id::text, m.ad
-                FROM mehsullar m
-               WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-                 AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) = 0
-               LIMIT 100`;
-            matched = rows.length;
-            for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: row.ad });
-            break;
-          }
-          case "borc_gecikdi": {
-            const gun = conditions.find((c) => c.field === "borc_gun")?.value ?? 7;
-            const since = new Date();
-            since.setDate(since.getDate() - gun);
-            const rows = await prisma.kontragentler.findMany({
-              where: {
-                aktiv: true,
-                alacaq: { gt: 0 },
-                yenilendi: { lt: since },
-              },
-              select: { id: true, ad: true, alacaq: true },
-              take: 100,
-            });
-            matched = rows.length;
-            for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: `${row.ad} (${Number(row.alacaq).toFixed(0)} ₼)` });
-            break;
-          }
-          case "tap_gecikdi": {
-            const rows = await prisma.tapshiriqlar.findMany({
-              where: { deadline: { lt: new Date() }, status: { notIn: ["tamamlandi", "legv"] } },
-              select: { id: true, basliq: true },
-              take: 100,
-            });
-            matched = rows.length;
-            for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: row.basliq });
-            break;
-          }
-          case "mehsul_uzun_satilmadi": {
-            const gun = conditions.find((c) => c.field === "son_satish_gun")?.value ?? 60;
-            const rows = await prisma.$queryRaw<{ id: string; ad: string }[]>`
-              SELECT m.id::text, m.ad
-                FROM mehsullar m
-               WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
-                 AND NOT EXISTS (
-                   SELECT 1 FROM satis_sifaris_satirlari sls
-                   JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
-                   WHERE sls.mehsul_id = m.id
-                     AND ss.tarix >= CURRENT_DATE - (${gun} || ' days')::interval
-                     AND ss.status != 'legv'
-                 )
-                 AND COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0) > 0
-               LIMIT 100`;
-            matched = rows.length;
-            for (const row of rows.slice(0, 5)) examples.push({ id: row.id, label: row.ad });
-            break;
-          }
-          default:
-            // Other triggers — simulation not yet implemented; treat as 0 matched
-            matched = 0;
-        }
-      } catch (qe) {
-        console.warn("[testRule simulation failed]", qe);
-      }
+      // Dry-run match
+      const matchResult = await findMatchedEntities(sahibkarId, r);
 
       // Decode actions
       const actionJson = (r.action_json ?? {}) as { actions?: { kod: string }[] };
       const actionsList = actionJson.actions ?? [];
-      const ACTION_LABELS: Record<string, string> = {
-        xeberdarliq: "Xəbərdarlıq yarat",
-        tapshiriq: "Tapşırıq yarat",
-        bildiris: "ERP bildirişi",
-        whatsapp: "WhatsApp göndər",
-        telegram: "Telegram göndər",
-        email: "Email göndər",
-        sms: "SMS göndər",
-        tesdiq: "Təsdiq Mərkəzinə göndər",
-        block: "Əməliyyatı blokla",
-        kpi_artir: "KPI artır",
-        kpi_azalt: "KPI azalt",
-        cerime: "Cərimə",
-        bonus: "Bonus",
-        qeyd: "Qeyd əlavə et",
-        yonlendir: "Yönləndir",
-      };
       const actions_simulated = actionsList.map((a) => ({
         kod: a.kod,
         ad: ACTION_LABELS[a.kod] ?? a.kod,
       }));
 
-      // Risk warning if any blocking action affects many entities
       const hasBlock = actionsList.some((a) => a.kod === "block");
-      const risk_note = hasBlock && matched > 10
-        ? `⚠ Bu qayda ${matched} əməliyyatı blok edəcək. Diqqətlə test edin.`
+      const risk_note = hasBlock && matchResult.matched > 10
+        ? `⚠ Bu qayda ${matchResult.matched} əməliyyatı blok edəcək. Diqqətlə test edin.`
         : undefined;
 
-      // Log the dry run
+      // Dry-run log — `shert_match.dry_run=true` flag-i ilə real icradan ayrılır.
+      // islem_say İŞARƏ olunmur (real icra deyil, statistikanı çirkləndirmir).
       await prisma.avto_log.create({
         data: {
           sahibkar_id: sahibkarId,
           qayda_id: id,
           trigger_kod: r.trigger_kod,
-          shert_match: { dry_run: true, matched, target: meta.label } as object,
+          shert_match: { dry_run: true, matched: matchResult.matched, target: matchResult.meta.label } as object,
           action_netice: { dry_run: true, actions: actions_simulated.map((a) => a.kod) } as object,
           status: "ok",
         },
       });
-      await prisma.avto_qayda.update({
-        where: { id },
-        data: { son_islem: new Date(), islem_say: { increment: 1 } },
-      });
+
       revalidatePath("/avtomatlasdirma");
       revalidatePath(`/avtomatlasdirma/${id}`);
 
-      return { ok: true, matched, target_label: meta.label, examples, actions_simulated, risk_note };
+      return {
+        ok: true,
+        matched: matchResult.matched,
+        target_label: matchResult.meta.label,
+        examples: matchResult.examples,
+        actions_simulated,
+        risk_note,
+      };
     } catch (e) {
       console.error("[testRule]", e);
       return { ok: false, error: "Test alınmadı" };

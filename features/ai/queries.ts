@@ -7,8 +7,8 @@ import { isMockMode } from "@/lib/ai/anthropic";
 
 export async function getChatHistory(limit = 50, mode: "owner" | "employee" = "employee") {
   return withTenant(async () => {
-    const { istifadeciId, rolId } = requireTenant();
-    const effective = mode === "owner" && rolId === 9 ? "owner" : "employee";
+    const { istifadeciId, rolAd } = requireTenant();
+    const effective = mode === "owner" && rolAd === "sahibkar" ? "owner" : "employee";
     const kanal = effective === "owner" ? "sahibkar" : "panel";
     const rows = await prisma.ai_sohbet_loq.findMany({
       where: { istifadeci_id: istifadeciId, kanal },
@@ -49,9 +49,9 @@ export function getMockStatus(): boolean {
  */
 export async function getBusinessContext(mode: "owner" | "employee" = "employee"): Promise<string> {
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    // owner mode yalnız rol 9 üçün; başqa hər kəs avtomatik employee düşür
-    const isOwner = mode === "owner" && rolId === 9;
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    // owner mode yalnız "sahibkar" rolu üçün; başqa hər kəs avtomatik employee düşür
+    const isOwner = mode === "owner" && rolAd === "sahibkar";
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);

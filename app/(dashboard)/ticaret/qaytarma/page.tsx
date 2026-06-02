@@ -56,6 +56,9 @@ export default async function QaytarmaPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("qaytarma.oxu");
+
   const sp = await searchParams;
 
   const filter: ReturnFilter = {

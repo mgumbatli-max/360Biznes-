@@ -18,8 +18,8 @@ export async function saveMobileWidgets(keys: string[]): Promise<{ ok: true } | 
     return { ok: false, error: "Yanlış format" };
   }
   return withTenant(async () => {
-    const { sahibkarId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar" };
+    const { sahibkarId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar" };
 
     const existing = await prisma.ayarlar.findFirst({
       where: { sahibkar_id: sahibkarId, qrup: QRUP, acar: ACAR },

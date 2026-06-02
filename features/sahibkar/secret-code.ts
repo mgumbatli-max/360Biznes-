@@ -23,8 +23,8 @@ export async function verifySearchCode(code: string): Promise<SearchCodeResult> 
   if (!code || code.length < 3) return { ok: false, reason: "mismatch" };
 
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, reason: "not-owner" } as const;
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, reason: "not-owner" } as const;
 
     const cfg = await prisma.sahibkar_ayar.findFirst();
 

@@ -150,6 +150,9 @@ async function getAnbarOptions() {
 }
 
 export default async function HereketlerPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("anbar.hesabat");
+
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const filter = {

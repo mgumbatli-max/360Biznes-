@@ -93,6 +93,9 @@ export default async function EtiketCapPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("mehsul.oxu");
+
   const sp = await searchParams;
   const ids = sp.ids ? sp.ids.split(",").filter(Boolean) : [];
   const [preselected, catalog] = await Promise.all([loadProducts(ids), loadCatalog()]);

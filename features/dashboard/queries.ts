@@ -122,16 +122,18 @@ export async function getRecentSalesByDay(days = 7): Promise<DailySalesPoint[]> 
     );
     const { from, rows } = await cached();
 
-    // Fill missing days with zeros
+    // Fill missing days with zeros — `unstable_cache` JSON serializasiya edir
+    // ona görə Date sahələri string kimi qayıda bilər
     const byDate = new Map<string, { amount: number; count: number }>();
     for (const r of rows) {
-      const iso = r.tarix.toISOString().slice(0, 10);
+      const iso = new Date(r.tarix).toISOString().slice(0, 10);
       byDate.set(iso, { amount: Number(r.total), count: Number(r.cnt) });
     }
+    const fromDate = new Date(from);
     const result: DailySalesPoint[] = [];
     for (let i = 0; i < days; i++) {
-      const d = new Date(from);
-      d.setDate(from.getDate() + i);
+      const d = new Date(fromDate);
+      d.setDate(fromDate.getDate() + i);
       const iso = d.toISOString().slice(0, 10);
       const v = byDate.get(iso);
       result.push({ date: iso, amount: v?.amount ?? 0, count: v?.count ?? 0 });
@@ -401,7 +403,7 @@ async function fetchTopSellersRaw(sahibkarId: string, limit: number): Promise<To
   const ids = grouped.map((g) => g.yaradan_id).filter((x): x is string => !!x);
   if (ids.length === 0) return [];
   const users = await prismaUnscoped.istifadeciler.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, sahibkar_id: sahibkarId },
     select: { id: true, ad_soyad: true },
   });
   const map = new Map(users.map((u) => [u.id, u.ad_soyad]));
@@ -452,7 +454,7 @@ async function fetchTopCustomersRaw(sahibkarId: string, limit: number): Promise<
   const ids = grouped.map((g) => g.musteri_id).filter((x): x is string => !!x);
   if (ids.length === 0) return [];
   const customers = await prismaUnscoped.kontragentler.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, sahibkar_id: sahibkarId },
     select: { id: true, ad: true, telefon: true },
   });
   const map = new Map(customers.map((c) => [c.id, c]));
@@ -700,9 +702,9 @@ async function fetchSalesVsExpense30Raw(sahibkarId: string): Promise<SalesVsExpe
   ]);
 
   const salesMap = new Map<string, number>();
-  for (const r of salesRows) salesMap.set(r.gun.toISOString().slice(0, 10), Number(r.total));
+  for (const r of salesRows) salesMap.set(new Date(r.gun).toISOString().slice(0, 10), Number(r.total));
   const expMap = new Map<string, number>();
-  for (const r of expRows) expMap.set(r.gun.toISOString().slice(0, 10), Number(r.total));
+  for (const r of expRows) expMap.set(new Date(r.gun).toISOString().slice(0, 10), Number(r.total));
 
   const result: SalesVsExpensePoint[] = [];
   for (let i = 0; i < 30; i++) {

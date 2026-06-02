@@ -33,6 +33,9 @@ export default async function PLBalancPage({
 }: {
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("maliyye.hesabat");
+
   const sp = await searchParams;
   const now = new Date();
   const year = Number(sp.year) || now.getFullYear();

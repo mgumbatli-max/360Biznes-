@@ -304,13 +304,19 @@ export async function getIstifadeciDetail(userId: string) {
     return user;
   });
 }
+/**
+ * Multi-tenant rollar — yalnız cari sahibkara aid (sistem=false) rollar görünür.
+ * Sistem rolları (sistem=true) artıq DB-də yalnız TEMPLATE kataloqu kimi qalır
+ * və UI-da görünmür (yalnız yeni sahibkar qeydiyyatında kopya mənbəyi olur).
+ * Bu sayədə hər sahibkar öz rollarının icazələrini sərbəst dəyişə bilir.
+ */
 export async function getRoles() {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     return prisma.roles.findMany({
-      where: { OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
+      where: { sahibkar_id: sahibkarId, sistem: false },
       include: { _count: { select: { istifadeciler: true, rol_icazeleri: true } } },
-      orderBy: { id: "asc" },
+      orderBy: { ad: "asc" },
     });
   });
 }
@@ -319,7 +325,8 @@ export async function getRoleDetail(rolId: number) {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     const rol = await prisma.roles.findFirst({
-      where: { id: rolId, OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
+      // Yalnız sahibkarın öz rolu — başqa sahibkarın rolu açıla bilməz
+      where: { id: rolId, sahibkar_id: sahibkarId },
       include: {
         istifadeciler: { select: { id: true, ad_soyad: true, email: true, aktiv: true } },
         rol_icazeleri: { select: { icaze_id: true } },

@@ -47,6 +47,9 @@ function fmtDate(d: Date | null) {
 }
 
 export default async function SatinalmaPage({ searchParams }: { searchParams: SearchParams }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("satinalma.oxu");
+
   const sp = await searchParams;
   const tab = sp.tab ?? "planlama";
 

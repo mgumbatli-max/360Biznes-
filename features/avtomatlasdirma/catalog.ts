@@ -285,12 +285,40 @@ export const TEMPLATE_VARIABLES = [
 
 export type Prioritet = "asagi" | "orta" | "yuxsek" | "kritik";
 
-export const PRIORITY_META: Record<Prioritet, { ad: string; cls: string }> = {
-  kritik: { ad: "Kritik", cls: "border-rose-500/40 bg-rose-500 text-white" },
-  yuxsek: { ad: "Yüksək", cls: "border-rose-500/40 bg-rose-500/15 text-rose-500" },
-  orta:   { ad: "Orta",   cls: "border-amber-500/40 bg-amber-500/15 text-amber-500" },
-  asagi:  { ad: "Aşağı",  cls: "border-border bg-secondary text-muted-foreground" },
+const PRIORITY_DEFAULT = { ad: "Orta", cls: "border-amber-500/40 bg-amber-500/15 text-amber-500" };
+
+// DB-də həm orijinal (asagi, yuxsek), həm köhnə (ashagi, yuksek) formada
+// prioritet mövcuddur. Hər iki variantı yoxlamaq üçün aliases.
+const PRIORITY_VARIANTS: Record<string, { ad: string; cls: string }> = {
+  kritik:  { ad: "Kritik", cls: "border-rose-500/40 bg-rose-500 text-white" },
+  yuxsek:  { ad: "Yüksək", cls: "border-rose-500/40 bg-rose-500/15 text-rose-500" },
+  yuksek:  { ad: "Yüksək", cls: "border-rose-500/40 bg-rose-500/15 text-rose-500" },
+  orta:    { ad: "Orta",   cls: "border-amber-500/40 bg-amber-500/15 text-amber-500" },
+  asagi:   { ad: "Aşağı",  cls: "border-border bg-secondary text-muted-foreground" },
+  ashagi:  { ad: "Aşağı",  cls: "border-border bg-secondary text-muted-foreground" },
 };
+
+/**
+ * PRIORITY_META — Proxy ilə yad açar gəlsə default qaytarır (crash-siz).
+ * Bu sayədə komponentlərdə `priorityMeta.cls` ilə crash baş verməyəcək.
+ */
+export const PRIORITY_META = new Proxy(PRIORITY_VARIANTS, {
+  get(target, prop: string) {
+    return target[prop] ?? PRIORITY_DEFAULT;
+  },
+}) as Record<string, { ad: string; cls: string }>;
+
+/** Verilmiş prioritet stringini normallaşdırır (DB → canonical). */
+export function normalizePrioritet(p: string | null | undefined): Prioritet {
+  switch (p) {
+    case "kritik": return "kritik";
+    case "yuksek":
+    case "yuxsek": return "yuxsek";
+    case "ashagi":
+    case "asagi": return "asagi";
+    default: return "orta";
+  }
+}
 
 /* ──────────────────────────────────────────────────────────────────────────
  * FULL RULE DEFINITION — what's stored in avto_qayda

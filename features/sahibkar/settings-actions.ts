@@ -28,8 +28,8 @@ export async function toggleSahibkarSetting(input: FormData): Promise<ActionResu
   if (!parsed.success) return { ok: false, error: "Yanlış parametr" };
 
   return withTenant(async () => {
-    const { sahibkarId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
+    const { sahibkarId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
 
     const existing = await prisma.sahibkar_ayar.findFirst();
     const data = parsed.data;
@@ -56,8 +56,8 @@ export async function updateSessionTimeout(input: FormData): Promise<ActionResul
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış dəyər" };
   }
   return withTenant(async () => {
-    const { sahibkarId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
+    const { sahibkarId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
 
     const existing = await prisma.sahibkar_ayar.findFirst();
     if (existing) {
@@ -91,8 +91,8 @@ export async function updateSecretCode(input: FormData): Promise<ActionResult> {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış kod" };
   }
   return withTenant(async () => {
-    const { sahibkarId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
+    const { sahibkarId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
 
     const hash = await bcrypt.hash(parsed.data.yeni_kod, 10);
     const existing = await prisma.sahibkar_ayar.findFirst();
@@ -121,8 +121,8 @@ export async function updateRecoveryEmail(input: FormData): Promise<ActionResult
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış email" };
   }
   return withTenant(async () => {
-    const { sahibkarId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
+    const { sahibkarId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
 
     const email = parsed.data.berpa_email || null;
     const existing = await prisma.sahibkar_ayar.findFirst();
@@ -158,8 +158,8 @@ export async function changePin(input: FormData): Promise<ActionResult> {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış məlumat" };
   }
   return withTenant(async () => {
-    const { rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
+    const { rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
 
     const cfg = await prisma.sahibkar_ayar.findFirst();
     if (!cfg?.sifre_hash) return { ok: false, error: "PIN qurulmayıb" };

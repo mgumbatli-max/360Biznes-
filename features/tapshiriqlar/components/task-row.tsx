@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarClock, MessageSquare, CheckSquare, Eye } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { az } from "date-fns/locale";
+import { MessageSquare, CheckSquare, Eye } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { PriorityBadge, TaskStatusBadge } from "./task-badges";
 import { QuickStatusButtons } from "./quick-status-buttons";
+import { DeadlineCountdown } from "./deadline-countdown";
 import { colorHexFor } from "./color-picker";
 import type { TaskListItem } from "../queries";
 
@@ -70,10 +69,11 @@ export function TaskRow({ task }: { task: TaskListItem }) {
         )}
         <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[11px] text-muted-foreground">
           {task.deadline && (
-            <span className={cn("inline-flex items-center gap-1", overdue && "text-danger")}>
-              <CalendarClock className="h-3 w-3" />
-              {formatDistanceToNow(task.deadline, { addSuffix: true, locale: az })}
-            </span>
+            <DeadlineCountdown
+              deadline={task.deadline}
+              completed={task.status === "tamamlandi" || task.status === "legv"}
+              compact
+            />
           )}
           {task.mesul_ad && (
             <span>

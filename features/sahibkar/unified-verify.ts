@@ -28,8 +28,8 @@ export async function verifyPinOrCode(input: FormData): Promise<Result> {
   }
 
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "İcazə yoxdur" };
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "İcazə yoxdur" };
 
     const cfg = await prisma.sahibkar_ayar.findFirst();
     if (!cfg) return { ok: false, error: "Sahibkar bölməsi qurulmayıb. /sahibkar/setup-a keçin." };

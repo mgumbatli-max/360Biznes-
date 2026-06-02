@@ -12,6 +12,9 @@ export const metadata: Metadata = { title: "Kreditor (Təchizatçı borcu)" };
 type SearchParams = { q?: string; gecik?: string; sort?: string };
 
 export default async function KreditorPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("kreditor.oxu");
+
   const sp = await searchParams;
   const q = (sp.q ?? "").toLowerCase().trim();
   const gecik = Number(sp.gecik ?? 0);

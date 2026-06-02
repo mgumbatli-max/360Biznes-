@@ -67,7 +67,7 @@ export function UserMenu({ user }: Props) {
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <span className="font-semibold">{user.ad_soyad}</span>
-              {user.rol_id === 9 && (
+              {user.rol_ad === "sahibkar" && (
                 <Badge variant="secondary" className="h-5 text-[10px]">
                   <BadgeCheck className="h-3 w-3" />
                   Sahibkar

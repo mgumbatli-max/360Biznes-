@@ -71,8 +71,8 @@ export async function createGizliElaqe(input: FormData): Promise<ActionResult> {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış məlumat" };
   }
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar əlavə edə bilər" };
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar əlavə edə bilər" };
     const payload = buildStoredPayload(parsed.data);
     const d = parsed.data;
     const linkActive = !!(d.link_nov?.trim() && d.link_id?.trim());
@@ -96,8 +96,8 @@ export async function createGizliElaqe(input: FormData): Promise<ActionResult> {
 
 export async function deleteGizliElaqe(id: number): Promise<ActionResult> {
   return withTenant(async () => {
-    const { rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "İcazə yoxdur" };
+    const { rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "İcazə yoxdur" };
     await prisma.sahibkar_qeyd.delete({ where: { id } });
     revalidatePath("/sahibkar/gizli-elaqe");
     return { ok: true };

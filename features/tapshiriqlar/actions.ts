@@ -5,6 +5,21 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { auth } from "@/auth";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
+
+/** Sahibkar/admin avtomatik, digərləri üçün icazə yoxlanır. */
+async function requireTapshiriqPerm(perm: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Giriş tələb olunur" };
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  if (rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin")) {
+    return { ok: true };
+  }
+  const perms = await getRequestPermissions();
+  if (!perms.includes(perm)) return { ok: false, error: `Bu əməliyyat üçün «${perm}» icazəsi lazımdır` };
+  return { ok: true };
+}
 
 // ============================================================
 // `qeyd_daxili` struktur-tag helpers
@@ -50,11 +65,19 @@ const CreateTaskSchema = z.object({
   obyekt_basliq: z.string().max(300).optional().or(z.literal("")),
   requires_approval: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
   escalation_enabled: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
+  /** Hamı aktiv işçiyə paylaş — icracilar avtomatik dolur */
+  broadcast_all: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
+  /** Telegram bildirişi göndər (sahibkar konfiqurasiyası varsa) */
+  send_telegram: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
 });
 
 type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
 export async function createTask(input: FormData | z.input<typeof CreateTaskSchema>): Promise<ActionResult> {
+  // İcazə: tapshiriq.yarat tələb olunur
+  const permCheck = await requireTapshiriqPerm("tapshiriq.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   const raw = input instanceof FormData ? Object.fromEntries(input.entries()) : input;
   if (input instanceof FormData) {
     const icr = input.getAll("icracilar").map((v) => String(v)).filter(Boolean);
@@ -67,14 +90,39 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // Başqasına atamağa icazə yoxdursa — mesul_id və icracilar yalnız özü ola bilər
+      const assignCheck = await requireTapshiriqPerm("tapshiriq.atayir");
+      if (!assignCheck.ok) {
+        const myId = istifadeciId;
+        if (d.mesul_id && d.mesul_id !== myId) {
+          return { ok: false, error: "Başqasına tapşırıq atamaq üçün «tapshiriq.atayir» icazəsi lazımdır" };
+        }
+        // icracilar siyahısını yalnız özünə məhdudlaşdır
+        d.icracilar = (d.icracilar ?? []).filter((id) => id === myId);
+        // broadcast_all icazəsizdir
+        if (d.broadcast_all === "1" || d.broadcast_all === "on") {
+          return { ok: false, error: "Hamıya yayım üçün «tapshiriq.atayir» icazəsi lazımdır" };
+        }
+      }
       const requiresApproval = d.requires_approval === "1" || d.requires_approval === "on";
       const escalationEnabled = d.escalation_enabled === "1" || d.escalation_enabled === "on";
+      const broadcastAll = d.broadcast_all === "1" || d.broadcast_all === "on";
+      const sendTelegram = d.send_telegram === "1" || d.send_telegram === "on";
+
+      // Broadcast: bütün aktiv əməkdaşları icracilar siyahısına əlavə et
+      const assigneeSet = new Set<string>((d.icracilar ?? []).filter(Boolean));
+      if (d.mesul_id) assigneeSet.add(d.mesul_id);
+      if (broadcastAll) {
+        const allActive = await prisma.istifadeciler.findMany({
+          where: { aktiv: true, sahibkar_id: sahibkarId },
+          select: { id: true },
+        });
+        for (const u of allActive) assigneeSet.add(u.id);
+      }
+      const allAssignees = Array.from(assigneeSet);
 
       // `qeyd_daxili`-yə struktur teqləri yığ
       const tags: string[] = [];
-      const assigneeSet = new Set<string>((d.icracilar ?? []).filter(Boolean));
-      if (d.mesul_id) assigneeSet.add(d.mesul_id);
-      const allAssignees = Array.from(assigneeSet);
       if (allAssignees.length > 1) {
         tags.push(`[ASSIGNEES:${allAssignees.join(",")}]`);
       }
@@ -103,10 +151,12 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
           },
         });
 
-        // Add yaradan as observer + mesul as executor (auto)
+        // tapshiriq_iscilier.rol CHECK constraint: yalnız "icraci" və "musahide".
+        // Mesul artıq tapshiriqlar.mesul_id-də saxlanır; bu cədvələ də "icraci"
+        // kimi yazırıq ki, "mənim tapşırıqlarım" sorğusu hər iki yerdən tapsın.
         const links: Array<{ tapshiriq_id: string; istifadeci_id: string; rol: string }> = [];
         if (d.mesul_id) {
-          links.push({ tapshiriq_id: t.id, istifadeci_id: d.mesul_id, rol: "mesul" });
+          links.push({ tapshiriq_id: t.id, istifadeci_id: d.mesul_id, rol: "icraci" });
         }
         for (const u of d.icracilar ?? []) {
           if (u && u !== d.mesul_id) {
@@ -146,6 +196,7 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
         // Bildirişlər — yaradılan tapşırıq haqqında bütün icraçılara xəbər
         const notifyUsers = new Set<string>(allAssignees);
         notifyUsers.delete(istifadeciId);
+        const notifiedIds: string[] = [];
         if (notifyUsers.size > 0) {
           await tx.bildirisler.createMany({
             data: Array.from(notifyUsers).map((uid) => ({
@@ -160,21 +211,79 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
             })),
             skipDuplicates: true,
           });
+          notifiedIds.push(...Array.from(notifyUsers));
         }
 
-        return t;
+        return { t, notifiedIds };
       });
+
+      // Hər bildiriş alanın bell-i dərhal yenilənsin
+      for (const uid of task.notifiedIds) {
+        revalidateTag(`bildirisler:${sahibkarId}:${uid}`, "max");
+      }
+
+      // Telegram bildirişi — sahibkar konfiqurasiyası varsa, fire-and-forget
+      // (göndərmə uğursuz olsa belə tapşırıq yaradılması pozulmur)
+      if (sendTelegram) {
+        sendTaskTelegram(sahibkarId, {
+          id: task.t.id,
+          basliq: d.basliq,
+          tesvir: d.tesvir,
+          deadline: d.deadline ? new Date(d.deadline) : null,
+          prioritet: d.prioritet,
+          assigneeCount: task.notifiedIds.length,
+        }).catch((e) => console.warn("[sendTaskTelegram]", e));
+      }
 
       revalidatePath("/tapshiriqlar");
       try {
         revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
       } catch { /* tenant context missing — TTL will catch */ }
-      return { ok: true, id: task.id };
+      return { ok: true, id: task.t.id };
     } catch (e) {
       console.error("[createTask]", e);
       return { ok: false, error: "Tapşırıq yaradılmadı" };
     }
   });
+}
+
+/**
+ * Sahibkar-spesifik Telegram chat-inə tapşırıq haqqında məlumat göndərir.
+ * `ayarlar` cədvəlində qrup="telegram", acar="chat_id" gözləyir.
+ */
+async function sendTaskTelegram(
+  sahibkarId: string,
+  task: { id: string; basliq: string; tesvir?: string | null; deadline: Date | null; prioritet: string; assigneeCount: number },
+): Promise<void> {
+  const { sendTelegramMessage, escapeTelegramHtml, isTelegramConfigured } = await import("@/lib/telegram/notifier");
+  if (!isTelegramConfigured()) return;
+  const cfg = await prisma.ayarlar.findFirst({
+    where: { sahibkar_id: sahibkarId, qrup: "telegram", acar: "chat_id" },
+    select: { deyer: true },
+  }).catch(() => null);
+  if (!cfg?.deyer) return;
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3500";
+  const priorityEmoji = task.prioritet === "tecili" ? "🔴" : task.prioritet === "yuksek" ? "🟠" : task.prioritet === "asagi" ? "🟢" : "🟡";
+  const deadlineStr = task.deadline
+    ? `\n🕒 <b>Son tarix:</b> ${task.deadline.toLocaleString("az-AZ", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`
+    : "";
+  const assigneeStr = task.assigneeCount > 1 ? `\n👥 <b>İcraçı:</b> ${task.assigneeCount} nəfər` : "";
+  const text = [
+    `${priorityEmoji} <b>Yeni tapşırıq</b>`,
+    "",
+    `📋 ${escapeTelegramHtml(task.basliq)}`,
+    task.tesvir ? `\n${escapeTelegramHtml(task.tesvir.slice(0, 400))}` : "",
+    deadlineStr,
+    assigneeStr,
+  ].filter(Boolean).join("");
+
+  await sendTelegramMessage({
+    chatId: cfg.deyer,
+    text,
+    parseMode: "HTML",
+    inlineKeyboard: [[{ text: "Tapşırığı aç", url: `${baseUrl}/tapshiriqlar/${task.id}` }]],
+  }).catch(() => null);
 }
 
 export async function changeTaskStatus(taskId: string, status: "yeni" | "icrada" | "gozlemede" | "tamamlandi" | "legv"): Promise<ActionResult> {
@@ -219,6 +328,9 @@ export async function changeTaskStatus(taskId: string, status: "yeni" | "icrada"
           })),
           skipDuplicates: true,
         });
+        for (const uid of targets) {
+          revalidateTag(`bildirisler:${sahibkarId}:${uid}`, "max");
+        }
       }
 
       revalidatePath("/tapshiriqlar");
@@ -416,6 +528,7 @@ export async function setTaskReminder(input: z.input<typeof SetReminderSchema>):
             },
             data: { gonderildi: true, gonderildi_de: new Date() },
           });
+          revalidateTag(`bildirisler:${sahibkarId}:${notifyUid}`, "max");
         }
       });
 
@@ -438,11 +551,22 @@ export async function setTaskReminder(input: z.input<typeof SetReminderSchema>):
 
 export async function runOverdueCheck(): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
   return withTenant(async () => {
-    const { sahibkarId, rolId } = requireTenant();
-    if (rolId !== 1 && rolId !== 2) {
-      return { ok: false, error: "İcazə yoxdur" };
+    const { sahibkarId, rolAd } = requireTenant();
+    // Yalnız admin və ya sahibkar manual işə sala bilər (digər istifadəçilər
+    // üçün cron endpoint istifadə olunur).
+    if (rolAd !== "admin" && rolAd !== "sahibkar") {
+      return { ok: false, error: "İcazə yoxdur — yalnız admin/sahibkar yoxlama işə sala bilər" };
     }
     try {
+      // alert_categories.kod = "tapshiriq" → bu kateqoriyaya yazırıq
+      const tapshiriqCat = await prisma.alert_categories.findFirst({
+        where: { kod: "tapshiriq" },
+        select: { id: true },
+      });
+      if (!tapshiriqCat) {
+        return { ok: false, error: "Sistem konfiqurasiyası: 'tapshiriq' alert kateqoriyası tapılmadı" };
+      }
+
       const now = new Date();
       const overdueTasks = await prisma.tapshiriqlar.findMany({
         where: {
@@ -456,11 +580,13 @@ export async function runOverdueCheck(): Promise<{ ok: true; created: number } |
 
       let created = 0;
       for (const t of overdueTasks) {
+        // Bu tapşırıq üçün artıq açıq alert varsa, yenisini yaratma
         const existing = await prisma.alerts.findFirst({
           where: {
             sahibkar_id: sahibkarId,
             tapshiriq_id: t.id,
-            kateqoriya_kod: "tapshiriq_gecikme",
+            kateqoriya_kod: "tapshiriq",
+            rule_kod: "task_overdue_auto",
             status: { notIn: ["resolved", "dismissed"] },
           },
           select: { id: true },
@@ -470,25 +596,43 @@ export async function runOverdueCheck(): Promise<{ ok: true; created: number } |
         await prisma.alerts.create({
           data: {
             sahibkar_id: sahibkarId,
-            kateqoriya_id: 0,
-            kateqoriya_kod: "tapshiriq_gecikme",
+            kateqoriya_id: tapshiriqCat.id,
+            kateqoriya_kod: "tapshiriq",
             rule_kod: "task_overdue_auto",
-            seviyye: "risk",
+            seviyye: "yuxsek",
             status: "yeni",
-            basliq: `Gecikən tapşırıq: ${t.basliq}`,
+            basliq: `Gecikən tapşırıq: ${t.basliq}`.slice(0, 255),
             tesvir: `Tapşırıq son tarixi (${t.deadline?.toISOString() ?? "—"}) keçib və hələ tamamlanmayıb.`,
             obyekt_nov: "tapshiriq",
             obyekt_id: t.id,
-            obyekt_basliq: t.basliq,
+            obyekt_basliq: t.basliq.slice(0, 255),
             assigned_to: t.escalation_to || t.mesul_id || null,
             due_at: t.deadline,
             tapshiriq_id: t.id,
           },
         });
+
+        // Escalation: rəhbər varsa, ona bildiriş də göndər
+        if (t.escalation_to) {
+          await prisma.bildirisler.create({
+            data: {
+              istifadeci_id: t.escalation_to,
+              sahibkar_id: sahibkarId,
+              basliq: `Gecikən tapşırıq: ${t.basliq}`.slice(0, 200),
+              metn: `Bu tapşırıq son tarixi keçib və əməkdaş hələ tamamlamayıb. Diqqətinizə.`,
+              nov: "tapshiriq_gecikdi",
+              link: `/tapshiriqlar/${t.id}`,
+              resurs_nov: "tapshiriq",
+              resurs_id: t.id,
+            },
+          }).catch(() => null);
+          revalidateTag(`bildirisler:${sahibkarId}:${t.escalation_to}`, "max");
+        }
         created += 1;
       }
 
       revalidatePath("/tapshiriqlar");
+      revalidatePath("/xeberdarliqlar");
       try {
         revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
       } catch { /* tenant context missing — TTL will catch */ }

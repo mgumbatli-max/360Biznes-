@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { PRODUCT_TEMPLATE_COLUMNS } from "./template";
+import { audit } from "@/lib/audit/log";
 
 type RawRow = Record<string, string | number | null | undefined>;
 type ParsedRow = {
@@ -263,6 +264,15 @@ export async function analyzeImport(formData: FormData): Promise<ActionResult<Im
       },
     });
 
+    await audit("import", "mehsul_import_preview", partiya.id, {
+      yeni_data: {
+        fayl_adi: filename.slice(0, 250),
+        cemi: rows.length,
+        yeni, yenilenecek, duplicate, xeta,
+      },
+      sebeb: "İdxal preview yaradıldı",
+    });
+
     return {
       ok: true,
       data: {
@@ -490,6 +500,11 @@ export async function executeImport(partiyaId: string): Promise<ActionResult<Exe
     revalidatePath("/anbar/mehsullar");
     revalidatePath("/ayarlar/inteqrasiya");
 
+    await audit("import", "mehsul_import_execute", partiyaId, {
+      yeni_data: { yaradildi, yenilendi, xeta },
+      sebeb: "İdxal partiyası icra edildi",
+    });
+
     return { ok: true, data: { partiya_id: partiyaId, yaradildi, yenilendi, xeta } };
   });
 }
@@ -503,6 +518,9 @@ export async function cancelImport(partiyaId: string): Promise<ActionResult<unde
     if (!found) return { ok: false, error: "Tapılmadı" };
     if (found.status === "tamamlandi") return { ok: false, error: "Tamamlanmış silinmir" };
     await prisma.import_partiyalari.delete({ where: { id: partiyaId } });
+    await audit("legv", "mehsul_import_partiya", partiyaId, {
+      sebeb: "İdxal partiyası ləğv edildi",
+    });
     revalidatePath("/ayarlar/inteqrasiya");
     return { ok: true, data: undefined };
   });

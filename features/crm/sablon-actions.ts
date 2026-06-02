@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit, diffObjects } from "@/lib/audit/log";
 
 type ActionResult = { ok: true; id?: number } | { ok: false; error: string };
 
@@ -39,13 +40,18 @@ export async function saveTemplate(input: FormData): Promise<ActionResult> {
       };
       let id: number;
       if (d.id) {
+        const before = await prisma.mesaj_sablonlari.findUnique({ where: { id: d.id }, select: { ad: true, hadisi: true, kanal: true, matn: true, aktiv: true } });
         const updated = await prisma.mesaj_sablonlari.update({ where: { id: d.id }, data });
         id = updated.id;
+        const diff = diffObjects(before as Record<string, unknown> | null, data as unknown as Record<string, unknown>);
+        if (diff) await audit("yenile", "mesaj_sablon", id, { evvelki_data: diff.before, yeni_data: diff.after });
       } else {
         const created = await prisma.mesaj_sablonlari.create({ data: { sahibkar_id: sahibkarId, ...data } });
         id = created.id;
+        await audit("yarat", "mesaj_sablon", id, { yeni_data: { ad: d.ad, hadisi: d.hadisi, kanal: d.kanal } });
       }
       revalidatePath("/crm/sablonlar");
+      revalidatePath("/ayarlar/mesaj-sablon");
       return { ok: true, id };
     } catch (e) {
       console.error("[saveTemplate]", e);
@@ -57,8 +63,11 @@ export async function saveTemplate(input: FormData): Promise<ActionResult> {
 export async function deleteTemplate(id: number): Promise<ActionResult> {
   return withTenant(async () => {
     try {
+      const before = await prisma.mesaj_sablonlari.findUnique({ where: { id }, select: { ad: true, hadisi: true, kanal: true } });
       await prisma.mesaj_sablonlari.delete({ where: { id } });
+      await audit("sil", "mesaj_sablon", id, { evvelki_data: before as Record<string, unknown> | null, sebeb: "Şablon silindi" });
       revalidatePath("/crm/sablonlar");
+      revalidatePath("/ayarlar/mesaj-sablon");
       return { ok: true };
     } catch (e) {
       console.error("[deleteTemplate]", e);

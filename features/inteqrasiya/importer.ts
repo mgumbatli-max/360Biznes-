@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { withTenant } from "@/lib/db/with-tenant";
 import { ParsedRow } from "./excel-parser";
+import { audit } from "@/lib/audit/log";
 
 export type ImportResult = {
   partiyaId: string;
@@ -64,6 +65,19 @@ export async function importByKey(key: string, rows: ParsedRow[], fileName: stri
         },
       });
 
+      await audit("import", `inteqrasiya:${key}`, partiya.id, {
+        yeni_data: {
+          fayl_adi: fileName,
+          cemi: rows.length,
+          yarat: r.yarat,
+          yenile: r.yenile,
+          xeta: r.xeta,
+          status: r.xeta > 0 && r.yarat + r.yenile === 0 ? "ugursuz" : "tamamlandi",
+        },
+        sebeb: `Inteqrasiya idxalı: ${key}`,
+        status: r.xeta > 0 && r.yarat + r.yenile === 0 ? "ugursuz" : (r.xeta > 0 ? "qismen" : "ugur"),
+      });
+
       return r;
     } catch (err) {
       await prisma.import_partiyalari.update({
@@ -73,6 +87,11 @@ export async function importByKey(key: string, rows: ParsedRow[], fileName: stri
           tamamlandi_de: new Date(),
           xeta_log: [{ sira: 0, emeliyyat: "xeta", mesaj: String(err) }] as never,
         },
+      });
+      await audit("import", `inteqrasiya:${key}`, partiya.id, {
+        yeni_data: { fayl_adi: fileName, error: String(err) },
+        sebeb: `Inteqrasiya idxalı uğursuz: ${key}`,
+        status: "ugursuz",
       });
       throw err;
     }

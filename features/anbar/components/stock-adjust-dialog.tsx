@@ -97,7 +97,11 @@ export function StockAdjustDialog({ mehsulId, mehsulAd, anbarlar, currentStock, 
       if (!res.ok) {
         setError(res.error);
       } else {
-        toast.success("Stok yeniləndi");
+        if (res.pending_approval) {
+          toast.warning(res.message ?? "Təsdiq mərkəzinə göndərildi", { duration: 6000 });
+        } else {
+          toast.success("Stok yeniləndi");
+        }
         setOpen(false);
         setMiqdar("");
         setQiymet("");

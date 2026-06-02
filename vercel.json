@@ -4,6 +4,14 @@
     {
       "path": "/api/cron/daily-email-summary",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/run-automation-rules",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/compute-reorder-recommendations",
+      "schedule": "0 3 * * *"
     }
   ]
 }

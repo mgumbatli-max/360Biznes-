@@ -160,6 +160,9 @@ async function HeaderActions({
 }
 
 export default async function MehsullarPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("mehsul.oxu");
+
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
 

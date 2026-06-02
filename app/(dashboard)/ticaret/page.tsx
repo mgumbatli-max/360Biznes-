@@ -260,7 +260,10 @@ async function TopProductsAndFunnelSection() {
   );
 }
 
-export default function TicaretHubPage() {
+export default async function TicaretHubPage() {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm();
+
   return (
     <div className="mx-auto max-w-7xl">
       <div className="mb-4 flex items-center justify-between">

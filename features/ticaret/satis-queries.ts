@@ -220,7 +220,12 @@ export async function getSales(
   });
 }
 
+// UUID v4 (case-insensitive) — yanlış formatda gələn id-də Prisma exception
+// atmasın, sadəcə notFound() üçün null qaytaraq.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function getSaleDetail(id: string) {
+  if (!UUID_RE.test(id)) return null;
   return withTenant(async () => {
     return prisma.satis_sifarisleri.findUnique({
       where: { id },

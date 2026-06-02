@@ -5,6 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { requireElaqeActionPerm } from "./access-guard";
+import { audit, diffObjects } from "@/lib/audit/log";
 
 const ContactSchema = z.object({
   id: z.string().uuid().optional(),
@@ -31,6 +33,14 @@ type ActionResult = { ok: true; id: string } | { ok: false; error: string };
 
 export async function saveContact(input: FormData): Promise<ActionResult> {
   const raw = Object.fromEntries(input.entries());
+  // İcazə yoxlaması — nov-a görə müştəri yoxsa təchizatçı
+  const isEdit = !!(raw as { id?: string }).id;
+  const nov = String(raw.nov ?? "musteri");
+  const baseRes = nov === "techizatci" ? "techizatci" : "musteri";
+  const requiredPerm = isEdit ? `${baseRes}.duzelt` : `${baseRes}.yarat`;
+  const permCheck = await requireElaqeActionPerm(requiredPerm);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   // Treat empty string emails as null instead of failing zod email rule
   if (raw.email && typeof raw.email === "string" && raw.email.trim() !== "") {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(raw.email)) {
@@ -45,10 +55,14 @@ export async function saveContact(input: FormData): Promise<ActionResult> {
   const d = parsed.data;
 
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const borcLimitNum =
-        d.borc_limiti && d.borc_limiti.trim() !== "" ? Number(d.borc_limiti.trim()) : null;
+      // borc_limiti — string ya da number gələ bilər; boş gəlirsə null
+      let borcLimitNum: number | null = null;
+      if (d.borc_limiti != null && String(d.borc_limiti).trim() !== "") {
+        const n = Number(String(d.borc_limiti).trim().replace(",", "."));
+        if (Number.isFinite(n) && n >= 0) borcLimitNum = n;
+      }
       const data = {
         nov: d.nov,
         ad: d.ad.trim(),
@@ -72,17 +86,55 @@ export async function saveContact(input: FormData): Promise<ActionResult> {
       };
       let id: string;
       if (d.id) {
+        const before = await prisma.kontragentler.findUnique({
+          where: { id: d.id },
+          select: { ad: true, nov: true, telefon: true, email: true, voen: true, aktiv: true, borc_limiti: true, qiymet_tipi: true, menecer_id: true },
+        });
         const updated = await prisma.kontragentler.update({ where: { id: d.id }, data });
         id = updated.id;
+        const diff = diffObjects(before as Record<string, unknown> | null, data as unknown as Record<string, unknown>);
+        if (diff) await audit("yenile", "kontragent", id, { evvelki_data: diff.before, yeni_data: diff.after });
       } else {
+        // getirdi_id — yaradılma anında qeyd olunur, sonradan dəyişmir
         const created = await prisma.kontragentler.create({
-          data: { sahibkar_id: sahibkarId, ...data },
+          data: { sahibkar_id: sahibkarId, getirdi_id: istifadeciId, ...data },
         });
         id = created.id;
+        await audit("yarat", "kontragent", id, { yeni_data: { ad: d.ad, nov: d.nov, telefon: d.telefon || null, voen: d.voen || null } });
+
+        // Yeni müştəri (musteri / her_ikisi) avto-loyalty kart yaratma
+        // Müəyyən şərt: yalnız müştəri tipi və avto-loyalty global ayarı açıqdır
+        if (d.nov === "musteri" || d.nov === "her_ikisi") {
+          try {
+            const autoCfg = await prisma.ayarlar.findFirst({
+              where: { sahibkar_id: sahibkarId, qrup: "loyalty", acar: "auto_create" },
+              select: { deyer: true },
+            });
+            // Default: avto-aktiv (sahibkar söndürə bilər)
+            const autoEnabled = autoCfg?.deyer !== "false";
+            if (autoEnabled) {
+              const kartKod = `LK${Date.now().toString().slice(-9)}`;
+              await prisma.loyalty_cards.create({
+                data: {
+                  sahibkar_id: sahibkarId,
+                  kontragent_id: id,
+                  kart_kod: kartKod,
+                  tier: "bronze",
+                },
+              }).catch((e) => {
+                // Unique constraint xətası — kart artıq mövcuddursa səssiz keç
+                console.warn("[saveContact loyalty]", e);
+              });
+            }
+          } catch (e) {
+            console.warn("[saveContact loyalty auto]", e);
+          }
+        }
       }
       revalidatePath("/elaqe");
       revalidatePath("/elaqe/musteriler");
       revalidatePath("/elaqe/techizatcilar");
+      revalidatePath("/kampaniyalar/loyalty");
       return { ok: true, id };
     } catch (e) {
       console.error("[saveContact]", e);
@@ -92,9 +144,14 @@ export async function saveContact(input: FormData): Promise<ActionResult> {
 }
 
 export async function deactivateContact(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.sil");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   return withTenant(async () => {
     try {
+      const before = await prisma.kontragentler.findUnique({ where: { id }, select: { ad: true, nov: true, aktiv: true } });
       await prisma.kontragentler.update({ where: { id }, data: { aktiv: false } });
+      await audit("sil", "kontragent", id, { evvelki_data: before as Record<string, unknown> | null, sebeb: "deactivate (soft delete)" });
       revalidatePath("/elaqe");
       revalidatePath("/elaqe/musteriler");
       revalidatePath("/elaqe/techizatcilar");
@@ -213,6 +270,10 @@ const PaymentSchema = z.object({
 });
 
 export async function recordContactPayment(input: FormData): Promise<ActionResult> {
+  // Borc qarşı ödəniş qəbulu — `odenis.qebul` maliyyə icazəsi tələb edir
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   const parsed = PaymentSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -251,12 +312,18 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
         });
       }
 
+      const borcBefore = await prisma.kontragentler.findUnique({ where: { id: d.kontragent_id }, select: { borc: true } });
       await prisma.kontragentler.update({
         where: { id: d.kontragent_id },
         data: {
           borc: { decrement: d.mebleg },
           son_temas: new Date(),
         },
+      });
+      await audit("yenile", "kontragent_borc", d.kontragent_id, {
+        evvelki_data: { borc: borcBefore?.borc ?? null },
+        yeni_data: { odenis: d.mebleg, type: "musteri_odenis" },
+        sebeb: d.qeyd || "Borc ödənişi",
       });
 
       revalidatePath("/elaqe/borclar");
@@ -274,7 +341,13 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
 export async function resetContactDebt(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   return withTenant(async () => {
     try {
+      const before = await prisma.kontragentler.findUnique({ where: { id }, select: { borc: true, ad: true } });
       await prisma.kontragentler.update({ where: { id }, data: { borc: 0 } });
+      await audit("yenile", "kontragent_borc", id, {
+        evvelki_data: { borc: before?.borc ?? null, ad: before?.ad ?? null },
+        yeni_data: { borc: 0 },
+        sebeb: "Borc sıfırlandı (manual reset)",
+      });
       revalidatePath("/elaqe/borclar");
       revalidatePath("/elaqe");
       return { ok: true };
@@ -393,7 +466,7 @@ export async function importContacts(
     return { ok: false, error: "Bir dəfəyə 2000-dən çox sətir mümkün deyil" };
   }
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     let created = 0;
     let skipped = 0;
     try {
@@ -430,6 +503,7 @@ export async function importContacts(
         await prisma.kontragentler.create({
           data: {
             sahibkar_id: sahibkarId,
+            getirdi_id: istifadeciId,
             nov,
             ad,
             telefon,

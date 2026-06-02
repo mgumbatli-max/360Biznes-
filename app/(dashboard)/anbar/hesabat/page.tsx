@@ -68,6 +68,9 @@ const CHIP_GROUPS: { key: string; label: string; icon: typeof Layers; chips: Mod
 ];
 
 export default async function HesabatPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("anbar.hesabat");
+
   const sp = await searchParams;
   const mod = sp.mod ?? sp.problem ?? "kateq";
   const isProblem = mod !== "kateq" && mod !== "aging";

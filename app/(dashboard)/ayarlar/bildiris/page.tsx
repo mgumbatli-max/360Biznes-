@@ -20,6 +20,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { cn } from "@/lib/utils";
+import { getActiveEmailProvider } from "@/lib/email/adapter";
 
 export const metadata: Metadata = { title: "Bildiriş & AI tənzimləmələri" };
 
@@ -79,6 +80,9 @@ export default async function BildirisPage({ searchParams }: { searchParams: Sea
         </div>
       </header>
 
+
+      {/* Email provider status — istifadəçi nəzərində olsun ki, real email gedir-yox */}
+      <EmailProviderBanner />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Stat label="Aktiv kanal" value="2/6" tone="primary" />
@@ -604,5 +608,47 @@ function FieldRow({
         <Input type={type} defaultValue={defaultValue} />
       )}
     </div>
+  );
+}
+
+function EmailProviderBanner() {
+  const provider = getActiveEmailProvider();
+  const isMock = provider === "mock";
+  const providerLabel: Record<string, string> = {
+    mock: "Mock (real göndərmir)",
+    resend: "Resend.com",
+    sendgrid: "SendGrid",
+    smtp: "SMTP",
+  };
+
+  return (
+    <Card className={cn("glass", isMock ? "border-amber-500/40" : "border-emerald-500/40")}>
+      <CardContent className="py-3">
+        <div className="flex items-start gap-3">
+          <div className={cn(
+            "grid h-9 w-9 shrink-0 place-items-center rounded-xl",
+            isMock ? "bg-amber-500/15 text-amber-600" : "bg-emerald-500/15 text-emerald-600",
+          )}>
+            <Mail className="h-4 w-4" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              Email provayder:
+              <Badge
+                variant="outline"
+                className={isMock ? "border-amber-500/40 text-amber-600" : "border-emerald-500/40 text-emerald-600"}
+              >
+                {providerLabel[provider]}
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {isMock
+                ? "Hazırda real email getmir — console-a log yazılır. Resend ya SendGrid açar əlavə edib server-i restart edin (.env-də RESEND_API_KEY + RESEND_FROM ya SENDGRID_API_KEY + SENDGRID_FROM)."
+                : "Real email göndərilir. Yeni cihazdan giriş, kritik xəbərdarlıqlar və gündəlik xülasə email ilə çatdırılır."}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

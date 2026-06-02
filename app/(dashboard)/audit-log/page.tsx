@@ -12,6 +12,9 @@ import {
   ClipboardList,
   Ban,
   Clock,
+  Monitor,
+  Smartphone,
+  UserPlus,
 } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { Badge } from "@/components/ui/badge";
@@ -35,11 +38,14 @@ import {
   getRecentFailedLogins,
   getLoginRules,
 } from "@/features/audit-log/security-queries";
+import { getActiveDevices, getDeviceSummary } from "@/features/audit-log/active-devices-queries";
+import { ActiveDevicesPanel } from "@/features/audit-log/components/active-devices-panel";
 import { getIstifadeciList } from "@/features/ayar/queries";
 import { IpBlockManager } from "@/features/audit-log/components/ip-block-manager";
 import { LoginHoursManager } from "@/features/audit-log/components/login-hours-manager";
-import { AuditDetailModal, AuditRowLink } from "@/features/audit-log/components/audit-detail-modal";
-import { formatDate } from "@/lib/utils";
+import { AuditDetailModal } from "@/features/audit-log/components/audit-detail-modal";
+import { AuditFeedList } from "@/features/audit-log/components/audit-feed-list";
+import { RESOURCE_LABEL, RESOURCE_MODULES } from "@/features/audit-log/labels";
 
 export const metadata: Metadata = { title: "Audit log & Təhlükəsizlik" };
 
@@ -47,20 +53,13 @@ const PAGE_SIZE = 50;
 
 const AUDIT_TABS = [
   { key: "log", label: "Log", icon: ClipboardList },
+  { key: "cihazlar", label: "Aktiv cihazlar", icon: Monitor },
   { key: "ip", label: "IP bloklamaları", icon: Ban },
   { key: "giris", label: "Giriş saatları", icon: Clock },
 ] as const;
 
-const NOV_TONES: Record<string, string> = {
-  YARAT: "bg-success/15 text-success",
-  YENILE: "bg-info/15 text-info",
-  SIL: "bg-danger/15 text-danger",
-  GIRIS: "bg-primary/15 text-primary-light",
-  TESDIQLENDI: "bg-success/15 text-success",
-  STATUS_DEYISDI: "bg-warning/15 text-warning",
-};
 
-type SearchParams = AuditFilter & { page?: string; sub?: string };
+type SearchParams = AuditFilter & { page?: string; sub?: string; modul?: string };
 
 export default async function AuditLogPage({
   searchParams,
@@ -70,22 +69,26 @@ export default async function AuditLogPage({
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const sub = (sp.sub ?? "log") as (typeof AUDIT_TABS)[number]["key"];
+  // Modul filter — modul kodu seçildikdə həmin modulun bütün resurs növlərini IN ilə süzür.
+  const selectedModule = sp.modul ? RESOURCE_MODULES.find((m) => m.kod === sp.modul) : undefined;
   const filter: AuditFilter = {
     q: sp.q,
     emeliyyat: sp.emeliyyat,
     resurs_nov: sp.resurs_nov,
+    resurs_nov_in: selectedModule?.resurs,
     status: sp.status,
     istifadeci_id: sp.istifadeci_id,
     from: sp.from,
     to: sp.to,
   };
 
-  const [{ items, total }, stats, topUsers, topEntities, anomalies] = await Promise.all([
+  const [{ items, total }, stats, topUsers, topEntities, anomalies, deviceSummary] = await Promise.all([
     getAuditLog(filter, page, PAGE_SIZE),
     getAuditStats(),
     getTopUsers(5),
     getTopEntities(5),
     getAnomalies(),
+    getDeviceSummary(24),
   ]);
 
   // CSV export URL
@@ -102,7 +105,18 @@ export default async function AuditLogPage({
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Audit log & Təhlükəsizlik</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Bütün dəyişikliklər izlənilir. {total} qeyd.
+            Bütün dəyişikliklər izlənilir. {total.toLocaleString("az-AZ")} qeyd ·{" "}
+            <span className="text-foreground/80">{deviceSummary.total_active_devices} aktiv cihaz</span>
+            {deviceSummary.new_devices_24h > 0 && (
+              <span className="ml-1 font-semibold text-amber-600">
+                · 🆕 {deviceSummary.new_devices_24h} yeni
+              </span>
+            )}
+            {deviceSummary.failed_logins_24h > 0 && (
+              <span className="ml-1 font-semibold text-rose-600">
+                · ⚠ {deviceSummary.failed_logins_24h} uğursuz cəhd (24s)
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -122,6 +136,24 @@ export default async function AuditLogPage({
         {AUDIT_TABS.map((t) => {
           const Icon = t.icon;
           const active = sub === t.key;
+          // Hər tab üçün badge sayı + ton (vacib məlumat ilkin baxışda görünsün)
+          let badgeText: string | null = null;
+          let badgeTone: "danger" | "warning" | "neutral" = "neutral";
+          if (t.key === "cihazlar") {
+            if (deviceSummary.new_devices_24h > 0) {
+              badgeText = `${deviceSummary.new_devices_24h}🆕`;
+              badgeTone = "danger";
+            } else if (deviceSummary.total_active_devices > 0) {
+              badgeText = String(deviceSummary.total_active_devices);
+              badgeTone = "neutral";
+            }
+          } else if (t.key === "ip" && deviceSummary.blocked_ips > 0) {
+            badgeText = String(deviceSummary.blocked_ips);
+            badgeTone = "warning";
+          } else if (t.key === "log" && deviceSummary.failed_logins_24h >= 3) {
+            badgeText = String(deviceSummary.failed_logins_24h);
+            badgeTone = "danger";
+          }
           return (
             <Link
               key={t.key}
@@ -134,6 +166,18 @@ export default async function AuditLogPage({
             >
               <Icon className="h-3.5 w-3.5" />
               {t.label}
+              {badgeText && (
+                <span
+                  className={cn(
+                    "ml-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none",
+                    badgeTone === "danger" && "bg-rose-500/15 text-rose-600",
+                    badgeTone === "warning" && "bg-amber-500/15 text-amber-600",
+                    badgeTone === "neutral" && "bg-secondary text-muted-foreground",
+                  )}
+                >
+                  {badgeText}
+                </span>
+              )}
             </Link>
           );
         })}
@@ -141,6 +185,7 @@ export default async function AuditLogPage({
 
       {sub === "ip" && <IpTabWrapper />}
       {sub === "giris" && <LoginHoursTabWrapper />}
+      {sub === "cihazlar" && <DevicesTabWrapper />}
       {sub === "log" && <LogTabContent
         stats={stats}
         anomalies={anomalies}
@@ -167,6 +212,48 @@ async function LoginHoursTabWrapper() {
   return <LoginHoursManager rules={rules} users={users.map((u) => ({ id: u.id, ad_soyad: u.ad_soyad, email: u.email }))} />;
 }
 
+async function DevicesTabWrapper() {
+  const [devices, summary] = await Promise.all([getActiveDevices(24), getDeviceSummary(24)]);
+  return (
+    <div className="space-y-5">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <KpiCard icon={Monitor} label="Aktiv cihaz" value={String(summary.total_active_devices)} subline="24 saat" tone="info" />
+        <KpiCard icon={UserPlus} label="Aktiv istifadəçi" value={String(summary.total_active_users)} subline="24 saat" />
+        <KpiCard
+          icon={Smartphone}
+          label="Çox cihazlı"
+          value={String(summary.multi_device_users)}
+          subline="2+ cihazda aktiv"
+          tone={summary.multi_device_users > 0 ? "warning" : "neutral"}
+        />
+        <KpiCard
+          icon={AlertTriangle}
+          label="🆕 Yeni cihaz"
+          value={String(summary.new_devices_24h)}
+          subline="24 saat"
+          tone={summary.new_devices_24h > 0 ? "danger" : "neutral"}
+        />
+        <KpiCard
+          icon={Ban}
+          label="Bloklanmış IP"
+          value={String(summary.blocked_ips)}
+          subline="aktiv blok"
+          tone={summary.blocked_ips > 0 ? "warning" : "neutral"}
+        />
+        <KpiCard
+          icon={AlertTriangle}
+          label="Uğursuz giriş"
+          value={String(summary.failed_logins_24h)}
+          subline="24 saat"
+          tone={summary.failed_logins_24h > 3 ? "danger" : "neutral"}
+        />
+      </section>
+
+      <ActiveDevicesPanel devices={devices} />
+    </div>
+  );
+}
+
 function LogTabContent({
   stats,
   anomalies,
@@ -189,28 +276,65 @@ function LogTabContent({
   return (
     <div className="space-y-5">
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <KpiCard icon={Activity} label="Son 24 saat" value={String(stats.total_24h)} subline="Cəm" />
         <KpiCard icon={Plus} label="Yaratma" value={String(stats.yarat_24h)} subline="24 saat" tone="success" />
         <KpiCard icon={Trash2} label="Silmə" value={String(stats.silme_24h)} subline="24 saat" tone={stats.silme_24h > 10 ? "warning" : "neutral"} />
         <KpiCard icon={AlertTriangle} label="Xəta" value={String(stats.xeta_24h)} subline="24 saat" tone={stats.xeta_24h > 0 ? "danger" : "neutral"} />
         <KpiCard icon={Moon} label="Gecə (00-06)" value={String(stats.gece_24h)} subline="24 saat" tone={stats.gece_24h > 0 ? "warning" : "neutral"} />
+        <Link href="?sub=cihazlar" className="block">
+          <KpiCard
+            icon={Monitor}
+            label="Aktiv cihazlar"
+            value="→"
+            subline="detaillarla bax"
+            tone="info"
+          />
+        </Link>
       </section>
 
       {anomalies.length > 0 && (
-        <Card className="glass border-warning/40">
+        <Card className={cn(
+          "glass",
+          anomalies.some((a) => a.severity === "danger") ? "border-rose-500/60" : "border-warning/40",
+        )}>
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base text-warning">
-              <AlertTriangle className="h-4 w-4" /> Anomali alertlər
+            <CardTitle className={cn(
+              "flex items-center gap-2 text-base",
+              anomalies.some((a) => a.severity === "danger") ? "text-rose-600" : "text-warning",
+            )}>
+              <AlertTriangle className="h-4 w-4" />
+              {anomalies.some((a) => a.severity === "danger") ? "🚨 Diqqət — risk hadisəsi" : "Anomali alertlər"}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-1.5">
-            {anomalies.map((a) => (
-              <div key={a.kind} className="flex items-center justify-between gap-2 text-sm">
-                <span>{a.message}</span>
-                <Badge variant="outline" className="border-warning/30 text-warning">{a.sayi}</Badge>
-              </div>
-            ))}
+          <CardContent className="space-y-2">
+            {anomalies.map((a) => {
+              const isDanger = a.severity === "danger";
+              const isWarning = a.severity === "warning";
+              return (
+                <div
+                  key={a.kind}
+                  className={cn(
+                    "flex items-center justify-between gap-2 rounded-md border-l-4 px-3 py-2 text-sm",
+                    isDanger && "border-rose-500 bg-rose-500/5",
+                    isWarning && "border-amber-500 bg-amber-500/5",
+                    !isDanger && !isWarning && "border-warning/40 bg-warning/5",
+                  )}
+                >
+                  <span className={cn(isDanger && "font-medium text-foreground")}>{a.message}</span>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      isDanger && "border-rose-500/40 bg-rose-500/10 text-rose-600",
+                      isWarning && "border-amber-500/40 bg-amber-500/10 text-amber-600",
+                      !isDanger && !isWarning && "border-warning/30 text-warning",
+                    )}
+                  >
+                    {a.sayi}
+                  </Badge>
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -250,8 +374,9 @@ function LogTabContent({
             ) : (
               topEntities.map((e, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
-                  <span className="font-mono text-xs">
-                    <span className="text-muted-foreground">{i + 1}.</span> {e.resurs_nov}
+                  <span className="truncate">
+                    <span className="text-muted-foreground">{i + 1}.</span>{" "}
+                    {RESOURCE_LABEL[e.resurs_nov] ?? e.resurs_nov}
                   </span>
                   <Badge variant="secondary" className="text-[10px]">{e.sayi}</Badge>
                 </div>
@@ -299,17 +424,50 @@ function LogTabContent({
           <Input name="q" defaultValue={sp.q ?? ""} placeholder="İstifadəçi, resurs, IP, URL..." className="h-9 pl-8" />
         </div>
         <select
+          name="modul"
+          defaultValue={sp.modul ?? ""}
+          className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+        >
+          <option value="">Bütün modullar</option>
+          {RESOURCE_MODULES.map((m) => (
+            <option key={m.kod} value={m.kod}>{m.ad}</option>
+          ))}
+        </select>
+        <select
           name="emeliyyat"
           defaultValue={sp.emeliyyat ?? ""}
           className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
         >
           <option value="">Bütün əməliyyatlar</option>
-          <option value="YARAT">YARAT</option>
-          <option value="YENILE">YENILE</option>
-          <option value="SIL">SIL</option>
-          <option value="GIRIS">GIRIS</option>
-          <option value="TESDIQLENDI">TESDIQLENDI</option>
-          <option value="STATUS_DEYISDI">STATUS_DEYISDI</option>
+          <optgroup label="Sənəd əməliyyatları">
+            <option value="yarat">Yaratma</option>
+            <option value="yenile">Yeniləmə</option>
+            <option value="sil">Silmə</option>
+            <option value="berpa">Bərpa</option>
+          </optgroup>
+          <optgroup label="Təsdiq mərkəzi">
+            <option value="tesdiq">Təsdiq</option>
+            <option value="redd">Rədd</option>
+            <option value="legv">Ləğv</option>
+          </optgroup>
+          <optgroup label="Giriş / Çıxış">
+            <option value="giris">Giriş</option>
+            <option value="cixis">Çıxış</option>
+            <option value="uğursuz_giris">Uğursuz giriş</option>
+            <option value="pin_giris">PIN girişi</option>
+            <option value="pin_lockout">PIN lockout</option>
+            <option value="gizli_giris">Gizli koda giriş</option>
+          </optgroup>
+          <optgroup label="Import / Export">
+            <option value="import">Import</option>
+            <option value="export">Export</option>
+          </optgroup>
+          <optgroup label="Köhnə (UPPERCASE)">
+            <option value="YARAT">YARAT (köhnə)</option>
+            <option value="YENILE">YENILE (köhnə)</option>
+            <option value="SIL">SIL (köhnə)</option>
+            <option value="GIRIS">GIRIS (köhnə)</option>
+          </optgroup>
         </select>
         <select
           name="status"
@@ -341,53 +499,7 @@ function LogTabContent({
           <h3 className="font-semibold">Qeyd yoxdur</h3>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card/40">
-          <table className="w-full text-sm">
-            <thead className="border-b border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2.5">Vaxt</th>
-                <th className="px-3 py-2.5">İstifadəçi</th>
-                <th className="px-3 py-2.5">Əməliyyat</th>
-                <th className="px-3 py-2.5">Status</th>
-                <th className="px-3 py-2.5">Resurs</th>
-                <th className="px-3 py-2.5">URL</th>
-                <th className="px-3 py-2.5">IP</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((r) => (
-                <AuditRowLink key={r.id.toString()} id={r.id.toString()}>
-                  <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                    {r.yaradildi
-                      ? formatDate(r.yaradildi, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
-                      : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-xs">{r.istifadeci_ad ?? "—"}</td>
-                  <td className="px-3 py-2">
-                    <Badge variant="outline" className={`text-[10px] ${NOV_TONES[r.emeliyyat] ?? ""}`}>
-                      {r.emeliyyat}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    {r.status === "ugur" ? (
-                      <Badge variant="outline" className="border-success/30 text-success text-[10px]">ugur</Badge>
-                    ) : r.status ? (
-                      <Badge variant="outline" className="border-danger/30 text-danger text-[10px]">{r.status}</Badge>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {r.resurs_nov}
-                    {r.resurs_id && <span className="ml-1 font-mono text-[10px]">{String(r.resurs_id).slice(0, 8)}…</span>}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-[10.5px] text-muted-foreground">{r.url ?? "—"}</td>
-                  <td className="px-3 py-2 font-mono text-[10.5px] text-muted-foreground">{r.ip_adres ?? "—"}</td>
-                </AuditRowLink>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AuditFeedList items={items} />
       )}
 
       <Pagination total={total} pageSize={PAGE_SIZE} page={page} basePath="/audit-log" />

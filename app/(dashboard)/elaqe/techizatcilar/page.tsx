@@ -35,6 +35,9 @@ type SearchParams = {
 const PAGE_SIZE = 50;
 
 export default async function TechizatcilarPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("techizatci.oxu");
+
   const sp = await searchParams;
   const filter: ContactFilter = {
     nov: "techizatci",

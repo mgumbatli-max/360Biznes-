@@ -20,6 +20,9 @@ import { formatMoney, formatNumber } from "@/lib/utils";
 export const metadata: Metadata = { title: "Satış detayı" };
 
 export default async function SatisDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("satis.oxu");
+
   const { id } = await params;
   // Critical-path: yalnız sale detail — başlıq, sətirlər, KPI hamısı bu məlumatdan
   // qurulur. Bağlı tapşırıqlar (notes panel) ayrı bir Suspense-də yüklənir.

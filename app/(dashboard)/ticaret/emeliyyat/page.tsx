@@ -27,6 +27,9 @@ export default async function TicaretEmeliyyatPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm();
+
   const sp = await searchParams;
   const novlar = (sp.nov ?? "")
     .split(",")

@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getAuditLog, type AuditFilter } from "@/features/audit-log/queries";
+import { withTenant } from "@/lib/db/with-tenant";
+import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,13 @@ export async function GET(req: NextRequest) {
   };
 
   const { items } = await getAuditLog(filter, 1, 5000);
+  // Audit-of-audit — log-un özünü ixrac etmək də iz saxlamalıdır
+  await withTenant(async () => {
+    await audit("export", "audit_log_export", null, {
+      yeni_data: { count: items.length, filter },
+      sebeb: "Audit log CSV-ə ixrac edildi",
+    });
+  });
   const header = [
     "vaxt",
     "istifadeci",

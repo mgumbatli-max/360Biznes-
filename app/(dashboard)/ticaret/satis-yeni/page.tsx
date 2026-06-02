@@ -13,6 +13,9 @@ import {
 export const metadata: Metadata = { title: "Yeni satış (Sifariş)" };
 
 export default async function SatisYeniPage() {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("satis.yarat");
+
   const session = await auth();
   if (!session?.user) return null;
 

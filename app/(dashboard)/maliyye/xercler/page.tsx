@@ -20,6 +20,9 @@ export default async function XerclerPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("xerc.oxu");
+
   const sp = await searchParams;
   const link = sp.link ?? "";
   const [{ items, total }, categories, usage, purchases] = await Promise.all([

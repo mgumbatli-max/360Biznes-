@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
+import { audit } from "@/lib/audit/log";
 
 /**
  * "Marketdən satış" — marketplace platforma satışları
@@ -285,6 +286,18 @@ export async function createMarketSatis(
         console.error("[createMarketSatis.emitStockChange]", e);
       }
 
+      await audit("yarat", "marketplace_satis", result.id, {
+        yeni_data: {
+          nomre: result.nomre,
+          platform: data.platform,
+          sifaris_nomresi: data.sifaris_nomresi,
+          anbar_id: data.anbar_id,
+          son_mebleg: result.sonMebleg,
+          net_meblegh: result.netMebleg,
+          line_count: data.lines.length,
+        },
+        sebeb: `Marketplace satışı (${data.platform})`,
+      });
       return {
         ok: true as const,
         satis_id: result.id,

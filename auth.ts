@@ -1,9 +1,11 @@
 import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { cache } from "react";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
+import { checkLoginRate, recordLoginAttempt } from "@/lib/auth/login-guard";
 import "@/lib/auth/types";
 
 const LoginSchema = z.object({
@@ -42,6 +44,23 @@ const config = {
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
 
+        // Request hint-ləri — rate limit və audit üçün
+        let ip: string | null = null;
+        let ua: string | null = null;
+        try {
+          const h = await headers();
+          const xff = h.get("x-forwarded-for");
+          ip = xff?.split(",")[0]?.trim() || h.get("x-real-ip") || null;
+          ua = h.get("user-agent") || null;
+        } catch { /* request scope dışı — pas */ }
+
+        // Brute-force qoruması: son 15 dəq-də limit aşılıbsa, dərhal blok
+        const gate = await checkLoginRate(email, ip);
+        if (!gate.allowed) {
+          await recordLoginAttempt({ success: false, email, ip, ua, sebeb: gate.reason });
+          return null;
+        }
+
         // `select` ilə yalnız lazımi sahələr — Prisma daha az JOIN edir,
         // payload kiçik olur. `include` bütün sütunları gətirir.
         const user = await prismaUnscoped.istifadeciler.findFirst({
@@ -72,21 +91,69 @@ const config = {
           },
         });
         const tDb = Date.now();
-        if (!user) return null;
+        if (!user) {
+          await recordLoginAttempt({ success: false, email, ip, ua, sebeb: "user_not_found" });
+          return null;
+        }
 
         const ok = await verifyPassword(password, user.sifre_hash);
         const tBcrypt = Date.now();
-        if (!ok) return null;
+        if (!ok) {
+          await recordLoginAttempt({
+            success: false,
+            email,
+            ip,
+            ua,
+            sahibkarId: user.sahibkar_id,
+            istifadeciId: user.id,
+            sebeb: "wrong_password",
+          });
+          return null;
+        }
 
         // Tenant must be active
-        if (user.sahibkarlar?.status !== "aktiv") return null;
+        if (user.sahibkarlar?.status !== "aktiv") {
+          await recordLoginAttempt({
+            success: false, email, ip, ua,
+            sahibkarId: user.sahibkar_id,
+            istifadeciId: user.id,
+            sebeb: "tenant_not_active",
+          });
+          return null;
+        }
 
         // Subscription must not be expired (if any)
         const abune = user.sahibkarlar?.abuneler?.[0];
-        if (abune?.bitme && new Date(abune.bitme) < new Date()) return null;
-        if (abune && abune.status && !["aktiv", "sinaq"].includes(abune.status)) return null;
+        if (abune?.bitme && new Date(abune.bitme) < new Date()) {
+          await recordLoginAttempt({
+            success: false, email, ip, ua,
+            sahibkarId: user.sahibkar_id,
+            istifadeciId: user.id,
+            sebeb: "subscription_expired",
+          });
+          return null;
+        }
+        if (abune && abune.status && !["aktiv", "sinaq"].includes(abune.status)) {
+          await recordLoginAttempt({
+            success: false, email, ip, ua,
+            sahibkarId: user.sahibkar_id,
+            istifadeciId: user.id,
+            sebeb: `subscription_status:${abune.status}`,
+          });
+          return null;
+        }
 
         const rolId = user.rol_id ?? 0;
+
+        // Uğurlu giriş — audit + giris_cehdleri
+        await recordLoginAttempt({
+          success: true,
+          email,
+          ip,
+          ua,
+          sahibkarId: user.sahibkar_id,
+          istifadeciId: user.id,
+        });
 
         // Touch last-login timestamp — fire-and-forget, login cavabını bloklamasın.
         void prismaUnscoped.istifadeciler

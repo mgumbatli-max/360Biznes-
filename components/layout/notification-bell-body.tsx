@@ -3,7 +3,8 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCheck } from "lucide-react";
+import { AlertTriangle, CheckCheck, ListTodo, Mail } from "lucide-react";
+import { markAllBildirisRead } from "@/features/bildirisler/actions";
 import {
   DropdownMenuContent,
   DropdownMenuLabel,
@@ -46,13 +47,28 @@ export default function NotificationBellBody({ items, unreadCount, onClose }: Pr
 
   function markAllRead() {
     startTransition(async () => {
+      // Həm alert-ləri, həm də şəxsi bildirişləri oxunmuş et
       try {
-        await fetch("/api/alerts/mark-all-read", { method: "POST" });
+        await Promise.all([
+          fetch("/api/alerts/mark-all-read", { method: "POST" }),
+          markAllBildirisRead(),
+        ]);
       } catch {
         /* noop */
       }
       router.refresh();
     });
+  }
+
+  function pickIcon(n: NotificationItem) {
+    if (n.is_personal) {
+      if (n.nov === "tapshiriq_yeni" || n.nov === "tapshiriq_status" || n.nov === "tapshiriq_xatirlatma" || n.nov === "tapshiriq_gecikdi") {
+        return <ListTodo className="h-3.5 w-3.5" />;
+      }
+      return <Mail className="h-3.5 w-3.5" />;
+    }
+    if (n.kateqoriya_emoji) return <span className="text-sm">{n.kateqoriya_emoji}</span>;
+    return <AlertTriangle className="h-3.5 w-3.5" />;
   }
 
   return (
@@ -73,29 +89,36 @@ export default function NotificationBellBody({ items, unreadCount, onClose }: Pr
           </div>
         ) : (
           <ul className="space-y-1 px-1 py-1">
-            {items.map((n) => (
-              <li key={n.id}>
-                <Link
-                  href={`/xeberdarliqlar/${n.id}`}
-                  onClick={onClose}
-                  className="flex items-start gap-2 rounded-md px-2 py-2 transition hover:bg-secondary"
-                >
-                  <div className={cn("mt-0.5 grid h-7 w-7 flex-shrink-0 place-items-center rounded-md", SEVERITY_TONE[n.seviyye] ?? SEVERITY_TONE.info)}>
-                    {n.kateqoriya_emoji ? (
-                      <span className="text-sm">{n.kateqoriya_emoji}</span>
-                    ) : (
-                      <AlertTriangle className="h-3.5 w-3.5" />
+            {items.map((n) => {
+              const href = n.is_personal && n.link ? n.link : `/xeberdarliqlar/${n.id}`;
+              return (
+                <li key={`${n.is_personal ? "b" : "a"}-${n.id}`}>
+                  <Link
+                    href={href}
+                    onClick={onClose}
+                    className={cn(
+                      "flex items-start gap-2 rounded-md px-2 py-2 transition hover:bg-secondary",
+                      n.is_personal && !n.oxundu && "bg-primary/[0.04]",
                     )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="line-clamp-1 text-xs font-medium">{n.basliq}</div>
-                    <div className="text-[10.5px] text-muted-foreground">
-                      {n.kateqoriya_ad} · {timeAgo(n.first_seen_at)}
+                  >
+                    <div className={cn("mt-0.5 grid h-7 w-7 flex-shrink-0 place-items-center rounded-md", SEVERITY_TONE[n.seviyye] ?? SEVERITY_TONE.info)}>
+                      {pickIcon(n)}
                     </div>
-                  </div>
-                </Link>
-              </li>
-            ))}
+                    <div className="min-w-0 flex-1">
+                      <div className={cn("line-clamp-1 text-xs", !n.oxundu ? "font-semibold" : "font-medium")}>
+                        {n.basliq}
+                      </div>
+                      <div className="text-[10.5px] text-muted-foreground">
+                        {n.kateqoriya_ad} · {timeAgo(n.first_seen_at)}
+                      </div>
+                    </div>
+                    {n.is_personal && !n.oxundu && (
+                      <span className="ml-1 mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" aria-label="yeni" />
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

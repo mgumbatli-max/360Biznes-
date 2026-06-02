@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -43,35 +43,65 @@ export async function createTaskFor(input: z.input<typeof Schema>): Promise<Resu
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const deadline = d.deadline ? new Date(d.deadline) : null;
+      const mesulId = d.mesul_id ?? istifadeciId;
 
-      const task = await prisma.tapshiriqlar.create({
-        data: {
-          sahibkar_id: sahibkarId,
-          yaradan_id: istifadeciId,
-          mesul_id: d.mesul_id ?? istifadeciId,
-          basliq: d.basliq,
-          tesvir: d.tesvir || null,
-          prioritet: d.prioritet,
-          status: "yeni",
-          deadline,
-        },
-        select: { id: true },
-      });
-
-      // Create the cross-module link
-      if (d.obyekt_nov && d.obyekt_id) {
-        await prisma.tapshiriq_obyektleri.create({
+      const task = await prisma.$transaction(async (tx) => {
+        const t = await tx.tapshiriqlar.create({
           data: {
             sahibkar_id: sahibkarId,
-            tapshiriq_id: task.id,
-            obyekt_nov: d.obyekt_nov,
-            obyekt_id: d.obyekt_id,
-            obyekt_basliq: d.obyekt_basliq ?? null,
+            yaradan_id: istifadeciId,
+            mesul_id: mesulId,
+            basliq: d.basliq,
+            tesvir: d.tesvir || null,
+            prioritet: d.prioritet,
+            status: "yeni",
+            deadline,
           },
+          select: { id: true },
         });
-      }
+
+        // tapshiriq_iscilier-ə mesul-u "icraci" rolu ilə əlavə et — bu olmadan
+        // "mənim tapşırıqlarım" sorğusu icracilar tərəfi tapa bilmir.
+        await tx.tapshiriq_iscilier.create({
+          data: { tapshiriq_id: t.id, istifadeci_id: mesulId, rol: "icraci" },
+        }).catch(() => null);
+
+        // Cross-module link
+        if (d.obyekt_nov && d.obyekt_id) {
+          await tx.tapshiriq_obyektleri.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              tapshiriq_id: t.id,
+              obyekt_nov: d.obyekt_nov,
+              obyekt_id: d.obyekt_id,
+              obyekt_basliq: d.obyekt_basliq ?? null,
+            },
+          });
+        }
+
+        // Bildiriş — yalnız mesul yaradandan fərqli olsa
+        if (mesulId !== istifadeciId) {
+          await tx.bildirisler.create({
+            data: {
+              istifadeci_id: mesulId,
+              sahibkar_id: sahibkarId,
+              basliq: `Yeni tapşırıq: ${d.basliq}`.slice(0, 200),
+              metn: d.tesvir ?? null,
+              nov: "tapshiriq_yeni",
+              link: `/tapshiriqlar/${t.id}`,
+              resurs_nov: "tapshiriq",
+              resurs_id: t.id,
+            },
+          }).catch(() => null);
+        }
+
+        return t;
+      });
 
       revalidatePath("/tapshiriqlar");
+      if (mesulId !== istifadeciId) {
+        revalidateTag(`bildirisler:${sahibkarId}:${mesulId}`, "max");
+      }
       return { ok: true, task_id: task.id };
     } catch (e) {
       console.error("[createTaskFor]", e);

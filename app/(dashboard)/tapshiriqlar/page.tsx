@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { NewTaskDialog } from "@/features/tapshiriqlar/components/new-task-dialog";
 import { TasksTabs } from "@/features/tapshiriqlar/components/tasks-tabs";
 import { TasksList } from "@/features/tapshiriqlar/components/tasks-list";
@@ -48,6 +50,17 @@ export default async function TapshiriqlarPage({
   const session = await auth();
   if (!session?.user) return null;
 
+  // Master icazə — tapshiriq.oxu yoxdursa səhifəyə girmək olmur
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && !icazeler.includes("tapshiriq.oxu")) {
+    redirect("/dashboard");
+  }
+  const canCreate = isOwnerOrAdmin || icazeler.includes("tapshiriq.yarat");
+  const canAssign = isOwnerOrAdmin || icazeler.includes("tapshiriq.atayir");
+
   const sort = (["deadline", "yaradildi", "prioritet", "xatirlatma"].includes(sp.sort ?? "")
     ? (sp.sort as TaskSort)
     : "deadline") as TaskSort;
@@ -94,7 +107,7 @@ export default async function TapshiriqlarPage({
         <div className="flex items-center gap-2">
           <PomodoroTimer />
           <ViewToggle />
-          <NewTaskDialog users={users} currentUserId={myId} />
+          {canCreate && <NewTaskDialog users={canAssign ? users : []} currentUserId={myId} />}
         </div>
       </header>
 
@@ -102,7 +115,7 @@ export default async function TapshiriqlarPage({
 
       <TaskKpiStrip stats={stats} />
 
-      <QuickAddBar users={users} currentUserId={myId} />
+      {canCreate && <QuickAddBar users={canAssign ? users : []} currentUserId={myId} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <TasksTabs />

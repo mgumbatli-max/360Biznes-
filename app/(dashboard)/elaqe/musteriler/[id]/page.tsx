@@ -39,6 +39,7 @@ import { PaymentDialog } from "@/features/elaqe/components/payment-dialog";
 import { NisyePaymentQuick } from "@/features/maliyye/components/nisye-payment-quick";
 import { getOpenSalesForCustomer, getQuickRefs } from "@/features/maliyye/queries";
 import { FollowupDialog } from "@/features/elaqe/components/followup-dialog";
+import { CustomerLoyaltyPanel } from "@/features/kampaniyalar/components/customer-loyalty-panel";
 import { NotesTab } from "@/features/elaqe/components/notes-tab";
 import { TagsManager } from "@/features/elaqe/components/tags-manager";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
@@ -73,6 +74,19 @@ function CardSkeleton({ h = 120 }: { h?: number }) {
 }
 
 export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // Bu səhifə həm /elaqe/musteriler/[id] həm də /elaqe/techizatcilar/[id] üçün işləyir.
+  // Master `elaqe.oxu` + (musteri.oxu və ya techizatci.oxu) yoxlanır.
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  const { icazeler, isOwnerOrAdmin } = await requireElaqePerm();
+  if (
+    !isOwnerOrAdmin &&
+    !icazeler.includes("musteri.oxu") &&
+    !icazeler.includes("techizatci.oxu")
+  ) {
+    const { redirect } = await import("next/navigation");
+    redirect("/elaqe");
+  }
+
   const { id } = await params;
   // Header üçün minimum lazım olan iki sorğu — onsuz nə tip, nə ad göstərə bilərik.
   // Hər şey paralel: detail + stats (KPI üçün), digər widget-lər öz Suspense-lərində.
@@ -228,6 +242,13 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
       {isCustomer && (
         <Suspense fallback={<CardSkeleton h={140} />}>
           <SalesStatsSection id={id} />
+        </Suspense>
+      )}
+
+      {/* Loyalty kart paneli — sadiqlik bonusu, tier, son əməliyyatlar */}
+      {isCustomer && (
+        <Suspense fallback={<CardSkeleton h={180} />}>
+          <CustomerLoyaltyPanel kontragentId={id} />
         </Suspense>
       )}
 

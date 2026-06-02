@@ -10,6 +10,8 @@ import { checkCustomerCreditLimit } from "@/features/ticaret/customer-tier";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { emitStockChange } from "@/lib/stock-change-emitter";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { audit } from "@/lib/audit/log";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -48,6 +50,20 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
   const parsed = CreateSaleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const data = parsed.data;
+
+  // Server-side icazə yoxlaması — kassir icazəsi yoxdursa satış rədd olunur.
+  // Sahibkar / admin rolları icazə yoxlanmadan keçir (eyni hesabkar fail-safe).
+  const { rolAd, perms } = await (async () => {
+    const { auth } = await import("@/auth");
+    const sess = await auth();
+    const ad = (sess?.user?.rol_ad ?? "").toLowerCase();
+    const p = await getRequestPermissions();
+    return { rolAd: ad, perms: p };
+  })();
+  const isOwnerOrAdmin = rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && !perms.includes("pos.satis")) {
+    return { ok: false, error: "Bu əməliyyat üçün «pos.satis» icazəsi lazımdır" };
+  }
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -244,6 +260,45 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
               istifadeci_id: istifadeciId,
             },
           });
+
+          // 8b. finance_operations — maliyyə hesabatlarında POS satışları görünsün
+          // Hesabatlar (P&L, cashflow) finance_operations üzərindən hesablanır,
+          // ona görə POS satışları da bura yazılır. Best-effort: type yoxdursa yarad,
+          // səhv olsa rollback etmə (satışı bağlamasın).
+          try {
+            let type = await tx.finance_operation_types
+              .findUnique({ where: { kod: "qaime" } })
+              .catch(() => null);
+            if (!type) {
+              type = await tx.finance_operation_types
+                .create({
+                  data: { kod: "qaime", ad: "Qaimə", qrup: "qaime", y_n: "daxil", link_satish: true },
+                })
+                .catch(() => null);
+            }
+            if (type) {
+              await tx.finance_operations.create({
+                data: {
+                  sahibkar_id: sahibkarId,
+                  type_id: type.id,
+                  type_kod: type.kod,
+                  y_n: "daxil",
+                  tarix: new Date(),
+                  meblegh: new Prisma.Decimal(sonMebleg),
+                  valyuta: "AZN",
+                  mezenne: 1,
+                  azn_meblegh: new Prisma.Decimal(sonMebleg),
+                  kontragent_id: data.musteri_id ?? null,
+                  satis_id: sale.id,
+                  sened_nomresi: posCekNomresi,
+                  qeyd: `POS satış #${posCekNomresi} — ${data.odenis_nov}`,
+                  yaradan_id: istifadeciId,
+                },
+              });
+            }
+          } catch (e) {
+            console.warn("[createSale] finance_operations skipped:", e);
+          }
         }
 
         // 9. Customer debt
@@ -262,6 +317,22 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
 
       // Stoku dəyişən məhsulları kanal-larda avtomatik sync — arxa fonda
       emitStockChange(data.lines.map((l) => l.mehsul_id));
+
+      // Audit: POS satışı — kanal, kassa, ödəniş, məbləğ
+      await audit("yarat", "pos_satis", result.id, {
+        yeni_data: {
+          nomre: result.nomre,
+          pos_cek_nomresi: result.posCekNomresi,
+          kassa_id: data.kassa_id,
+          anbar_id: data.anbar_id,
+          musteri_id: data.musteri_id ?? null,
+          odenis_nov: data.odenis_nov,
+          son_mebleg: result.sonMebleg,
+          line_count: data.lines.length,
+          endirim_mebleg: data.endirim_mebleg,
+        },
+        sebeb: data.odenis_nov === "nisye" ? "POS borca satış" : "POS satış",
+      });
 
       return {
         ok: true as const,

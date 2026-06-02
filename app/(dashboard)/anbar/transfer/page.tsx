@@ -25,6 +25,9 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function TransferPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("stok.transfer");
+
   const sp = await searchParams;
   const kaynakId = sp.kaynak ? Number(sp.kaynak) : undefined;
   const hedefId = sp.hedef ? Number(sp.hedef) : undefined;

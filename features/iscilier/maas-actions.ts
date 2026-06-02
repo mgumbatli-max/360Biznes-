@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
+import { audit } from "@/lib/audit/log";
 
 type Result = { ok: true; count?: number } | { ok: false; error: string };
 
@@ -276,6 +277,15 @@ export async function payBordro(input: FormData): Promise<Result> {
           },
         });
       });
+      await audit("yarat", "maas_odenis", b.id, {
+        yeni_data: {
+          istifadeci_id: b.istifadeci_id,
+          il: b.il,
+          ay: b.ay,
+          meblegh: Number(b.son_meblegh ?? 0),
+        },
+        sebeb: `Maaş ödənildi (${b.il}-${String(b.ay).padStart(2, "0")})`,
+      });
       revalidatePath("/iscilier/maas");
       return { ok: true };
     } catch (e) {
@@ -317,6 +327,13 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
         });
         count++;
       }
+      await audit("yarat", "maas_odenis_bulk", null, {
+        yeni_data: {
+          il, ay, count,
+          ids: list.map((b) => b.id),
+        },
+        sebeb: `Toplu maaş ödənişi (${il}-${String(ay).padStart(2, "0")})`,
+      });
       revalidatePath("/iscilier/maas");
       return { ok: true, count };
     } catch (e) {
@@ -365,6 +382,11 @@ export async function adjustBordro(input: FormData): Promise<Result> {
       data.detal = { ...detal, vergi, sosial_sigorta: sosial, gross };
 
       await prisma.maas_hesablamalar.update({ where: { id }, data });
+      await audit("yenile", "maas_hesablama", id, {
+        evvelki_data: { [field]: Number((b as unknown as Record<string, unknown>)[field] ?? 0), son_meblegh: Number(b.son_meblegh ?? 0) },
+        yeni_data: { [field]: value, son_meblegh: son },
+        sebeb: `Bordro düzəlişi: ${field}`,
+      });
       revalidatePath("/iscilier/maas");
       return { ok: true };
     } catch (e) {

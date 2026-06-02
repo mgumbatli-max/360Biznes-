@@ -9,10 +9,10 @@ import { requireTenant } from "@/lib/db/tenant-context";
  * Default: true. Owner can hide via /sahibkar/ayarlar — section then only
  * accessible via the secret search code (default "7733").
  *
- * Only relevant when current user has role 9 (owner) — others never see it anyway.
+ * Only relevant when current user has "sahibkar" role — others never see it anyway.
  */
-export async function getSahibkarSidebarVisible(rolId: number): Promise<boolean> {
-  if (rolId !== 9) return false;
+export async function getSahibkarSidebarVisible(rolAd: string | undefined): Promise<boolean> {
+  if (rolAd !== "sahibkar") return false;
   return withTenant(async () => {
     try {
       const { sahibkarId } = requireTenant();

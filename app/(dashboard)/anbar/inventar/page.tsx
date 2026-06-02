@@ -90,6 +90,9 @@ async function getCountFilters() {
 }
 
 export default async function InventarPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("sayim.oxu");
+
   const sp = await searchParams;
   const anbarId = sp.anbar ? Number(sp.anbar) : undefined;
   const [rows, stats, anbarlar, countFilters] = await Promise.all([

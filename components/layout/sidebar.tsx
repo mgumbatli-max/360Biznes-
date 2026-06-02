@@ -80,7 +80,7 @@ function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
   // NAV_SECTIONS filtering — yalnız rol/icazələr/sahibkar görünüş dəyişəndə yenidən hesabla.
   // Hər navigation-da 30+ nav item üçün canSeeNavItem() çağırışını qənaət edir.
   const sections = useMemo(() => {
-    const ctx = { rolId: user.rol_id, icazeler };
+    const ctx = { rolId: user.rol_id, rolAd: user.rol_ad, icazeler };
     return NAV_SECTIONS.map((sec) => ({
       ...sec,
       items: sec.items.filter((i) => {
@@ -89,7 +89,7 @@ function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
         return true;
       }),
     })).filter((sec) => sec.items.length > 0);
-  }, [user.rol_id, icazeler, sahibkarVisible]);
+  }, [user.rol_id, user.rol_ad, icazeler, sahibkarVisible]);
 
   return (
     <>

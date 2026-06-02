@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
 
 type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -95,6 +96,17 @@ export async function createInventar(formData: FormData): Promise<ActionResult<{
           },
         },
       });
+      await audit("yarat", "inventarizasiya", inv.id, {
+        yeni_data: {
+          nomre,
+          anbar_id: d.anbar_id,
+          tip: d.tip,
+          line_count: stoks.length,
+          kateqoriya_id: d.kateqoriya_id ?? null,
+          marka_id: d.marka_id ?? null,
+        },
+        sebeb: d.qeyd || `Sayım başladıldı: ${TIP_LABEL[d.tip] ?? d.tip}`,
+      });
       revalidatePath("/anbar/inventar");
       return { ok: true, data: { id: inv.id } };
     } catch (e) {
@@ -146,10 +158,59 @@ export async function bulkUpdateInventarRows(rows: Array<{ satir_id: number; fak
   });
 }
 
-export async function completeInventar(id: string): Promise<ActionResult> {
+/**
+ * Fərqi olan sətrlərə səbəb (variance reason) yaz.
+ * Səbəb mövcud `qeyd` field-ində `[SEBEB:kod]` prefiksi ilə saxlanır
+ * (migration tələb etməmək üçün).
+ */
+export async function setInventarRowReasons(
+  rows: Array<{ satir_id: number; sebeb: string | null; aciqlama: string }>,
+): Promise<ActionResult> {
+  return withTenant(async () => {
+    try {
+      const { buildVarianceQeyd } = await import("./variance-reasons");
+      await prisma.$transaction(
+        rows.map((r) =>
+          prisma.inventar_satirlari.update({
+            where: { id: r.satir_id },
+            data: { qeyd: buildVarianceQeyd(r.sebeb as never, r.aciqlama) },
+          }),
+        ),
+      );
+      return { ok: true };
+    } catch (e) {
+      console.error("[setInventarRowReasons]", e);
+      return { ok: false, error: "Səbəb yazılmadı" };
+    }
+  });
+}
+
+export async function completeInventar(id: string, opts?: { allowMissingReasons?: boolean }): Promise<ActionResult & { missingReasonCount?: number }> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    const { parseVarianceQeyd, reasonToExpenseCategory } = await import("./variance-reasons");
     try {
+      // İlk yoxlama: hər fərqi olan sətrin səbəbi varmı? (transaction-dan ƏVVƏL)
+      const preInv = await prisma.inventarizasiyalar.findUnique({
+        where: { id },
+        include: { inventar_satirlari: true },
+      });
+      if (!preInv) return { ok: false, error: "Tapılmadı" };
+      const varianceRows = preInv.inventar_satirlari.filter((r) => {
+        if (r.fakti_miqdar == null) return false;
+        return Number(r.fakti_miqdar) !== Number(r.sistemde_olan);
+      });
+      const withoutReason = varianceRows.filter((r) => !parseVarianceQeyd(r.qeyd).sebeb);
+      if (withoutReason.length > 0 && !opts?.allowMissingReasons) {
+        return {
+          ok: false,
+          error: `${withoutReason.length} fərqi olan sətrin səbəbi göstərilməyib`,
+          missingReasonCount: withoutReason.length,
+        };
+      }
+
+      // Maliyyə təsiri toplamı — sayım zərəri kateqoriyalarına görə
+      const expenseBuckets = new Map<string, { mebleg: number; details: string[] }>();
       await prisma.$transaction(async (tx) => {
         const inv = await tx.inventarizasiyalar.findUnique({
           where: { id },
@@ -164,6 +225,8 @@ export async function completeInventar(id: string): Promise<ActionResult> {
           const sistemde = Number(r.sistemde_olan);
           const ferq = fakti - sistemde;
           if (ferq === 0) continue;
+
+          const { sebeb } = parseVarianceQeyd(r.qeyd);
 
           // Update stok to fakti
           const s = await tx.stok.findFirst({
@@ -189,9 +252,62 @@ export async function completeInventar(id: string): Promise<ActionResult> {
               ref_nov: "inventar",
               ref_id: inv.id,
               edilen_id: istifadeciId,
-              qeyd: `İnventar ${inv.nomre}: sistem ${sistemde} → fakt ${fakti}`,
+              qeyd: `İnventar ${inv.nomre}: sistem ${sistemde} → fakt ${fakti} (${sebeb ?? "—"})`,
             },
           });
+
+          // Maliyyə təsiri — yalnız mənfi fərqdə və real xərc kateqoriyasında
+          if (ferq < 0) {
+            const expenseCat = reasonToExpenseCategory(sebeb);
+            if (expenseCat) {
+              const unitCost = Number(r.qiymet ?? 0);
+              const loss = Math.abs(ferq) * unitCost;
+              if (loss > 0) {
+                const bucket = expenseBuckets.get(expenseCat) ?? { mebleg: 0, details: [] };
+                bucket.mebleg += loss;
+                bucket.details.push(`${Math.abs(ferq).toFixed(2)} × ${unitCost.toFixed(2)} ₼`);
+                expenseBuckets.set(expenseCat, bucket);
+              }
+            }
+          }
+        }
+
+        // Maliyyə xərc qeydləri — sayım zərəri (xerc_kateqoriyalari + xercl_r)
+        for (const [catKod, bucket] of expenseBuckets) {
+          if (bucket.mebleg <= 0) continue;
+          const catName = catKod === "anbar_ogurluq" ? "Anbar oğurluq"
+            : catKod === "anbar_zerer" ? "Anbar zərər/damage"
+            : catKod === "anbar_daxili_istifade" ? "Anbar daxili istifadə"
+            : "Anbar digər zərər";
+          // Kateqoriyanı ad üzrə tap və ya yarad (kod field yoxdur, ad üzrə unique)
+          let cat = await tx.xerc_kateqoriyalari.findFirst({
+            where: { sahibkar_id: sahibkarId, ad: catName },
+            select: { id: true },
+          }).catch(() => null);
+          if (!cat) {
+            cat = await tx.xerc_kateqoriyalari.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                ad: catName,
+                qrup: "anbar_zerer",
+              },
+              select: { id: true },
+            }).catch(() => null);
+          }
+          if (cat) {
+            const tesvir = `Sayım zərəri (${inv.nomre})`;
+            await tx.xercl_r.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                kateqoriya_id: cat.id,
+                tarix: new Date(),
+                mebleg: bucket.mebleg,
+                tesvir,
+                qeyd: bucket.details.slice(0, 5).join(", ") + (bucket.details.length > 5 ? "…" : ""),
+                istifadeci_id: istifadeciId,
+              },
+            }).catch((e) => console.warn("[completeInventar] xerc skipped:", e));
+          }
         }
 
         await tx.inventarizasiyalar.update({
@@ -204,6 +320,7 @@ export async function completeInventar(id: string): Promise<ActionResult> {
       revalidatePath("/anbar/hereketler");
 
       // İnventarizasiya tamamlandı — stoku dəyişən məhsulları kanal-larına sync
+      let changedCount = 0;
       try {
         const inv = await prisma.inventarizasiyalar.findUnique({
           where: { id },
@@ -213,12 +330,18 @@ export async function completeInventar(id: string): Promise<ActionResult> {
           const changedIds = inv.inventar_satirlari
             .filter((r) => r.fakti_miqdar != null && Number(r.fakti_miqdar) !== Number(r.sistemde_olan))
             .map((r) => r.mehsul_id);
+          changedCount = changedIds.length;
           const { emitStockChange } = await import("@/lib/stock-change-emitter");
           emitStockChange(changedIds);
         }
       } catch (e) {
         console.error("[completeInventar.emitStockChange]", e);
       }
+
+      await audit("tesdiq", "inventarizasiya", id, {
+        yeni_data: { status: "tamamlandi", changed_count: changedCount },
+        sebeb: "Sayım tamamlandı — stok faktiki dəyərlərə düzəldildi",
+      });
 
       return { ok: true };
     } catch (e) {
@@ -234,6 +357,10 @@ export async function cancelInventar(id: string): Promise<ActionResult> {
       await prisma.inventarizasiyalar.update({
         where: { id },
         data: { status: "legv" },
+      });
+      await audit("legv", "inventarizasiya", id, {
+        yeni_data: { status: "legv" },
+        sebeb: "Sayım ləğv edildi",
       });
       revalidatePath("/anbar/inventar");
       revalidatePath(`/anbar/inventar/${id}`);

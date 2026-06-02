@@ -68,7 +68,8 @@ export function RoleCreateDialog() {
         } else {
           toast.success("Rol şablondan yaradıldı — icazələr avto-tətbiq edildi");
           setOpen(false);
-          router.refresh();
+          // Yaradılan rolun detalına keç — istifadəçi dərhal icazələri görsün/redaktə etsin.
+          router.push(`/ayarlar/rollar/${res.id}`);
         }
       });
     } else {
@@ -80,9 +81,10 @@ export function RoleCreateDialog() {
           setError(res.error);
           toast.error(res.error);
         } else {
-          toast.success("Rol yaradıldı");
+          toast.success("Rol yaradıldı — indi icazələri seç");
           setOpen(false);
-          router.refresh();
+          // Boş rol — icazə yoxdur, dərhal matrisə yönləndir.
+          router.push(`/ayarlar/rollar/${res.id}`);
         }
       });
     }
@@ -344,7 +346,8 @@ export function RoleCloneDialog({ sourceId, sourceName }: { sourceId: number; so
       } else {
         toast.success("Rol klonlandı — icazələr kopyalandı");
         setOpen(false);
-        router.refresh();
+        // Klon edilmiş rolun detalına keç ki, istifadəçi dərhal redaktə edə bilsin.
+        router.push(`/ayarlar/rollar/${res.id}`);
       }
     });
   }

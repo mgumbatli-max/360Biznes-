@@ -39,6 +39,9 @@ export const metadata: Metadata = { title: "Maliyyə" };
 type SP = { forecast?: string };
 
 export default async function MaliyyePage({ searchParams }: { searchParams?: Promise<SP> }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm();
+
   const sp = (await searchParams) ?? {};
   const forecastDays = ([30, 60, 90].includes(Number(sp.forecast)) ? Number(sp.forecast) : 30) as 30 | 60 | 90;
 
@@ -100,10 +103,12 @@ export default async function MaliyyePage({ searchParams }: { searchParams?: Pro
             Pul axını, mənfəət, debitor/kreditor borclar — biznesin maliyyə mərkəzi.
           </p>
         </div>
+        {/* Trigger düyməsi MaliyyeSubNav-dadır — bu komponent yalnız Sheet event handler saxlayır */}
         <NewOperationSheet
           hesablar={refs.hesablar}
           iscilier={refs.iscilier}
           kontragentler={refs.kontragentler}
+          hideTrigger
         />
       </header>
 

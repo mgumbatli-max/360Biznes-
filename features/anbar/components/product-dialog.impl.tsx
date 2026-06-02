@@ -283,15 +283,25 @@ export function ProductDialogBody({ categories, brands, units = [], initial, onO
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sekil_url">Şəkil URL</Label>
+              <Label htmlFor="sekil_url">
+                Şəkil URL{" "}
+                <span className="text-[10px] font-normal text-muted-foreground">
+                  · çoxlu üçün <code className="rounded bg-secondary px-1 font-mono">|</code> ilə ayır
+                </span>
+              </Label>
               <Input
                 id="sekil_url"
                 value={sekilUrl}
                 onChange={(e) => setSekilUrl(e.target.value)}
-                placeholder="https://... və ya /uploads/..."
+                placeholder="https://...jpg | https://...jpg | https://...jpg"
                 disabled={pending}
               />
               <input type="hidden" name="sekil_url" value={sekilUrl} />
+              {sekilUrl.includes("|") && (
+                <p className="text-[10.5px] text-emerald-600">
+                  ✓ {sekilUrl.split("|").filter((s) => s.trim()).length} şəkil tapıldı — ilk şəkil əsas
+                </p>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 <label className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary/40 px-2.5 text-[11px] font-semibold cursor-pointer hover:bg-secondary">
                   {uploadingImg ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}

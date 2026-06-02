@@ -142,16 +142,19 @@ export async function loseLead(id: string, sebeb: string): Promise<ActionResult>
 
 export async function convertLeadToMusteri(id: string): Promise<ActionResult> {
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const lead = await prisma.leads.findFirst({ where: { id } });
       if (!lead) return { ok: false, error: "Lead tapılmadı" };
       if (lead.kontragent_id) {
         return { ok: true, id: lead.kontragent_id };
       }
+      // Bonus üçün — lead-in menecer-i həqiqi gətirəndir. Yoxdursa, convert edən işçi.
+      const getirdi = lead.menecer_id ?? istifadeciId;
       const created = await prisma.kontragentler.create({
         data: {
           sahibkar_id: sahibkarId,
+          getirdi_id: getirdi,
           nov: "musteri",
           ad: lead.ad ?? "Müştəri",
           telefon: lead.telefon,
@@ -198,6 +201,7 @@ export async function convertLeadToSale(id: string): Promise<{ ok: true; saleId:
         const k = await prisma.kontragentler.create({
           data: {
             sahibkar_id: sahibkarId,
+            getirdi_id: lead.menecer_id ?? istifadeciId,
             nov: "musteri",
             ad: lead.ad ?? "Müştəri",
             telefon: lead.telefon,

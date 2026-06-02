@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   BarChart3, TrendingUp, CheckCircle2, Clock, AlertTriangle, Trophy, Calendar,
   ArrowRight,
 } from "lucide-react";
+import { auth } from "@/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TaskSectionTabs } from "@/features/tapshiriqlar/components/section-tabs";
 import { getTaskAnalytics } from "@/features/tapshiriqlar/stats-queries";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıqlar — Statistika" };
@@ -20,6 +23,16 @@ const PRIORITY_LABEL: Record<string, string> = {
 };
 
 export default async function TaskStatistikaPage() {
+  const session = await auth();
+  if (!session?.user) return null;
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && !icazeler.includes("tapshiriq.statistika")) {
+    redirect("/tapshiriqlar");
+  }
+
   const a = await getTaskAnalytics();
 
   return (

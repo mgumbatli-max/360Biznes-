@@ -22,9 +22,9 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
   if (!parsed.success) return { ok: false, error: "Mesaj boş ola bilməz" };
 
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    // owner mode yalnız rol 9 üçün — başqa hər kəs employee-ə düşür
-    const effectiveMode: "owner" | "employee" = parsed.data.mode === "owner" && rolId === 9 ? "owner" : "employee";
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    // owner mode yalnız "sahibkar" rolu üçün — başqa hər kəs employee-ə düşür
+    const effectiveMode: "owner" | "employee" = parsed.data.mode === "owner" && rolAd === "sahibkar" ? "owner" : "employee";
 
     // Mode-a görə ayrı söhbət tarixçəsi (kanal: "panel" = employee, "sahibkar" = owner)
     const kanal = effectiveMode === "owner" ? "sahibkar" : "panel";
@@ -71,8 +71,8 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
 
 export async function clearHistory(mode: "owner" | "employee" = "employee"): Promise<{ ok: true }> {
   return withTenant(async () => {
-    const { istifadeciId, rolId } = requireTenant();
-    const effective = mode === "owner" && rolId === 9 ? "owner" : "employee";
+    const { istifadeciId, rolAd } = requireTenant();
+    const effective = mode === "owner" && rolAd === "sahibkar" ? "owner" : "employee";
     const kanal = effective === "owner" ? "sahibkar" : "panel";
     await prisma.ai_sohbet_loq.deleteMany({ where: { istifadeci_id: istifadeciId, kanal } });
     revalidatePath(effective === "owner" ? "/sahibkar/ai" : "/ai");

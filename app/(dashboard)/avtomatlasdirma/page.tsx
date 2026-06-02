@@ -8,7 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { RuleBuilder } from "@/features/avtomatlasdirma/components/rule-builder";
 import { RuleCard } from "@/features/avtomatlasdirma/components/rule-card";
-import { getRules, getRuleStats, getRecentLogs } from "@/features/avtomatlasdirma/queries";
+import { BulkActionsBar } from "@/features/avtomatlasdirma/components/bulk-actions-bar";
+import { getRules, getRuleStats, getRecentLogs, getRuleInsights } from "@/features/avtomatlasdirma/queries";
 import { MODULLAR, PRIORITY_META } from "@/features/avtomatlasdirma/catalog";
 import { NezaretMerkeziTabs } from "@/features/nezaret-merkezi/components/tabs";
 import { getNezaretBadges } from "@/features/nezaret-merkezi/counts";
@@ -22,6 +23,7 @@ type SP = {
   status?: string;
   prioritet?: string;
   q?: string;
+  sort?: string;
 };
 
 function filterRules<T extends {
@@ -44,6 +46,32 @@ function filterRules<T extends {
   return r;
 }
 
+function sortRules<T extends {
+  ad: string;
+  son_islem: Date | null;
+  islem_say: number | null;
+  yaradildi: Date | null;
+  aktiv: boolean | null;
+  _count: { avto_log: number };
+}>(rules: T[], sort?: string): T[] {
+  switch (sort) {
+    case "name":
+      return [...rules].sort((a, b) => a.ad.localeCompare(b.ad, "az"));
+    case "usage":
+      return [...rules].sort((a, b) => (b._count.avto_log || 0) - (a._count.avto_log || 0));
+    case "recent":
+      return [...rules].sort((a, b) => (b.son_islem?.getTime() ?? 0) - (a.son_islem?.getTime() ?? 0));
+    case "new":
+      return [...rules].sort((a, b) => (b.yaradildi?.getTime() ?? 0) - (a.yaradildi?.getTime() ?? 0));
+    default:
+      // Default: aktiv yuxarıda, sonra ad
+      return [...rules].sort((a, b) => {
+        if (a.aktiv !== b.aktiv) return a.aktiv ? -1 : 1;
+        return a.ad.localeCompare(b.ad, "az");
+      });
+  }
+}
+
 function buildHref(sp: SP, override: Partial<SP>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries({ ...sp, ...override })) {
@@ -57,14 +85,15 @@ export default async function AvtomatlasdirmaPage({ searchParams }: { searchPara
   const sp = await searchParams;
   const view = sp.view === "list" ? "list" : "card";
 
-  const [rules, stats, logs, tabBadges] = await Promise.all([
+  const [rules, stats, logs, tabBadges, insights] = await Promise.all([
     getRules(),
     getRuleStats(),
     getRecentLogs(15),
     getNezaretBadges(),
+    getRuleInsights(),
   ]);
 
-  const filtered = filterRules(rules, sp);
+  const filtered = sortRules(filterRules(rules, sp), sp.sort);
 
   // Module counts for filter chips
   const modulCounts = new Map<string, number>();
@@ -124,6 +153,70 @@ export default async function AvtomatlasdirmaPage({ searchParams }: { searchPara
         <KpiCard icon={AlertTriangle} label="24 saat xəta" value={String(stats.xeta24)} subline="Uğursuz icralar" tone={stats.xeta24 > 0 ? "danger" : "neutral"} />
       </section>
 
+      {/* Smart Insights — son 7 günün ən aktiv / ən çox xəta verən qaydaları */}
+      {(insights.topActive.length > 0 || insights.topError) && (
+        <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {/* Top Active */}
+          {insights.topActive.length > 0 && (
+            <Card className="glass border-primary/20">
+              <CardContent className="space-y-2 py-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="inline-flex items-center gap-1.5 text-sm font-bold">
+                    <Zap className="h-3.5 w-3.5 text-primary" />
+                    Son 7 gündə ən aktiv 3 qayda
+                  </h3>
+                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">trend</span>
+                </div>
+                <ol className="space-y-1">
+                  {insights.topActive.map((r, idx) => (
+                    <li key={r.id}>
+                      <Link
+                        href={`/avtomatlasdirma/${r.id}`}
+                        className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition hover:bg-secondary/40"
+                      >
+                        <span className={cn(
+                          "grid h-5 w-5 shrink-0 place-items-center rounded-md text-[10px] font-bold tabular-nums",
+                          idx === 0 ? "bg-warning/20 text-warning" :
+                          idx === 1 ? "bg-foreground/10 text-foreground/70" :
+                          "bg-amber-700/20 text-amber-700 dark:text-amber-500",
+                        )}>{idx + 1}</span>
+                        <span className="min-w-0 flex-1 truncate font-medium">{r.ad}</span>
+                        <Badge variant="outline" className={cn("text-[9px]", r.aktiv ? "border-emerald-500/30 text-emerald-500" : "")}>
+                          {r.icra} icra
+                        </Badge>
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Top Errors */}
+          {insights.topError && (
+            <Card className="glass border-rose-500/30 bg-rose-500/[0.04]">
+              <CardContent className="space-y-2 py-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="inline-flex items-center gap-1.5 text-sm font-bold text-rose-600 dark:text-rose-400">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Son 7 gündə ən çox xəta verən
+                  </h3>
+                </div>
+                <Link
+                  href={`/avtomatlasdirma/${insights.topError.id}`}
+                  className="block rounded-md border border-rose-500/20 bg-background/40 px-3 py-2 hover:bg-rose-500/5"
+                >
+                  <div className="font-semibold">{insights.topError.ad}</div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    <b className="text-rose-500">{insights.topError.xeta}</b> uğursuz icra son 7 gündə — şərt və ya əməliyyat yoxlanmalıdır
+                  </p>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+        </section>
+      )}
+
       {/* View toggle + filter */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-card/40 p-0.5">
@@ -180,6 +273,13 @@ export default async function AvtomatlasdirmaPage({ searchParams }: { searchPara
           <option value="orta">Orta</option>
           <option value="asagi">Aşağı</option>
         </select>
+        <select name="sort" defaultValue={sp.sort ?? ""} className="h-9 rounded-md border border-input bg-background px-2 text-sm" title="Sıralama">
+          <option value="">Aktiv əvvəl</option>
+          <option value="name">Ad (A→Z)</option>
+          <option value="usage">Ən çox icra olunan</option>
+          <option value="recent">Ən son icra</option>
+          <option value="new">Ən yeni qayda</option>
+        </select>
         {sp.view && <input type="hidden" name="view" value={sp.view} />}
         <button type="submit" className="h-9 rounded-md bg-foreground px-3 text-xs font-bold text-background">Süz</button>
         {(sp.q || sp.modul || sp.status || sp.prioritet) && (
@@ -188,6 +288,11 @@ export default async function AvtomatlasdirmaPage({ searchParams }: { searchPara
           </Link>
         )}
       </form>
+
+      {/* Bulk actions — yalnız ən az 1 redaktə oluna bilən qayda olduqda */}
+      {filtered.some((r) => !r.sistem_qayda) && (
+        <BulkActionsBar rules={filtered.map((r) => ({ id: r.id, sistem_qayda: r.sistem_qayda }))} />
+      )}
 
       {/* Rules */}
       {filtered.length === 0 ? (

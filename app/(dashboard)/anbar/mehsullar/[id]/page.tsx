@@ -25,6 +25,10 @@ import {
   getProductDailySales,
 } from "@/features/anbar/detail-queries";
 import { ProductDailyChart } from "@/features/anbar/components/product-daily-chart";
+import { ProductImageGallery } from "@/features/anbar/components/product-image-gallery";
+import { ProductPerformanceSection } from "@/features/anbar/components/product-performance-section";
+import { getProductPerformance } from "@/features/anbar/performance-queries";
+import { sekilCount } from "@/lib/mehsul/sekil-urls";
 import { getCategoryOptions, getBrandOptions } from "@/features/anbar/queries";
 import { getServisHistoryForProduct } from "@/features/servis/queries";
 import { SERVIS_STATUS_LABELS } from "@/features/servis/types";
@@ -49,6 +53,9 @@ const MOVEMENT_LABEL: Record<string, { label: string; icon: React.ComponentType<
 };
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("mehsul.oxu");
+
   const { id } = await params;
   const session = await auth();
   if (!session?.user) return null;
@@ -73,13 +80,22 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const lowStock = product.kritik_stok != null && Number(product.kritik_stok) > 0 && totalStock <= Number(product.kritik_stok);
   const outStock = totalStock <= 0;
 
+  const imageCount = sekilCount(product.sekil_url);
+
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <BackButton fallback="/anbar/mehsullar" className="mt-1" />
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight">{product.ad}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {product.ad}
+              {imageCount > 1 && (
+                <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                  {imageCount} şəkil
+                </Badge>
+              )}
+            </h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {product.kod && <span className="inline-flex items-center gap-1"><Hash className="h-3 w-3" /><span className="font-mono">{product.kod}</span></span>}
               {product.barkod && <span className="inline-flex items-center gap-1"><Barcode className="h-3 w-3" /><span className="font-mono">{product.barkod}</span></span>}
@@ -119,6 +135,33 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           />
         </div>
       </header>
+
+      {/* Şəkil gallery — yalnız ən az 1 şəkil varsa göstərilir */}
+      {imageCount > 0 && (
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
+          <ProductImageGallery sekilUrl={product.sekil_url} ad={product.ad} />
+          <Card className="glass">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Təsvir və qiymət</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {product.qisaca_tesvir && (
+                <p className="text-muted-foreground">{product.qisaca_tesvir}</p>
+              )}
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <div className="rounded-md border border-border/40 px-3 py-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Maya</div>
+                  <div className="mt-0.5 font-mono text-base tabular-nums">{formatMoney(Number(product.alish_qiymeti ?? 0))}</div>
+                </div>
+                <div className="rounded-md border border-border/40 px-3 py-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Satış</div>
+                  <div className="mt-0.5 font-mono text-base tabular-nums">{formatMoney(Number(product.satis_qiymeti ?? 0))}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* KPI summary */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -230,6 +273,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         </Card>
       </div>
 
+      {/* Performans — top müştəri, kanal bölgü, aylıq trend */}
+      <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>
+        <PerformanceSection id={id} />
+      </Suspense>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Suspense fallback={<Skeleton className="h-[500px] rounded-xl" />}>
           <MovementsSection id={id} />
@@ -278,6 +326,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       </Card>
     </div>
   );
+}
+
+async function PerformanceSection({ id }: { id: string }) {
+  const perf = await getProductPerformance(id);
+  return <ProductPerformanceSection perf={perf} />;
 }
 
 async function MovementsSection({ id }: { id: string }) {

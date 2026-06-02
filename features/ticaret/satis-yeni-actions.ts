@@ -13,6 +13,7 @@ import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesd
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import { requireTicaretActionPerm } from "./access-guard";
 
 /**
  * Sale-date helper: if user typed only YYYY-MM-DD use parseLocalDate (local noon)
@@ -87,6 +88,11 @@ const PREFIX = "SAT";
 export async function createOrUpdateSatisYeni(
   input: CreateSatisInput,
 ): Promise<CreateSatisResult> {
+  // Redaktə-mi yarat-mı — id varsa duzelt icazəsi, yoxsa yarat
+  const inputId = (input as { id?: string } | undefined)?.id;
+  const permCheck = await requireTicaretActionPerm(inputId ? "satis.duzelt" : "satis.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };

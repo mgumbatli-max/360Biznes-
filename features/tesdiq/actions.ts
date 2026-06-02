@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { canApproveDocApproval, isFullDocApproval } from "./permissions";
+import { audit } from "@/lib/audit/log";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 type BulkResult = { ok: true; affected: number } | { ok: false; error: string };
@@ -61,6 +62,11 @@ export async function approveRequest(id: number, note?: string): Promise<ActionR
         },
       });
       await logTransition(id, istifadeciId, cur?.status ?? null, "tesdiq", "tesdiqlendi", note);
+      await audit("tesdiq", "tesdiq_telep", id, {
+        evvelki_data: { status: cur?.status ?? null },
+        yeni_data: { status: "tesdiq", emeliyyat_nov: cur?.emeliyyat_nov, resurs_nov: cur?.resurs_nov, resurs_id: cur?.resurs_id },
+        sebeb: note ?? undefined,
+      });
 
       // 4-eyes (tam-sənəd) təsdiqi: təsdiq edildikdən sonra original sənədi
       // aktivləşdir. Hər sənəd növü öz status modelini var, ona görə switch.
@@ -169,6 +175,36 @@ async function propagateDocumentApproval(
       }
       return;
     }
+    if (emeliyyatNov === "stok_duzelis" && resursNov === "stok") {
+      // detay_json-dan stok düzəliş parametrlərini al və adjustStock-u
+      // skipApprovalCheck:true ilə icra et (yenidən təsdiq tələbinə düşməsin)
+      const detay = detayJson as {
+        mehsul_id?: string;
+        anbar_id?: number;
+        nov?: "medaxil" | "mexaric" | "inventar";
+        miqdar?: number;
+        qiymet?: number;
+        sebeb?: string;
+      } | null;
+      if (detay?.mehsul_id && detay.anbar_id && detay.nov && detay.miqdar) {
+        const { adjustStock } = await import("@/features/anbar/stock-actions");
+        const r = await adjustStock(
+          {
+            mehsul_id: detay.mehsul_id,
+            anbar_id: detay.anbar_id,
+            nov: detay.nov,
+            miqdar: detay.miqdar,
+            qiymet: detay.qiymet ?? 0,
+            sebeb: `[TƏSDİQLƏNDİ] ${detay.sebeb ?? "Böyük stok düzəlişi"}`,
+          },
+          { skipApprovalCheck: true },
+        );
+        if (!r.ok) {
+          console.warn("[propagateDocumentApproval] stok_duzelis adjustStock failed:", r.error);
+        }
+      }
+      return;
+    }
   } catch (e) {
     console.warn("[propagateDocumentApproval] skipped:", e);
   }
@@ -205,6 +241,11 @@ export async function rejectRequest(id: number, reason: string): Promise<ActionR
         },
       });
       await logTransition(id, istifadeciId, cur?.status ?? null, "red", "redd_edildi", reason.trim());
+      await audit("redd", "tesdiq_telep", id, {
+        evvelki_data: { status: cur?.status ?? null },
+        yeni_data: { status: "red", emeliyyat_nov: cur?.emeliyyat_nov, resurs_nov: cur?.resurs_nov, resurs_id: cur?.resurs_id },
+        sebeb: reason.trim(),
+      });
 
       // Rədd edildikdə original sənədi ləğv et
       if (cur?.resurs_nov && cur?.resurs_id) {
@@ -296,6 +337,11 @@ export async function cancelRequest(id: number, reason?: string): Promise<Action
         data: { status: "legv", netice_qeyd: reason ?? null, netice_tarix: new Date() },
       });
       await logTransition(id, istifadeciId, cur.status, "legv", "legv_edildi", reason);
+      await audit("legv", "tesdiq_telep", id, {
+        evvelki_data: { status: cur.status },
+        yeni_data: { status: "legv" },
+        sebeb: reason ?? undefined,
+      });
       revalidatePath("/tesdiq");
       revalidatePath(`/tesdiq/${id}`);
       return { ok: true };
@@ -345,6 +391,11 @@ export async function bulkApprove(ids: number[]): Promise<BulkResult> {
       await Promise.all(
         validIds.map((id) => logTransition(id, istifadeciId, "gozleyir", "tesdiq", "bulk_tesdiq", "Bulk təsdiq"))
       );
+      // Audit log — bulk təsdiq əməliyyatı
+      await audit("tesdiq", "tesdiq_telep_bulk", null, {
+        yeni_data: { ids: validIds, affected: result.count, status: "tesdiq" },
+        sebeb: skippedSelf > 0 ? `Bulk təsdiq (${skippedSelf} öz sorğu skip)` : "Bulk təsdiq",
+      });
       revalidatePath("/tesdiq");
       return { ok: true, affected: result.count };
     } catch (e) {
@@ -387,6 +438,10 @@ export async function bulkReject(ids: number[], reason: string): Promise<BulkRes
       await Promise.all(
         ids.map((id) => logTransition(id, istifadeciId, "gozleyir", "red", "bulk_red", reason.trim()))
       );
+      await audit("redd", "tesdiq_telep_bulk", null, {
+        yeni_data: { ids: validRejectIds, affected: result.count, status: "red" },
+        sebeb: reason.trim(),
+      });
       revalidatePath("/tesdiq");
       return { ok: true, affected: result.count };
     } catch (e) {

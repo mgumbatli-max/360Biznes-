@@ -49,12 +49,15 @@ async function loadFlat(): Promise<{ id: number; ad: string }[]> {
 
 async function getCanEdit(): Promise<boolean> {
   return withTenant(async () => {
-    const { rolId, icazeler } = requireTenant();
-    return rolId === 1 || rolId === 9 || icazeler.includes("anbar.kateqoriya_idare");
+    const { rolAd, icazeler } = requireTenant();
+    return rolAd === "admin" || rolAd === "sahibkar" || icazeler.includes("anbar.kateqoriya_idare");
   });
 }
 
 export default async function KateqoriyalarPage() {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("kateqoriya.idare");
+
   const [tree, flat, canEdit] = await Promise.all([loadKateqoriyalar(), loadFlat(), getCanEdit()]);
 
   const totalCategories = flat.length;

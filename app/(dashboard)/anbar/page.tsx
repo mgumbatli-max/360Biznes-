@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { RefreshButton } from "@/components/refresh-button";
+import { requireAnbarPerm } from "@/features/anbar/access-guard";
 import { ProductWizard } from "@/features/anbar/components/product-wizard";
 import {
   getAnbarKpis,
@@ -274,7 +275,8 @@ function BreakdownFallback() {
   );
 }
 
-export default function AnbarDashboardPage() {
+export default async function AnbarDashboardPage() {
+  await requireAnbarPerm();
   // Shell instant render olunur — hər data bloku öz Suspense-ində paralel stream olur.
   return (
     <div className="mx-auto max-w-7xl space-y-5">

@@ -38,10 +38,11 @@ export async function createQuickCustomer(input: {
   }
   return withTenant(async () => {
     try {
-      const { sahibkarId } = requireTenant();
+      const { sahibkarId, istifadeciId } = requireTenant();
       const created = await prisma.kontragentler.create({
         data: {
           sahibkar_id: sahibkarId,
+          getirdi_id: istifadeciId,
           ad: parsed.data.ad.trim(),
           telefon: parsed.data.telefon?.trim() || null,
           nov: "musteri",

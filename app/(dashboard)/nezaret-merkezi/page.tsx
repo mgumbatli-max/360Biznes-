@@ -1,20 +1,34 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   ShieldAlert, Radar, ShieldCheck, Workflow, Boxes, CreditCard, UserX,
   Wrench, Globe, CheckCircle2, AlertTriangle, Activity, Flame, ArrowRight, TrendingUp,
   Info, ListTodo,
 } from "lucide-react";
+import { auth } from "@/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NezaretMerkeziTabs } from "@/features/nezaret-merkezi/components/tabs";
 import { getNezaretBadges } from "@/features/nezaret-merkezi/counts";
 import { getRiskDashboard } from "@/features/nezaret-merkezi/dashboard-queries";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { cn, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Nəzarət Mərkəzi — Dashboard" };
 
 export default async function NezaretMerkeziPage() {
+  // Master icazə yoxlaması — nezaret.oxu yoxdursa səhifə açılmır
+  const session = await auth();
+  if (!session?.user) return null;
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && !icazeler.includes("nezaret.oxu")) {
+    redirect("/tapshiriqlar");
+  }
+
   const [badges, data] = await Promise.all([
     getNezaretBadges(),
     getRiskDashboard(),

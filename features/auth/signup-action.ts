@@ -88,14 +88,44 @@ export async function signupAction(_prev: SignupActionResult | null, formData: F
         });
       }
 
-      // 4. Create owner user
+      // 3b. Multi-tenant rollar — sistem rollarının hər birinin kopiyasını yeni
+      // sahibkar üçün yarat. Sahibkar onları sərbəst redaktə edə bilir.
+      // Sistem rolları template kataloqu kimi qalır.
+      const systemRoles = await tx.roles.findMany({
+        where: { sistem: true },
+        include: { rol_icazeleri: { select: { icaze_id: true } } },
+      });
+      const roleMap = new Map<number, number>(); // sistemRoleId → yeni rol id
+      for (const sysRole of systemRoles) {
+        const cloned = await tx.roles.create({
+          data: {
+            ad: sysRole.ad,
+            aciqlamaq: sysRole.aciqlamaq,
+            reng: sysRole.reng,
+            ikon: sysRole.ikon,
+            sahibkar_id: sahibkar.id,
+            sistem: false,
+          },
+        });
+        roleMap.set(sysRole.id, cloned.id);
+        if (sysRole.rol_icazeleri.length > 0) {
+          await tx.rol_icazeleri.createMany({
+            data: sysRole.rol_icazeleri.map((r) => ({ rol_id: cloned.id, icaze_id: r.icaze_id })),
+            skipDuplicates: true,
+          });
+        }
+      }
+      const sahibkarRolId = roleMap.get(SAHIBKAR_ROLE_ID);
+      if (!sahibkarRolId) throw new Error("Sahibkar role kopyası tapılmadı");
+
+      // 4. Create owner user — yeni-yaradılmış custom sahibkar rolu ilə
       await tx.istifadeciler.create({
         data: {
           ad_soyad: data.sirket_adi.trim(),
           email,
           telefon: data.telefon.trim(),
           sifre_hash: passwordHash,
-          rol_id: SAHIBKAR_ROLE_ID,
+          rol_id: sahibkarRolId,
           sahibkar_id: sahibkar.id,
           aktiv: true,
         },

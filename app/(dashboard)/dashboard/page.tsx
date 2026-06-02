@@ -1,25 +1,21 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   TrendingUp,
   Package,
   Users,
-  ScanLine,
-  Wrench,
-  FileBarChart,
-  PlusCircle,
-  UserPlus,
-  Receipt,
-  ShieldAlert,
   Sparkles,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { auth } from "@/auth";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DemoBanner } from "@/features/dashboard/components/demo-banner";
-import { AutoRefresh } from "@/features/audit-log/components/auto-refresh";
+import { DashboardHeader } from "@/features/dashboard/components/dashboard-header";
+import { DashboardQuickActions } from "@/features/dashboard/components/dashboard-quick-actions";
 import { HeroSection } from "@/features/dashboard/sections/hero-section";
 import { LowStockSection } from "@/features/dashboard/sections/low-stock-section";
 import { TopFiveSection } from "@/features/dashboard/sections/top-five-section";
@@ -29,6 +25,9 @@ import { WebhookOrdersSection } from "@/features/dashboard/sections/webhook-orde
 import { SyncHealthSection } from "@/features/dashboard/sections/sync-health-section";
 import { CriticalAlertsSection } from "@/features/dashboard/sections/critical-alerts-section";
 import { getDashboardKpis } from "@/features/dashboard/queries";
+
+// Has() helper — paylaşılan sintaksis hər bölmə üçün
+const has = (icazeler: string[], code: string) => icazeler.includes(code);
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -94,9 +93,33 @@ async function DashboardEmptyState() {
 export default async function DashboardPage() {
   // Yalnız session-u sinxron çək — heç bir DB sorğusu burada yox.
   // Bütün widgetlər öz Suspense-ində paralel + müstəqil stream olur.
-  const session = await auth();
+  const [session, icazeler] = await Promise.all([auth(), getRequestPermissions()]);
   if (!session?.user) return null;
   const u = session.user;
+
+  // Master icazə yoxlaması — `dashboard.oxu` yoxdursa ana səhifə yox.
+  // Bu yoxlama sidebar-da artıq nav item-i gizlədir, lakin URL-ə birbaşa
+  // daxil olan istifadəçi üçün də mütləq lazımdır.
+  if (!has(icazeler, "dashboard.oxu")) {
+    redirect("/tapshiriqlar");
+  }
+
+  // Bölmə icazələri — hər biri ayrı-ayrı yoxlanılır
+  const canKpi       = has(icazeler, "dashboard.kpi");
+  const canCashflow  = has(icazeler, "dashboard.cashflow");
+  const canTapshiriq = has(icazeler, "dashboard.tapshiriq");
+  const canAktivlik  = has(icazeler, "dashboard.aktivlik");
+  const canStok      = has(icazeler, "dashboard.stok");
+  const canTop5      = has(icazeler, "dashboard.top5");
+  const canAlerts    = has(icazeler, "dashboard.alerts");
+  const canSync      = has(icazeler, "dashboard.sync");
+  const canFeed      = has(icazeler, "dashboard.feed");
+  const canCharts    = has(icazeler, "dashboard.charts");
+  const canInsight   = has(icazeler, "dashboard.insight");
+
+  // HeroSection tək komponentin içində bir neçə bölmə var (insight banner,
+  // KPI grid, cashflow, mənim işim, qrafiklər). İcazələrə görə hissəli render.
+  const showHero = canKpi || canCashflow || canTapshiriq || canCharts || canInsight;
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -106,115 +129,62 @@ export default async function DashboardPage() {
         novu={u.abune_status === "sinaq" ? "sinaq" : null}
       />
 
-      <header className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="space-y-1 animate-fade-up">
-            {(() => {
-              const hour = new Date().getHours();
-              const greet =
-                hour < 6 ? "Sakit gecələr" :
-                hour < 12 ? "Sabahın xeyir" :
-                hour < 17 ? "Gününüz xeyir" :
-                hour < 22 ? "Axşamın xeyir" :
-                "Gecəniz xeyirə qalsın";
-              return (
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{greet}</p>
-              );
-            })()}
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-              <span className="gradient-text">{u.ad_soyad.split(" ")[0]}</span>
-              <span className="ml-2 text-foreground">👋</span>
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {new Date().toLocaleDateString("az-AZ", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-              <span className="ml-2 text-muted-foreground/60">·</span>
-              <span className="ml-2 text-muted-foreground/80">{u.sahibkar_ad}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <AutoRefresh />
-            <Button asChild size="sm" variant="outline">
-              <Link href="/nezaret-merkezi">
-                <ShieldAlert className="h-3.5 w-3.5" /> Nəzarət
-              </Link>
-            </Button>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/hesabatlar">
-                <FileBarChart className="h-3.5 w-3.5" /> Hesabat
-              </Link>
-            </Button>
-          </div>
-        </div>
+      <DashboardHeader user={u} />
+      <DashboardQuickActions />
 
-        <div className="flex flex-wrap gap-2 border-t border-border/40 pt-3">
-          <Button asChild size="sm" variant="default" className="font-semibold">
-            <Link href="/pos" target="_blank" rel="noopener">
-              <ScanLine className="h-3.5 w-3.5" /> POS aç
-            </Link>
-          </Button>
-          <Button asChild size="sm" variant="secondary">
-            <Link href="/ticaret/satislar/yeni">
-              <PlusCircle className="h-3.5 w-3.5" /> Yeni satış
-            </Link>
-          </Button>
-          <Button asChild size="sm" variant="secondary">
-            <Link href="/anbar/satinalma">
-              <Receipt className="h-3.5 w-3.5" /> Yeni alış
-            </Link>
-          </Button>
-          <Button asChild size="sm" variant="secondary">
-            <Link href="/servis">
-              <Wrench className="h-3.5 w-3.5" /> Yeni servis
-            </Link>
-          </Button>
-          <Button asChild size="sm" variant="secondary">
-            <Link href="/elaqe">
-              <UserPlus className="h-3.5 w-3.5" /> Yeni müştəri
-            </Link>
-          </Button>
-        </div>
-      </header>
-
-      {/* Hər Suspense müstəqil stream olur — shell instant render olunur,
-          ən yavaş sorğu yalnız öz blokunu gecikdirir, qalanları bloklamır.
-          stagger-children: bölmələr 60ms gecikmə ilə kaskadla görünür (modern feel). */}
       <div className="space-y-8 stagger-children">
-        <Suspense fallback={<HeroSkeleton />}>
-          <HeroSection />
-        </Suspense>
+        {showHero && (
+          <Suspense fallback={<HeroSkeleton />}>
+            <HeroSection
+              showInsight={canInsight}
+              showKpi={canKpi}
+              showCashflow={canCashflow}
+              showTapshiriq={canTapshiriq}
+              showCharts={canCharts}
+            />
+          </Suspense>
+        )}
 
-        <Suspense fallback={null}>
-          <CriticalAlertsSection />
-        </Suspense>
+        {canAlerts && (
+          <Suspense fallback={null}>
+            <CriticalAlertsSection />
+          </Suspense>
+        )}
 
-        <Suspense fallback={<ChartSkeleton h={260} />}>
-          <LowStockSection />
-        </Suspense>
+        {canStok && (
+          <Suspense fallback={<ChartSkeleton h={260} />}>
+            <LowStockSection />
+          </Suspense>
+        )}
 
-        <Suspense fallback={<ChartSkeleton h={220} />}>
-          <TopFiveSection />
-        </Suspense>
+        {canTop5 && (
+          <Suspense fallback={<ChartSkeleton h={220} />}>
+            <TopFiveSection />
+          </Suspense>
+        )}
 
-        <Suspense fallback={<ChartSkeleton h={300} />}>
-          <RecentSalesActivity />
-        </Suspense>
+        {canAktivlik && (
+          <Suspense fallback={<ChartSkeleton h={300} />}>
+            <RecentSalesActivity />
+          </Suspense>
+        )}
 
-        <Suspense fallback={<ChartSkeleton h={300} />}>
-          <BusinessFeedSection />
-        </Suspense>
+        {canFeed && (
+          <Suspense fallback={<ChartSkeleton h={300} />}>
+            <BusinessFeedSection />
+          </Suspense>
+        )}
 
-        <Suspense fallback={null}>
-          <WebhookOrdersSection />
-        </Suspense>
-
-        <Suspense fallback={null}>
-          <SyncHealthSection />
-        </Suspense>
+        {canSync && (
+          <>
+            <Suspense fallback={null}>
+              <WebhookOrdersSection />
+            </Suspense>
+            <Suspense fallback={null}>
+              <SyncHealthSection />
+            </Suspense>
+          </>
+        )}
 
         <Suspense fallback={null}>
           <DashboardEmptyState />

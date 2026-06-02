@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { ProductInline } from "@/features/anbar/components/product-inline";
 import { AutoOrderButton } from "@/features/satinalma/components/auto-order-button";
+import { RecomputeButton } from "@/features/satinalma/components/recompute-button";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { formatMoney, formatNumber } from "@/lib/utils";
@@ -81,7 +82,16 @@ async function getFilterOptions() {
 
 export default async function SatinalmaPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const [rows, opts] = await Promise.all([getRecommendations(sp), getFilterOptions()]);
+  const [rows, opts, lastComputed] = await Promise.all([
+    getRecommendations(sp),
+    getFilterOptions(),
+    withTenant(() =>
+      prisma.satinalma_tovsiye.findFirst({
+        orderBy: { hesablandi: "desc" },
+        select: { hesablandi: true },
+      }),
+    ),
+  ]);
   const kritik = rows.filter((r) => r.bitme_gun <= 7).length;
   const tovsiyeMebleg = rows.reduce((s, r) => s + r.tovsiye_say * (r.son_alish_qiy ?? 0), 0);
   const pendingCount = rows.filter((r) => !r.alis_yaradildi && r.tovsiye_say > 0).length;
@@ -92,10 +102,20 @@ export default async function SatinalmaPage({ searchParams }: { searchParams: Pr
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Satınalma Planlama</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            AI tövsiyəli alış sifarişləri — stok, satış tempi və lead time əsasında.
+            Stok, satış tempi və 7 günlük lead time əsasında avtomatik tövsiyələr.{" "}
+            {lastComputed?.hesablandi && (
+              <span className="text-foreground/80">
+                Son hesablama:{" "}
+                <span title={lastComputed.hesablandi.toLocaleString("az-AZ")}>
+                  {lastComputed.hesablandi.toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })}
+                </span>
+              </span>
+            )}{" "}
+            <span className="text-muted-foreground/70">· hər gecə 03:00 avtomatik yenilənir</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <RecomputeButton lastComputedAt={lastComputed?.hesablandi ?? null} />
           <Button asChild size="sm" variant="outline">
             <Link href="/ticaret/alislar">
               <ShoppingCart className="h-4 w-4" /> Alış sifarişləri

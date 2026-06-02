@@ -39,6 +39,9 @@ async function getEdvSummary() {
 }
 
 export default async function EdvPage() {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("edv.idare");
+
   const s = await getEdvSummary();
 
   return (

@@ -30,14 +30,26 @@ export type BonusPaylanma = {
   hedef: number;        // category-spesifik hədəf (faiz vs məbləğ)
 };
 
-export type MusteriFilter = "hamisi" | "mene_aid";
+/**
+ * Müştəri filtri:
+ *  - "hamisi"             — bütün müştərilərin satışları
+ *  - "mene_aid"           — müştəri kartında menecer = bu işçi
+ *  - "getirdi"            — yalnız bu işçinin gətirdiyi müştərilər (kontragentler.getirdi_id)
+ *  - "mene_aid_ve_getirdi" — yuxarıdakı ikisindən hər hansı biri
+ */
+export type MusteriFilter = "hamisi" | "mene_aid" | "getirdi" | "mene_aid_ve_getirdi";
 
 export type BonusProfil = {
   metod: "fixed" | "percent_satis" | "percent_menfaat";
   fixed_mebleg: number;     // metod=fixed olduqda
   percent: number;          // metod=percent_* olduqda (0-100)
   paylanma: BonusPaylanma[];
-  musteri_filter: MusteriFilter; // "hamisi" = bütün satışlar, "mene_aid" = yalnız bu işçi menecer olduğu müştərilər
+  musteri_filter: MusteriFilter;
+  /**
+   * Blacklist — bu konkret kontragent_id-ləri olan satışlar bonusdan istisna.
+   * Filter növündən asılı olmayaraq ƏLAVƏ kəsmə qatı kimi tətbiq olunur.
+   */
+  excluded_kontragent_ids: string[];
 };
 
 const DEFAULT_PROFIL: BonusProfil = {
@@ -46,7 +58,10 @@ const DEFAULT_PROFIL: BonusProfil = {
   percent: 0,
   paylanma: [],
   musteri_filter: "hamisi",
+  excluded_kontragent_ids: [],
 };
+
+const VALID_FILTERS: ReadonlyArray<MusteriFilter> = ["hamisi", "mene_aid", "getirdi", "mene_aid_ve_getirdi"];
 
 export async function getBonusProfil(istifadeciId: string): Promise<BonusProfil> {
   return withTenant(async () => {
@@ -57,16 +72,23 @@ export async function getBonusProfil(istifadeciId: string): Promise<BonusProfil>
     });
     if (!row?.deyer) return { ...DEFAULT_PROFIL };
     try {
-      const parsed = JSON.parse(row.deyer) as BonusProfil;
+      const parsed = JSON.parse(row.deyer) as Partial<BonusProfil>;
+      const filter = VALID_FILTERS.includes(parsed.musteri_filter as MusteriFilter)
+        ? (parsed.musteri_filter as MusteriFilter)
+        : "hamisi";
+      const excluded = Array.isArray(parsed.excluded_kontragent_ids)
+        ? parsed.excluded_kontragent_ids.filter((x): x is string => typeof x === "string")
+        : [];
       return {
         metod: parsed.metod ?? "fixed",
         fixed_mebleg: Number(parsed.fixed_mebleg ?? 0),
         percent: Number(parsed.percent ?? 0),
         paylanma: Array.isArray(parsed.paylanma) ? parsed.paylanma : [],
-        musteri_filter: parsed.musteri_filter === "mene_aid" ? "mene_aid" : "hamisi",
+        musteri_filter: filter,
+        excluded_kontragent_ids: excluded,
       };
     } catch {
-      return { ...DEFAULT_PROFIL };
+      return { ...DEFAULT_PROFIL, excluded_kontragent_ids: [] };
     }
   });
 }

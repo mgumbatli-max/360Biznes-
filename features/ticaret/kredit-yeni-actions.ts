@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
+import { audit } from "@/lib/audit/log";
 
 function parseSaleDate(s: string): Date {
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return parseLocalDate(s) ?? new Date();
@@ -165,6 +166,21 @@ export async function createKreditSatis(
 
       revalidatePath("/ticaret/kredit");
       revalidatePath("/ticaret/kredit-yeni");
+      await audit("yarat", "kredit_satis", result.id, {
+        yeni_data: {
+          nomre: result.nomre,
+          musteri_id: parsed.data.musteri_id,
+          anbar_id: parsed.data.anbar_id,
+          bank: parsed.data.bank,
+          muqavile_nomresi: parsed.data.muqavile_nomresi ?? null,
+          muddet_ay: parsed.data.muddet_ay,
+          umumi: result.umumi,
+          magaza_net: result.magazaNet,
+          aylik_odenis: result.aylik,
+          line_count: parsed.data.lines.length,
+        },
+        sebeb: `Yeni kredit qeydi (${parsed.data.bank})`,
+      });
       return {
         ok: true,
         satis_id: result.id,

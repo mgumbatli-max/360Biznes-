@@ -314,6 +314,8 @@ model alis_sifarisleri {
   @@index([status], map: "idx_alis_status")
   @@index([tarix], map: "idx_alis_tarix")
   @@index([techiazatci_id], map: "idx_alis_techiaz")
+  @@index([sahibkar_id, status, tarix(sort: Desc)], map: "idx_alis_sah_status_tarix")
+  @@index([sahibkar_id, techiazatci_id, tarix(sort: Desc)], map: "idx_alis_sah_techiazatci_tarix")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -479,6 +481,7 @@ model audit_log {
   @@index([yaradildi(sort: Desc)], map: "idx_audit_tarix")
   @@index([istifadeci_id], map: "idx_audit_user")
   @@index([istifadeci_id, yaradildi(sort: Desc)], map: "idx_audit_user_tarix")
+  @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_audit_sah_yaradildi")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -605,6 +608,7 @@ model ayarlar {
 
   @@unique([sahibkar_id, qrup, acar])
   @@index([sahibkar_id, qrup], map: "idx_ayar_sahibkar")
+  @@index([sahibkar_id, qrup, acar], map: "idx_ayarlar_sah_qrup_acar")
 }
 
 model backup_ayar {
@@ -844,6 +848,7 @@ model bildirisler {
   @@index([yaradildi(sort: Desc)], map: "idx_bildiris_tarix")
   @@index([istifadeci_id, oxundu], map: "idx_bildiris_user_oxun")
   @@index([sahibkar_id], map: "idx_bildirisler_sahibkar")
+  @@index([istifadeci_id, oxundu, yaradildi(sort: Desc)], map: "idx_bildirisler_istifadeci_oxundu_yaradildi")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -1842,6 +1847,7 @@ model finance_operations {
 
   @@index([sahibkar_id, tarix(sort: Desc)], map: "idx_fop_sah_tarix")
   @@index([type_kod, sahibkar_id], map: "idx_fop_type")
+  @@index([sahibkar_id, kontragent_id, tarix(sort: Desc)], map: "idx_finance_sah_kontragent_tarix")
 }
 
 model giris_cehdleri {
@@ -2357,6 +2363,7 @@ model istifadeciler {
   bank_cixarislari                                                                  bank_cixarislari[]
   bildirisler                                                                       bildirisler[]
   broadcast_kampaniyalari                                                           broadcast_kampaniyalari[]
+  campaigns                                                                         campaigns[]
   catdirmalar                                                                       catdirmalar[]
   contact_communications                                                            contact_communications[]
   contact_followups_contact_followups_istifadeci_idToistifadeciler                  contact_followups[]            @relation("contact_followups_istifadeci_idToistifadeciler")
@@ -2417,7 +2424,8 @@ model istifadeciler {
   kassalar_kassalar_baglayan_idToistifadeciler                                      kassalar[]                     @relation("kassalar_baglayan_idToistifadeciler")
   kompaniyalar                                                                      kompaniyalar[]
   konsiqnasiya                                                                      konsiqnasiya[]
-  kontragentler                                                                     kontragentler[]
+  kontragentler_kontragentler_getirdi_idToistifadeciler                             kontragentler[]                @relation("kontragentler_getirdi_idToistifadeciler")
+  kontragentler                                                                     kontragentler[]                @relation("kontragentler_menecer_idToistifadeciler")
   kpi_adjustments                                                                   kpi_adjustments[]
   kpi_aylik_hesablamalar_kpi_aylik_hesablamalar_approved_byToistifadeciler          kpi_aylik_hesablamalar[]       @relation("kpi_aylik_hesablamalar_approved_byToistifadeciler")
   kpi_aylik_hesablamalar_kpi_aylik_hesablamalar_istifadeci_idToistifadeciler        kpi_aylik_hesablamalar[]       @relation("kpi_aylik_hesablamalar_istifadeci_idToistifadeciler")
@@ -2436,6 +2444,7 @@ model istifadeciler {
   lab_voice_log                                                                     lab_voice_log[]
   leads_leads_menecer_idToistifadeciler                                             leads[]                        @relation("leads_menecer_idToistifadeciler")
   leads_leads_yaradan_idToistifadeciler                                             leads[]                        @relation("leads_yaradan_idToistifadeciler")
+  loyalty_tx                                                                        loyalty_tx[]
   maas_hesablamalar_maas_hesablamalar_istifadeci_idToistifadeciler                  maas_hesablamalar[]            @relation("maas_hesablamalar_istifadeci_idToistifadeciler")
   maas_hesablamalar_maas_hesablamalar_yaradan_idToistifadeciler                     maas_hesablamalar[]            @relation("maas_hesablamalar_yaradan_idToistifadeciler")
   maliye_hesablari_maliye_hesablari_mesul_idToistifadeciler                         maliye_hesablari[]             @relation("maliye_hesablari_mesul_idToistifadeciler")
@@ -2539,6 +2548,7 @@ model kassa_emeliyyatlari {
   @@index([kassa_id, tarix], map: "idx_kassa_em_kassa")
   @@index([emeliyyat_nov], map: "idx_kassa_em_nov")
   @@index([ref_nov, ref_id], map: "idx_kassa_em_ref")
+  @@index([kassa_id, odenis_nov], map: "idx_kassa_emeliyyat_kassa_odenis")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2701,9 +2711,11 @@ model kontragentler {
   qara_siyahi                                              Boolean?                      @default(false)
   qara_siyahi_sebeb                                        String?
   alacaq                                                   Decimal?                      @default(0) @db.Decimal(14, 2)
+  getirdi_id                                               String?                       @db.Uuid
   alis_sifarisleri                                         alis_sifarisleri[]
   auto_log                                                 auto_log[]
   broadcast_log                                            broadcast_log[]
+  campaign_usage                                           campaign_usage[]
   catdirmalar                                              catdirmalar[]
   contact_communications                                   contact_communications[]
   contact_followups                                        contact_followups[]
@@ -2711,14 +2723,17 @@ model kontragentler {
   contact_people                                           contact_people[]
   contact_tag_links                                        contact_tag_links[]
   contact_type_links                                       contact_type_links[]
+  coupons                                                  coupons[]
   finance_balance_adjustments                              finance_balance_adjustments[]
   finance_barter_operations                                finance_barter_operations[]
   finance_debt_writeoffs                                   finance_debt_writeoffs[]
   finance_internal_balances                                finance_internal_balances[]
   finance_operations                                       finance_operations[]
+  gift_cards                                               gift_cards[]
   inbox_sohbetler                                          inbox_sohbetler[]
   konsiqnasiya                                             konsiqnasiya[]
-  istifadeciler                                            istifadeciler?                @relation(fields: [menecer_id], references: [id], onUpdate: NoAction)
+  istifadeciler_kontragentler_getirdi_idToistifadeciler    istifadeciler?                @relation("kontragentler_getirdi_idToistifadeciler", fields: [getirdi_id], references: [id], onUpdate: NoAction)
+  istifadeciler                                            istifadeciler?                @relation("kontragentler_menecer_idToistifadeciler", fields: [menecer_id], references: [id], onUpdate: NoAction)
   sahibkarlar                                              sahibkarlar                   @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   lab_loyalty                                              lab_loyalty[]
   lab_referral_lab_referral_davet_eden_idTokontragentler   lab_referral[]                @relation("lab_referral_davet_eden_idTokontragentler")
@@ -2726,6 +2741,7 @@ model kontragentler {
   lab_rey                                                  lab_rey[]
   lab_supplier_score                                       lab_supplier_score[]
   leads                                                    leads[]
+  loyalty_cards                                            loyalty_cards[]
   mehsullar                                                mehsullar[]
   musteri_qeydleri                                         musteri_qeydleri[]
   musteri_seqment_link                                     musteri_seqment_link[]
@@ -2747,6 +2763,9 @@ model kontragentler {
   @@index([telefon(ops: raw("gin_trgm_ops"))], map: "idx_kontragent_telefon_trgm", type: Gin)
   @@index([voen(ops: raw("gin_trgm_ops"))], map: "idx_kontragent_voen_trgm", type: Gin)
   @@index([sahibkar_id], map: "idx_kontragentler_sahibkar")
+  @@index([sahibkar_id, funnel_status], map: "idx_kontragentler_sah_funnel")
+  @@index([sahibkar_id, menecer_id], map: "idx_kontragentler_sah_menecer")
+  @@index([sahibkar_id, nov, aktiv], map: "idx_kontragentler_sah_nov_aktiv")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -4796,6 +4815,8 @@ model sahibkarlar {
   broadcast_kampaniyalari       broadcast_kampaniyalari[]
   broadcast_log                 broadcast_log[]
   broadcast_sablonlari          broadcast_sablonlari[]
+  campaign_usage                campaign_usage[]
+  campaigns                     campaigns[]
   catdirmalar                   catdirmalar[]
   contact_communications        contact_communications[]
   contact_followups             contact_followups[]
@@ -4803,6 +4824,7 @@ model sahibkarlar {
   contact_people                contact_people[]
   contact_tags                  contact_tags[]
   contact_type_links            contact_type_links[]
+  coupons                       coupons[]
   data_saglamliq                data_saglamliq[]
   davamiyyet                    davamiyyet[]
   demo_trials                   demo_trials[]
@@ -4824,6 +4846,7 @@ model sahibkarlar {
   finance_internal_balances     finance_internal_balances[]
   finance_marketplace_payments  finance_marketplace_payments[]
   finance_operations            finance_operations[]
+  gift_cards                    gift_cards[]
   gun_sonu                      gun_sonu[]
   hesab_emeliyyatlari           hesab_emeliyyatlari[]
   import_partiyalari            import_partiyalari[]
@@ -4871,6 +4894,8 @@ model sahibkarlar {
   landed_paylama                landed_paylama[]
   landed_xercl_r                landed_xercl_r[]
   leads                         leads[]
+  loyalty_cards                 loyalty_cards[]
+  loyalty_tx                    loyalty_tx[]
   maas_hesablamalar             maas_hesablamalar[]
   maliye_hesablari              maliye_hesablari[]
   markalar                      markalar[]
@@ -5054,10 +5079,13 @@ model satis_sifarisleri {
   marketplace_magaza_id                                            String?                       @db.Uuid
   komisyon_meblegh                                                 Decimal?                      @default(0) @db.Decimal(14, 2)
   xalis_meblegh                                                    Decimal?                      @db.Decimal(14, 2)
+  campaign_usage                                                   campaign_usage[]
   catdirmalar                                                      catdirmalar[]
   finance_operations                                               finance_operations[]
+  gift_cards                                                       gift_cards[]
   kredit_satislari                                                 kredit_satislari?
   leads                                                            leads[]
+  loyalty_tx                                                       loyalty_tx[]
   rezervler                                                        rezervler[]
   satis_sifaris_satirlari                                          satis_sifaris_satirlari[]
   kassalar                                                         kassalar?                     @relation(fields: [kassa_id], references: [id], onUpdate: NoAction, map: "fk_satis_kassa")
@@ -5087,6 +5115,10 @@ model satis_sifarisleri {
   @@index([status], map: "idx_satis_status")
   @@index([tarix], map: "idx_satis_tarix")
   @@index([yaradan_id], map: "idx_satis_yaradan")
+  @@index([sahibkar_id, musteri_id, tarix(sort: Desc)], map: "idx_satis_sah_musteri_tarix")
+  @@index([sahibkar_id, odenis_nov, tarix(sort: Desc)], map: "idx_satis_sah_odenis_tarix")
+  @@index([sahibkar_id, status, tarix(sort: Desc)], map: "idx_satis_sah_status_tarix")
+  @@index([sahibkar_id, yaradan_id, tarix(sort: Desc)], map: "idx_satis_sah_yaradan_tarix")
 }
 
 model schema_migrations {
@@ -5473,6 +5505,7 @@ model tapshiriq_iscilier {
   @@id([tapshiriq_id, istifadeci_id])
   @@index([tapshiriq_id, rol], map: "idx_tapshiriq_isci_rol")
   @@index([istifadeci_id], map: "idx_tapshiriq_isci_user")
+  @@index([istifadeci_id, tapshiriq_id], map: "idx_tap_iscilier_istifadeci")
 }
 
 model tapshiriq_kommentleri {
@@ -5661,6 +5694,8 @@ model tapshiriqlar {
   @@index([sahibkar_id], map: "idx_tapshiriq_sahibkar")
   @@index([status], map: "idx_tapshiriq_status")
   @@index([yaradan_id], map: "idx_tapshiriq_yaradan")
+  @@index([sahibkar_id, mesul_id, status, deadline], map: "idx_tap_sah_mesul_status_deadline")
+  @@index([sahibkar_id, status, tamamlandi_de(sort: Desc)], map: "idx_tap_sah_status_tamam")
 }
 
 model teklif_satirlari {
@@ -6166,4 +6201,143 @@ model audit_log_outbox {
   yenilendi     DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_audit_outbox_sahibkar")
+}
+
+model campaign_usage {
+  id                BigInt             @id @default(autoincrement())
+  sahibkar_id       String             @db.Uuid
+  campaign_id       String             @db.Uuid
+  satis_id          String?            @db.Uuid
+  kontragent_id     String?            @db.Uuid
+  endirim_mebleg    Decimal            @default(0) @db.Decimal(12, 2)
+  bonus_qazanildi   Decimal            @default(0) @db.Decimal(12, 2)
+  bonus_serf        Decimal            @default(0) @db.Decimal(12, 2)
+  kupon_kod         String?            @db.VarChar(50)
+  istifade_de       DateTime           @default(now()) @db.Timestamp(6)
+  campaigns         campaigns          @relation(fields: [campaign_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kontragentler     kontragentler?     @relation(fields: [kontragent_id], references: [id], onUpdate: NoAction)
+  sahibkarlar       sahibkarlar        @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  satis_sifarisleri satis_sifarisleri? @relation(fields: [satis_id], references: [id], onUpdate: NoAction)
+
+  @@index([kontragent_id, istifade_de(sort: Desc)], map: "idx_camp_usage_musteri")
+  @@index([sahibkar_id, campaign_id, istifade_de(sort: Desc)], map: "idx_camp_usage_sah")
+  @@index([satis_id], map: "idx_camp_usage_sale")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model campaigns {
+  id               String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sahibkar_id      String           @db.Uuid
+  ad               String           @db.VarChar(200)
+  aciqlamaq        String?
+  tip              String           @db.VarChar(30)
+  status           String           @default("draft") @db.VarChar(20)
+  rules_json       Json             @default("{}")
+  action_json      Json             @default("{}")
+  baslama          DateTime         @default(now()) @db.Timestamp(6)
+  bitme            DateTime?        @db.Timestamp(6)
+  prioritet        Int              @default(50)
+  max_uses         Int?
+  max_per_user     Int?
+  current_uses     Int              @default(0)
+  reng             String?          @db.VarChar(20)
+  ikon             String?          @db.VarChar(50)
+  stackable        Boolean          @default(false)
+  hedef_filial_ids Int[]
+  hedef_kanal      String[]         @db.VarChar(40)
+  yaradan_id       String?          @db.Uuid
+  yaradildi        DateTime         @default(now()) @db.Timestamp(6)
+  yenilendi        DateTime         @default(now()) @db.Timestamp(6)
+  campaign_usage   campaign_usage[]
+  sahibkarlar      sahibkarlar      @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  istifadeciler    istifadeciler?   @relation(fields: [yaradan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  coupons          coupons[]
+
+  @@index([sahibkar_id, status, baslama, bitme], map: "idx_campaigns_sahibkar_active")
+  @@index([sahibkar_id, tip], map: "idx_campaigns_tip")
+}
+
+model coupons {
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sahibkar_id   String         @db.Uuid
+  campaign_id   String         @db.Uuid
+  kod           String         @db.VarChar(50)
+  kontragent_id String?        @db.Uuid
+  max_uses      Int            @default(1)
+  current_uses  Int            @default(0)
+  bitme_tarixi  DateTime?      @db.Timestamp(6)
+  aktiv         Boolean        @default(true)
+  yaradildi     DateTime       @default(now()) @db.Timestamp(6)
+  campaigns     campaigns      @relation(fields: [campaign_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kontragentler kontragentler? @relation(fields: [kontragent_id], references: [id], onUpdate: NoAction)
+  sahibkarlar   sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sahibkar_id, kod])
+  @@index([campaign_id], map: "idx_coupons_camp")
+  @@index([sahibkar_id, aktiv, bitme_tarixi], map: "idx_coupons_sah_aktiv")
+}
+
+model gift_cards {
+  id                  String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sahibkar_id         String             @db.Uuid
+  kart_kod            String             @db.VarChar(50)
+  nominal             Decimal            @db.Decimal(12, 2)
+  qaliq               Decimal            @db.Decimal(12, 2)
+  alici_kontragent_id String?            @db.Uuid
+  qaytaran_satis_id   String?            @db.Uuid
+  bitme_tarixi        DateTime?          @db.Timestamp(6)
+  aktiv               Boolean            @default(true)
+  yaradildi           DateTime           @default(now()) @db.Timestamp(6)
+  yenilendi           DateTime           @default(now()) @db.Timestamp(6)
+  kontragentler       kontragentler?     @relation(fields: [alici_kontragent_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  satis_sifarisleri   satis_sifarisleri? @relation(fields: [qaytaran_satis_id], references: [id], onUpdate: NoAction)
+  sahibkarlar         sahibkarlar        @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sahibkar_id, kart_kod])
+  @@index([sahibkar_id, aktiv], map: "idx_gift_sah")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_cards {
+  id            String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sahibkar_id   String        @db.Uuid
+  kontragent_id String        @db.Uuid
+  kart_kod      String        @db.VarChar(60)
+  balans        Decimal       @default(0) @db.Decimal(12, 2)
+  tier          String        @default("bronze") @db.VarChar(20)
+  total_qazanc  Decimal       @default(0) @db.Decimal(12, 2)
+  total_serf    Decimal       @default(0) @db.Decimal(12, 2)
+  son_alish_de  DateTime?     @db.Timestamp(6)
+  aktiv         Boolean       @default(true)
+  yaradildi     DateTime      @default(now()) @db.Timestamp(6)
+  yenilendi     DateTime      @default(now()) @db.Timestamp(6)
+  kontragentler kontragentler @relation(fields: [kontragent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sahibkarlar   sahibkarlar   @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  loyalty_tx    loyalty_tx[]
+
+  @@unique([sahibkar_id, kart_kod])
+  @@unique([sahibkar_id, kontragent_id])
+  @@index([sahibkar_id, tier, aktiv], map: "idx_loyalty_sah_tier")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model loyalty_tx {
+  id                BigInt             @id @default(autoincrement())
+  sahibkar_id       String             @db.Uuid
+  kart_id           String             @db.Uuid
+  satis_id          String?            @db.Uuid
+  nov               String             @db.VarChar(20)
+  mebleg            Decimal            @db.Decimal(12, 2)
+  qaliq             Decimal            @db.Decimal(12, 2)
+  qeyd              String?
+  expire_at         DateTime?          @db.Timestamp(6)
+  yaradan_id        String?            @db.Uuid
+  yaradildi         DateTime           @default(now()) @db.Timestamp(6)
+  loyalty_cards     loyalty_cards      @relation(fields: [kart_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sahibkarlar       sahibkarlar        @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  satis_sifarisleri satis_sifarisleri? @relation(fields: [satis_id], references: [id], onUpdate: NoAction)
+  istifadeciler     istifadeciler?     @relation(fields: [yaradan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([kart_id, yaradildi(sort: Desc)], map: "idx_loyalty_tx_kart")
+  @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_loyalty_tx_sah")
 }

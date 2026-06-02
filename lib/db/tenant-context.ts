@@ -4,6 +4,13 @@ export type TenantContext = {
   sahibkarId: string;
   istifadeciId: string;
   rolId: number;
+  /**
+   * Rolun adı — multi-tenant migrasiyadan sonra rolId nömrəsi hər sahibkar üçün
+   * fərqli olur (sahibkar_id+ad unikaldır). "sahibkar", "admin", "kassir" kimi
+   * yoxlamalar üçün ad istifadə edilməlidir, rolId nömrəsi yox.
+   * Sistem callback-lərində (cron, webhook) boş ola bilər.
+   */
+  rolAd?: string;
   icazeler: string[];
 };
 

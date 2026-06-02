@@ -14,6 +14,7 @@ import {
   FileText,
   Wrench,
   Command,
+  GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -92,6 +93,34 @@ export function QuickActionsFab() {
             </span>
             <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-primary to-accent text-white shadow-lg transition group-hover:scale-110">
               <Command className="h-5 w-5" />
+            </span>
+          </Link>
+
+          {/* Ayırıcı + ERP öyrətmə — özəl bölmə, separator ilə vurğulanır */}
+          <div className="flex w-full items-center justify-end gap-2 py-1 pr-12">
+            <span className="h-px flex-1 max-w-[120px] bg-gradient-to-r from-transparent to-border" />
+            <span className="text-[9px] uppercase tracking-[0.18em] text-muted-foreground/70">
+              öyrən
+            </span>
+            <span className="h-px w-3 bg-border" />
+          </div>
+
+          <Link
+            href="/komekci"
+            onClick={() => setOpen(false)}
+            className="group flex items-center gap-2"
+          >
+            <span className="rounded-md bg-card/95 px-3 py-1.5 text-xs font-semibold shadow-md backdrop-blur transition group-hover:scale-105">
+              <span className="bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">
+                ERP öyrətmə
+              </span>
+              <span className="ml-1 text-[10px] text-muted-foreground">— addım-addım bələdçi</span>
+            </span>
+            <span className="relative grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg transition group-hover:scale-110">
+              <GraduationCap className="h-5 w-5" />
+              <span className="absolute -right-0.5 -top-0.5 grid h-3.5 w-3.5 place-items-center rounded-full bg-emerald-500 text-[8px] font-bold text-white ring-2 ring-background">
+                ?
+              </span>
             </span>
           </Link>
         </div>

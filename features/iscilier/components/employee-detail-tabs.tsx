@@ -24,6 +24,7 @@ import type { ProfileExtras } from "../hr-types";
 import type { BonusProfil } from "../bonus-profile";
 import type { BonusHesablama } from "../bonus-calc";
 import { BonusOverview } from "./bonus-overview";
+import { BonusProfileCard } from "./bonus-profile-card";
 
 type Detail = {
   id: string;
@@ -373,6 +374,12 @@ export function EmployeeDetailTabs({
             result={bonusCalc ?? null}
             canEdit={canEditBonus}
           />
+        )}
+
+        {/* Bonus profil tam konfiqurasiya — pool metodu, paylanma, müştəri filtri,
+            İstisna müştərilər (kpi/bonus hesablanmasın). Yalnız admin/sahibkar redaktə edir. */}
+        {bonusProfil && canEditBonus && (
+          <BonusProfileCard istifadeciId={detail.id} initial={bonusProfil} />
         )}
 
         {/* Bordro xülasə + əl-ilə düzəliş — kompakt 2 sütun */}

@@ -231,6 +231,32 @@ export function NewTaskDialog({
                 type="datetime-local"
                 disabled={pending}
               />
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { label: "Bu gün 18:00", today18: true },
+                  { label: "Sabah", days: 1 },
+                  { label: "3 gün", days: 3 },
+                  { label: "1 həftə", days: 7 },
+                ].map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById("deadline") as HTMLInputElement | null;
+                      if (!input) return;
+                      let d = new Date();
+                      if (p.today18) { d.setHours(18, 0, 0, 0); }
+                      else if (p.days) { d.setDate(d.getDate() + p.days); d.setHours(18, 0, 0, 0); }
+                      const pad = (n: number) => String(n).padStart(2, "0");
+                      input.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    }}
+                    disabled={pending}
+                    className="rounded-md border border-border bg-secondary/40 px-2 py-0.5 text-[10.5px] font-medium hover:bg-secondary"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="xatirlatma">Xatırlatma</Label>
@@ -240,6 +266,34 @@ export function NewTaskDialog({
                 type="datetime-local"
                 disabled={pending}
               />
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { label: "10 dəq", min: 10 },
+                  { label: "1 saat", min: 60 },
+                  { label: "Sabah 09:00", tomorrow9: true },
+                  { label: "Həftə sonu", weekend: true },
+                ].map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      const input = document.getElementById("xatirlatma") as HTMLInputElement | null;
+                      if (!input) return;
+                      let d = new Date();
+                      if (p.min) d = new Date(Date.now() + p.min * 60000);
+                      else if (p.tomorrow9) { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); }
+                      else if (p.weekend) { const dow = d.getDay(); const offset = (6 - dow + 7) % 7 || 7; d.setDate(d.getDate() + offset); d.setHours(9, 0, 0, 0); }
+                      // datetime-local format: YYYY-MM-DDTHH:mm
+                      const pad = (n: number) => String(n).padStart(2, "0");
+                      input.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    }}
+                    disabled={pending}
+                    className="rounded-md border border-border bg-secondary/40 px-2 py-0.5 text-[10.5px] font-medium hover:bg-secondary"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -328,6 +382,32 @@ export function NewTaskDialog({
                 disabled={pending}
               />
               <span>Gecikəndə rəhbərə avto bildiriş</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                name="broadcast_all"
+                value="1"
+                className="h-4 w-4 rounded border-input"
+                disabled={pending}
+              />
+              <span className="inline-flex items-center gap-1">
+                📣 <b>Hamı işçiyə paylaş</b>
+                <span className="text-[10.5px] text-muted-foreground">(bütün aktiv əməkdaşlar icraçı olur)</span>
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                name="send_telegram"
+                value="1"
+                className="h-4 w-4 rounded border-input"
+                disabled={pending}
+              />
+              <span className="inline-flex items-center gap-1">
+                ✈️ <b>Telegram-a göndər</b>
+                <span className="text-[10.5px] text-muted-foreground">(şirkət chat-inə)</span>
+              </span>
             </label>
           </div>
 

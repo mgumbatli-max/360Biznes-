@@ -41,6 +41,7 @@ export async function withTenant<T>(fn: () => Promise<T>): Promise<T> {
       sahibkarId: session.user.sahibkar_id,
       istifadeciId: session.user.id,
       rolId: session.user.rol_id,
+      rolAd: session.user.rol_ad,
       icazeler,
     },
     async () => await fn()

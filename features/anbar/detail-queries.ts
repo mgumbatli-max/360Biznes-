@@ -157,7 +157,7 @@ export async function getProductDailySales(mehsul_id: string, days = 30) {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today); d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
-      const found = rows.find((r) => r.gun.toISOString().slice(0, 10) === key);
+      const found = rows.find((r) => new Date(r.gun).toISOString().slice(0, 10) === key);
       out.push({ gun: key, qty: found?.qty ?? 0, mebleg: found?.mebleg ?? 0 });
     }
     return out;

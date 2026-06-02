@@ -1,0 +1,113 @@
+import "server-only";
+
+/**
+ * Mərkəzi route → icazə map.
+ *
+ * Layout (`app/(dashboard)/layout.tsx`) hər render-də cari path-i bu map ilə
+ * yoxlayır; nəticə uyğun deyilsə `/icaze-yox` səhifəsinə redirect edir.
+ *
+ * Default davranış:
+ *   - Sahibkar və admin rolları (rol_ad-da "sahibkar" / "admin") bütün modullara
+ *     girir; map-ə baxılmır.
+ *   - Naməlum prefix üçün default ALLOW (`/dashboard`, `/help` və s. kimi
+ *     ümumi səhifələr bloklanmasın).
+ *   - Tanınan prefix üçün uyğun icazə kodu yoxdursa DENY.
+ *
+ * Bu, mövcud səhifə-səviyyə yoxlamaları silmir — onlardan ƏVVƏL qoruyucu qatdır.
+ */
+
+type RouteRule = {
+  /** prefix match — "/maliyye" tutur /maliyye, /maliyye/foo, /maliyye/bar/baz */
+  prefix: string;
+  /** ən azı birinə sahib olmaq lazımdır */
+  anyOf: string[];
+  /** istisna: bu yolaltı path-lər üçün rule keçərli deyil */
+  except?: string[];
+};
+
+export const ROUTE_RULES: RouteRule[] = [
+  // — Maliyyə
+  { prefix: "/maliyye", anyOf: ["maliye.view", "maliye.gor", "maliye.idare"] },
+  // — Hesabatlar
+  { prefix: "/hesabatlar", anyOf: ["hesabat.view", "hesabat.gor"] },
+  // — Əməkdaşlar / İşçilər
+  { prefix: "/iscilier", anyOf: ["isci.view", "isci.idare", "hr.view"] },
+  // — Anbar (məhsul redaktə daha dar icazə tələb edir, amma view geniş ola bilər)
+  { prefix: "/anbar", anyOf: ["anbar.view", "anbar.gor", "anbar.idare"] },
+  // — Ticarət / Satış
+  { prefix: "/ticaret", anyOf: ["trade.view", "ticaret.view", "satis.gor"] },
+  // — POS / İsti satış
+  { prefix: "/pos", anyOf: ["pos.view", "pos.istifade", "trade.view"] },
+  { prefix: "/market-pos", anyOf: ["pos.view", "pos.istifade", "trade.view"] },
+  // — CRM / Mesaj mərkəzi
+  { prefix: "/crm", anyOf: ["crm.view", "crm.idare", "mesaj.gor"] },
+  // — Servis
+  { prefix: "/servis", anyOf: ["servis.view", "servis.idare"] },
+  // — Marketplace
+  { prefix: "/marketplace", anyOf: ["marketplace.view", "marketplace.idare"] },
+  // — Webhook
+  { prefix: "/webhook", anyOf: ["webhook.view", "marketplace.idare"] },
+  // — Avtomatlaşdırma / Təsdiq / Audit / Nəzarət
+  { prefix: "/avtomatlasdirma", anyOf: ["avto.view", "avto.idare"] },
+  { prefix: "/tesdiq", anyOf: ["tesdiq.view", "tesdiq.tesdiq"] },
+  { prefix: "/audit-log", anyOf: ["audit.view"] },
+  { prefix: "/nezaret-merkezi", anyOf: ["nezaret.view", "audit.view"] },
+  // — Ayarlar (yalnız admin / sahibkar; map-də sahibkar/admin bypass-ed olunduğu üçün burada dar saxlayırıq)
+  { prefix: "/ayarlar", anyOf: ["ayar.view", "ayar.idare"] },
+  // — Kampaniyalar
+  { prefix: "/kampaniyalar", anyOf: ["kampaniya.view", "marketing.view"] },
+  // — Satınalma planlama (anbar daxili gərək olardı, amma URL var)
+  { prefix: "/satinalma", anyOf: ["anbar.view", "satinalma.view", "trade.view"] },
+  // — Sahibkar bölməsi (PIN guard onsuz da var, amma rol kontrolü də etsən pis olmaz)
+  { prefix: "/sahibkar", anyOf: ["sahibkar.access"] },
+  // — Platform admin (rol_id===1 onsuz da yoxlanılır, amma map-də qeyd etmək yaxşıdır)
+  { prefix: "/platform-admin", anyOf: ["platform.admin"] },
+  // — 360 LAB (yalnız sahibkar/admin; bunlar onsuz da bypass olur)
+  { prefix: "/360-lab", anyOf: ["lab.view"] },
+];
+
+const BYPASS_PREFIXES = [
+  "/dashboard",
+  "/icaze-yox",
+  "/komekci", // help
+  "/elaqe", // contacts — geniş istifadə, view default
+  "/tapshiriqlar", // hər kəsin öz tapşırığı var
+  "/team", // söhbət
+  "/ai", // ai köməkçi — view default
+  "/xeberdarliqlar", // hər kəs öz xəbərdarlığını görür
+];
+
+export type GateResult =
+  | { allowed: true }
+  | { allowed: false; rule: RouteRule };
+
+/**
+ * Path-i qaydalara uyğun yoxla.
+ * Sahibkar/admin/owner rolları üçün həmişə icazə verilir.
+ */
+export function gateRoute(
+  pathname: string,
+  rolAd: string | undefined,
+  icazeler: string[],
+): GateResult {
+  const r = (rolAd ?? "").toLowerCase();
+  // Sahibkar və admin hər şeyə girir
+  if (r.includes("sahibkar") || r.includes("admin") || r.includes("owner")) {
+    return { allowed: true };
+  }
+  // Bypass prefiksləri (default-allow)
+  for (const p of BYPASS_PREFIXES) {
+    if (pathname === p || pathname.startsWith(p + "/")) return { allowed: true };
+  }
+  // Modul qaydaları
+  for (const rule of ROUTE_RULES) {
+    if (pathname === rule.prefix || pathname.startsWith(rule.prefix + "/")) {
+      if (rule.except?.some((e) => pathname.startsWith(e))) continue;
+      const hasOne = rule.anyOf.some((c) => icazeler.includes(c));
+      if (!hasOne) return { allowed: false, rule };
+      return { allowed: true };
+    }
+  }
+  // Tanınmayan prefix — default-allow (sehifəni tək başına gating etmiş ola bilər)
+  return { allowed: true };
+}

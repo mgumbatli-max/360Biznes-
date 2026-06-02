@@ -49,6 +49,8 @@ export default async function InventarDetailPage({ params }: { params: Promise<{
     barkod: r.mehsullar?.barkod ?? null,
     sistemde_olan: Number(r.sistemde_olan),
     fakti_miqdar: r.fakti_miqdar != null ? Number(r.fakti_miqdar) : null,
+    qeyd: r.qeyd,
+    qiymet: r.qiymet != null ? Number(r.qiymet) : 0,
   }));
   const ferqliCount = rows.filter((r) => r.fakti_miqdar != null && r.fakti_miqdar !== r.sistemde_olan).length;
 

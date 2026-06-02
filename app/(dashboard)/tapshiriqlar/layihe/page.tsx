@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Folder, ArrowRight, Plus, FolderPlus } from "lucide-react";
+import { auth } from "@/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TaskSectionTabs } from "@/features/tapshiriqlar/components/section-tabs";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıqlar — Layihələr" };
@@ -38,6 +41,16 @@ async function getLayiheler(): Promise<LayiheRow[]> {
 }
 
 export default async function LayiheTapshiriqPage() {
+  const session = await auth();
+  if (!session?.user) return null;
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && !icazeler.includes("tapshiriq.layihe")) {
+    redirect("/tapshiriqlar");
+  }
+
   const layiheler = await getLayiheler();
   const withLayihe = layiheler.filter((l) => l.layihe !== "—");
   const noLayihe = layiheler.find((l) => l.layihe === "—");

@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   History, Workflow, ShieldCheck, Radar, Filter, Search, CheckCircle2, XCircle,
   ChevronRight, User, Calendar,
 } from "lucide-react";
+import { auth } from "@/auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NezaretMerkeziTabs } from "@/features/nezaret-merkezi/components/tabs";
 import { getNezaretBadges } from "@/features/nezaret-merkezi/counts";
 import { getUnifiedLog } from "@/features/nezaret-merkezi/log-queries";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { formatDate, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Nəzarət Mərkəzi — Loglar" };
@@ -34,6 +37,16 @@ const BADGE_TONE = {
 };
 
 export default async function NezaretLoglarPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const session = await auth();
+  if (!session?.user) return null;
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && (!icazeler.includes("nezaret.oxu") || !icazeler.includes("nezaret.loglar"))) {
+    redirect("/tapshiriqlar");
+  }
+
   const sp = await searchParams;
   const [badges, entries] = await Promise.all([
     getNezaretBadges(),

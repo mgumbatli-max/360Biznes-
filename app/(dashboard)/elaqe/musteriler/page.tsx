@@ -161,6 +161,9 @@ async function ContactsTableBlock({
 }
 
 export default async function MusterilerPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("musteri.oxu");
+
   const sp = await searchParams;
   const f = (sp.filter ?? "").toLowerCase();
   const filter: ContactFilter = {

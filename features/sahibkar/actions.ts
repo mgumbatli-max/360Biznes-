@@ -28,8 +28,8 @@ export async function setupPin(input: FormData): Promise<ActionResult> {
     return { ok: false, error: first ?? "Forma yanlışdır" };
   }
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar PIN qoya bilər" };
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar PIN qoya bilər" };
 
     const hash = await bcrypt.hash(parsed.data.pin, 12);
 
@@ -62,6 +62,16 @@ export async function setupPin(input: FormData): Promise<ActionResult> {
     }
     const cfgTtl = existing?.sessiya_muddet && existing.sessiya_muddet >= 1 ? existing.sessiya_muddet : 15;
     await setPinSession(sahibkarId, istifadeciId, cfgTtl);
+    // Audit: PIN qurulması / yenilənməsi — kritik təhlükəsizlik hadisəsi
+    await safeAuditLog({
+      sahibkar_id: sahibkarId,
+      istifadeci_id: istifadeciId,
+      emeliyyat: existing ? "pin_yenile" : "pin_qur",
+      resurs_nov: "sahibkar_ayar",
+      resurs_id: existing ? String(existing.id) : null,
+      status: "ugur",
+      sebeb: existing ? "Sahibkar PIN yeniləndi" : "Sahibkar PIN ilk dəfə quruldu",
+    });
     return { ok: true };
   });
 }
@@ -79,8 +89,8 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
   }
 
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId } = requireTenant();
-    if (rolId !== 9) return { ok: false, error: "Yalnız sahibkar girə bilər" };
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar girə bilər" };
 
     const cfg = await prisma.sahibkar_ayar.findFirst();
     if (!cfg?.sifre_hash) return { ok: false, error: "PIN qurulmayıb" };
@@ -112,11 +122,43 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
     const ttl = cfg.sessiya_muddet && cfg.sessiya_muddet >= 1 ? cfg.sessiya_muddet : 15;
     await setPinSession(sahibkarId, istifadeciId, ttl);
     await resetAttempts();
+    // Audit: uğurlu sahibkar PIN girişi
+    if (cfg.audit_log !== false) {
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "pin_giris",
+        resurs_nov: "sahibkar_ayar",
+        resurs_id: String(cfg.id),
+        status: "ugur",
+        sebeb: "Sahibkar PIN ilə girdi",
+      });
+    }
     return { ok: true };
   });
 }
 
 export async function lockSahibkar() {
+  // Audit: sahibkar bölməsindən çıxış
+  try {
+    await withTenant(async () => {
+      const { sahibkarId, istifadeciId } = requireTenant();
+      const cfg = await prisma.sahibkar_ayar.findFirst();
+      if (cfg?.audit_log !== false) {
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "pin_cixis",
+          resurs_nov: "sahibkar_ayar",
+          resurs_id: cfg ? String(cfg.id) : null,
+          status: "ugur",
+          sebeb: "Sahibkar bölməsindən çıxış (lock)",
+        });
+      }
+    });
+  } catch {
+    // Audit səhvi çıxış axınını dayandırmasın
+  }
   await clearPinSession();
   redirect("/dashboard");
 }

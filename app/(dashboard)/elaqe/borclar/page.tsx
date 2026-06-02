@@ -26,6 +26,9 @@ export default async function BorclarPage({
 }: {
   searchParams: Promise<{ sort?: string; mod?: string }>;
 }) {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("elaqe.borc");
+
   const sp = await searchParams;
   const sortKey = sp.sort ?? "borc";
   const mod = sp.mod === "kreditor" ? "kreditor" : "debitor";

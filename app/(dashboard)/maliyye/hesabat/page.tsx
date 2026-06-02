@@ -40,6 +40,9 @@ type Tile = {
 };
 
 export default async function HesabatPage({ searchParams }: { searchParams: Promise<ReportSearchParams> }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("maliyye.hesabat");
+
   const sp = await searchParams;
   const now = new Date();
   const ay = Math.min(12, Math.max(1, Number(sp.ay ?? now.getMonth() + 1)));

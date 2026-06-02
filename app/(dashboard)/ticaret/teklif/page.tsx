@@ -43,6 +43,9 @@ export default async function TeklifPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("teklif.oxu");
+
   const sp = await searchParams;
   const filter: TeklifFilter = {
     search: sp.q,

@@ -213,6 +213,9 @@ async function RecentMovementsBlock() {
 }
 
 export default async function StokPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("stok.oxu");
+
   const sp = await searchParams;
   const filter: StokFilter = {
     search: sp.q,

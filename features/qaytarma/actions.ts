@@ -6,6 +6,8 @@ import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldApproveRefund } from "@/features/tesdiq/create";
+import { audit } from "@/lib/audit/log";
+import { safeStockDecrement } from "@/lib/db/stock-guards";
 
 type ActionResult<T = void> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -115,6 +117,17 @@ export async function createReturn(
         console.error("[createReturn.emitStockChange]", e);
       }
 
+      await audit("yarat", "qaytarma_sifarisi", created.id, {
+        yeni_data: {
+          nomre: created.nomre,
+          nov: data.nov,
+          anbar_id: data.anbar_id,
+          kontragent_id: data.kontragent_id,
+          line_count: data.lines.length,
+        },
+        sebeb: data.sebeb,
+      });
+
       return { ok: true, data: created };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
@@ -145,16 +158,25 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
         const movementNov = isCustomerReturn ? "medaxil" : "mexaric";
 
         for (const line of ret.qaytarma_satirlari) {
-          // Update stock — increment for customer return, decrement otherwise.
-          const delta = isCustomerReturn ? Number(line.miqdar) : -Number(line.miqdar);
-          await tx.stok.updateMany({
-            where: {
-              sahibkar_id: sahibkarId,
-              mehsul_id: line.mehsul_id,
-              anbar_id: ret.anbar_id,
-            },
-            data: { miqdar: { increment: delta } },
-          });
+          // Customer return → stok artır (additive, race-safe).
+          // Supplier return → stok azalt — safeStockDecrement ilə yoxlanılır
+          // ki, mövcud stok kifayət etməsə əməliyyat throw etsin (mənfi stok
+          // qarşısı alınır).
+          const miqdar = Number(line.miqdar);
+          if (isCustomerReturn) {
+            await tx.stok.updateMany({
+              where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: ret.anbar_id },
+              data: { miqdar: { increment: miqdar } },
+            });
+          } else {
+            if (!ret.anbar_id) throw new Error("Qaytarmada anbar göstərilməyib");
+            const dec = await safeStockDecrement(tx, {
+              mehsulId: line.mehsul_id,
+              anbarId: ret.anbar_id,
+              miqdar,
+            });
+            if (!dec.ok) throw new Error(dec.error);
+          }
           await tx.anbar_hereketleri.create({
             data: {
               sahibkar_id: sahibkarId,
@@ -183,6 +205,10 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
 
       revalidatePath("/ticaret/qaytarma");
       revalidatePath("/ticaret/emeliyyat");
+      await audit("tesdiq", "qaytarma_sifarisi", returnId, {
+        yeni_data: { status: "tamamlandi" },
+        sebeb: "Qaytarma təsdiqləndi və stoka tətbiq olundu",
+      });
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
@@ -212,6 +238,11 @@ export async function cancelReturn(returnId: string, reason: string): Promise<Ac
           status: "legv",
           qeyd: `${ret.qeyd ?? ""}\nLəğv: ${reason}`.trim(),
         },
+      });
+      await audit("legv", "qaytarma_sifarisi", returnId, {
+        evvelki_data: { status: ret.status },
+        yeni_data: { status: "legv" },
+        sebeb: reason,
       });
       revalidatePath("/ticaret/qaytarma");
       return { ok: true };

@@ -46,6 +46,9 @@ export default async function InaktivPage({
 }: {
   searchParams?: Promise<SP>;
 }) {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("elaqe.inaktiv");
+
   const sp = (await searchParams) ?? {};
   const minGun = Math.max(7, Math.min(365, Number(sp.min) || 30));
   const rows = await getInaktivMusteriler(minGun);

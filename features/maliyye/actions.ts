@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils/date-parse";
 import { createApprovalRequest, shouldApproveExpense } from "@/features/tesdiq/create";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import { requireMaliyyeActionPerm } from "./access-guard";
 
 // ───────────────────────────────────────────────────────────
 // THRESHOLD HELPERS — ayarlar qrup="maliyye_threshold"
@@ -65,7 +66,12 @@ const ExpenseSchema = z.object({
 type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
 export async function saveExpense(input: FormData): Promise<ActionResult> {
-  const parsed = ExpenseSchema.safeParse(Object.fromEntries(input.entries()));
+  const raw = Object.fromEntries(input.entries());
+  const isEdit = !!(raw as { id?: string }).id;
+  const permCheck = await requireMaliyyeActionPerm(isEdit ? "xerc.idare" : "xerc.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
+  const parsed = ExpenseSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
 
@@ -124,6 +130,9 @@ export async function saveExpense(input: FormData): Promise<ActionResult> {
 }
 
 export async function deleteExpense(id: string): Promise<ActionResult> {
+  const permCheck = await requireMaliyyeActionPerm("xerc.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   return withTenant(async () => {
     try {
       await prisma.xercl_r.delete({ where: { id } });
@@ -174,7 +183,14 @@ const AccountSchema = z.object({
 });
 
 export async function createAccount(input: FormData): Promise<ActionResult> {
-  const parsed = AccountSchema.safeParse(Object.fromEntries(input.entries()));
+  // Bank və ya kassa yaradılır — nov-a görə icazə yoxlanır
+  const raw = Object.fromEntries(input.entries());
+  const nov = String(raw.nov ?? "");
+  const requiredPerm = nov === "bank" ? "bank.emeliyyat" : "kassa.emeliyyat";
+  const permCheck = await requireMaliyyeActionPerm(requiredPerm);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
+  const parsed = AccountSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
   return withTenant(async () => {
@@ -637,6 +653,9 @@ export async function cancelOperation(id: string, sebeb?: string): Promise<Actio
 // GUN SONU — günü bağla
 // ───────────────────────────────────────────────────────────
 export async function closeGunSonu(): Promise<ActionResult> {
+  const permCheck = await requireMaliyyeActionPerm("maliyye.gun_sonu");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   return withTenant(async () => {
     const { sahibkarId, istifadeciId: userId } = requireTenant();
     const today = new Date();
@@ -715,6 +734,9 @@ const ReceivePaymentSchema = z.object({
 });
 
 export async function receivePartialPayment(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireMaliyyeActionPerm("odenis.qebul");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   const parsed = ReceivePaymentSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;

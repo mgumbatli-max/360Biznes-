@@ -11,6 +11,9 @@ export const metadata: Metadata = { title: "Qiymət mərkəzi" };
 type SP = { q?: string };
 
 export default async function QiymetPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("qiymet.oxu");
+
   const sp = await searchParams;
   const rows = await getQiymetList(sp.q);
 

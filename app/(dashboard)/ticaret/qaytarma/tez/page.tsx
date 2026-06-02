@@ -9,6 +9,9 @@ import { formatMoney, formatDate } from "@/lib/utils";
 export const metadata: Metadata = { title: "Tez qaytarma" };
 
 export default async function QaytarmaTezPage() {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("qaytarma.yarat");
+
   const [history, anbarlar] = await Promise.all([getRecentReturns(10), getAnbarOptions()]);
 
   return (

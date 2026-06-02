@@ -25,7 +25,7 @@ const KIND_TO_KEY: Record<string, keyof TesdiqCfg> = {
  * Cari istifadəçi verilmiş təsdiq növünü icra edə bilərmi?
  *
  * Qaydalar (sıra ilə yoxlanılır):
- *  1. Sahibkar (rol_id=9) və ya sistem admini (rol_id=1) — həmişə bəli
+ *  1. Sahibkar və ya sistem admini — həmişə bəli
  *  2. Həmin **növə** xüsusi siyahıda varsa — bəli
  *  3. Növ-xüsusi siyahı **boş** olarsa, **ümumi** siyahıya düşür
  *  4. Heç birində yoxdursa — yox
@@ -34,7 +34,7 @@ const KIND_TO_KEY: Record<string, keyof TesdiqCfg> = {
  */
 export async function canApproveDocApproval(emeliyyatNov?: string): Promise<boolean> {
   const ctx = requireTenant();
-  if (ctx.rolId === 1 || ctx.rolId === 9) return true;
+  if (ctx.rolAd === "admin" || ctx.rolAd === "sahibkar") return true;
   const cfg = await loadTesdiqCfg();
 
   // 1. Per-kind siyahı yoxla

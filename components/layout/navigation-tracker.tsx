@@ -36,5 +36,16 @@ export function NavigationTracker() {
     }
   }, [pathname, searchParams]);
 
+  // Route dəyişikliyində səhifə yuxarısına yumşaq scroll — uzun siyahıdan
+  // detail səhifəyə keçəndə istifadəçi əvvəlki scroll mövqeyində qalmasın.
+  // Yalnız pathname (segment) dəyişəndə işləyir — query/sort dəyişiklikləri
+  // toxunulmaz.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.scrollY < 40) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+  }, [pathname]);
+
   return null;
 }

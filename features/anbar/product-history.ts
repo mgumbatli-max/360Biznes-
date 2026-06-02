@@ -71,7 +71,7 @@ export async function getProductHistory(productId: string, limit = 100): Promise
 export async function canDeleteHistory(): Promise<boolean> {
   return withTenant(async () => {
     const ctx = requireTenant();
-    if (ctx.rolId === 1 || ctx.rolId === 9) return true;
+    if (ctx.rolAd === "admin" || ctx.rolAd === "sahibkar") return true;
     return ctx.icazeler?.includes("audit_log.sil") ?? false;
   });
 }

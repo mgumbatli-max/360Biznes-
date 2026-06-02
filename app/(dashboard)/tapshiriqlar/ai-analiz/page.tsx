@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Sparkles, Trophy, AlertTriangle, TrendingUp } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,12 +8,21 @@ import { auth } from "@/auth";
 import { getTaskPerformanceAnalytics } from "@/features/tapshiriqlar/queries";
 import { aiAnalyzePerformance } from "@/features/tapshiriqlar/ai-actions";
 import { BonusCalculator } from "@/features/tapshiriqlar/components/bonus-calculator";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 
 export const metadata: Metadata = { title: "Tapşırıq AI Analiz" };
 
 export default async function TapshiriqAiAnalizPage() {
   const session = await auth();
   if (!session?.user) return null;
+
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && !icazeler.includes("tapshiriq.ai_analiz")) {
+    redirect("/tapshiriqlar");
+  }
 
   const [rows, aiResult] = await Promise.all([
     getTaskPerformanceAnalytics(),

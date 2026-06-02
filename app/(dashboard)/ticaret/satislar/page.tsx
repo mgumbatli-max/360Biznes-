@@ -92,6 +92,9 @@ export default async function SatislarPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("satis.oxu");
+
   const sp = await searchParams;
 
   const filter: SaleFilter = {

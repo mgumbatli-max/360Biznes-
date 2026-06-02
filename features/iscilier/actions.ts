@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword } from "@/lib/auth/password";
 import { parseLocalDate } from "@/lib/utils";
+import { audit, diffObjects } from "@/lib/audit/log";
 
 const EmployeeSchema = z.object({
   id: z.string().uuid().optional(),
@@ -59,11 +60,23 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
 
       let id: string;
       if (d.id) {
+        const before = await prisma.istifadeciler.findUnique({
+          where: { id: d.id },
+          select: { ad_soyad: true, email: true, telefon: true, vezife: true, rol_id: true, aylik_maas: true, aktiv: true, default_filial_id: true },
+        });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = { ...baseData };
         if (d.sifre) data.sifre_hash = await hashPassword(d.sifre);
         const updated = await prisma.istifadeciler.update({ where: { id: d.id }, data });
         id = updated.id;
+        const diff = diffObjects(before as Record<string, unknown> | null, baseData as unknown as Record<string, unknown>);
+        if (diff) {
+          await audit("yenile", "iscilier", id, {
+            evvelki_data: diff.before,
+            yeni_data: diff.after,
+            sebeb: d.sifre ? "İşçi məlumatları və şifrə yeniləndi" : "İşçi məlumatları yeniləndi",
+          });
+        }
       } else {
         if (!d.sifre) return { ok: false as const, error: "Yeni işçi üçün şifrə tələb olunur" };
         const created = await prisma.istifadeciler.create({
@@ -74,6 +87,10 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
           },
         });
         id = created.id;
+        await audit("yarat", "iscilier", id, {
+          yeni_data: { ad_soyad: d.ad_soyad, email: d.email, rol_id: d.rol_id, vezife: d.vezife || null, aylik_maas: d.aylik_maas },
+          sebeb: "Yeni işçi yaradıldı",
+        });
       }
       revalidatePath("/iscilier");
       return { ok: true, id };
@@ -92,9 +109,18 @@ export async function deactivateEmployee(id: string): Promise<ActionResult> {
     const { istifadeciId } = requireTenant();
     if (id === istifadeciId) return { ok: false, error: "Özünüzü deaktivləşdirə bilməzsiniz" };
     try {
+      const before = await prisma.istifadeciler.findUnique({
+        where: { id },
+        select: { ad_soyad: true, email: true, vezife: true, aktiv: true },
+      });
       await prisma.istifadeciler.update({
         where: { id },
         data: { aktiv: false, isden_cixdi: new Date() },
+      });
+      await audit("sil", "iscilier", id, {
+        evvelki_data: before as Record<string, unknown> | null,
+        yeni_data: { aktiv: false, isden_cixdi: new Date().toISOString() },
+        sebeb: "İşçi deaktivləşdirildi",
       });
       revalidatePath("/iscilier");
       return { ok: true };

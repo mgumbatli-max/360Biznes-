@@ -8,6 +8,8 @@ export type AuditFilter = {
   q?: string;
   emeliyyat?: string;
   resurs_nov?: string;
+  /** Bir neçə resurs növü ilə filter (modul dropdown-undan) */
+  resurs_nov_in?: string[];
   status?: string;
   istifadeci_id?: string;
   from?: string;
@@ -23,9 +25,10 @@ export type AuditStats = {
 };
 
 export type AuditAnomaly = {
-  kind: "gece" | "tezSilme" | "xeta_zincir";
+  kind: "gece" | "tezSilme" | "xeta_zincir" | "yeni_cihaz" | "uğursuz_giris";
   message: string;
   sayi: number;
+  severity?: "info" | "warning" | "danger";
 };
 
 export async function getAuditLog(filter: AuditFilter, page = 1, pageSize = 50) {
@@ -34,6 +37,9 @@ export async function getAuditLog(filter: AuditFilter, page = 1, pageSize = 50) 
     const where: any = {};
     if (filter.emeliyyat) where.emeliyyat = filter.emeliyyat;
     if (filter.resurs_nov) where.resurs_nov = filter.resurs_nov;
+    else if (filter.resurs_nov_in && filter.resurs_nov_in.length > 0) {
+      where.resurs_nov = { in: filter.resurs_nov_in };
+    }
     if (filter.status) where.status = filter.status;
     if (filter.istifadeci_id) where.istifadeci_id = filter.istifadeci_id;
     if (filter.from || filter.to) {
@@ -67,10 +73,15 @@ const fetchAuditStatsCached = (sahibkarId: string) =>
   unstable_cache(
     async (): Promise<AuditStats> => {
       const since = new Date(Date.now() - 24 * 3600 * 1000);
+      // emeliyyat tarixən UPPERCASE-də yazılırdı ("YARAT", "SIL"). Yeni audit()
+      // helper kiçik hərflərlə yazır ("yarat", "yarad", "sil"). KPI həm köhnə
+      // həm yeni qeydləri saymalıdır.
+      const YARAT_VARIANTS = ["yarat", "yarad", "YARAT"];
+      const SIL_VARIANTS = ["sil", "SIL"];
       const [total, yarat, silme, xeta] = await Promise.all([
         prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since } } }),
-        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, emeliyyat: "YARAT" } }),
-        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, emeliyyat: "SIL" } }),
+        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, emeliyyat: { in: YARAT_VARIANTS } } }),
+        prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, emeliyyat: { in: SIL_VARIANTS } } }),
         prismaUnscoped.audit_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: since }, status: { not: "ugur" } } }),
       ]);
       const nightRows = await prismaUnscoped.$queryRaw<Array<{ count: bigint }>>`
@@ -85,7 +96,10 @@ const fetchAuditStatsCached = (sahibkarId: string) =>
       return { total_24h: total, yarat_24h: yarat, silme_24h: silme, xeta_24h: xeta, gece_24h: gece };
     },
     ["audit-stats", sahibkarId],
-    { revalidate: 60, tags: [`audit:${sahibkarId}`] },
+    // Audit log live-feed kimi göstərilir — 60s cache auto-refresh-ə əngəl olur.
+    // 10s cache yeni qeydlərin dərhal görünməsini təmin edir, lakin hər API-yə
+    // 10 dəfə hit etmir.
+    { revalidate: 10, tags: [`audit:${sahibkarId}`] },
   );
 
 export async function getAuditStats(): Promise<AuditStats> {
@@ -169,6 +183,41 @@ export async function getAnomalies(): Promise<AuditAnomaly[]> {
         kind: "xeta_zincir",
         message: "Son 24 saatda 5+ uğursuz əməliyyat",
         sayi: errChain,
+      });
+    }
+
+    // KRİTİK: yeni cihazdan giriş — son 24 saat
+    const newDeviceLogins = await prisma.audit_log.count({
+      where: {
+        yaradildi: { gte: since },
+        emeliyyat: "yeni_cihaz_giris",
+        status: "ugur",
+      },
+    });
+    if (newDeviceLogins > 0) {
+      out.push({
+        kind: "yeni_cihaz",
+        message: newDeviceLogins === 1
+          ? "Son 24 saatda yeni cihazdan 1 giriş — siz idinizmi?"
+          : `Son 24 saatda yeni cihazlardan ${newDeviceLogins} giriş — yoxlayın`,
+        sayi: newDeviceLogins,
+        severity: "danger",
+      });
+    }
+
+    // Uğursuz giriş zənciri (son 24s)
+    const failedLogins = await prisma.audit_log.count({
+      where: {
+        yaradildi: { gte: since },
+        emeliyyat: "uğursuz_giris",
+      },
+    });
+    if (failedLogins >= 3) {
+      out.push({
+        kind: "uğursuz_giris",
+        message: `Son 24 saatda ${failedLogins} uğursuz giriş cəhdi`,
+        sayi: failedLogins,
+        severity: failedLogins >= 10 ? "danger" : "warning",
       });
     }
     return out;

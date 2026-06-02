@@ -269,7 +269,7 @@ export async function deleteProposal(input: FormData): Promise<ActionResult> {
   const id = Number(input.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolId, icazeler } = requireTenant();
+    const { sahibkarId, istifadeciId, rolAd, icazeler } = requireTenant();
     if (!istifadeciId) return { ok: false, error: "Giriş tələb olunur" };
     try {
       const teklif = await prisma.satinalma_teklif.findFirst({
@@ -277,8 +277,8 @@ export async function deleteProposal(input: FormData): Promise<ActionResult> {
       });
       if (!teklif) return { ok: false, error: "Tapılmadı" };
 
-      // Sahibkar (rol_id=9) və administrator (rol_id=1) həmişə silə bilərlər
-      const isPrivileged = rolId === 1 || rolId === 9;
+      // Sahibkar və administrator həmişə silə bilərlər
+      const isPrivileged = rolAd === "admin" || rolAd === "sahibkar";
 
       // Draft: hər kəs silə bilər (icazəyə ehtiyac yoxdur)
       // Non-draft: icazə tələb olunur (lakin sahibkar/admin daima icazəlidir)

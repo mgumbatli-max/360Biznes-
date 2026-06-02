@@ -21,7 +21,19 @@ import { createUser } from "../actions";
 type Role = { id: number; ad: string; reng: string | null; sistem: boolean | null };
 type Filial = { id: number; ad: string };
 
-export function UserCreateDialog({ roles, filiallar }: { roles: Role[]; filiallar: Filial[] }) {
+export function UserCreateDialog({
+  roles,
+  filiallar,
+  defaultRoleId,
+  trigger,
+}: {
+  roles: Role[];
+  filiallar: Filial[];
+  /** Forma açılanda öncədən seçili olan rol id-si (rol detalından çağırılanda). */
+  defaultRoleId?: number;
+  /** Standart "+ Yeni" düyməsi əvəzinə xüsusi trigger element. */
+  trigger?: React.ReactNode;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +80,11 @@ export function UserCreateDialog({ roles, filiallar }: { roles: Role[]; filialla
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" className="font-semibold text-white" style={{ background: "var(--brand-gradient)" }}>
-          <Plus className="h-4 w-4" /> Yeni
-        </Button>
+        {trigger ?? (
+          <Button size="sm" className="font-semibold text-white" style={{ background: "var(--brand-gradient)" }}>
+            <Plus className="h-4 w-4" /> Yeni
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto md:max-w-xl">
         <DialogHeader>
@@ -119,6 +133,7 @@ export function UserCreateDialog({ roles, filiallar }: { roles: Role[]; filialla
                 id="rol_id"
                 name="rol_id"
                 required
+                defaultValue={defaultRoleId ? String(defaultRoleId) : ""}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 disabled={pending}
               >

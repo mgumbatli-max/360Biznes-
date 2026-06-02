@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { auth } from "@/auth";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getSales, type SaleFilter } from "@/features/ticaret/satis-queries";
+import { audit } from "@/lib/audit/log";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,14 @@ export async function GET(req: NextRequest) {
         : undefined,
   };
 
-  const { items } = await withTenant(() => getSales(filter, 1, 5000));
+  const { items } = await withTenant(async () => {
+    const r = await getSales(filter, 1, 5000);
+    await audit("export", "satis_export", null, {
+      yeni_data: { count: r.items.length, filter },
+      sebeb: "Satış siyahısı Excel-ə ixrac edildi",
+    });
+    return r;
+  });
 
   const wb = new ExcelJS.Workbook();
   const sheet = wb.addWorksheet("Satışlar");

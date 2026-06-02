@@ -15,6 +15,14 @@ export type NotificationItem = {
   kateqoriya_ad: string;
   kateqoriya_emoji: string | null;
   first_seen_at: string | null;
+  /** Şəxsi bildiriş (bildirisler-dən gəlir) — alert ilə əlaqəsiz */
+  is_personal?: boolean;
+  /** Şəxsi bildiriş üçün hədəf link (məs. /tapshiriqlar/123) */
+  link?: string | null;
+  /** Şəxsi bildirişin oxunma vəziyyəti */
+  oxundu?: boolean;
+  /** Şəxsi bildirişin tipi (tapshiriq_yeni, tapshiriq_status, tapshiriq_xatirlatma, tapshiriq_gecikdi) */
+  nov?: string;
 };
 
 type Props = {

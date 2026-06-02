@@ -76,7 +76,7 @@ export async function convertChatToMusteri(input: FormData): Promise<ActionResul
   const parsed = ConvertSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Sohbət tapılmadı" };
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const c = await prisma.inbox_sohbetler.findFirst({ where: { id: parsed.data.sohbet_id } });
       if (!c) return { ok: false, error: "Sohbət tapılmadı" };
@@ -84,6 +84,7 @@ export async function convertChatToMusteri(input: FormData): Promise<ActionResul
       const k = await prisma.kontragentler.create({
         data: {
           sahibkar_id: sahibkarId,
+          getirdi_id: istifadeciId,
           nov: "musteri",
           ad: c.display_ad ?? "Müştəri",
           telefon: c.telefon,

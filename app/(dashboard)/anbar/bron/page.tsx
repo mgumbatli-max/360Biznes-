@@ -21,6 +21,9 @@ const FILTERS: { value: BronStatus; label: string }[] = [
 ];
 
 export default async function BronPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("stok.bron");
+
   const sp = await searchParams;
   const status = (sp.status ?? "") as BronStatus;
   const anbarId = sp.anbar ? Number(sp.anbar) : undefined;

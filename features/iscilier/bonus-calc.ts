@@ -1,8 +1,38 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
-import { getBonusProfil, type BonusKategoriya } from "./bonus-profile";
+import { getBonusProfil, type BonusKategoriya, type MusteriFilter } from "./bonus-profile";
+
+/**
+ * Bonus üçün satış sorğularında istifadə olunan kontragent filtri qaytarır.
+ * — Filtr növünə görə kontragentin sahəsinə şərt qoyur (menecer_id / getirdi_id)
+ * — Blacklist-də olan kontragent_id-ləri kəsir
+ *
+ * Geri qaytardığı obyekt birbaşa `prisma.satis_sifarisleri.aggregate({ where: ... })`-ə
+ * spread oluna bilər.
+ */
+function buildSalesContactFilter(
+  istifadeciId: string,
+  filter: MusteriFilter,
+  excludedIds: string[],
+): Prisma.satis_sifarisleriWhereInput {
+  const where: Prisma.satis_sifarisleriWhereInput = {};
+  const kontragentCond: Prisma.kontragentlerWhereInput | undefined =
+    filter === "mene_aid"
+      ? { menecer_id: istifadeciId }
+      : filter === "getirdi"
+        ? { getirdi_id: istifadeciId }
+        : filter === "mene_aid_ve_getirdi"
+          ? { OR: [{ menecer_id: istifadeciId }, { getirdi_id: istifadeciId }] }
+          : undefined;
+  if (kontragentCond) where.kontragentler = kontragentCond;
+  if (excludedIds.length > 0) {
+    where.musteri_id = { notIn: excludedIds };
+  }
+  return where;
+}
 
 export type BonusKateqoriyaNeti = {
   kateqoriya: BonusKategoriya;
@@ -46,14 +76,16 @@ export async function calculateMonthlyBonus(
     const periodStart = new Date(il, ay - 1, 1);
     const periodEnd = new Date(il, ay, 0, 23, 59, 59);
 
+    const musteriFiltri = buildSalesContactFilter(
+      istifadeciId,
+      profil.musteri_filter,
+      profil.excluded_kontragent_ids,
+    );
+
     let pool = 0;
     if (profil.metod === "fixed") {
       pool = profil.fixed_mebleg;
     } else if (profil.metod === "percent_satis" || profil.metod === "percent_menfaat") {
-      const musteriFiltri =
-        profil.musteri_filter === "mene_aid"
-          ? { kontragentler: { menecer_id: istifadeciId } }
-          : {};
       const salesAgg = await prisma.satis_sifarisleri.aggregate({
         _sum: { umumi_mebleg: true, son_mebleg: true },
         where: {
@@ -104,7 +136,15 @@ export async function calculateMonthlyBonus(
     for (const p of profil.paylanma) {
       const pay = p.tip === "mebleg" ? p.deyer : pool * (p.deyer / 100);
       paylanmis += pay;
-      const calc = await calculateCategory(p.kateqoriya, istifadeciId, periodStart, periodEnd, p.hedef, profil.musteri_filter);
+      const calc = await calculateCategory(
+        p.kateqoriya,
+        istifadeciId,
+        periodStart,
+        periodEnd,
+        p.hedef,
+        profil.musteri_filter,
+        profil.excluded_kontragent_ids,
+      );
       const qazanilan = pay * Math.min(1, calc.nailiyyet_faiz / 100);
       const labelMap: Record<BonusKategoriya, string> = {
         davamiyyet: "Davamiyyət",
@@ -147,13 +187,11 @@ async function calculateCategory(
   start: Date,
   end: Date,
   hedef: number,
-  musteriFilter: "hamisi" | "mene_aid",
+  musteriFilter: MusteriFilter,
+  excludedIds: string[],
 ): Promise<{ faktiki: number; nailiyyet_faiz: number }> {
   const { sahibkarId } = requireTenant();
-  const musteriCond =
-    musteriFilter === "mene_aid"
-      ? { kontragentler: { menecer_id: istifadeciId } }
-      : {};
+  const musteriCond = buildSalesContactFilter(istifadeciId, musteriFilter, excludedIds);
 
   if (k === "davamiyyet") {
     // İş günlərinin sayını davamiyyet cədvəlindən hesabla

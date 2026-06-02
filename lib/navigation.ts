@@ -19,6 +19,7 @@ import {
   Store,
   FlaskConical,
   HelpCircle,
+  Megaphone,
 } from "lucide-react";
 
 export type NavItem = {
@@ -31,9 +32,11 @@ export type NavItem = {
   requires?: {
     /** Show only when user has at least one of these permission codes. */
     anyPermission?: string[];
-    /** Show only when user.rol_id is in this list. */
+    /** Show only when user.rol_id is in this list (legacy — use roleNames instead). */
     roleIds?: number[];
-    /** Show only when user.rol_id === 1 (system admin). */
+    /** Show only when user.rol_ad is in this list (multi-tenant-safe). */
+    roleNames?: string[];
+    /** Show only when user.rol_ad === "admin" (system admin). */
     systemAdminOnly?: boolean;
   };
   /**
@@ -62,17 +65,22 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Əsas",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      {
+        href: "/dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        requires: { anyPermission: ["dashboard.oxu"] },
+      },
       {
         href: "/nezaret-merkezi",
         label: "Nəzarət Mərkəzi",
         icon: ShieldAlert,
         alsoActiveFor: ["/xeberdarliqlar", "/tesdiq", "/avtomatlasdirma"],
+        requires: { anyPermission: ["nezaret.oxu"] },
       },
       { href: "/pos", label: "POS / İsti satış", icon: ScanLine, external: true },
       { href: "/tapshiriqlar", label: "Tapşırıqlar", icon: ListTodo },
-      { href: "/ai", label: "AI Köməkçi", icon: Sparkles },
-      { href: "/komekci", label: "Köməkçi", icon: HelpCircle },
+      { href: "/komekci", label: "Köməkçi + AI", icon: Sparkles, alsoActiveFor: ["/ai"] },
     ],
   },
   {
@@ -84,6 +92,12 @@ export const NAV_SECTIONS: NavSection[] = [
       { href: "/servis", label: "Servis", icon: Wrench },
       { href: "/elaqe", label: "Əlaqələr", icon: Contact2 },
       { href: "/iscilier", label: "Əməkdaşlar", icon: Users },
+      {
+        href: "/kampaniyalar",
+        label: "Kampaniyalar",
+        icon: Megaphone,
+        requires: { anyPermission: ["kampaniya.oxu"] },
+      },
     ],
   },
   {
@@ -96,7 +110,7 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/sahibkar",
         label: "Sahibkar bölməsi",
         icon: Lock,
-        requires: { roleIds: [9] },
+        requires: { roleNames: ["sahibkar"] },
       },
       { href: "/360-lab", label: "360 LAB", icon: FlaskConical },
       { href: "/hesabatlar", label: "Hesabatlar", icon: BarChart3 },
@@ -128,13 +142,19 @@ export function resolveNavItem(pathname: string): NavItem | undefined {
 /** Whether a user with the given role/permissions can see this item. */
 export function canSeeNavItem(
   item: NavItem,
-  ctx: { rolId: number; icazeler: string[] }
+  ctx: { rolId: number; rolAd?: string; icazeler: string[] }
 ): boolean {
   const req = item.requires;
   if (!req) return true;
-  if (req.systemAdminOnly && ctx.rolId !== 1) return false;
+  // Multi-tenant: ad üzrə yoxlama (rolId nömrəsi tenant-dan-tenanta dəyişir)
+  if (req.systemAdminOnly && ctx.rolAd !== "admin") return false;
+  if (req.roleNames && (!ctx.rolAd || !req.roleNames.includes(ctx.rolAd))) return false;
   if (req.roleIds && !req.roleIds.includes(ctx.rolId)) return false;
   if (req.anyPermission && req.anyPermission.length) {
+    // Sahibkar / admin / owner rolları icazə kataloqundan asılı olmadan
+    // bütün modulları sidebar-da görür (route-gate ilə eyni davranış).
+    const r = (ctx.rolAd ?? "").toLowerCase();
+    if (r.includes("sahibkar") || r.includes("admin") || r.includes("owner")) return true;
     return req.anyPermission.some((p) => ctx.icazeler.includes(p));
   }
   return true;

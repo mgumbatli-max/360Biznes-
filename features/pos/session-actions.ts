@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
 
 const OpenSchema = z.object({
   ad: z.string().min(1).max(100),
@@ -47,6 +48,14 @@ export async function openKassa(input: FormData | z.infer<typeof OpenSchema>): P
           acilis_qaligi: parsed.data.acilis_qaligi,
           status: "acig",
         },
+      });
+      await audit("yarat", "kassa", created.id, {
+        yeni_data: {
+          ad: parsed.data.ad,
+          acilis_qaligi: parsed.data.acilis_qaligi,
+          filial_id: parsed.data.filial_id ?? null,
+        },
+        sebeb: "Kassa açıldı",
       });
       revalidatePath("/pos");
       return { ok: true as const, data: { id: created.id } };
@@ -106,6 +115,16 @@ export async function closeKassa(
         fark: parsed.data.hesablanan_qaliq - expected,
         qeyd: parsed.data.qeyd ?? null,
       },
+    });
+    await audit("yenile", "kassa", kassa.id, {
+      evvelki_data: { acilis_qaligi: Number(kassa.acilis_qaligi ?? 0), status: "acig" },
+      yeni_data: {
+        status: "bagli",
+        hesablanan_qaliq: expected,
+        baglanis_qaligi: parsed.data.hesablanan_qaliq,
+        fark: parsed.data.hesablanan_qaliq - expected,
+      },
+      sebeb: "Kassa bağlandı (gün sonu)",
     });
     revalidatePath("/pos");
     return { ok: true as const };

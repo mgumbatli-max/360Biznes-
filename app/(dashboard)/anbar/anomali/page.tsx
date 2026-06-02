@@ -123,6 +123,9 @@ async function getAnomalies() {
 }
 
 export default async function AnomaliPage() {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("anbar.anomali");
+
   const a = await getAnomalies();
   const negStokCount = a.negStok.length;
 

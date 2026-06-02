@@ -28,6 +28,9 @@ function parseBool(v: string | undefined): boolean | undefined {
 }
 
 export default async function MarkalarPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("kateqoriya.idare");
+
   const sp = await searchParams;
   const filter: BrandFilter = {
     search: sp.q,

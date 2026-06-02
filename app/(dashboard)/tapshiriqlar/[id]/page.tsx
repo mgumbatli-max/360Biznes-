@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CalendarClock, User, Users, MessageSquare, CheckSquare, Eye } from "lucide-react";
+import { auth } from "@/auth";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -8,6 +9,7 @@ import { PriorityBadge, TaskStatusBadge } from "@/features/tapshiriqlar/componen
 import { CommentForm } from "@/features/tapshiriqlar/components/comment-form";
 import { ChecklistItem } from "@/features/tapshiriqlar/components/checklist-item";
 import { getTaskDetail } from "@/features/tapshiriqlar/detail-queries";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tapşırıq detayı" };
@@ -19,6 +21,17 @@ const ROL_LABEL: Record<string, string> = {
 };
 
 export default async function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  // Master tapshiriq.oxu — başqa rolun tapşırığı görmək məhdudlaşdırılır
+  const session = await auth();
+  if (!session?.user) redirect("/giris");
+  const icazeler = await getRequestPermissions();
+  const rolAd = (session.user.rol_ad ?? "").toLowerCase();
+  const isOwnerOrAdmin =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+  if (!isOwnerOrAdmin && !icazeler.includes("tapshiriq.oxu")) {
+    redirect("/dashboard");
+  }
+
   const { id } = await params;
   const t = await getTaskDetail(id);
   if (!t) notFound();

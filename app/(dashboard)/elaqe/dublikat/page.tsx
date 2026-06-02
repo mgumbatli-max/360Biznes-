@@ -8,6 +8,9 @@ import { AutoMergeButton } from "@/features/elaqe/components/auto-merge-button";
 export const metadata: Metadata = { title: "Dublikat tapan" };
 
 export default async function DublikatPage() {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("elaqe.dublikat");
+
   const pairs = await findDuplicates();
 
   // High-confidence suggestions: pairs of size exactly 2 with same VÖEN, FİN, or telefon

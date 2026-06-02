@@ -23,6 +23,9 @@ async function getStatements() {
 }
 
 export default async function BankPage() {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("bank.oxu");
+
   const rows = await getStatements();
   const cemiCixaris = rows.length;
   const cemiSatir = rows.reduce((s, r) => s + Number(r.satir_sayi ?? 0), 0);

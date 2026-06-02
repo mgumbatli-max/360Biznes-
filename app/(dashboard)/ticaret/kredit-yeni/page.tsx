@@ -8,6 +8,9 @@ import { getAnbarOptions } from "@/features/ticaret/satis-yeni-queries";
 export const metadata: Metadata = { title: "Kreditlə satış (yeni)" };
 
 export default async function KreditYeniPage() {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("kredit.yarat");
+
   const anbarlar = await getAnbarOptions();
   const defaultAnbarId = anbarlar[0]?.id ?? 0;
 

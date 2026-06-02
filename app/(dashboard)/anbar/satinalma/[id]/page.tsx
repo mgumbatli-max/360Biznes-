@@ -59,10 +59,10 @@ export default async function ProposalDetailPage({
   const [teklif, canDeleteNonDraft] = await Promise.all([
     getProposalDetail(Number(id)),
     withTenant(async () => {
-      const { rolId, icazeler } = requireTenant();
-      // Sahibkar (rol_id=9) və administrator (rol_id=1) həmişə silə bilər;
+      const { rolAd, icazeler } = requireTenant();
+      // Sahibkar və administrator həmişə silə bilər;
       // digərləri yalnız `satinalma.tesdiq_silme` icazəsi ilə.
-      return rolId === 1 || rolId === 9 || icazeler.includes("satinalma.tesdiq_silme");
+      return rolAd === "admin" || rolAd === "sahibkar" || icazeler.includes("satinalma.tesdiq_silme");
     }),
   ]);
   if (!teklif) notFound();

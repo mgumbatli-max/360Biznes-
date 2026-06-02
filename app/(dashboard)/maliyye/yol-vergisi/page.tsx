@@ -25,6 +25,9 @@ async function getYolVergisiSummary() {
 }
 
 export default async function YolVergisiPage() {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("edv.idare");
+
   const s = await getYolVergisiSummary();
 
   return (

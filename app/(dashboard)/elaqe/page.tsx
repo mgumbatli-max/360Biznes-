@@ -53,6 +53,9 @@ type SearchParams = {
 };
 
 export default async function ElaqeHubPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm();
+
   const sp = await searchParams;
   const f = (sp.filter ?? "").toLowerCase();
   const filter: ContactFilter = {

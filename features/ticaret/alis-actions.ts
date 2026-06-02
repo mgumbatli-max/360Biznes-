@@ -8,6 +8,9 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { checkAndCreateStockAlertBatch } from "@/features/anbar/alert-helpers";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
+import { requireTicaretActionPerm } from "./access-guard";
+import { audit } from "@/lib/audit/log";
+import { stockIncrement } from "@/lib/db/stock-guards";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -32,6 +35,9 @@ export type CreatePurchaseResult =
 const PURCHASE_PREFIX = "ALS";
 
 export async function createPurchase(input: CreatePurchaseInput): Promise<CreatePurchaseResult> {
+  const permCheck = await requireTicaretActionPerm("alis.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   const parsed = CreatePurchaseSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -92,29 +98,14 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
           // Təsdiq gözləyirsə, stoka heç bir hərəkət yoxdur — təsdiqdən sonra
           // approveRequest helper-i receivePurchase çağıracaq.
           if (d.receive_now && !needsApproval) {
-            // Upsert stok row, increment
-            const stok = await tx.stok.findFirst({
-              where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: d.anbar_id },
+            // Race-safe upsert — paralel alış qəbulları unique constraint-ə düşmür
+            await stockIncrement(tx, {
+              sahibkarId,
+              mehsulId: line.mehsul_id,
+              anbarId: d.anbar_id,
+              miqdar: line.miqdar,
+              sonQiymet: line.qiymet,
             });
-            if (stok) {
-              await tx.stok.update({
-                where: { id: stok.id },
-                data: {
-                  miqdar: { increment: line.miqdar },
-                  son_qiymet: line.qiymet,
-                },
-              });
-            } else {
-              await tx.stok.create({
-                data: {
-                  sahibkar_id: sahibkarId,
-                  mehsul_id: line.mehsul_id,
-                  anbar_id: d.anbar_id,
-                  miqdar: line.miqdar,
-                  son_qiymet: line.qiymet,
-                },
-              });
-            }
 
             await tx.anbar_hereketleri.create({
               data: {
@@ -167,6 +158,20 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
       revalidatePath("/ticaret/alislar");
       revalidatePath("/tesdiq");
 
+      // Audit: alış yaradılması — təchizatçı, məbləğ, sətir sayı, təsdiq tələbi
+      await audit("yarat", "alis_sifarisi", result.id, {
+        yeni_data: {
+          nomre: result.nomre,
+          techizatci_id: d.techizatci_id,
+          anbar_id: d.anbar_id,
+          umumi_mebleg: Number(result.umumi),
+          line_count: d.lines.length,
+          receive_now: d.receive_now,
+          needs_approval: needsApproval,
+        },
+        sebeb: needsApproval ? "Alış qaiməsi təsdiq gözləyir" : (d.receive_now ? "Alış qaiməsi yaradıldı və qəbul edildi" : "Alış qaiməsi yaradıldı (gözləmədə)"),
+      });
+
       // Alış qəbul edildikdə stok artır — auto-push kanal-larına yenilik göndər
       const { emitStockChange } = await import("@/lib/stock-change-emitter");
       emitStockChange(d.lines.map((l) => l.mehsul_id));
@@ -196,25 +201,13 @@ export async function receivePurchase(purchaseId: string): Promise<{ ok: true } 
         for (const line of purchase.alis_sifaris_satirlari) {
           if (line.mehsul_id) receivedMehsulIds.push(line.mehsul_id);
           if (!line.mehsul_id) continue;
-          const stok = await tx.stok.findFirst({
-            where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: purchase.anbar_id },
+          await stockIncrement(tx, {
+            sahibkarId,
+            mehsulId: line.mehsul_id,
+            anbarId: purchase.anbar_id,
+            miqdar: Number(line.miqdar),
+            sonQiymet: Number(line.vahid_qiymet),
           });
-          if (stok) {
-            await tx.stok.update({
-              where: { id: stok.id },
-              data: { miqdar: { increment: Number(line.miqdar) }, son_qiymet: Number(line.vahid_qiymet) },
-            });
-          } else {
-            await tx.stok.create({
-              data: {
-                sahibkar_id: sahibkarId,
-                mehsul_id: line.mehsul_id,
-                anbar_id: purchase.anbar_id,
-                miqdar: Number(line.miqdar),
-                son_qiymet: Number(line.vahid_qiymet),
-              },
-            });
-          }
           await tx.anbar_hereketleri.create({
             data: {
               sahibkar_id: sahibkarId,
@@ -241,6 +234,11 @@ export async function receivePurchase(purchaseId: string): Promise<{ ok: true } 
       revalidatePath("/ticaret/alislar");
       revalidatePath("/anbar");
       revalidatePath("/xeberdarliqlar");
+      // Audit: alış qəbulu — stok artımı və status keçidi
+      await audit("yenile", "alis_sifarisi", purchaseId, {
+        yeni_data: { status: "qebul_edildi", mehsul_count: receivedMehsulIds.length },
+        sebeb: "Alış qaiməsi qəbul edildi — stoka medaxil",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[receivePurchase]", e);

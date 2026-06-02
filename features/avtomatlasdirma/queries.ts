@@ -47,3 +47,63 @@ export async function getRecentLogs(limit = 20) {
     })
   );
 }
+
+/**
+ * Ən aktiv 3 qayda + ən çox xəta verən qaydanı qaytarır.
+ * Dashboard-da "Smart insights" paneli üçün istifadə olunur.
+ */
+export async function getRuleInsights() {
+  return withTenant(async () => {
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+
+    // Son 7 gündə ən çox icra olunan qaydalar (top 3)
+    const topActive = await prisma.avto_log.groupBy({
+      by: ["qayda_id"],
+      where: { yaradildi: { gte: since }, qayda_id: { not: null } },
+      _count: true,
+      orderBy: { _count: { qayda_id: "desc" } },
+      take: 3,
+    });
+
+    // Son 7 gündə ən çox xəta verən qayda
+    const topErrors = await prisma.avto_log.groupBy({
+      by: ["qayda_id"],
+      where: { yaradildi: { gte: since }, qayda_id: { not: null }, status: { not: "ok" } },
+      _count: true,
+      orderBy: { _count: { qayda_id: "desc" } },
+      take: 1,
+    });
+
+    // Detalları çək
+    const allIds = [...topActive.map((x) => x.qayda_id), ...topErrors.map((x) => x.qayda_id)].filter(
+      (x): x is number => x !== null,
+    );
+    const ruleAds =
+      allIds.length > 0
+        ? await prisma.avto_qayda.findMany({
+            where: { id: { in: allIds } },
+            select: { id: true, ad: true, aktiv: true },
+          })
+        : [];
+    const ruleMap = new Map(ruleAds.map((r) => [r.id, r]));
+
+    return {
+      topActive: topActive
+        .filter((x) => x.qayda_id !== null)
+        .map((x) => ({
+          id: x.qayda_id as number,
+          ad: ruleMap.get(x.qayda_id as number)?.ad ?? "—",
+          aktiv: ruleMap.get(x.qayda_id as number)?.aktiv ?? false,
+          icra: x._count,
+        })),
+      topError:
+        topErrors[0] && topErrors[0].qayda_id !== null
+          ? {
+              id: topErrors[0].qayda_id,
+              ad: ruleMap.get(topErrors[0].qayda_id)?.ad ?? "—",
+              xeta: topErrors[0]._count,
+            }
+          : null,
+    };
+  });
+}

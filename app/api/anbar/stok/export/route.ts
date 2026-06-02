@@ -3,22 +3,33 @@ import ExcelJS from "exceljs";
 import { auth } from "@/auth";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getStokRows } from "@/features/anbar/stok-queries";
+import { audit } from "@/lib/audit/log";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
 
   const sp = req.nextUrl.searchParams;
-  const rows = await withTenant(() =>
-    getStokRows({
+  const filterForAudit = {
+    search: sp.get("q") ?? undefined,
+    anbar_id: sp.get("anbar") ?? null,
+    status: sp.get("status") ?? null,
+  };
+  const rows = await withTenant(async () => {
+    const r = await getStokRows({
       search: sp.get("q") ?? undefined,
       anbar_id: sp.get("anbar") ? Number(sp.get("anbar")) : undefined,
       status:
         sp.get("status") === "az" || sp.get("status") === "ok"
           ? (sp.get("status") as "az" | "ok")
           : undefined,
-    })
-  );
+    });
+    await audit("export", "stok_export", null, {
+      yeni_data: { count: r.length, filter: filterForAudit },
+      sebeb: "Stok cədvəli Excel-ə ixrac edildi",
+    });
+    return r;
+  });
 
   const wb = new ExcelJS.Workbook();
   const sheet = wb.addWorksheet("Stok");

@@ -12,7 +12,10 @@ export const metadata: Metadata = { title: "Excel idxalı" };
  * lakin istifadəçi səbəbini bilmədi və "niyə fayl yüklənmir?" deyə düşünürdü.
  * İndi qısa izahla manual link verir.
  */
-export default function MehsulYuklePage() {
+export default async function MehsulYuklePage() {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("mehsul.yukle");
+
   return (
     <div className="mx-auto max-w-2xl space-y-4 p-4">
       <header>

@@ -696,3 +696,75 @@ html.embed-mode table[data-sticky-head] thead { top: 0; }
     display: none;
   }
 }
+
+/* ─────────────────────────────────────────────────────────
+   Paint performance — yalnız viewport-da olan content render olunsun.
+   Uzun cədvəllər / siyahılar / kart şəbəkələri 10×-a qədər sürətlənir.
+   Browser elementin yüksəkliyini contain-intrinsic-size-dan götürür,
+   görünməyən content paint olunmur.
+   ───────────────────────────────────────────────────────── */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+}
+/* Cədvəl <tbody> bloklar (offscreen render bayağlatma) */
+table[data-cv] tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 44px;
+}
+/* Kart şəbəkəsi item-ləri */
+.card-grid > * {
+  contain: layout style;
+}
+/* Layout shift azaltma — fixed-size loading skeleton-larında */
+.skeleton-block {
+  contain: strict;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Smooth page enter — naviqasiyadan sonra subtle fade-up
+   (animate-fade-in <main>-də artıq var, lakin daha plavnı easing).
+   ───────────────────────────────────────────────────────── */
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .animate-fade-in {
+    animation: page-fade-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   Link-də hover-da underline polish + cursor smoothing
+   ───────────────────────────────────────────────────────── */
+a {
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Card hover lift — sadəcə `.card-interactive` class-ı ilə işarələnənlərə
+   ───────────────────────────────────────────────────────── */
+.card-interactive {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 180ms ease-out,
+              border-color 180ms ease-out;
+  will-change: transform;
+}
+.card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -10px hsl(var(--foreground) / 0.15);
+}
+.card-interactive:active {
+  transform: translateY(0);
+  transition-duration: 80ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-interactive,
+  .card-interactive:hover,
+  .card-interactive:active {
+    transform: none;
+    transition: none;
+  }
+}

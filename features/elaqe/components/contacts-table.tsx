@@ -173,7 +173,7 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
         r.nov,
         r.sirket_adi ?? "",
         r.sheher ?? "",
-        r.yaradildi ? r.yaradildi.toISOString().slice(0, 10) : "",
+        r.yaradildi ? new Date(r.yaradildi).toISOString().slice(0, 10) : "",
       ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
       lines.push(vals.join(","));
     }

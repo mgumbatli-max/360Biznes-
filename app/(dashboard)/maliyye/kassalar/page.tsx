@@ -13,6 +13,9 @@ import { formatMoney, formatDate } from "@/lib/utils";
 export const metadata: Metadata = { title: "Kassalar" };
 
 export default async function KassalarPage() {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("kassa.oxu");
+
   const [rows, stats] = await Promise.all([getKassalar(), getKassaStats()]);
 
   return (

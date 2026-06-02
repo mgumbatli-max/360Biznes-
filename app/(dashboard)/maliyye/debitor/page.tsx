@@ -14,6 +14,9 @@ export const metadata: Metadata = { title: "Debitor (Müştəri borcu)" };
 type SearchParams = { q?: string; gecik?: string; sort?: string };
 
 export default async function DebitorPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("debitor.oxu");
+
   const sp = await searchParams;
   const q = (sp.q ?? "").toLowerCase().trim();
   const gecik = Number(sp.gecik ?? 0);

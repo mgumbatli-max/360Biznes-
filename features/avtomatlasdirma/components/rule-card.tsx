@@ -3,13 +3,13 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Workflow, Zap, Play, Power, Trash2, Loader2, Edit3, Repeat, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Workflow, Zap, Play, Power, Trash2, Loader2, Edit3, Repeat, AlertTriangle, CheckCircle2, Copy, Rocket } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatDate, cn } from "@/lib/utils";
-import { toggleRule, deleteRule, testRule } from "../actions";
+import { toggleRule, deleteRule, testRule, cloneRule, runRuleNow } from "../actions";
 import { TRIGGERS, MODULLAR, PRIORITY_META, ACTIONS } from "../catalog";
 
 type Props = {
@@ -84,6 +84,35 @@ export function RuleCard({ rule, view = "card" }: Props) {
     });
   }
 
+  function onClone() {
+    startTransition(async () => {
+      const r = await cloneRule(rule.id);
+      if (r.ok) {
+        toast.success("Klonlandı — passiv vəziyyətdə yaradıldı");
+        if (r.id) router.push(`/avtomatlasdirma/${r.id}`);
+        else router.refresh();
+      } else toast.error(r.error);
+    });
+  }
+
+  function onRunNow() {
+    if (!rule.aktiv) {
+      toast.error("Əvvəlcə qaydanı aktivləşdirin");
+      return;
+    }
+    if (!confirm(`"${rule.ad}" qaydasını indi icra et?\n\nNəticələr DB-yə yazılacaq (xəbərdarlıq və ya təsdiq sorğusu yarana bilər).`)) return;
+    startTransition(async () => {
+      const r = await runRuleNow(rule.id);
+      if (r.ok) {
+        const msg = r.alertsCreated > 0
+          ? `${r.matched} uyğunluq · ${r.alertsCreated} xəbərdarlıq yaradıldı`
+          : `${r.matched} uyğunluq tapıldı`;
+        toast.success(msg, { duration: 7000 });
+        router.refresh();
+      } else toast.error(r.error);
+    });
+  }
+
   if (view === "list") {
     return (
       <div className={cn("flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5 transition hover:border-primary/40", !rule.aktiv && "opacity-60", rule.aktiv ? "border-border bg-card/40" : "border-border/40 bg-secondary/20")}>
@@ -100,15 +129,20 @@ export function RuleCard({ rule, view = "card" }: Props) {
           </div>
         </div>
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={onTest} disabled={pending} className="h-7 px-2 text-xs">
+          <Button size="sm" variant="ghost" onClick={onTest} disabled={pending} className="h-7 px-2 text-xs" title="Dry-run">
             {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-            Test
           </Button>
-          <Button size="sm" variant="ghost" onClick={onToggle} disabled={pending} className="h-7 px-2 text-xs">
+          <Button size="sm" variant="ghost" onClick={onRunNow} disabled={pending || !rule.aktiv} className="h-7 px-2 text-xs text-emerald-600 dark:text-emerald-400" title="İndi icra et">
+            <Rocket className="h-3 w-3" />
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onToggle} disabled={pending} className="h-7 px-2 text-xs" title={rule.aktiv ? "Söndür" : "Aktivləşdir"}>
             <Power className="h-3 w-3" />
           </Button>
+          <Button size="sm" variant="ghost" onClick={onClone} disabled={pending} className="h-7 px-2 text-xs" title="Klonla">
+            <Copy className="h-3 w-3" />
+          </Button>
           <Link href={`/avtomatlasdirma/${rule.id}`}>
-            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs">
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" title="Redaktə">
               <Edit3 className="h-3 w-3" />
             </Button>
           </Link>
@@ -178,14 +212,21 @@ export function RuleCard({ rule, view = "card" }: Props) {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1 pt-1">
-          <Button size="sm" variant="outline" disabled={pending} onClick={onTest} className="h-7 gap-1 text-[11px]">
+        <div className="flex flex-wrap items-center gap-1 pt-1">
+          <Button size="sm" variant="outline" disabled={pending} onClick={onTest} className="h-7 gap-1 text-[11px]" title="Dry-run — heç bir nəticə yazılmır">
             {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
             Test
+          </Button>
+          <Button size="sm" variant="outline" disabled={pending || !rule.aktiv} onClick={onRunNow} className="h-7 gap-1 text-[11px] border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400" title="İndi icra et — nəticə DB-yə yazılır">
+            <Rocket className="h-3 w-3" />
+            İndi
           </Button>
           <Button size="sm" variant="outline" disabled={pending} onClick={onToggle} className="h-7 gap-1 text-[11px]">
             <Power className="h-3 w-3" />
             {rule.aktiv ? "Söndür" : "Aktivləşdir"}
+          </Button>
+          <Button size="sm" variant="outline" disabled={pending} onClick={onClone} className="h-7 gap-1 text-[11px]" title="Bu qaydanı kopyala">
+            <Copy className="h-3 w-3" />
           </Button>
           <Link href={`/avtomatlasdirma/${rule.id}`} className="ml-auto">
             <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px]">

@@ -30,6 +30,9 @@ export default async function FollowupPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("elaqe.followup");
+
   const sp = await searchParams;
   const filter = (sp.filter ?? "").toLowerCase();
 

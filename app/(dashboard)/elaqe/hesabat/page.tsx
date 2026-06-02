@@ -13,6 +13,9 @@ import { formatMoney } from "@/lib/utils";
 export const metadata: Metadata = { title: "Əlaqə hesabatı" };
 
 export default async function HesabatPage() {
+  const { requireElaqePerm } = await import("@/features/elaqe/access-guard");
+  await requireElaqePerm("elaqe.hesabat");
+
   const r = await getElaqeReport();
 
   return (

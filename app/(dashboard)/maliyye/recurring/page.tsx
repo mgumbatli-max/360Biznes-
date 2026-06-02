@@ -18,6 +18,9 @@ const TEZLIK_LABEL: Record<string, string> = {
 };
 
 export default async function MaliyyeRecurringPage() {
+  const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
+  await requireMaliyyePerm("maliyye.recurring");
+
   const rows = await getRecurringRules();
   const aktiv = rows.filter((r) => r.status === "aktiv").length;
 

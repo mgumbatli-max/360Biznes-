@@ -5,6 +5,7 @@ import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
+import { audit } from "@/lib/audit/log";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -17,6 +18,8 @@ export async function acceptKreditPayment(saleId: string, amount: number): Promi
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Məbləğ düzgün deyil" };
 
   return withTenant(async () => {
+    let appliedAmount = 0;
+    let prevOdenilmis = 0;
     try {
       await prisma.$transaction(async (tx) => {
         const sale = await tx.satis_sifarisleri.findUnique({
@@ -31,6 +34,8 @@ export async function acceptKreditPayment(saleId: string, amount: number): Promi
         const qaliq = son - cari;
         const tutulan = Math.min(amount, qaliq);
         if (tutulan <= 0) throw new Error("Bu satışda qalıq yoxdur");
+        prevOdenilmis = cari;
+        appliedAmount = tutulan;
 
         await tx.satis_sifarisleri.update({
           where: { id: saleId },
@@ -42,6 +47,11 @@ export async function acceptKreditPayment(saleId: string, amount: number): Promi
       revalidatePath("/ticaret/satislar");
       revalidatePath(`/ticaret/satislar/${saleId}`);
       revalidatePath("/ticaret");
+      await audit("yenile", "kredit_satis_odenis", saleId, {
+        evvelki_data: { odenilmis: prevOdenilmis },
+        yeni_data: { odenis: appliedAmount, yeni_odenilmis: prevOdenilmis + appliedAmount },
+        sebeb: "Kredit satışı ödənişi qəbul edildi",
+      });
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta baş verdi" };
@@ -159,6 +169,11 @@ export async function recordKreditPayment(
       revalidatePath("/ticaret/kredit");
       revalidatePath("/maliyye/emeliyyat");
       revalidatePath("/maliyye");
+      // Audit: bank/kredit ödənişi qəbul edildi — maliyyəyə daxil olan vəsait
+      await audit("yarat", "kredit_bank_odenis", kreditId, {
+        yeni_data: { mebleg, hesab_id: hesabId, tarix: tarix ?? null },
+        sebeb: "Bank/kredit qurumundan pul daxil oldu",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[recordKreditPayment]", e);

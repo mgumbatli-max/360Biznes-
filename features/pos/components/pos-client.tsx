@@ -55,6 +55,10 @@ import {
 } from "@/components/ui/dialog";
 import { PriceTiersPopover } from "@/features/anbar/components/price-tiers-popover";
 import { QuickViewDialog } from "@/features/anbar/components/quick-view-dialog";
+import { PosLoyaltyWidget } from "@/features/kampaniyalar/components/pos-loyalty-widget";
+import { PosCouponInput } from "@/features/kampaniyalar/components/pos-coupon-input";
+import type { FoundLoyaltyCard } from "@/features/kampaniyalar/actions";
+import type { AppliedCampaign } from "@/features/kampaniyalar/matcher";
 import { toast } from "sonner";
 import { cn, formatMoney } from "@/lib/utils";
 import {
@@ -303,6 +307,11 @@ export function PosClient({
   const [customerQ, setCustomerQ] = useState("");
   const [customerResults, setCustomerResults] = useState<CustomerRow[]>([]);
   const [showCustomerResults, setShowCustomerResults] = useState(false);
+  // Loyalty: müştəri seçildikdə kart və bonus serf state-i
+  const [loyaltyCard, setLoyaltyCard] = useState<FoundLoyaltyCard | null>(null);
+  const [bonusSerfMebleg, setBonusSerfMebleg] = useState<number>(0);
+  // Kupon: POS-da promokod tətbiq olunduqda
+  const [couponApplied, setCouponApplied] = useState<AppliedCampaign | null>(null);
   const [keepCustomer, setKeepCustomer] = useState(false);
   const [salespersonId, setSalespersonId] = useState(defaultSalespersonId);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("negd");
@@ -419,7 +428,16 @@ export function PosClient({
       : Math.min(umumi * (endirimFaiz / 100), umumi);
   const endirimEffectiveFaiz =
     umumi > 0 ? Math.round((endirimEffectiveMebleg / umumi) * 1000) / 10 : 0;
-  const sonMebleg = Math.max(0, umumi - endirimEffectiveMebleg);
+  // Kupon endirimi — endirim üstünə əlavə olunur (admin verdiyi kod)
+  const couponEndirim = couponApplied
+    ? Math.min(couponApplied.endirim_mebleg, Math.max(0, umumi - endirimEffectiveMebleg))
+    : 0;
+  // Loyalty bonus sərfi — endirim + kupon-dan sonra qalanından
+  const bonusAfterDiscount = Math.min(
+    bonusSerfMebleg,
+    Math.max(0, umumi - endirimEffectiveMebleg - couponEndirim),
+  );
+  const sonMebleg = Math.max(0, umumi - endirimEffectiveMebleg - couponEndirim - bonusAfterDiscount);
   const edvMebleg = sonMebleg * 0.18; // informational only
 
   const tenderNum = Number(tender) || 0;
@@ -629,7 +647,10 @@ export function PosClient({
     if (!keepCustomer) {
       setCustomer(null);
       setCustomerQ("");
+      setLoyaltyCard(null);
     }
+    setBonusSerfMebleg(0);
+    setCouponApplied(null);
     setEndirimMebleg(0);
     setEndirimFaiz(0);
     setTender("");
@@ -971,6 +992,16 @@ export function PosClient({
       }
 
       postActionRef.current = null;
+
+      // Loyalty bonus serf et — satış uğurla yaradılandan sonra
+      if (loyaltyCard && bonusAfterDiscount > 0) {
+        try {
+          const { applyBonusToSale } = await import("@/features/kampaniyalar/actions");
+          await applyBonusToSale(loyaltyCard.id, res.satis_id, bonusAfterDiscount);
+        } catch (e) {
+          console.warn("[pos bonus serf]", e);
+        }
+      }
 
       getQuickProductsAction(anbarId)
         .then(setQuickProducts)
@@ -1493,29 +1524,40 @@ export function PosClient({
               Müştəri
             </Label>
             {customer ? (
-              <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50/40 px-2 py-1.5 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium text-slate-900">
-                    {customer.ad}
-                  </div>
-                  {customer.telefon && (
-                    <div className="truncate text-[11px] text-slate-500">
-                      {customer.telefon}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50/40 px-2 py-1.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-slate-900">
+                      {customer.ad}
                     </div>
+                    {customer.telefon && (
+                      <div className="truncate text-[11px] text-slate-500">
+                        {customer.telefon}
+                      </div>
+                    )}
+                  </div>
+                  {customer.borc > 0 && (
+                    <Badge className="border-amber-200 bg-amber-50 text-[10px] text-amber-700">
+                      {formatMoney(customer.borc)}
+                    </Badge>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setCustomer(null)}
+                    className="text-slate-400 hover:text-rose-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-                {customer.borc > 0 && (
-                  <Badge className="border-amber-200 bg-amber-50 text-[10px] text-amber-700">
-                    {formatMoney(customer.borc)}
-                  </Badge>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setCustomer(null)}
-                  className="text-slate-400 hover:text-rose-600"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+                {/* Loyalty widget — tier, balans, bonus ilə öde */}
+                <PosLoyaltyWidget
+                  kontragentId={customer.id}
+                  sebetCemi={sonMebleg}
+                  onBonusChange={(kart, serfMebleg) => {
+                    setLoyaltyCard(kart);
+                    setBonusSerfMebleg(serfMebleg);
+                  }}
+                />
               </div>
             ) : (
               <div className="relative">
@@ -1567,6 +1609,19 @@ export function PosClient({
                 )}
               </div>
             )}
+          </div>
+
+          {/* Kupon / promokod — müştəri olmasa da işləyir */}
+          <div className="space-y-1">
+            <Label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              Endirim kodu (opsional)
+            </Label>
+            <PosCouponInput
+              sebetCemi={Math.max(0, umumi - endirimEffectiveMebleg)}
+              kontragentId={customer?.id ?? null}
+              onApply={setCouponApplied}
+              onClear={() => setCouponApplied(null)}
+            />
           </div>
 
           {/* Stats rows */}
@@ -1645,7 +1700,17 @@ export function PosClient({
               </div>
               {endirimEffectiveMebleg > 0 && (
                 <div className="text-[10px] tabular-nums text-rose-600">
-                  (−{formatMoney(endirimEffectiveMebleg)})
+                  (endirim −{formatMoney(endirimEffectiveMebleg)})
+                </div>
+              )}
+              {couponEndirim > 0 && (
+                <div className="text-[10px] tabular-nums text-violet-600">
+                  (kupon −{formatMoney(couponEndirim)})
+                </div>
+              )}
+              {bonusAfterDiscount > 0 && (
+                <div className="text-[10px] tabular-nums text-amber-600">
+                  (bonus −{formatMoney(bonusAfterDiscount)})
                 </div>
               )}
             </div>

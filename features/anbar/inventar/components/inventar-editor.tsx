@@ -1,12 +1,31 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Save, CheckCircle2, XCircle, Loader2, ScanBarcode } from "lucide-react";
+import { Save, CheckCircle2, XCircle, Loader2, ScanBarcode, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { formatNumber } from "@/lib/utils";
-import { bulkUpdateInventarRows, completeInventar, cancelInventar } from "../actions";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { formatNumber, cn } from "@/lib/utils";
+import {
+  bulkUpdateInventarRows,
+  completeInventar,
+  cancelInventar,
+  setInventarRowReasons,
+} from "../actions";
+import {
+  VARIANCE_REASONS,
+  parseVarianceQeyd,
+  reasonMeta,
+  type VarianceReason,
+} from "../variance-reasons";
 
 export type InventarLine = {
   id: number;
@@ -16,6 +35,8 @@ export type InventarLine = {
   barkod?: string | null;
   sistemde_olan: number;
   fakti_miqdar: number | null;
+  qeyd?: string | null;
+  qiymet?: number;
 };
 
 export function InventarEditor({ inventarId, rows, status }: { inventarId: string; rows: InventarLine[]; status: string }) {
@@ -91,19 +112,45 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
     });
   }
 
-  function complete() {
-    if (!window.confirm("Tamamlamaq stoku faktiki miqdara dəyişəcək. Davam edək?")) return;
-    startFinalizing(async () => {
-      const d = dirtyRows();
-      if (d.length) await bulkUpdateInventarRows(d);
-      const r = await completeInventar(inventarId);
-      if (r.ok) {
-        toast.success("İnventarlaşma tamamlandı");
-        router.refresh();
-      } else {
-        toast.error(r.error);
-      }
+  // Səbəb modalı state
+  const [reasonModal, setReasonModal] = useState<null | { rows: InventarLine[] }>(null);
+
+  // Fərqi olan və hələ səbəbi olmayan sətrlər
+  const varianceWithoutReason = useMemo(() => {
+    return rows.filter((r) => {
+      const v = values[r.id];
+      const fakti = v === "" ? r.fakti_miqdar : Number(v);
+      if (fakti == null) return false;
+      if (fakti === r.sistemde_olan) return false;
+      const { sebeb } = parseVarianceQeyd(r.qeyd ?? null);
+      return !sebeb;
     });
+  }, [rows, values]);
+
+  async function performComplete() {
+    const d = dirtyRows();
+    if (d.length) await bulkUpdateInventarRows(d);
+    const r = await completeInventar(inventarId);
+    if (r.ok) {
+      toast.success("İnventarlaşma tamamlandı");
+      router.refresh();
+    } else {
+      toast.error(r.error);
+      // Səbəbsiz fərqlər tapıldı → modal aç
+      if (r.missingReasonCount && r.missingReasonCount > 0) {
+        setReasonModal({ rows: varianceWithoutReason });
+      }
+    }
+  }
+
+  function complete() {
+    // Əvvəlcə yaddaşda olanları saxla — sonra səbəb yoxla
+    if (varianceWithoutReason.length > 0) {
+      setReasonModal({ rows: varianceWithoutReason });
+      return;
+    }
+    if (!window.confirm("Tamamlamaq stoku faktiki miqdara dəyişəcək. Davam edək?")) return;
+    startFinalizing(performComplete);
   }
 
   function cancel() {
@@ -166,19 +213,26 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
                 <th className="px-3 py-2 text-right">Sistemdə</th>
                 <th className="px-3 py-2 text-right w-[140px]">Faktiki</th>
                 <th className="px-3 py-2 text-right">Fərq</th>
+                <th className="px-3 py-2">Səbəb</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={4} className="py-12 text-center text-sm text-muted-foreground">Sətir yoxdur</td></tr>
+                <tr><td colSpan={5} className="py-12 text-center text-sm text-muted-foreground">Sətir yoxdur</td></tr>
               )}
               {rows.map((r) => {
                 const v = values[r.id];
                 const fakti = v === "" ? null : Number(v);
                 const ferq = fakti != null ? fakti - r.sistemde_olan : null;
                 const cls = ferq == null ? "text-muted-foreground" : ferq > 0 ? "text-success" : ferq < 0 ? "text-danger" : "text-muted-foreground";
+                const { sebeb } = parseVarianceQeyd(r.qeyd ?? null);
+                const meta = reasonMeta(sebeb);
+                const showReason = ferq != null && ferq !== 0;
                 return (
-                  <tr key={r.id} className="border-b border-border/20 hover:bg-secondary/30">
+                  <tr key={r.id} className={cn(
+                    "border-b border-border/20 hover:bg-secondary/30",
+                    showReason && !meta && "bg-rose-500/[0.04]",
+                  )}>
                     <td className="px-3 py-2">
                       <div className="font-medium">{r.mehsul_ad}</div>
                       {r.kod && <div className="text-[10.5px] font-mono text-muted-foreground">{r.kod}</div>}
@@ -203,6 +257,29 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
                     <td className={`px-3 py-2 text-right tabular-nums font-semibold ${cls}`}>
                       {ferq != null ? (ferq > 0 ? "+" : "") + formatNumber(ferq, 2) : "—"}
                     </td>
+                    <td className="px-3 py-2">
+                      {!showReason ? (
+                        <span className="text-[11px] text-muted-foreground">—</span>
+                      ) : meta ? (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px]",
+                            meta.tone === "danger" && "border-rose-500/40 bg-rose-500/10 text-rose-600",
+                            meta.tone === "warning" && "border-amber-500/40 bg-amber-500/10 text-amber-600",
+                            meta.tone === "info" && "border-sky-500/40 bg-sky-500/10 text-sky-600",
+                            meta.tone === "success" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-600",
+                          )}
+                        >
+                          {meta.label}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-rose-500/60 bg-rose-500/15 text-[10px] font-bold text-rose-700">
+                          <AlertTriangle className="mr-0.5 h-2.5 w-2.5" />
+                          Səbəb tələb olunur
+                        </Badge>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -210,6 +287,139 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
           </table>
         </div>
       </div>
+
+      {reasonModal && (
+        <ReasonModal
+          rows={reasonModal.rows}
+          values={values}
+          onClose={() => setReasonModal(null)}
+          onSaved={async () => {
+            setReasonModal(null);
+            if (!window.confirm("Tamamlamaq stoku faktiki miqdara dəyişəcək. Davam edək?")) return;
+            startFinalizing(performComplete);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function ReasonModal({
+  rows,
+  values,
+  onClose,
+  onSaved,
+}: {
+  rows: InventarLine[];
+  values: Record<number, string>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [reasons, setReasons] = useState<Record<number, { sebeb: VarianceReason | ""; aciqlama: string }>>(() => {
+    const init: Record<number, { sebeb: VarianceReason | ""; aciqlama: string }> = {};
+    rows.forEach((r) => (init[r.id] = { sebeb: "", aciqlama: "" }));
+    return init;
+  });
+  const [pending, startTransition] = useTransition();
+
+  const allFilled = rows.every((r) => reasons[r.id]?.sebeb);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!allFilled) {
+      toast.error("Hər sətrə səbəb seçilməlidir");
+      return;
+    }
+    startTransition(async () => {
+      const payload = rows.map((r) => ({
+        satir_id: r.id,
+        sebeb: reasons[r.id].sebeb || null,
+        aciqlama: reasons[r.id].aciqlama,
+      }));
+      const r = await setInventarRowReasons(payload);
+      if (r.ok) {
+        toast.success(`${payload.length} sətir üçün səbəb yazıldı`);
+        onSaved();
+      } else {
+        toast.error(r.error);
+      }
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            Fərq səbəblərini göstərin
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-3">
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+            <strong className="text-foreground">{rows.length} məhsulda fərq tapıldı.</strong>{" "}
+            Hər biri üçün səbəb göstərməlisiniz — bu məlumat maliyyə hesabatına (sayım zərəri) keçəcək və auditdə qalacaq.
+          </div>
+          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+            {rows.map((r) => {
+              const v = values[r.id];
+              const fakti = v === "" ? null : Number(v);
+              const ferq = fakti != null ? fakti - r.sistemde_olan : null;
+              const current = reasons[r.id] ?? { sebeb: "" as const, aciqlama: "" };
+              return (
+                <div key={r.id} className="rounded-md border border-border/40 p-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{r.mehsul_ad}</div>
+                      {r.kod && <div className="text-[10.5px] font-mono text-muted-foreground">{r.kod}</div>}
+                    </div>
+                    <div className={cn(
+                      "shrink-0 font-mono text-sm font-bold tabular-nums",
+                      ferq != null && ferq < 0 && "text-rose-500",
+                      ferq != null && ferq > 0 && "text-emerald-500",
+                    )}>
+                      {ferq != null ? (ferq > 0 ? "+" : "") + formatNumber(ferq, 2) : "—"}
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <select
+                      value={current.sebeb}
+                      onChange={(e) =>
+                        setReasons((p) => ({ ...p, [r.id]: { ...current, sebeb: e.target.value as VarianceReason | "" } }))
+                      }
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    >
+                      <option value="">— Səbəb seç —</option>
+                      {VARIANCE_REASONS
+                        .filter((opt) => ferq == null || (ferq > 0 ? opt.value === "muveffeqiyyetli_artim" || opt.value === "manual" || opt.value === "diger" || opt.value === "sistem_sehv" : opt.value !== "muveffeqiyyetli_artim"))
+                        .map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Əlavə açıqlama (opsional)"
+                      value={current.aciqlama}
+                      onChange={(e) =>
+                        setReasons((p) => ({ ...p, [r.id]: { ...current, aciqlama: e.target.value } }))
+                      }
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+              Ləğv et
+            </Button>
+            <Button type="submit" disabled={!allFilled || pending}>
+              {pending ? "Yazılır..." : "Səbəbləri saxla və tamamla"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

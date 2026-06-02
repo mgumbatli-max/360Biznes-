@@ -12,6 +12,9 @@ export const metadata: Metadata = { title: "Konsiqnasiya" };
 type SP = { q?: string; istiqamet?: string; kontragent?: string; status?: string };
 
 export default async function KonsiqnasiyaPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("konsiqnasiya.oxu");
+
   const sp = await searchParams;
   const [rows, options] = await Promise.all([
     getKonsList({ q: sp.q, istiqamet: sp.istiqamet, kontragentId: sp.kontragent, status: sp.status }),
