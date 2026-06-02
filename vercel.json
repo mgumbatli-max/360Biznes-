@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/cron/run-automation-rules",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 5 * * *"
     },
     {
       "path": "/api/cron/compute-reorder-recommendations",
