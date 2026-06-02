@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Save, CheckCircle2, XCircle, Loader2, ScanBarcode, AlertTriangle } from "lucide-react";
+import { Save, CheckCircle2, XCircle, Loader2, ScanBarcode, AlertTriangle, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatNumber, cn } from "@/lib/utils";
+import { BarcodeScannerButton } from "@/components/ui/barcode-scanner";
 import {
   bulkUpdateInventarRows,
   completeInventar,
@@ -83,6 +84,22 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
       inputRefs.current[found.id]?.focus();
       inputRefs.current[found.id]?.select();
     }, 30);
+  }
+
+  /** Kameradan barkod aşkarlandı — onScan eyni məntiqi tətbiq et. */
+  function onCameraBarcode(code: string) {
+    const found = rows.find((r) =>
+      (r.barkod ?? "").toLowerCase() === code.toLowerCase() ||
+      (r.kod ?? "").toLowerCase() === code.toLowerCase(),
+    );
+    if (!found) {
+      toast.error(`"${code}" cədvəldə tapılmadı`);
+      return;
+    }
+    const cur = Number(values[found.id] || 0);
+    const next = (Number.isNaN(cur) ? 0 : cur) + 1;
+    setValues((p) => ({ ...p, [found.id]: String(next) }));
+    toast.success(`+1: ${found.mehsul_ad} (cəmi ${next})`);
   }
 
   function dirtyRows() {
@@ -184,7 +201,7 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
               Ləğv et
             </Button>
           </div>
-          {/* Barkod skaner — Enter ilə uyğun məhsulu tap və +1 et */}
+          {/* Barkod skaner — Enter ilə uyğun məhsulu tap və +1 et + mobil kamera */}
           <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 p-2">
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary/15 text-primary">
               <ScanBarcode className="h-4 w-4" />
@@ -200,6 +217,19 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
                 autoFocus
               />
             </div>
+            <BarcodeScannerButton
+              onDetected={onCameraBarcode}
+              continuous
+              trigger={
+                <button
+                  type="button"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+                  title="Telefon/tablet kamerası ilə skanla"
+                >
+                  <Camera className="h-4 w-4" />
+                </button>
+              }
+            />
           </div>
         </>
       )}

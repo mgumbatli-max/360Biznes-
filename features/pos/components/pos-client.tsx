@@ -45,6 +45,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BarcodeScannerButton } from "@/components/ui/barcode-scanner";
+import { Camera } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -1215,6 +1217,33 @@ export function PosClient({
               >
                 <X className="h-3.5 w-3.5" />
               </button>
+            )}
+            {/* Mobil kamera skan düyməsi — searchQ yoxdursa göstərilir */}
+            {!searchQ && (
+              <BarcodeScannerButton
+                onDetected={(code) => {
+                  setSearchQ(code);
+                  lookupBarcodeAction(code, anbarId).then((p) => {
+                    if (p) {
+                      addProduct(p);
+                      toast.success(`${p.ad} əlavə olundu`);
+                      setSearchQ("");
+                    } else {
+                      toast.error(`Barkod "${code}" tapılmadı`);
+                    }
+                  });
+                }}
+                trigger={
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md bg-rose-500 text-white hover:bg-rose-600"
+                    aria-label="Kamera ilə skanla"
+                    title="Telefon/tablet kamerası ilə skanla"
+                  >
+                    <Camera className="h-4 w-4" />
+                  </button>
+                }
+              />
             )}
             {/* Result dropdown — anchored to the unified input */}
             <div className="relative">
