@@ -27,6 +27,7 @@ import {
 import { ProductDailyChart } from "@/features/anbar/components/product-daily-chart";
 import { ProductImageGallery } from "@/features/anbar/components/product-image-gallery";
 import { ProductPerformanceSection } from "@/features/anbar/components/product-performance-section";
+import { PriceSimulator } from "@/features/anbar/components/price-simulator";
 import { getProductPerformance } from "@/features/anbar/performance-queries";
 import { sekilCount } from "@/lib/mehsul/sekil-urls";
 import { getCategoryOptions, getBrandOptions } from "@/features/anbar/queries";
@@ -277,6 +278,17 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>
         <PerformanceSection id={id} />
       </Suspense>
+
+      {/* Qiymət simulator — endirim hesablama */}
+      <PriceSimulator
+        ad={product.ad}
+        satis_qiymeti={Number(product.satis_qiymeti ?? 0)}
+        alish_qiymeti={Number(product.alish_qiymeti ?? 0)}
+        min_satis_qiymeti={product.min_satis_qiymeti != null ? Number(product.min_satis_qiymeti) : null}
+        topdan_qiymeti={product.topdan_qiymeti != null ? Number(product.topdan_qiymeti) : null}
+        partnyor_qiymeti={product.partnyor_qiymeti != null ? Number(product.partnyor_qiymeti) : null}
+        vip_qiymeti={product.vip_qiymeti != null ? Number(product.vip_qiymeti) : null}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Suspense fallback={<Skeleton className="h-[500px] rounded-xl" />}>
