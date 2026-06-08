@@ -98,25 +98,32 @@ export default async function DashboardPage() {
   if (!session?.user) return null;
   const u = session.user;
 
+  // Sahibkar/admin = tam giriş (ad ilə — id klon səbəbindən etibarsız, audit #14).
+  // Bu, icazə cədvəlinin prod-da seed olunmamasından asılı olmadan owner-i keçirir
+  // (access-guard-lardakı isXPrivileged bypass-ı ilə eyni məntiq).
+  const isPrivileged = ["sahibkar", "admin"].includes(
+    ((u as { rol_ad?: string }).rol_ad ?? "").toLowerCase(),
+  );
+
   // Master icazə yoxlaması — `dashboard.oxu` yoxdursa ana səhifə yox.
   // Bu yoxlama sidebar-da artıq nav item-i gizlədir, lakin URL-ə birbaşa
   // daxil olan istifadəçi üçün də mütləq lazımdır.
-  if (!has(icazeler, "dashboard.oxu")) {
+  if (!isPrivileged && !has(icazeler, "dashboard.oxu")) {
     redirect("/tapshiriqlar");
   }
 
-  // Bölmə icazələri — hər biri ayrı-ayrı yoxlanılır
-  const canKpi       = has(icazeler, "dashboard.kpi");
-  const canCashflow  = has(icazeler, "dashboard.cashflow");
-  const canTapshiriq = has(icazeler, "dashboard.tapshiriq");
-  const canAktivlik  = has(icazeler, "dashboard.aktivlik");
-  const canStok      = has(icazeler, "dashboard.stok");
-  const canTop5      = has(icazeler, "dashboard.top5");
-  const canAlerts    = has(icazeler, "dashboard.alerts");
-  const canSync      = has(icazeler, "dashboard.sync");
-  const canFeed      = has(icazeler, "dashboard.feed");
-  const canCharts    = has(icazeler, "dashboard.charts");
-  const canInsight   = has(icazeler, "dashboard.insight");
+  // Bölmə icazələri — hər biri ayrı-ayrı yoxlanılır (privileged hamısını görür)
+  const canKpi       = isPrivileged || has(icazeler, "dashboard.kpi");
+  const canCashflow  = isPrivileged || has(icazeler, "dashboard.cashflow");
+  const canTapshiriq = isPrivileged || has(icazeler, "dashboard.tapshiriq");
+  const canAktivlik  = isPrivileged || has(icazeler, "dashboard.aktivlik");
+  const canStok      = isPrivileged || has(icazeler, "dashboard.stok");
+  const canTop5      = isPrivileged || has(icazeler, "dashboard.top5");
+  const canAlerts    = isPrivileged || has(icazeler, "dashboard.alerts");
+  const canSync      = isPrivileged || has(icazeler, "dashboard.sync");
+  const canFeed      = isPrivileged || has(icazeler, "dashboard.feed");
+  const canCharts    = isPrivileged || has(icazeler, "dashboard.charts");
+  const canInsight   = isPrivileged || has(icazeler, "dashboard.insight");
 
   // HeroSection tək komponentin içində bir neçə bölmə var (insight banner,
   // KPI grid, cashflow, mənim işim, qrafiklər). İcazələrə görə hissəli render.
