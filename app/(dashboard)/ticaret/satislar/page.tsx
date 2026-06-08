@@ -7,13 +7,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { SaleFilters } from "@/features/ticaret/components/sale-filters";
 import { SalesTable } from "@/features/ticaret/components/sales-table";
-import { NewOperationButton } from "@/features/ticaret/components/new-operation-dialog";
 import { PipelineBoard } from "@/features/ticaret/components/pipeline-board";
 import { getSaleStats, getSales, type SaleFilter } from "@/features/ticaret/satis-queries";
 import { getSalesByPipelineStage } from "@/features/ticaret/pipeline-queries";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { formatMoney } from "@/lib/utils";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 
 export const metadata: Metadata = { title: "Satışlar" };
 
@@ -77,9 +77,24 @@ function SalesTableSkeleton() {
   );
 }
 
-async function SalesContent({ filter }: { filter: SaleFilter }) {
+async function SalesContent({
+  filter,
+  canPay,
+  canCancel,
+}: {
+  filter: SaleFilter;
+  canPay: boolean;
+  canCancel: boolean;
+}) {
   const sales = await getSales(filter);
-  return <SalesTable items={sales.items} total={sales.total} />;
+  return (
+    <SalesTable
+      items={sales.items}
+      total={sales.total}
+      canPay={canPay}
+      canCancel={canCancel}
+    />
+  );
 }
 
 async function PipelineContent() {
@@ -93,9 +108,17 @@ export default async function SatislarPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
-  await requireTicaretPerm("satis.oxu");
+  const { icazeler, isOwnerOrAdmin } = await requireTicaretPerm("satis.oxu");
+  const canPay = isOwnerOrAdmin || icazeler.includes("satis.odenis") || icazeler.includes("satis.idare");
+  const canCancel = isOwnerOrAdmin || icazeler.includes("satis.legv") || icazeler.includes("satis.idare");
 
   const sp = await searchParams;
+
+  // SOFT-DELETE STANDARTI: URL-dən filter oxu + icazə yoxla
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
 
   const filter: SaleFilter = {
     search: sp.q,
@@ -104,6 +127,7 @@ export default async function SatislarPage({
     from: sp.from ? new Date(sp.from) : undefined,
     to: sp.to ? new Date(sp.to + "T23:59:59") : undefined,
     borc: sp.borc === "var" || sp.borc === "yox" ? sp.borc : undefined,
+    recordStatus,
   };
 
   const isKanban = sp.view === "kanban";
@@ -118,6 +142,7 @@ export default async function SatislarPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <SavedUrlFiltersChip storageKey="satislar" basePath="/ticaret/satislar" />
           <Button asChild size="sm" variant="outline">
             <Link href="/api/ticaret/satis-export" target="_blank">
@@ -131,7 +156,7 @@ export default async function SatislarPage({
               POS
             </Link>
           </Button>
-          <NewOperationButton />
+          {/* «Yeni əməliyyat» düyməsi indi TicaretSubNav-da sabit görünür */}
         </div>
       </header>
 
@@ -221,7 +246,7 @@ export default async function SatislarPage({
         <>
           <SaleFilters />
           <Suspense fallback={<SalesTableSkeleton />}>
-            <SalesContent filter={filter} />
+            <SalesContent filter={filter} canPay={canPay} canCancel={canCancel} />
           </Suspense>
         </>
       )}

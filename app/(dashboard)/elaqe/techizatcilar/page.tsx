@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Truck, CreditCard, UserCheck, AlertCircle, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
@@ -39,6 +40,10 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
   await requireElaqePerm("techizatci.oxu");
 
   const sp = await searchParams;
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const filter: ContactFilter = {
     nov: "techizatci",
     search: sp.q,
@@ -50,6 +55,7 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
     sheher: sp.sheher,
     sort: (sp.sort as SortKey) ?? "yaradildi",
     dir: (sp.dir as "asc" | "desc") ?? "desc",
+    recordStatus,
   };
 
   const page = Math.max(1, Number(sp.page) || 1);
@@ -70,6 +76,7 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <SavedUrlFiltersChip storageKey="techizatcilar" basePath="/elaqe/techizatcilar" />
           <Link href="/ayarlar/inteqrasiya?key=techizatci">
             <Button variant="outline" size="sm">

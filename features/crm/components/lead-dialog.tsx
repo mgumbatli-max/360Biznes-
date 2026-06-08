@@ -13,11 +13,29 @@ import { saveLead } from "../actions";
 import type { LeadCard } from "../types";
 
 type UserOption = { id: string; ad_soyad: string };
-type Props = { initial?: LeadCard; trigger?: "new" | "edit"; users?: UserOption[] };
+type Props = {
+  initial?: LeadCard;
+  trigger?: "new" | "edit";
+  users?: UserOption[];
+  defaultOpen?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  hideTrigger?: boolean;
+};
 
-export function LeadDialog({ initial, trigger = "new", users = [] }: Props) {
+export function LeadDialog({
+  initial,
+  trigger = "new",
+  users = [],
+  defaultOpen,
+  onOpenChange,
+  hideTrigger,
+}: Props) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(defaultOpen ?? false);
+  function setOpen(v: boolean) {
+    setOpenState(v);
+    onOpenChange?.(v);
+  }
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -40,17 +58,19 @@ export function LeadDialog({ initial, trigger = "new", users = [] }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger === "new" ? (
-          <Button size="sm" className="font-semibold text-white" style={{ background: "var(--brand-gradient)" }}>
-            <Plus className="h-4 w-4" /> Yeni lead
-          </Button>
-        ) : (
-          <Button size="icon-sm" variant="ghost" title="Redaktə">
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-        )}
-      </DialogTrigger>
+      {!hideTrigger && (
+        <DialogTrigger asChild>
+          {trigger === "new" ? (
+            <Button size="sm" className="font-semibold text-white" style={{ background: "var(--brand-gradient)" }}>
+              <Plus className="h-4 w-4" /> Yeni lead
+            </Button>
+          ) : (
+            <Button size="icon-sm" variant="ghost" title="Redaktə">
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent className="md:max-w-xl">
         <DialogHeader>
           <DialogTitle>{initial ? "Lead redaktəsi" : "Yeni lead"}</DialogTitle>

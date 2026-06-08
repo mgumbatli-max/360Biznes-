@@ -70,17 +70,17 @@ const fetchTradeKpisRawCached = (sahibkarId: string) =>
         sBugun, sAy, kredit, aBugun, aAy, aAciq, qAy, qGoz, tAktiv, tCevr,
       ] = await Promise.all([
         prismaUnscoped.satis_sifarisleri.aggregate({
-          where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true }, status: { not: "legv" } },
+          where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true }, deleted_at: null, status: { notIn: ["legv", "qaytarilib"] } },
           _sum: { son_mebleg: true, xalis_meblegh: true },
           _count: { _all: true },
         }),
         prismaUnscoped.satis_sifarisleri.aggregate({
-          where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, qaralama: { not: true }, status: { not: "legv" } },
+          where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, qaralama: { not: true }, deleted_at: null, status: { notIn: ["legv", "qaytarilib"] } },
           _sum: { son_mebleg: true, xalis_meblegh: true },
           _count: { _all: true },
         }),
         prismaUnscoped.satis_sifarisleri.aggregate({
-          where: { sahibkar_id: sahibkarId, odenis_nov: "nisye", qaralama: { not: true }, status: { not: "legv" } },
+          where: { sahibkar_id: sahibkarId, odenis_nov: "nisye", qaralama: { not: true }, deleted_at: null, status: { notIn: ["legv", "qaytarilib"] } },
           _sum: { son_mebleg: true, odenilmis: true },
           _count: { _all: true },
         }),
@@ -184,7 +184,7 @@ export async function getSalesByDay(days = 30): Promise<DayBucket[]> {
       FROM satis_sifarisleri
       WHERE sahibkar_id = ${sahibkarId}::uuid
         AND tarix >= CURRENT_DATE - (${days}::int - 1)
-        AND COALESCE(status, '') NOT IN ('legv')
+        AND COALESCE(status, '') NOT IN ('legv', 'qaytarilib') AND deleted_at IS NULL
         AND COALESCE(qaralama, false) = false
       GROUP BY 1
       ORDER BY 1
@@ -213,7 +213,7 @@ export async function getTopSellers(limit = 5): Promise<SellerRow[]> {
         ON u.id = COALESCE(s.satis_meneceri_id, s.yaradan_id)
       WHERE s.sahibkar_id = ${sahibkarId}::uuid
         AND s.tarix >= date_trunc('month', CURRENT_DATE)
-        AND COALESCE(s.status, '') NOT IN ('legv')
+        AND COALESCE(s.status, '') NOT IN ('legv', 'qaytarilib') AND s.deleted_at IS NULL
         AND COALESCE(s.qaralama, false) = false
       GROUP BY 1, 2
       ORDER BY meb DESC
@@ -242,7 +242,7 @@ export async function getTopProducts(limit = 5): Promise<ProductRow[]> {
       JOIN mehsullar m ON m.id = ss.mehsul_id
       WHERE s.sahibkar_id = ${sahibkarId}::uuid
         AND s.tarix >= date_trunc('month', CURRENT_DATE)
-        AND COALESCE(s.status, '') NOT IN ('legv')
+        AND COALESCE(s.status, '') NOT IN ('legv', 'qaytarilib') AND s.deleted_at IS NULL
         AND COALESCE(s.qaralama, false) = false
       GROUP BY 1, 2, 3
       ORDER BY meb DESC
@@ -369,7 +369,7 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
       FROM satis_sifarisleri s
       WHERE s.sahibkar_id = ${sahibkarId}::uuid
         AND s.odenis_nov = 'borc'
-        AND s.son_mebleg > s.odenilmis + 0.01
+        AND s.son_mebleg > s.odenilmis + 0.001
         AND s.tarix < CURRENT_DATE - INTERVAL '30 days'
     `;
     const overdue = Number(overdueSales[0]?.count ?? 0);
@@ -394,7 +394,7 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
       LEFT JOIN stok st ON st.mehsul_id = m.id
       WHERE s.sahibkar_id = ${sahibkarId}::uuid
         AND s.tarix >= ${d30}
-        AND COALESCE(s.status, '') NOT IN ('legv')
+        AND COALESCE(s.status, '') NOT IN ('legv', 'qaytarilib') AND s.deleted_at IS NULL
       GROUP BY m.id, m.ad
       HAVING SUM(COALESCE(st.miqdar, 0)) <= 5 AND SUM(ss.miqdar) >= 3
       ORDER BY profit DESC
@@ -449,7 +449,7 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
           JOIN satis_sifarisleri s ON s.id = ss.sifaris_id
           WHERE ss.mehsul_id = m.id
             AND s.tarix >= ${d60}
-            AND COALESCE(s.status, '') NOT IN ('legv')
+            AND COALESCE(s.status, '') NOT IN ('legv', 'qaytarilib') AND s.deleted_at IS NULL
         )
     `;
     const deadCount = Number(deadStock[0]?.count ?? 0);
@@ -471,7 +471,7 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
       WHERE s.sahibkar_id = ${sahibkarId}::uuid
         AND s.musteri_id IS NOT NULL
         AND s.tarix >= ${d7}
-        AND COALESCE(s.status, '') NOT IN ('legv')
+        AND COALESCE(s.status, '') NOT IN ('legv', 'qaytarilib') AND s.deleted_at IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM satis_sifarisleri s2
           WHERE s2.sahibkar_id = ${sahibkarId}::uuid

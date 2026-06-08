@@ -11,6 +11,8 @@ const OpenSchema = z.object({
   ad: z.string().min(1).max(100),
   filial_id: z.coerce.number().int().positive().optional(),
   acilis_qaligi: z.coerce.number().min(0).default(0),
+  /** Hansı maliye hesabı (nağd kassa) ilə bağlıdır. Seçilməsə default nağd hesab */
+  maliye_hesab_id: z.string().uuid().optional().or(z.literal("").transform(() => undefined)),
 });
 
 const CloseSchema = z.object({
@@ -39,6 +41,17 @@ export async function openKassa(input: FormData | z.infer<typeof OpenSchema>): P
         return { ok: false as const, error: "Sizdə artıq açıq kassa var. Əvvəl bağlayın." };
       }
 
+      // Default maliye hesabı — istifadəçi seçməyibsə ilk aktiv nağd hesab
+      let maliyeHesabId = parsed.data.maliye_hesab_id ?? null;
+      if (!maliyeHesabId) {
+        const defHesab = await prisma.maliye_hesablari.findFirst({
+          where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
+          orderBy: { yaradildi: "asc" },
+          select: { id: true },
+        });
+        maliyeHesabId = defHesab?.id ?? null;
+      }
+
       const created = await prisma.kassalar.create({
         data: {
           sahibkar_id: sahibkarId,
@@ -47,6 +60,7 @@ export async function openKassa(input: FormData | z.infer<typeof OpenSchema>): P
           acan_id: istifadeciId,
           acilis_qaligi: parsed.data.acilis_qaligi,
           status: "acig",
+          maliye_hesab_id: maliyeHesabId,
         },
       });
       await audit("yarat", "kassa", created.id, {

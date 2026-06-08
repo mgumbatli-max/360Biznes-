@@ -27,7 +27,7 @@ import { HesabQuickCreate } from "./hesab-quick-create";
 import { FilialGorunushMatrix } from "./filial-gorunush-matrix";
 import { saveFilialIsolation, saveFilialUserPerm } from "../actions";
 
-type Anbar = { id: number; ad: string; aktiv: boolean | null; unvan: string | null };
+type Anbar = { id: number; ad: string; aktiv: boolean | null; unvan: string | null; nov?: string | null };
 type Hesab = {
   id: string;
   ad: string;
@@ -392,9 +392,23 @@ function InfraTab({ filial }: { filial: FilialDetail }) {
               >
                 <Boxes className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-sm font-semibold">{a.ad}</span>
                     {!a.aktiv && <Badge variant="outline" className="text-[9px]">passiv</Badge>}
+                    {a.nov && a.nov !== "standart" && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "text-[9px] uppercase",
+                          a.nov === "defekt" && "border-rose-500/40 text-rose-500",
+                          a.nov === "karantın" && "border-amber-500/40 text-amber-500",
+                          a.nov === "servis" && "border-blue-500/40 text-blue-500",
+                          a.nov === "transit" && "border-violet-500/40 text-violet-500",
+                        )}
+                      >
+                        {a.nov}
+                      </Badge>
+                    )}
                   </div>
                   {a.unvan && <div className="text-xs text-muted-foreground">{a.unvan}</div>}
                 </div>

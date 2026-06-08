@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Upload, Sparkles, Wand2 } from "lucide-react";
+import { Loader2, Wand2, Sparkles } from "lucide-react";
 import { DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { saveProduct } from "../actions";
+import { MultiImageEditor } from "./multi-image-editor";
 
 type CategoryOpt = { id: number; ad: string };
 type BrandOpt = { id: number; ad: string };
@@ -86,60 +87,10 @@ export function ProductDialogBody({ categories, brands, units = [], initial, onO
   const [kateqId, setKateqId] = useState<string>(initial?.kateqoriya_id ? String(initial.kateqoriya_id) : "");
   const [markaId, setMarkaId] = useState<string>(initial?.marka_id ? String(initial.marka_id) : "");
   const [olcuId, setOlcuId] = useState<string>(initial?.olcu_id ? String(initial.olcu_id) : "");
-  const [sekilUrl, setSekilUrl] = useState<string>(initial?.sekil_url ?? "");
   const [aciqlamaq, setAciqlamaq] = useState<string>(initial?.aciqlamaq ?? "");
   const [adValue, setAdValue] = useState<string>(initial?.ad ?? "");
-  const [uploadingImg, setUploadingImg] = useState(false);
   const [generatingImg, setGeneratingImg] = useState(false);
   const [generatingDesc, setGeneratingDesc] = useState(false);
-
-  async function uploadFile(file: File) {
-    setUploadingImg(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await fetch("/api/anbar/upload-image", { method: "POST", body: fd });
-      const j = await r.json();
-      if (!r.ok) {
-        toast.error(j.error ?? "Yükləmə alınmadı");
-        return;
-      }
-      setSekilUrl(j.url);
-      toast.success("Fayl yükləndi");
-    } catch {
-      toast.error("Yükləmə xətası");
-    } finally {
-      setUploadingImg(false);
-    }
-  }
-
-  async function aiGenerateImage() {
-    const prompt = adValue.trim();
-    if (!prompt) {
-      toast.error("AI üçün məhsul adı tələb olunur");
-      return;
-    }
-    setGeneratingImg(true);
-    try {
-      const r = await fetch("/api/anbar/ai/generate-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
-      const j = await r.json();
-      if (!r.ok) {
-        toast.error(j.error ?? "Generasiya alınmadı");
-        return;
-      }
-      setSekilUrl(j.url);
-      if (j.is_mock && j.notice) toast.info(j.notice);
-      else toast.success("AI şəkil generasiya etdi");
-    } catch {
-      toast.error("Generasiya xətası");
-    } finally {
-      setGeneratingImg(false);
-    }
-  }
 
   async function aiGenerateDescription() {
     const ad = adValue.trim();
@@ -194,155 +145,163 @@ export function ProductDialogBody({ categories, brands, units = [], initial, onO
   }
 
   return (
-    <DialogContent className="md:max-w-2xl max-h-[90vh] overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>{initial ? "Məhsulu redaktə et" : "Yeni məhsul"}</DialogTitle>
-      </DialogHeader>
+    <DialogContent className="md:max-w-3xl max-h-[92vh] overflow-hidden p-0 gap-0">
+      {/* Modern gradient header */}
+      <div
+        className="relative border-b border-border/30 px-5 py-4 text-white"
+        style={{ background: "var(--brand-gradient)" }}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.16),transparent_50%)]" />
+        <div className="relative z-10">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] opacity-80">
+            <Sparkles className="h-3 w-3" />
+            {initial ? "Redaktə" : "Yeni məhsul"}
+          </div>
+          <DialogHeader className="mt-0.5">
+            <DialogTitle className="text-lg font-bold text-white">
+              {initial ? initial.ad : "Məhsul kataloquna yeni mal əlavə et"}
+            </DialogTitle>
+          </DialogHeader>
+        </div>
+      </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+      {/* Scrollable form body */}
+      <form onSubmit={onSubmit} className="flex max-h-[calc(92vh-140px)] flex-col">
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="ad">Ad *</Label>
-              <Input
-                id="ad"
-                name="ad"
-                required
-                maxLength={200}
-                value={adValue}
-                onChange={(e) => setAdValue(e.target.value)}
-                autoFocus
-                disabled={pending}
-              />
+          {/* Əsas məlumat — birləşmiş yığcam kart */}
+          <section className="rounded-lg border border-border/40 bg-card/30 p-3">
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <span className="h-4 w-1 rounded-full bg-primary" />
+              Əsas məlumat
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="kod">Kod</Label>
-              <Input id="kod" name="kod" maxLength={50} defaultValue={initial?.kod ?? ""} disabled={pending} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-            <BarcodeInput defaultValue={initial?.barkod ?? ""} disabled={pending} />
-            <div className="space-y-2">
-              <Label>Kateqoriya</Label>
-              <Combobox
-                options={categories.map<ComboOption>((c) => ({ value: String(c.id), label: c.ad }))}
-                value={kateqId}
-                onChange={setKateqId}
-                placeholder="— Seçin —"
-                searchPlaceholder="🔍 Kateqoriya axtar..."
-                emptyText="Kateqoriya tapılmadı"
-                disabled={pending}
-              />
-              <input type="hidden" name="kateqoriya_id" value={kateqId} />
-            </div>
-            <div className="space-y-2">
-              <Label>Marka</Label>
-              <Combobox
-                options={brands.map<ComboOption>((b) => ({ value: String(b.id), label: b.ad }))}
-                value={markaId}
-                onChange={setMarkaId}
-                placeholder="— Seçin —"
-                searchPlaceholder="🔍 Marka axtar..."
-                emptyText="Marka tapılmadı"
-                disabled={pending}
-              />
-              <input type="hidden" name="marka_id" value={markaId} />
-            </div>
-            <div className="space-y-2">
-              <Label>Ölçü vahidi</Label>
-              <Combobox
-                options={units.map<ComboOption>((u) => ({ value: String(u.id), label: u.ad, hint: u.qisa_ad ?? undefined }))}
-                value={olcuId}
-                onChange={setOlcuId}
-                placeholder="— Seçin —"
-                searchPlaceholder="🔍 Vahid axtar..."
-                emptyText="Vahid tapılmadı"
-                disabled={pending}
-              />
-              <input type="hidden" name="olcu_id" value={olcuId} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[120px_1fr]">
-            {/* Image preview + actions */}
-            <div className="space-y-2">
-              <Label>Şəkil</Label>
-              <div className="relative h-24 w-full overflow-hidden rounded-md border border-border bg-secondary/30">
-                {sekilUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img loading="lazy" decoding="async" src={sekilUrl} alt="" className="h-full w-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-muted-foreground text-[10px]">yoxdur</div>
-                )}
+            {/* Sətir 1: Ad (geniş) + Kod */}
+            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+              <div className="space-y-1 md:col-span-2">
+                <Label htmlFor="ad" className="text-[11px]">Ad *</Label>
+                <Input
+                  id="ad"
+                  name="ad"
+                  required
+                  maxLength={200}
+                  value={adValue}
+                  onChange={(e) => setAdValue(e.target.value)}
+                  autoFocus
+                  disabled={pending}
+                  placeholder="məs. iPhone 15 Pro 256GB"
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="kod" className="text-[11px]">Kod / SKU</Label>
+                <Input id="kod" name="kod" maxLength={50} defaultValue={initial?.kod ?? ""} disabled={pending} placeholder="APL-IP15P-256" className="h-9 text-sm" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="sekil_url">
-                Şəkil URL{" "}
-                <span className="text-[10px] font-normal text-muted-foreground">
-                  · çoxlu üçün <code className="rounded bg-secondary px-1 font-mono">|</code> ilə ayır
-                </span>
-              </Label>
-              <Input
-                id="sekil_url"
-                value={sekilUrl}
-                onChange={(e) => setSekilUrl(e.target.value)}
-                placeholder="https://...jpg | https://...jpg | https://...jpg"
-                disabled={pending}
-              />
-              <input type="hidden" name="sekil_url" value={sekilUrl} />
-              {sekilUrl.includes("|") && (
-                <p className="text-[10.5px] text-emerald-600">
-                  ✓ {sekilUrl.split("|").filter((s) => s.trim()).length} şəkil tapıldı — ilk şəkil əsas
-                </p>
-              )}
-              <div className="flex flex-wrap gap-1.5">
-                <label className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-secondary/40 px-2.5 text-[11px] font-semibold cursor-pointer hover:bg-secondary">
-                  {uploadingImg ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                  Kompüterdən yüklə
-                  <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) uploadFile(f);
-                    e.currentTarget.value = "";
-                  }} disabled={pending || uploadingImg} />
-                </label>
-                <button
-                  type="button"
-                  onClick={aiGenerateImage}
-                  disabled={pending || generatingImg || !adValue.trim()}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 text-[11px] font-semibold text-primary-light hover:bg-primary/20 disabled:opacity-40"
-                >
-                  {generatingImg ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                  AI generasiya
-                </button>
-                {sekilUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setSekilUrl("")}
-                    disabled={pending}
-                    className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2.5 text-[11px] text-muted-foreground hover:text-danger"
-                  >
-                    Sil
-                  </button>
-                )}
+            {/* Sətir 2: Barkod + Kateq + Marka + Vahid */}
+            <div className="mt-2.5 grid grid-cols-2 gap-2.5 md:grid-cols-4">
+              <BarcodeInput defaultValue={initial?.barkod ?? ""} disabled={pending} />
+              <div className="space-y-1">
+                <Label className="text-[11px]">Kateqoriya</Label>
+                <Combobox
+                  options={categories.map<ComboOption>((c) => ({ value: String(c.id), label: c.ad }))}
+                  value={kateqId}
+                  onChange={setKateqId}
+                  placeholder="— Seçin —"
+                  searchPlaceholder="Axtar..."
+                  emptyText="Tapılmadı"
+                  disabled={pending}
+                />
+                <input type="hidden" name="kateqoriya_id" value={kateqId} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Marka</Label>
+                <Combobox
+                  options={brands.map<ComboOption>((b) => ({ value: String(b.id), label: b.ad }))}
+                  value={markaId}
+                  onChange={setMarkaId}
+                  placeholder="— Seçin —"
+                  searchPlaceholder="Axtar..."
+                  emptyText="Tapılmadı"
+                  disabled={pending}
+                />
+                <input type="hidden" name="marka_id" value={markaId} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px]">Vahid</Label>
+                <Combobox
+                  options={units.map<ComboOption>((u) => ({ value: String(u.id), label: u.ad, hint: u.qisa_ad ?? undefined }))}
+                  value={olcuId}
+                  onChange={setOlcuId}
+                  placeholder="— Seçin —"
+                  searchPlaceholder="Axtar..."
+                  emptyText="Tapılmadı"
+                  disabled={pending}
+                />
+                <input type="hidden" name="olcu_id" value={olcuId} />
               </div>
             </div>
-          </div>
+          </section>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="aciqlamaq">Təsvir / Açıqlama</Label>
+          {/* Şəkillər */}
+          <section className="rounded-lg border border-border/40 bg-card/30 p-3">
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <span className="h-4 w-1 rounded-full bg-emerald-500" />
+              Şəkillər (max 5)
+            </div>
+          <MultiImageEditor
+            name="sekil_url"
+            defaultValue={initial?.sekil_url ?? ""}
+            label=""
+            aiDisabled={!adValue.trim()}
+            aiGenerating={generatingImg}
+            onAiGenerate={async () => {
+              const prompt = adValue.trim();
+              if (!prompt) {
+                toast.error("AI üçün məhsul adı tələb olunur");
+                return null;
+              }
+              setGeneratingImg(true);
+              try {
+                const r = await fetch("/api/anbar/ai/generate-image", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ prompt }),
+                });
+                const j = await r.json();
+                if (!r.ok) {
+                  toast.error(j.error ?? "Generasiya alınmadı");
+                  return null;
+                }
+                if (j.is_mock && j.notice) toast.info(j.notice);
+                else toast.success("AI şəkil generasiya etdi");
+                return j.url as string;
+              } catch {
+                toast.error("Generasiya xətası");
+                return null;
+              } finally {
+                setGeneratingImg(false);
+              }
+            }}
+          />
+          </section>
+
+          {/* Təsvir */}
+          <section className="rounded-xl border border-border/40 bg-card/40 p-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                <span className="h-4 w-1 rounded-full bg-violet-500" />
+                Təsvir / Açıqlama
+              </div>
               <button
                 type="button"
                 onClick={aiGenerateDescription}
                 disabled={pending || generatingDesc || !adValue.trim()}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 text-[11px] font-semibold text-primary-light hover:bg-primary/20 disabled:opacity-40"
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 text-[11px] font-semibold text-primary hover:bg-primary/20 disabled:opacity-40"
                 title="AI ilə avto doldur"
               >
                 {generatingDesc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
@@ -356,41 +315,31 @@ export function ProductDialogBody({ categories, brands, units = [], initial, onO
               maxLength={5000}
               value={aciqlamaq}
               onChange={(e) => setAciqlamaq(e.target.value)}
-              placeholder="Texniki xüsusiyyətlər, xüsusi qeydlər... və ya yuxarıdakı 'AI ilə doldur' düyməsi ilə avto generasiya"
-              className="flex w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="Texniki xüsusiyyətlər, xüsusi qeydlər..."
+              className="flex w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               disabled={pending}
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="qisaca_tesvir">Qısaca təsvir (kart üzərində)</Label>
-            <Input
-              id="qisaca_tesvir"
-              name="qisaca_tesvir"
-              maxLength={500}
-              defaultValue={initial?.qisaca_tesvir ?? ""}
-              placeholder="2-3 söz ilə qısa məhsul izahı"
-              disabled={pending}
-            />
-          </div>
-
-          <div className="rounded-md border border-border bg-secondary/30 p-3">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Qiymətlər (AZN)
+            <div className="mt-3 space-y-1.5">
+              <Label htmlFor="qisaca_tesvir" className="text-[11px] text-muted-foreground">Qısaca təsvir (kart üzərində görünür)</Label>
+              <Input
+                id="qisaca_tesvir"
+                name="qisaca_tesvir"
+                maxLength={500}
+                defaultValue={initial?.qisaca_tesvir ?? ""}
+                placeholder="2-3 söz ilə qısa məhsul izahı"
+                disabled={pending}
+              />
             </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              <FieldNumber name="alish_qiymeti" label="Maya (alış)" defaultValue={initial?.alish_qiymeti} disabled={pending} />
-              <FieldNumber name="satis_qiymeti" label="Pərakəndə satış *" required defaultValue={initial?.satis_qiymeti} disabled={pending} />
-              <FieldNumber name="endirimli_qiymet" label="Endirimli qiymət" defaultValue={initial?.endirimli_qiymet ?? 0} disabled={pending} />
-              <FieldNumber name="min_satis_qiymeti" label="Minimum satış" defaultValue={initial?.min_satis_qiymeti ?? 0} disabled={pending} />
-              <FieldNumber name="topdan_qiymeti" label="Topdan" defaultValue={initial?.topdan_qiymeti ?? 0} disabled={pending} />
-              <FieldNumber name="partnyor_qiymeti" label="Partnyor" defaultValue={initial?.partnyor_qiymeti ?? 0} disabled={pending} />
-              <FieldNumber name="vip_qiymeti" label="VIP" defaultValue={initial?.vip_qiymeti ?? 0} disabled={pending} />
-              <FieldNumber name="komissiya_faiz" label="Komissiya %" defaultValue={initial?.komissiya_faiz ?? 0} disabled={pending} />
-              <FieldNumber name="catdirilma_xerci" label="Çatdırılma xərci" defaultValue={initial?.catdirilma_xerci ?? 0} disabled={pending} />
-              <FieldNumber name="diger_xerc" label="Digər xərc" defaultValue={initial?.diger_xerc ?? 0} disabled={pending} />
+          </section>
+
+          {/* Qiymət */}
+          <section className="rounded-lg border border-border/40 bg-card/30 p-3">
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              <span className="h-4 w-1 rounded-full bg-amber-500" />
+              Qiymət
             </div>
-          </div>
+            <PricingBlock initial={initial} pending={pending} isNew={!initial?.id} />
+          </section>
 
           {/* Texniki xüsusiyyətlər */}
           <Section title="Texniki xüsusiyyətlər" defaultOpen={!!(initial?.model || initial?.rang || initial?.istehsalci || initial?.cheki_kg)}>
@@ -485,22 +434,44 @@ export function ProductDialogBody({ categories, brands, units = [], initial, onO
             </div>
           </Section>
 
-          <div className="flex items-end pb-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="aktiv" value="true" defaultChecked={initial?.aktiv ?? true} className="h-4 w-4 accent-primary" disabled={pending} />
-              Aktivdir (POS və satışda görünür)
+          {/* Status — kompakt */}
+          <section className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2.5">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                name="aktiv"
+                value="true"
+                defaultChecked={initial?.aktiv ?? true}
+                className="h-4 w-4 accent-emerald-600"
+                disabled={pending}
+              />
+              <div className="flex flex-1 items-center gap-2">
+                <div className="text-xs font-semibold">Aktivdir</div>
+                <span className="text-[10px] text-muted-foreground">
+                  · POS-da və satışda görünür
+                </span>
+              </div>
             </label>
-          </div>
+          </section>
+        </div>
 
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
-            İmtina
-          </Button>
-          <Button type="submit" disabled={pending}>
-            {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {initial ? "Yenilə" : "Yarat"}
-          </Button>
-        </DialogFooter>
+        {/* Sticky footer */}
+        <div className="border-t border-border/40 bg-card/95 px-5 py-3 backdrop-blur">
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
+              İmtina
+            </Button>
+            <Button
+              type="submit"
+              disabled={pending}
+              className="font-semibold text-white"
+              style={{ background: "var(--brand-gradient)" }}
+            >
+              {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {initial ? "Yenilə" : "Məhsul yarat"}
+            </Button>
+          </DialogFooter>
+        </div>
       </form>
     </DialogContent>
   );
@@ -585,11 +556,13 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <details open={defaultOpen} className="rounded-md border border-border bg-secondary/20">
-      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-secondary/40">
-        {title}
+    <details open={defaultOpen} className="group rounded-xl border border-border/40 bg-card/40 transition-colors hover:border-border/70">
+      <summary className="flex cursor-pointer select-none items-center gap-2 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground">
+        <span className="h-4 w-1 rounded-full bg-slate-400 group-open:bg-primary transition-colors" />
+        <span className="flex-1">{title}</span>
+        <span className="text-[10px] transition-transform group-open:rotate-180">▼</span>
       </summary>
-      <div className="border-t border-border/40 p-3">
+      <div className="border-t border-border/30 p-4">
         {children}
       </div>
     </details>
@@ -619,5 +592,210 @@ function Checkbox({
       />
       {label}
     </label>
+  );
+}
+
+/**
+ * Qiymət bloku — yeni məhsulda maya gizlədilir (alış qaiməsi ilə formalaşır).
+ * Pərakəndə satış qiymətindən digər qiymət növləri avtomatik təklif olunur.
+ * Default faizlər: Topdan -25%, Partnyor (diler) -30%, VIP -10%.
+ */
+function PricingBlock({
+  initial,
+  pending,
+  isNew,
+}: {
+  initial?: ProductDialogProps["initial"];
+  pending: boolean;
+  isNew: boolean;
+}) {
+  const [satis, setSatis] = useState<number>(initial?.satis_qiymeti ?? 0);
+  const [endirimli, setEndirimli] = useState<number>(initial?.endirimli_qiymet ?? 0);
+  const [minSatis, setMinSatis] = useState<number>(initial?.min_satis_qiymeti ?? 0);
+  const [topdan, setTopdan] = useState<number>(initial?.topdan_qiymeti ?? 0);
+  const [partnyor, setPartnyor] = useState<number>(initial?.partnyor_qiymeti ?? 0);
+  const [vip, setVip] = useState<number>(initial?.vip_qiymeti ?? 0);
+  const [alish, setAlish] = useState<number>(initial?.alish_qiymeti ?? 0);
+
+  const [suggesting, setSuggesting] = useState(false);
+  async function autoSuggest() {
+    if (!(satis > 0)) {
+      toast.error("Əvvəlcə pərakəndə satış qiymətini daxil edin");
+      return;
+    }
+    setSuggesting(true);
+    try {
+      // Ayarlar > Qiymət siyasətindəki qaydaları yüklə
+      const { getActivePriceRules } = await import("../price-suggestion-action");
+      const { applyPriceRule } = await import("../price-suggestion-utils");
+      const { rules, isDefault } = await getActivePriceRules();
+      // Ad uyğunluğuna görə qaydanı tap (Azərbaycan dili insensitiv)
+      const findRule = (...names: string[]) => {
+        const lower = names.map((n) => n.toLowerCase());
+        return rules.find((r) => lower.some((n) => r.ad.toLowerCase().includes(n)));
+      };
+      const topdanRule = findRule("topdan");
+      const dilerRule = findRule("diler", "partnyor");
+      const vipRule = findRule("vip");
+      const minRule = findRule("min");
+
+      if (topdanRule) setTopdan(applyPriceRule(satis, topdanRule));
+      else setTopdan(Math.round(satis * 0.75 * 100) / 100);
+
+      if (dilerRule) setPartnyor(applyPriceRule(satis, dilerRule));
+      else setPartnyor(Math.round(satis * 0.70 * 100) / 100);
+
+      if (vipRule) setVip(applyPriceRule(satis, vipRule));
+      else setVip(Math.round(satis * 0.90 * 100) / 100);
+
+      if (!minSatis || minSatis === 0) {
+        if (minRule) setMinSatis(applyPriceRule(satis, minRule));
+        else setMinSatis(Math.round(satis * 0.65 * 100) / 100);
+      }
+      toast.success(
+        isDefault
+          ? "Sistem default faizləri tətbiq edildi (Ayarlar > Qiymət siyasətində dəyişə bilərsiniz)"
+          : "Ayarlardakı qiymət qaydaları tətbiq edildi",
+      );
+    } catch (e) {
+      console.error("[autoSuggest]", e);
+      // Fallback hardcoded
+      setTopdan(Math.round(satis * 0.75 * 100) / 100);
+      setPartnyor(Math.round(satis * 0.70 * 100) / 100);
+      setVip(Math.round(satis * 0.90 * 100) / 100);
+      if (!minSatis || minSatis === 0) {
+        setMinSatis(Math.round(satis * 0.65 * 100) / 100);
+      }
+      toast.success("Qiymətlər avtomatik təklif edildi");
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  const r = (n: number) => Number.isFinite(n) ? n : 0;
+
+  return (
+    <div className="rounded-md border border-border bg-secondary/30 p-3">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Qiymətlər (AZN)
+        </div>
+        <button
+          type="button"
+          onClick={autoSuggest}
+          disabled={pending || suggesting || !(satis > 0)}
+          className="inline-flex h-7 items-center gap-1 rounded-lg bg-gradient-to-b from-primary/20 to-primary/10 px-2.5 text-[10.5px] font-semibold text-primary ring-1 ring-inset ring-primary/30 shadow-sm transition-all duration-200 hover:from-primary/30 hover:to-primary/20 hover:-translate-y-px disabled:opacity-50"
+          title="Ayarlar > Qiymət siyasətinə görə digər qiymətləri hesabla"
+        >
+          {suggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+          Avtomatik təklif
+        </button>
+      </div>
+      {isNew && (
+        <div className="mb-3 rounded-md border border-info/20 bg-info/5 px-3 py-1.5 text-[11px] text-muted-foreground">
+          <span className="font-semibold text-foreground">Maya (alış qiyməti)</span> — yeni məhsulda
+          məcburi deyil. Maya alış qaiməsi ilə formalaşır. Lazım olsa məhsul detalında, ya da alış
+          əməliyyatında dəqiqləşdiriləcək.
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {!isNew && (
+          <div className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">Maya (son alış qiyməti)</Label>
+            <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-muted/40 px-3 text-sm">
+              <span className="font-semibold tabular-nums">
+                {alish > 0 ? alish.toFixed(2) : "—"} ₼
+              </span>
+              <span className="text-[10px] text-muted-foreground">read-only</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              Alış qaiməsi ilə avtomatik yenilənir.
+            </p>
+            {/* Maya forma submit-ində mövcud dəyər kimi göndərilir (manual dəyişdirilməz) */}
+            <input type="hidden" name="alish_qiymeti" value={r(alish)} />
+          </div>
+        )}
+        {isNew && <input type="hidden" name="alish_qiymeti" value={r(alish)} />}
+        <NumberInput
+          name="satis_qiymeti"
+          label="Pərakəndə satış *"
+          value={satis}
+          onChange={setSatis}
+          disabled={pending}
+          required
+        />
+        <NumberInput
+          name="endirimli_qiymet"
+          label="Endirimli qiymət"
+          value={endirimli}
+          onChange={setEndirimli}
+          disabled={pending}
+        />
+        <NumberInput
+          name="min_satis_qiymeti"
+          label="Minimum satış"
+          value={minSatis}
+          onChange={setMinSatis}
+          disabled={pending}
+        />
+        <NumberInput
+          name="topdan_qiymeti"
+          label="Topdan"
+          value={topdan}
+          onChange={setTopdan}
+          disabled={pending}
+        />
+        <NumberInput
+          name="partnyor_qiymeti"
+          label="Diler / Partnyor"
+          value={partnyor}
+          onChange={setPartnyor}
+          disabled={pending}
+        />
+        <NumberInput
+          name="vip_qiymeti"
+          label="VIP"
+          value={vip}
+          onChange={setVip}
+          disabled={pending}
+        />
+        <FieldNumber name="komissiya_faiz" label="Komissiya %" defaultValue={initial?.komissiya_faiz ?? 0} disabled={pending} />
+        <FieldNumber name="catdirilma_xerci" label="Çatdırılma xərci" defaultValue={initial?.catdirilma_xerci ?? 0} disabled={pending} />
+        <FieldNumber name="diger_xerc" label="Digər xərc" defaultValue={initial?.diger_xerc ?? 0} disabled={pending} />
+      </div>
+    </div>
+  );
+}
+
+function NumberInput({
+  name,
+  label,
+  value,
+  onChange,
+  disabled,
+  required,
+}: {
+  name: string;
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+  required?: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={name}>{label}</Label>
+      <Input
+        id={name}
+        name={name}
+        type="number"
+        step="0.01"
+        min="0"
+        value={Number.isFinite(value) ? value : 0}
+        onChange={(e) => onChange(Number(e.target.value))}
+        disabled={disabled}
+        required={required}
+      />
+    </div>
   );
 }

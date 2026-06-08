@@ -15,6 +15,7 @@ import {
   getMarjaBuckets,
 } from "@/features/hesabatlar/marja-queries";
 import { parseDateRange, formatDateInput, rangeLabel } from "@/features/hesabatlar/shared";
+import { requireHesabatPagePerm } from "@/features/hesabatlar/access-guard";
 import { formatMoney, formatNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +50,7 @@ function marginBadge(pct: number) {
 }
 
 export default async function MarjaReportPage({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireHesabatPagePerm("maliye.view");
   const sp = await searchParams;
   const range = parseDateRange(sp);
 

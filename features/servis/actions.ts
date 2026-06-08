@@ -7,6 +7,12 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils/date-parse";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import {
+  requireServisActionPerm,
+  bustServisCache,
+  checkCustomerEndpointRateLimit,
+  verifyServisToken,
+} from "./access-guard";
 
 /* ---------- Audit helper — outbox-safe via safeAuditLog ---------- */
 
@@ -90,6 +96,8 @@ const ServisSchema = z.object({
 });
 
 export async function createServisRequest(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.yarat", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = ServisSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -138,20 +146,49 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
         },
       });
 
-      // Qəbz zamanı müştəri məbləğ verirsə — avtomatik ödəniş əməliyyatı
-      if (d.musteriden_alinan > 0 && d.xidmet_hesab_id) {
-        try {
-          const fd = new FormData();
-          fd.set("id", created.id);
-          fd.set("meblegh", String(d.musteriden_alinan));
-          fd.set("odenis_nov", "negd");
-          fd.set("hesab_id", d.xidmet_hesab_id);
-          fd.set("kassaya_elave_et", "true");
-          fd.set("satis_kimi_qeyd_et", "true");
-          fd.set("qeyd", `İlkin ödəniş: ${d.mehsul_ad}`);
-          await recordPayment(fd);
-        } catch (err) {
-          console.error("[createServisRequest] auto-payment failed:", err);
+      // Qəbz zamanı müştəri məbləğ verirsə — avtomatik ödəniş əməliyyatı.
+      // ÖNƏMLİ: Əgər hesab seçilməyibsə default aktiv nağd kassanı tapırıq ki,
+      // ödəniş qaib qalmasın. Heç bir kassa yoxdursa, yalnız o zaman skip
+      // edilir və audit log-a xəbərdarlıq yazılır.
+      if (d.musteriden_alinan > 0) {
+        let hesabId = d.xidmet_hesab_id;
+        if (!hesabId) {
+          // Default kassa fallback — sahibkarın ilk aktiv nağd hesabı
+          const defaultKassa = await prisma.maliye_hesablari.findFirst({
+            where: { sahibkar_id: sahibkarId, aktiv: true, nov: "nagd" },
+            orderBy: { yaradildi: "asc" },
+            select: { id: true },
+          });
+          hesabId = defaultKassa?.id;
+        }
+        if (hesabId) {
+          try {
+            const fd = new FormData();
+            fd.set("id", created.id);
+            fd.set("meblegh", String(d.musteriden_alinan));
+            fd.set("odenis_nov", "negd");
+            fd.set("hesab_id", hesabId);
+            fd.set("kassaya_elave_et", "true");
+            fd.set("satis_kimi_qeyd_et", "true");
+            fd.set("qeyd", `İlkin ödəniş: ${d.mehsul_ad}`);
+            await recordPayment(fd);
+          } catch (err) {
+            console.error("[createServisRequest] auto-payment failed:", err);
+            await writeServisAudit("ODENIS_XETA", created.id, {
+              mebleg: d.musteriden_alinan,
+              hesab_id: hesabId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        } else {
+          // Heç bir kassa yoxdur — istifadəçi xəbərdarlandırılır audit log-da
+          console.warn(
+            `[createServisRequest] ${created.id}: ${d.musteriden_alinan} AZN alındı amma aktiv kassa yoxdur`,
+          );
+          await writeServisAudit("ODENIS_ITKI_RISKI", created.id, {
+            mebleg: d.musteriden_alinan,
+            sebeb: "Aktiv nağd kassa tapılmadı — ödəniş kassaya yazılmadı",
+          });
         }
       }
 
@@ -176,6 +213,7 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
       });
 
       revalidatePath("/servis");
+      bustServisCache();
       return { ok: true, id: created.id };
     } catch (e) {
       console.error("[createServisRequest]", e);
@@ -192,16 +230,19 @@ export async function changeServisStatus(
   qeyd?: string,
   options?: { extendWarranty?: boolean },
 ): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.status", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!(STATUSES as readonly string[]).includes(status)) return { ok: false, error: "Yanlış status" };
   // Rədd statusunda mütləq səbəb tələb olunur (audit + müştəri tarixçəsi üçün)
   if (status === "redd_edildi" && (!qeyd || qeyd.trim().length < 3)) {
     return { ok: false, error: "Rədd səbəbi tələb olunur" };
   }
   return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const prev = await prisma.servis_qeydleri.findUnique({
-        where: { id },
+      // 🔒 Açıq sahibkar_id qoruması
+      const prev = await prisma.servis_qeydleri.findFirst({
+        where: { id, sahibkar_id: sahibkarId },
         select: { status: true, daxili_qeyd: true, mehsul_id: true, musteri_id: true },
       });
       if (!prev) return { ok: false, error: "Sifariş tapılmadı" };
@@ -220,15 +261,24 @@ export async function changeServisStatus(
         data.qapanma_tarixi = new Date();
         data.qapayan_id = istifadeciId;
       }
-      await prisma.servis_qeydleri.update({ where: { id }, data });
-      await prisma.servis_status_tarixce.create({
-        data: {
-          servis_id: id,
-          evvelki_status: prev.status,
-          yeni_status: status,
-          deyisen_id: istifadeciId,
-          qeyd: qeyd ?? null,
-        },
+      // ⚛️ Atomic — status update + history row birlikdə
+      await prisma.$transaction(async (tx) => {
+        await tx.servis_qeydleri.updateMany({ where: { id, sahibkar_id: sahibkarId }, data });
+        await tx.servis_status_tarixce.create({
+          data: {
+            servis_id: id,
+            evvelki_status: prev.status,
+            yeni_status: status,
+            deyisen_id: istifadeciId,
+            qeyd: qeyd ?? null,
+          },
+        });
+        // redd_edildi statusuna keçəndə servis borc balansa daxil olmamalıdır
+        // → source-of-truth bunu nəzərə alır, sadəcə recalc çağırılır.
+        if (status === "redd_edildi" && prev.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(prev.musteri_id, tx);
+        }
       });
 
       // Zəmanət uzadılması — yalnız "musteriye_tehvil" və options.extendWarranty
@@ -275,6 +325,7 @@ export async function changeServisStatus(
 
       revalidatePath("/servis");
       revalidatePath(`/servis/${id}`);
+      bustServisCache();
       return { ok: true };
     } catch (e) {
       console.error("[changeServisStatus]", e);
@@ -290,20 +341,32 @@ const DiagSchema = z.object({
   texniki_qeyd: z.string().min(1),
 });
 export async function addDiagnostika(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.diaqnostika", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = DiagSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
-      const prev = await prisma.servis_qeydleri.findUnique({ where: { id: d.id }, select: { texniki_qeyd: true } });
+      // 🔒 Açıq sahibkar_id qoruması
+      const prev = await prisma.servis_qeydleri.findFirst({
+        where: { id: d.id, sahibkar_id: sahibkarId },
+        select: { texniki_qeyd: true },
+      });
+      if (!prev) return { ok: false, error: "Servis tapılmadı" };
       const merged = [prev?.texniki_qeyd, `[${new Date().toLocaleString("az-AZ")}] ${d.texniki_qeyd}`]
         .filter(Boolean)
         .join("\n");
-      await prisma.servis_qeydleri.update({
-        where: { id: d.id },
+      await prisma.servis_qeydleri.updateMany({
+        where: { id: d.id, sahibkar_id: sahibkarId },
         data: { texniki_qeyd: merged, yenilendi: new Date() },
       });
       revalidatePath(`/servis/${d.id}`);
+      bustServisCache();
+      try {
+        await writeServisAudit("DIAQNOSTIKA", d.id, { uzunluq: d.texniki_qeyd.length });
+      } catch { /* non-fatal */ }
       return { ok: true };
     } catch (e) {
       console.error("[addDiagnostika]", e);
@@ -314,12 +377,20 @@ export async function addDiagnostika(input: FormData): Promise<ActionResult> {
 
 const RepairNoteSchema = z.object({ id: z.string().uuid(), qeyd: z.string().min(1) });
 export async function addRepairNote(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.idare", "servis.qeyd"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = RepairNoteSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
   return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // 🔒 Servis sahibkar yoxlaması
+      const owned = await prisma.servis_qeydleri.findFirst({
+        where: { id: d.id, sahibkar_id: sahibkarId },
+        select: { id: true },
+      });
+      if (!owned) return { ok: false, error: "Servis tapılmadı" };
       await prisma.servis_status_tarixce.create({
         data: {
           servis_id: d.id,
@@ -330,6 +401,10 @@ export async function addRepairNote(input: FormData): Promise<ActionResult> {
         },
       });
       revalidatePath(`/servis/${d.id}`);
+      bustServisCache();
+      try {
+        await writeServisAudit("QEYD", d.id, { uzunluq: d.qeyd.length });
+      } catch { /* non-fatal */ }
       return { ok: true };
     } catch (e) {
       console.error("[addRepairNote]", e);
@@ -347,46 +422,77 @@ const EhtiyatSchema = z.object({
   qiymet: z.coerce.number().min(0).default(0),
 });
 export async function addEhtiyatHisse(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.ehtiyat", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = EhtiyatSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const product = await prisma.mehsullar.findUnique({
-        where: { id: d.mehsul_id },
+      const product = await prisma.mehsullar.findFirst({
+        where: { id: d.mehsul_id, sahibkar_id: sahibkarId },
         select: { ad: true, kod: true },
       });
       if (!product) return { ok: false, error: "Məhsul tapılmadı" };
 
-      // Increment repair cost on servis record
-      const sifaris = await prisma.servis_qeydleri.findUnique({
-        where: { id: d.id },
-        select: { temir_xerci: true, texniki_qeyd: true },
-      });
-      const newXerc = Number(sifaris?.temir_xerci ?? 0) + d.qiymet * d.miqdar;
-      const partLine = `[Ehtiyat] ${product.ad} (${product.kod ?? "—"}) × ${d.miqdar} = ${(d.qiymet * d.miqdar).toFixed(2)}`;
-      const mergedNote = [sifaris?.texniki_qeyd, partLine].filter(Boolean).join("\n");
-      await prisma.servis_qeydleri.update({
-        where: { id: d.id },
-        data: { temir_xerci: newXerc, texniki_qeyd: mergedNote, yenilendi: new Date() },
-      });
-
-      // Best-effort stok decrement via anbar_hereketleri (negative movement)
-      try {
-        const firstAnbar = await prisma.anbarlar.findFirst({
-          where: { sahibkar_id: sahibkarId, aktiv: true },
-          select: { id: true },
-          orderBy: { id: "asc" },
+      // ⚛️ Atomic — servis cost + stock movement bir transaction
+      await prisma.$transaction(async (tx) => {
+        const sifaris = await tx.servis_qeydleri.findFirst({
+          where: { id: d.id, sahibkar_id: sahibkarId },
+          select: { temir_xerci: true, texniki_qeyd: true, musteri_id: true },
         });
-        if (firstAnbar) {
-          await prisma.anbar_hereketleri.create({
+        if (!sifaris) throw new Error("Servis tapılmadı");
+
+        const newXerc = Number(sifaris.temir_xerci ?? 0) + d.qiymet * d.miqdar;
+        const partLine = `[Ehtiyat] ${product.ad} (${product.kod ?? "—"}) × ${d.miqdar} = ${(d.qiymet * d.miqdar).toFixed(2)}`;
+        const mergedNote = [sifaris.texniki_qeyd, partLine].filter(Boolean).join("\n");
+        await tx.servis_qeydleri.updateMany({
+          where: { id: d.id, sahibkar_id: sahibkarId },
+          data: { temir_xerci: newXerc, texniki_qeyd: mergedNote, yenilendi: new Date() },
+        });
+
+        // Müştəri balansı recalc — temir_xerci dəyişdi, source-of-truth bundan asılıdır.
+        if (sifaris.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(sifaris.musteri_id, tx);
+        }
+
+        // Stok hərəkəti — eyni transaction içində.
+        // Əvvəlcə bu məhsulun stoku olan anbarı tapırıq (ən çox stok olan anbar
+        // götürülür). Stok yoxdursa, ehtiyat hissə qeyd olunur amma stok
+        // azaldılmır — `mənfi stok` riski qarşısı alınır.
+        const stokRow = await tx.stok.findFirst({
+          where: {
+            sahibkar_id: sahibkarId,
+            mehsul_id: d.mehsul_id,
+            miqdar: { gt: 0 },
+          },
+          orderBy: { miqdar: "desc" },
+          select: { anbar_id: true, miqdar: true },
+        });
+        if (stokRow && Number(stokRow.miqdar) >= d.miqdar) {
+          // Atomik stok azaltma — race-safe decrement
+          const updated = await tx.stok.updateMany({
+            where: {
+              sahibkar_id: sahibkarId,
+              mehsul_id: d.mehsul_id,
+              anbar_id: stokRow.anbar_id,
+              miqdar: { gte: d.miqdar },
+            },
+            data: { miqdar: { decrement: d.miqdar } },
+          });
+          if (updated.count === 0) {
+            throw new Error("Stok kifayət deyil — paralel əməliyyat ola bilər");
+          }
+          // Anbar hereket jurnalı
+          await tx.anbar_hereketleri.create({
             data: {
               sahibkar_id: sahibkarId,
               mehsul_id: d.mehsul_id,
-              anbar_id: firstAnbar.id,
+              anbar_id: stokRow.anbar_id,
               nov: "servis_mexaric",
-              miqdar: -Math.abs(d.miqdar),
+              miqdar: d.miqdar,
               qiymet: d.qiymet,
               qeyd: `Servis ehtiyat hissə: ${d.id}`,
               ref_nov: "servis",
@@ -394,7 +500,35 @@ export async function addEhtiyatHisse(input: FormData): Promise<ActionResult> {
               edilen_id: istifadeciId,
             },
           });
+        } else {
+          // Stok yoxdursa — yalnız jurnal yazılır, audit-də işarələnir
+          // ki, anbarçı qəbul etsin və əlavə alış lazımdır.
+          const firstAnbar = await tx.anbarlar.findFirst({
+            where: { sahibkar_id: sahibkarId, aktiv: true },
+            select: { id: true },
+            orderBy: { id: "asc" },
+          });
+          if (firstAnbar) {
+            await tx.anbar_hereketleri.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                mehsul_id: d.mehsul_id,
+                anbar_id: firstAnbar.id,
+                nov: "servis_mexaric_stoxsuz",
+                miqdar: d.miqdar,
+                qiymet: d.qiymet,
+                qeyd: `Servis ehtiyat hissə (STOK YOX): ${d.id}`,
+                ref_nov: "servis",
+                ref_id: d.id,
+                edilen_id: istifadeciId,
+              },
+            });
+          }
         }
+      });
+
+      // Stok-altı yoxla → bildiriş (transaction xaricində — non-fatal)
+      try {
 
         // Stok-altı yoxla → admin/işçilərə bildiriş
         const fullProduct = await prisma.mehsullar.findUnique({
@@ -446,10 +580,11 @@ export async function addEhtiyatHisse(input: FormData): Promise<ActionResult> {
       });
 
       revalidatePath(`/servis/${d.id}`);
+      bustServisCache();
       return { ok: true };
     } catch (e) {
       console.error("[addEhtiyatHisse]", e);
-      return { ok: false, error: "Hissə əlavə olunmadı" };
+      return { ok: false, error: e instanceof Error ? e.message : "Hissə əlavə olunmadı" };
     }
   });
 }
@@ -464,27 +599,46 @@ const TeklifSchema = z.object({
   qeyd: z.string().optional(),
 });
 export async function createQiymetTeklif(input: FormData): Promise<ActionResult<{ cem: number }>> {
+  const permCheck = await requireServisActionPerm(["servis.teklif", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = TeklifSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
   return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const cem = d.iscik + d.hisse + d.edv;
-      await prisma.servis_qeydleri.update({
-        where: { id: d.id },
-        data: { temir_xerci: cem, yenilendi: new Date(), status: "teklif_gozleyir" },
+      // 🔒 Servis sahibkar yoxlaması
+      const owned = await prisma.servis_qeydleri.findFirst({
+        where: { id: d.id, sahibkar_id: sahibkarId },
+        select: { id: true, musteri_id: true },
       });
-      await prisma.servis_status_tarixce.create({
-        data: {
-          servis_id: d.id,
-          evvelki_status: null,
-          yeni_status: "teklif_gozleyir",
-          deyisen_id: istifadeciId,
-          qeyd: `Təklif: işçilik ${d.iscik}, hissə ${d.hisse}, ƏDV ${d.edv}, cəm ${cem}. ${d.qeyd ?? ""}`,
-        },
+      if (!owned) return { ok: false, error: "Servis tapılmadı" };
+      const cem = d.iscik + d.hisse + d.edv;
+      await prisma.$transaction(async (tx) => {
+        await tx.servis_qeydleri.updateMany({
+          where: { id: d.id, sahibkar_id: sahibkarId },
+          data: { temir_xerci: cem, yenilendi: new Date(), status: "teklif_gozleyir" },
+        });
+        await tx.servis_status_tarixce.create({
+          data: {
+            servis_id: d.id,
+            evvelki_status: null,
+            yeni_status: "teklif_gozleyir",
+            deyisen_id: istifadeciId,
+            qeyd: `Təklif: işçilik ${d.iscik}, hissə ${d.hisse}, ƏDV ${d.edv}, cəm ${cem}. ${d.qeyd ?? ""}`,
+          },
+        });
+        // temir_xerci dəyişdi → müştəri balansı recalc lazımdır
+        if (owned.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(owned.musteri_id, tx);
+        }
       });
       revalidatePath(`/servis/${d.id}`);
+      bustServisCache();
+      try {
+        await writeServisAudit("TEKLIF", d.id, { iscik: d.iscik, hisse: d.hisse, edv: d.edv, cem });
+      } catch { /* non-fatal */ }
       return { ok: true, data: { cem } };
     } catch (e) {
       console.error("[createQiymetTeklif]", e);
@@ -505,6 +659,7 @@ const PaymentSchema = z.object({
   kassaya_elave_et: z.coerce.boolean().default(true),
   satis_kimi_qeyd_et: z.coerce.boolean().default(true),
   qeyd: z.string().optional().or(z.literal("")),
+  idempotency_key: z.string().max(80).optional().or(z.literal("")),
 });
 
 const SERVIS_TYPE_META = {
@@ -515,6 +670,8 @@ const SERVIS_TYPE_META = {
 };
 
 export async function recordPayment(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.odenis", "servis.idare", "kassa.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = PaymentSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
@@ -522,11 +679,28 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // 🛡️ İdempotensiya — son 5 dəqiqədə eyni key + servis + məbləğ varsa dublikat
+      const idemKey = (d.idempotency_key || "").trim();
+      if (idemKey) {
+        const since = new Date(Date.now() - 5 * 60 * 1000);
+        const dup = await prisma.finance_operations.findFirst({
+          where: {
+            sahibkar_id: sahibkarId,
+            servis_id: d.id,
+            meblegh: d.meblegh,
+            yaradildi: { gte: since },
+            qeyd: { contains: `[IDEM:${idemKey}]` },
+          },
+          select: { id: true },
+        });
+        if (dup) return { ok: true, id: dup.id };
+      }
+
       // Atomic: kassa + satış + servis update bir transaction içində
       const result = await prisma.$transaction(async (tx) => {
-        // 1) Servisi oxu
-        const servis = await tx.servis_qeydleri.findUnique({
-          where: { id: d.id },
+        // 1) Servisi oxu — 🔒 sahibkar_id açıq filtri
+        const servis = await tx.servis_qeydleri.findFirst({
+          where: { id: d.id, sahibkar_id: sahibkarId },
           select: {
             id: true,
             nomre: true,
@@ -542,20 +716,19 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
         });
         if (!servis) throw new Error("Servis tapılmadı");
 
-        // 2) `borc` rejimi → kassa yox, satış yox, yalnız kontragentin borcunu artır + servisdə "musteriden_alinan" *artır* (sayır kimi)
+        // 2) `borc` rejimi → kassa yox, satış yox.
+        // Müştəri balansı SOURCE-OF-TRUTH (`customer-balance.ts`) servis_qeydleri-ni
+        // (temir_xerci - musteriden_alinan) əsasında hesablayır.
+        // Burada manual borc increment YOX — yalnız recalc çağırılır ki cache yenilənsin.
         if (d.odenis_nov === "borc") {
-          // borc rejimində kassaya keçməz, amma "musteriden_alinan" hesabı saxlamır → biz artırmırıq.
-          // Yalnız kontragentdə borc artır.
-          if (servis.musteri_id) {
-            await tx.kontragentler.update({
-              where: { id: servis.musteri_id },
-              data: { borc: { increment: d.meblegh }, yenilendi: new Date() },
-            });
-          }
           await tx.servis_qeydleri.update({
             where: { id: servis.id },
             data: { yenilendi: new Date() },
           });
+          if (servis.musteri_id) {
+            const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+            await recalculateCustomerBalance(servis.musteri_id, tx);
+          }
           return { kassaOpId: null as string | null, satisId: null as string | null };
         }
 
@@ -594,7 +767,10 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
               servis_id: servis.id,
               filial_id: servis.filial_id ?? null,
               qarsi_teref_ad: servis.musteri_ad,
-              qeyd: `Servis: ${servis.nomre} — ${servis.mehsul_ad}${d.qeyd ? ` · ${d.qeyd}` : ""}`,
+              qeyd: [
+                idemKey ? `[IDEM:${idemKey}]` : "",
+                `Servis: ${servis.nomre} — ${servis.mehsul_ad}${d.qeyd ? ` · ${d.qeyd}` : ""}`,
+              ].filter(Boolean).join(" "),
               yaradan_id: istifadeciId,
             },
           });
@@ -667,6 +843,12 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
           },
         });
 
+        // 7) Müştəri balansı recalc — source-of-truth servis qaliğını da hesablayır.
+        if (servis.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(servis.musteri_id, tx);
+        }
+
         return { kassaOpId, satisId };
       });
 
@@ -674,6 +856,7 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
       revalidatePath("/servis");
       revalidatePath("/maliyye");
       revalidatePath("/ticaret/satislar");
+      bustServisCache();
 
       await writeServisAudit("ODENIS", d.id, {
         meblegh: d.meblegh,
@@ -718,22 +901,30 @@ export async function sendCustomerNotification(
   message: string,
   template?: NotificationTemplate,
 ): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.bildiris", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  if (!message || message.trim().length < 3) return { ok: false, error: "Mesaj boş ola bilməz" };
+  if (message.length > 500) return { ok: false, error: "Mesaj çox uzundur" };
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
       const ts = new Date().toLocaleString("az-AZ");
-      const s = await prisma.servis_qeydleri.findUnique({
-        where: { id },
+      // 🔒 Sahibkar yoxlaması
+      const s = await prisma.servis_qeydleri.findFirst({
+        where: { id, sahibkar_id: sahibkarId },
         select: { daxili_qeyd: true },
       });
+      if (!s) return { ok: false, error: "Servis tapılmadı" };
       const logLine = `[${ts}] [Bildiriş:${channel}${template ? `/${template}` : ""}] ${message.slice(0, 200)}`;
       const merged = [s?.daxili_qeyd, logLine].filter(Boolean).join("\n");
-      await prisma.servis_qeydleri.update({
-        where: { id },
+      await prisma.servis_qeydleri.updateMany({
+        where: { id, sahibkar_id: sahibkarId },
         data: { son_musteri_xeber: new Date(), yenilendi: new Date(), daxili_qeyd: merged },
       });
       console.log(`[mock-notify] ${channel} → ${id}: ${message}`);
       await writeServisAudit("BILDIRIS_GONDERILDI", id, { channel, template, message: message.slice(0, 200) });
       revalidatePath(`/servis/${id}`);
+      bustServisCache();
       return { ok: true };
     } catch (e) {
       console.error("[sendCustomerNotification]", e);
@@ -748,19 +939,31 @@ const ReySchema = z.object({
   servis_id: z.string().uuid(),
   ulduz: z.coerce.number().int().min(1).max(5),
   yazi: z.string().max(1000).optional().or(z.literal("")),
+  token: z.string().min(10).max(120),
 });
 
 export async function submitCustomerReview(input: FormData): Promise<ActionResult> {
   const parsed = ReySchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
+
+  // 🛡️ Public endpoint — rate-limit
+  const rl = await checkCustomerEndpointRateLimit(d.servis_id, 5, 5);
+  if (!rl.ok) return { ok: false, error: rl.error };
+
   try {
-    const ts = new Date().toLocaleString("az-AZ");
     const s = await prisma.servis_qeydleri.findUnique({
       where: { id: d.servis_id },
-      select: { daxili_qeyd: true },
+      select: { daxili_qeyd: true, sahibkar_id: true, musteri_ad: true },
     });
     if (!s) return { ok: false, error: "Servis tapılmadı" };
+
+    // 🔐 Token yoxlaması — UUID təxmin etməyi blok edir
+    if (!(await verifyServisToken(d.token, d.servis_id, s.sahibkar_id))) {
+      return { ok: false, error: "Token yanlışdır və ya köhnəlib" };
+    }
+
+    const ts = new Date().toLocaleString("az-AZ");
     const reyTag = `[Müştəri Rəyi] ${"★".repeat(d.ulduz)}${"☆".repeat(5 - d.ulduz)} ulduz:${d.ulduz} ${d.yazi ?? ""}`.trim();
     const logLine = `[${ts}] ${reyTag}`;
     const merged = [s.daxili_qeyd, logLine].filter(Boolean).join("\n");
@@ -768,6 +971,18 @@ export async function submitCustomerReview(input: FormData): Promise<ActionResul
       where: { id: d.servis_id },
       data: { daxili_qeyd: merged, yenilendi: new Date() },
     });
+    // 🔒 Audit — tenant-li (sahibkar_id manual təyin edilir, çünki public endpoint-də withTenant yoxdur)
+    try {
+      await safeAuditLog({
+        sahibkar_id: s.sahibkar_id,
+        istifadeci_id: null,
+        emeliyyat: "musteri_rey",
+        resurs_nov: "servis",
+        resurs_id: d.servis_id,
+        yeni_data: { ulduz: d.ulduz, uzunluq: d.yazi?.length ?? 0, musteri: s.musteri_ad },
+        status: "ugur",
+      });
+    } catch { /* non-fatal */ }
     revalidatePath(`/servis/${d.servis_id}`);
     return { ok: true };
   } catch (e) {
@@ -782,18 +997,44 @@ const CustomerQuoteSchema = z.object({
   servis_id: z.string().uuid(),
   approved: z.string().transform((s) => s === "true" || s === "1"),
   reason: z.string().max(500).optional().or(z.literal("")),
+  token: z.string().min(10).max(120),
 });
 
 export async function customerApproveQuote(input: FormData): Promise<ActionResult> {
   const parsed = CustomerQuoteSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
+
+  // 🛡️ Public endpoint — rate-limit (eyni servis üçün 5 dəqiqədə maksimum 3)
+  const rl = await checkCustomerEndpointRateLimit(d.servis_id, 3, 5);
+  if (!rl.ok) return { ok: false, error: rl.error };
+
   try {
     const s = await prisma.servis_qeydleri.findUnique({
       where: { id: d.servis_id },
-      select: { id: true, status: true, daxili_qeyd: true },
+      select: { id: true, status: true, daxili_qeyd: true, sahibkar_id: true, musteri_ad: true },
     });
     if (!s) return { ok: false, error: "Servis tapılmadı" };
+
+    // 🔐 Token yoxlaması — UUID təxmin etməyi blok edir
+    if (!(await verifyServisToken(d.token, d.servis_id, s.sahibkar_id))) {
+      try {
+        await safeAuditLog({
+          sahibkar_id: s.sahibkar_id,
+          istifadeci_id: null,
+          emeliyyat: "musteri_onay_token_xeta",
+          resurs_nov: "servis",
+          resurs_id: d.servis_id,
+          status: "xeta",
+        });
+      } catch { /* non-fatal */ }
+      return { ok: false, error: "Token yanlışdır və ya köhnəlib" };
+    }
+
+    // Yalnız "teklif_gozleyir" statusda təsdiq/rədd qəbul olunur
+    if (s.status !== "teklif_gozleyir") {
+      return { ok: false, error: "Bu mərhələdə cavab qəbul olunmur" };
+    }
 
     const ts = new Date().toLocaleString("az-AZ");
     const note = d.approved
@@ -801,20 +1042,33 @@ export async function customerApproveQuote(input: FormData): Promise<ActionResul
       : `[${ts}] [Müştəri RƏDD] Təklif rədd edildi. ${d.reason ?? ""}`.trim();
     const merged = [s.daxili_qeyd, note].filter(Boolean).join("\n");
     const newStatus = d.approved ? "temir_olunur" : "redd_edildi";
-    await prisma.servis_qeydleri.update({
-      where: { id: d.servis_id },
-      data: { daxili_qeyd: merged, status: newStatus, yenilendi: new Date() },
+    await prisma.$transaction(async (tx) => {
+      await tx.servis_qeydleri.update({
+        where: { id: d.servis_id },
+        data: { daxili_qeyd: merged, status: newStatus, yenilendi: new Date() },
+      });
+      await tx.servis_status_tarixce.create({
+        data: {
+          servis_id: d.servis_id,
+          evvelki_status: s.status,
+          yeni_status: newStatus,
+          deyisen_id: null,
+          deyisen_ad: "Müştəri (public)",
+          qeyd: note,
+        },
+      });
     });
-    await prisma.servis_status_tarixce.create({
-      data: {
-        servis_id: d.servis_id,
-        evvelki_status: s.status,
-        yeni_status: newStatus,
-        deyisen_id: null,
-        deyisen_ad: "Müştəri (public)",
-        qeyd: note,
-      },
-    });
+    try {
+      await safeAuditLog({
+        sahibkar_id: s.sahibkar_id,
+        istifadeci_id: null,
+        emeliyyat: d.approved ? "musteri_onay" : "musteri_redd",
+        resurs_nov: "servis",
+        resurs_id: d.servis_id,
+        yeni_data: { approved: d.approved, reason: d.reason ?? null, musteri: s.musteri_ad },
+        status: "ugur",
+      });
+    } catch { /* non-fatal */ }
     revalidatePath(`/servis/${d.servis_id}`);
     return { ok: true };
   } catch (e) {
@@ -831,40 +1085,72 @@ const EhtiyatDeleteSchema = z.object({
 });
 
 export async function deleteEhtiyatHisse(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.ehtiyat", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = EhtiyatDeleteSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
   return withTenant(async () => {
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const h = await prisma.anbar_hereketleri.findUnique({
-        where: { id: d.hereket_id },
-        select: { id: true, ref_id: true, ref_nov: true, qiymet: true, miqdar: true },
+      // 🔒 Sahibkar yoxlaması
+      const h = await prisma.anbar_hereketleri.findFirst({
+        where: { id: d.hereket_id, sahibkar_id: sahibkarId },
+        select: { id: true, ref_id: true, ref_nov: true, qiymet: true, miqdar: true, mehsul_id: true, anbar_id: true },
       });
       if (!h || h.ref_nov !== "servis" || h.ref_id !== d.servis_id) {
         return { ok: false, error: "Hərəkət tapılmadı" };
       }
-      // Reverse: silmək əvəzinə geri-cıxış yaz (audit izi qalsın)
-      await prisma.anbar_hereketleri.delete({ where: { id: d.hereket_id } });
-      // Servisdən temir_xerci-ni geri çıx
-      const evvel = await prisma.servis_qeydleri.findUnique({
-        where: { id: d.servis_id },
-        select: { temir_xerci: true },
-      });
       const geri = Number(h.qiymet ?? 0) * Math.abs(Number(h.miqdar ?? 0));
-      const yeni = Math.max(0, Number(evvel?.temir_xerci ?? 0) - geri);
-      await prisma.servis_qeydleri.update({
-        where: { id: d.servis_id },
-        data: { temir_xerci: yeni, yenilendi: new Date() },
+
+      // ⚛️ Atomic: REVERSAL row + servis cost geri çıx (hard-delete əvəzinə)
+      await prisma.$transaction(async (tx) => {
+        const evvel = await tx.servis_qeydleri.findFirst({
+          where: { id: d.servis_id, sahibkar_id: sahibkarId },
+          select: { temir_xerci: true, musteri_id: true },
+        });
+        if (!evvel) throw new Error("Servis tapılmadı");
+
+        // Reversal row — orijinal mənfi miqdar üçün müsbət reverse yaz
+        if (h.mehsul_id && h.anbar_id) {
+          await tx.anbar_hereketleri.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              mehsul_id: h.mehsul_id,
+              anbar_id: h.anbar_id,
+              nov: "servis_iade",
+              miqdar: Math.abs(Number(h.miqdar ?? 0)),
+              qiymet: Number(h.qiymet ?? 0),
+              qeyd: `Servis ehtiyat hissə qaytarıldı — ref hereket: ${d.hereket_id}`,
+              ref_nov: "servis",
+              ref_id: d.servis_id,
+              edilen_id: istifadeciId,
+            },
+          });
+        }
+
+        const yeni = Math.max(0, Number(evvel.temir_xerci ?? 0) - geri);
+        await tx.servis_qeydleri.updateMany({
+          where: { id: d.servis_id, sahibkar_id: sahibkarId },
+          data: { temir_xerci: yeni, yenilendi: new Date() },
+        });
+        // temir_xerci azaldı → müştəri balansı recalc
+        if (evvel.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(evvel.musteri_id, tx);
+        }
       });
-      await writeServisAudit("EHTIYAT_HISSE_SILINDI", d.servis_id, {
+
+      await writeServisAudit("EHTIYAT_HISSE_QAYTARILDI", d.servis_id, {
         hereket_id: d.hereket_id,
         geri_xerc: geri,
       });
       revalidatePath(`/servis/${d.servis_id}`);
+      bustServisCache();
       return { ok: true };
     } catch (e) {
       console.error("[deleteEhtiyatHisse]", e);
-      return { ok: false, error: "Silinmədi" };
+      return { ok: false, error: e instanceof Error ? e.message : "Silinmədi" };
     }
   });
 }
@@ -872,31 +1158,36 @@ export async function deleteEhtiyatHisse(input: FormData): Promise<ActionResult>
 /* ---------- Print helpers (mock pdf url) ---------- */
 
 export async function printQebzPdf(id: string): Promise<ActionResult<{ url: string }>> {
+  const permCheck = await requireServisActionPerm(["servis.oxu", "servis.qebz"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return { ok: true, data: { url: `/api/servis/${id}/qebz.pdf` } };
 }
 
 /* ---------- Servis fayl silmə ---------- */
 
 export async function deleteServisFile(faylId: number, servisId: string): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.fayl", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
-      // Owner-check: yalnız mövcud tenant-in servisi olub-olmadığını yoxla
-      const fayl = await prisma.servis_fayllari.findUnique({
-        where: { id: faylId },
-        select: { servis_id: true, fayl_adi: true },
-      });
-      if (!fayl || fayl.servis_id !== servisId) return { ok: false, error: "Fayl tapılmadı" };
-
-      // Tenant verify via servis include
-      const servis = await prisma.servis_qeydleri.findUnique({
-        where: { id: servisId },
+      // 🔒 Tenant + servis sahibkar yoxlaması
+      const servis = await prisma.servis_qeydleri.findFirst({
+        where: { id: servisId, sahibkar_id: sahibkarId },
         select: { id: true },
       });
       if (!servis) return { ok: false, error: "Servis tapılmadı" };
 
-      await prisma.servis_fayllari.delete({ where: { id: faylId } });
+      const fayl = await prisma.servis_fayllari.findFirst({
+        where: { id: faylId, servis_id: servisId },
+        select: { servis_id: true, fayl_adi: true },
+      });
+      if (!fayl) return { ok: false, error: "Fayl tapılmadı" };
+
+      await prisma.servis_fayllari.deleteMany({ where: { id: faylId, servis_id: servisId } });
       await writeServisAudit("FAYL_SILINDI", servisId, { fayl_id: faylId, fayl_adi: fayl.fayl_adi });
       revalidatePath(`/servis/${servisId}`);
+      bustServisCache();
       return { ok: true };
     } catch (e) {
       console.error("[deleteServisFile]", e);

@@ -38,11 +38,27 @@ const COLUMN_DEFS: ColumnDef[] = [
 
 const DEFAULT_ORDER = COLUMN_DEFS.map((c) => c.key);
 
-const STATUS_BADGE: Record<EmployeeStatus, { label: string; cls: string }> = {
-  aktiv: { label: "Aktiv", cls: "bg-success/15 text-success border-success/30" },
-  mezuniyyetde: { label: "Məzuniyyət", cls: "bg-warning/15 text-warning border-warning/30" },
-  cixib: { label: "İşdən çıxıb", cls: "bg-danger/15 text-danger border-danger/30" },
-  passiv: { label: "Passiv", cls: "bg-muted text-muted-foreground border-border" },
+const STATUS_BADGE: Record<EmployeeStatus, { label: string; cls: string; dotCls: string }> = {
+  aktiv: {
+    label: "Aktiv",
+    cls: "bg-gradient-to-b from-emerald-500/15 to-emerald-500/[0.06] text-emerald-700 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-300",
+    dotCls: "bg-emerald-500",
+  },
+  mezuniyyetde: {
+    label: "Məzuniyyət",
+    cls: "bg-gradient-to-b from-amber-500/15 to-amber-500/[0.06] text-amber-800 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300",
+    dotCls: "bg-amber-500",
+  },
+  cixib: {
+    label: "İşdən çıxıb",
+    cls: "bg-gradient-to-b from-rose-500/15 to-rose-500/[0.06] text-rose-700 ring-1 ring-inset ring-rose-500/20 line-through decoration-rose-500/40 dark:text-rose-300",
+    dotCls: "bg-rose-500",
+  },
+  passiv: {
+    label: "Passiv",
+    cls: "bg-gradient-to-b from-slate-500/15 to-slate-500/[0.06] text-slate-700 ring-1 ring-inset ring-slate-500/20 dark:text-slate-300",
+    dotCls: "bg-slate-500",
+  },
 };
 
 export function EmployeesTable({
@@ -50,11 +66,13 @@ export function EmployeesTable({
   roles,
   filiallar = [],
   vezifeler = [],
+  canEdit = false,
 }: {
   items: EmployeeRow[];
   roles: RoleOpt[];
   filiallar?: FilialOpt[];
   vezifeler?: string[];
+  canEdit?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const cols = useColumnToggle(STORAGE_KEY, COLUMN_DEFS, DEFAULT_ORDER);
@@ -272,7 +290,10 @@ export function EmployeesTable({
                           case "status":
                             return (
                               <td key={key} data-label={_label} className="px-3 py-2.5">
-                                <Badge variant="outline" className={s.cls + " text-[10px]"}>{s.label}</Badge>
+                                <span className={"inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-semibold leading-none shadow-sm shadow-black/[0.02] dark:shadow-black/20 " + s.cls}>
+                                  <span aria-hidden className={"h-1.5 w-1.5 shrink-0 rounded-full " + s.dotCls} />
+                                  {s.label}
+                                </span>
                               </td>
                             );
                           case "son_giris":
@@ -307,8 +328,8 @@ export function EmployeesTable({
                                   <Link href={`/iscilier/${e.id}?tab=davamiyyet`} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground" title="Davamiyyət">
                                     <CalendarDays className="h-3.5 w-3.5" />
                                   </Link>
-                                  <EmployeeDialog roles={roles} filiallar={filiallar} initial={e} trigger="edit" />
-                                  {e.aktiv && (
+                                  {canEdit && <EmployeeDialog roles={roles} filiallar={filiallar} vezifeler={vezifeler} initial={e} trigger="edit" />}
+                                  {canEdit && e.aktiv && (
                                     <Button size="icon-sm" variant="ghost" title="Əməliyyatdan çıxar" disabled={pending} onClick={() => onDeactivate(e.id, e.ad_soyad)}>
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>

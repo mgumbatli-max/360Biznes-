@@ -2,13 +2,23 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
-import { requireTenant } from "@/lib/db/tenant-context";
+import { requireTenant, runWithTenant } from "@/lib/db/tenant-context";
 import { isMockMode } from "@/lib/ai/anthropic";
+
+/**
+ * Owner mode-a kim girir? — sahibkar / admin / direktor / owner.
+ * Bu rolu olan istifadəçilər tam KPI, gəlir, marja, kassa, maaş datasını görür.
+ * Adi əməkdaş yalnız öz performansını görür.
+ */
+export function canUseOwnerMode(rolAd: string | undefined): boolean {
+  const r = (rolAd ?? "").toLowerCase();
+  return r.includes("sahibkar") || r.includes("admin") || r.includes("owner") || r.includes("direktor");
+}
 
 export async function getChatHistory(limit = 50, mode: "owner" | "employee" = "employee") {
   return withTenant(async () => {
     const { istifadeciId, rolAd } = requireTenant();
-    const effective = mode === "owner" && rolAd === "sahibkar" ? "owner" : "employee";
+    const effective = mode === "owner" && canUseOwnerMode(rolAd) ? "owner" : "employee";
     const kanal = effective === "owner" ? "sahibkar" : "panel";
     const rows = await prisma.ai_sohbet_loq.findMany({
       where: { istifadeci_id: istifadeciId, kanal },
@@ -47,11 +57,43 @@ export function getMockStatus(): boolean {
  * Sahibkar rolu olub "employee" mode çağırsa (məs. /ai-yə girəndə),
  * yenə də sahibkar-yalnız bloklar gizlənir.
  */
+/**
+ * Cached implementation — eyni sahibkar/user/mode üçün 60sn ərzində eyni
+ * konteksti qaytarır. AI chat-də ardıcıl 10 mesaj atılırsa, 1 dəfə hesablanır.
+ */
+const fetchBusinessContextCached = (sahibkarId: string, istifadeciId: string, mode: "owner" | "employee") =>
+  unstable_cache(
+    () => _computeBusinessContext(sahibkarId, istifadeciId, mode),
+    ["ai-biznes-konteksti", sahibkarId, istifadeciId, mode],
+    { revalidate: 60, tags: [`ai:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+  );
+
 export async function getBusinessContext(mode: "owner" | "employee" = "employee"): Promise<string> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId, rolAd } = requireTenant();
-    // owner mode yalnız "sahibkar" rolu üçün; başqa hər kəs avtomatik employee düşür
-    const isOwner = mode === "owner" && rolAd === "sahibkar";
+    const effectiveMode: "owner" | "employee" = mode === "owner" && canUseOwnerMode(rolAd) ? "owner" : "employee";
+    return fetchBusinessContextCached(sahibkarId, istifadeciId, effectiveMode)();
+  });
+}
+
+/** Real hesablama — cached wrapper bunu çağırır. */
+async function _computeBusinessContext(
+  sahibkarId: string,
+  istifadeciId: string,
+  effectiveMode: "owner" | "employee",
+): Promise<string> {
+  // Cache içindən çağırılır; tenant context-i manual qoyuruq ki Prisma extension
+  // auto-scope etsin (auth() yenidən çəkilməsin).
+  return runWithTenant(
+    {
+      sahibkarId,
+      istifadeciId,
+      rolId: 0,
+      rolAd: effectiveMode === "owner" ? "sahibkar" : "isci",
+      icazeler: [],
+    },
+    async () => {
+      const isOwner = effectiveMode === "owner";
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -107,12 +149,14 @@ export async function getBusinessContext(mode: "owner" | "employee" = "employee"
         `.catch(() => []),
         prisma.$queryRaw<{ c: number }[]>`
           SELECT COUNT(*)::int AS c FROM mehsullar m
-          LEFT JOIN stok st ON st.mehsul_id = m.id
-          WHERE m.aktiv = true AND m.kritik_stok IS NOT NULL AND COALESCE(st.miqdar, 0) <= m.kritik_stok
+          LEFT JOIN stok st ON st.mehsul_id = m.id AND st.sahibkar_id = ${sahibkarId}::uuid
+          WHERE m.sahibkar_id = ${sahibkarId}::uuid
+            AND m.aktiv = true AND m.kritik_stok IS NOT NULL
+            AND COALESCE(st.miqdar, 0) <= m.kritik_stok
         `.catch(() => [{ c: 0 }]),
         prisma.$queryRaw<{ c: number; cemi: number }[]>`
           SELECT COUNT(*)::int AS c, COALESCE(SUM(borc), 0)::float AS cemi
-          FROM kontragentler WHERE borc > 0
+          FROM kontragentler WHERE sahibkar_id = ${sahibkarId}::uuid AND borc > 0
         `.catch(() => [{ c: 0, cemi: 0 }]),
         prisma.sahibkar_partiya.aggregate({
           where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart } },
@@ -184,8 +228,10 @@ export async function getBusinessContext(mode: "owner" | "employee" = "employee"
         prisma.mehsullar.count({ where: { aktiv: true } }).catch(() => 0),
         prisma.$queryRaw<{ c: number }[]>`
           SELECT COUNT(*)::int AS c FROM mehsullar m
-          LEFT JOIN stok st ON st.mehsul_id = m.id
-          WHERE m.aktiv = true AND m.kritik_stok IS NOT NULL AND COALESCE(st.miqdar, 0) <= m.kritik_stok
+          LEFT JOIN stok st ON st.mehsul_id = m.id AND st.sahibkar_id = ${sahibkarId}::uuid
+          WHERE m.sahibkar_id = ${sahibkarId}::uuid
+            AND m.aktiv = true AND m.kritik_stok IS NOT NULL
+            AND COALESCE(st.miqdar, 0) <= m.kritik_stok
         `.catch(() => [{ c: 0 }]),
       ]);
       const myMonth = Number(mySalesM._sum.son_mebleg ?? 0);

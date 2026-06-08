@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { HelpCircle, BookOpen, Sparkles, Brain, TrendingUp, Users, Tag, Package, PenLine, Beaker, MessageSquare } from "lucide-react";
+import { HelpCircle, BookOpen, Sparkles, Brain, TrendingUp, Users, Tag, PenLine, MessageSquare } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TopicsBrowser } from "@/features/komekci/components/topics-browser";
@@ -28,10 +28,24 @@ const INSIGHT_TONE: Record<string, string> = {
 
 type SP = { tab?: string; q?: string };
 
+/**
+ * URL-dən gələn `q` parametri prompt-injection vector ola bilər.
+ * ASCII control xarakterlərini (0x00-0x1F, 0x7F) və Unicode bidi override-ları
+ * (U+202A–U+202E) sil, uzunluğu 500 simvolla məhdudlaşdır.
+ */
+function sanitizeQueryInput(raw: string): string {
+  if (!raw) return "";
+  const stripRe = new RegExp(
+    "[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F\\u202A-\\u202E]",
+    "g",
+  );
+  return raw.replace(stripRe, "").trim().slice(0, 500);
+}
+
 export default async function KomekciPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const tab = sp.tab === "biznes" ? "biznes" : "oyretme";
-  const prefilledQuery = sp.q?.trim() ?? "";
+  const prefilledQuery = sanitizeQueryInput(sp.q ?? "");
 
   // Biznes tab üçün AI history + insights yüklə (yalnız aktiv tab-da)
   const [history, insights] = tab === "biznes"

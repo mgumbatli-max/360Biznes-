@@ -7,9 +7,10 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { audit } from "@/lib/audit/log";
 
 /** Sahibkar/admin avtomatik, digərləri üçün icazə yoxlanır. */
-async function requireTapshiriqPerm(perm: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function requireTapshiriqPerm(perm: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Giriş tələb olunur" };
   const rolAd = (session.user.rol_ad ?? "").toLowerCase();
@@ -19,6 +20,52 @@ async function requireTapshiriqPerm(perm: string): Promise<{ ok: true } | { ok: 
   const perms = await getRequestPermissions();
   if (!perms.includes(perm)) return { ok: false, error: `Bu əməliyyat üçün «${perm}» icazəsi lazımdır` };
   return { ok: true };
+}
+
+/** Cari userın task üzərində mutation hüququ var? — mesul/yaradan/icrachi/admin. */
+async function assertTaskAccess(taskId: string): Promise<
+  | { ok: true; task: { id: string; yaradan_id: string | null; mesul_id: string | null; basliq: string } }
+  | { ok: false; error: string }
+> {
+  const { sahibkarId, istifadeciId } = requireTenant();
+  const session = await auth();
+  const rolAd = (session?.user?.rol_ad ?? "").toLowerCase();
+  const privileged =
+    rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
+
+  const task = await prisma.tapshiriqlar.findFirst({
+    where: { id: taskId, sahibkar_id: sahibkarId },
+    select: {
+      id: true,
+      yaradan_id: true,
+      mesul_id: true,
+      basliq: true,
+      tapshiriq_iscilier: { select: { istifadeci_id: true } },
+    },
+  });
+  if (!task) return { ok: false, error: "Tapşırıq tapılmadı" };
+  if (privileged) {
+    return { ok: true, task: { id: task.id, yaradan_id: task.yaradan_id, mesul_id: task.mesul_id, basliq: task.basliq } };
+  }
+  const isOwner = task.yaradan_id === istifadeciId;
+  const isMesul = task.mesul_id === istifadeciId;
+  const isIcrachi = task.tapshiriq_iscilier.some((x) => x.istifadeci_id === istifadeciId);
+  if (!isOwner && !isMesul && !isIcrachi) {
+    return { ok: false, error: "Bu tapşırığa müdaxilə icazəniz yoxdur" };
+  }
+  return { ok: true, task: { id: task.id, yaradan_id: task.yaradan_id, mesul_id: task.mesul_id, basliq: task.basliq } };
+}
+
+/** Tapshiriq cache-i təzələ — sidebar/dashboard/nezaret badge-ləri. */
+function bustTaskCache() {
+  try {
+    const { sahibkarId } = requireTenant();
+    revalidateTag(`mywork:${sahibkarId}`, "max");
+    revalidateTag(`dashboard:${sahibkarId}`, "max");
+    revalidateTag(`nezaret:${sahibkarId}`, "max");
+  } catch {
+    // tenant context yox — TTL onsuz da tutacaq
+  }
 }
 
 // ============================================================
@@ -71,7 +118,14 @@ const CreateTaskSchema = z.object({
   send_telegram: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
 });
 
-type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
+type ActionResult =
+  | { ok: true; id?: string }
+  | {
+      ok: false;
+      error: string;
+      blockers?: import("@/lib/blockers/types").Blocker[];
+      hint?: string;
+    };
 
 export async function createTask(input: FormData | z.input<typeof CreateTaskSchema>): Promise<ActionResult> {
   // İcazə: tapshiriq.yarat tələb olunur
@@ -236,13 +290,21 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
       }
 
       revalidatePath("/tapshiriqlar");
-      try {
-        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
-      } catch { /* tenant context missing — TTL will catch */ }
+      bustTaskCache();
+      await audit("yarat", "tapshiriq", task.t.id, {
+        yeni_data: {
+          basliq: d.basliq,
+          mesul_id: d.mesul_id || null,
+          prioritet: d.prioritet,
+          deadline: d.deadline ?? null,
+          icrachi_sayi: task.notifiedIds.length,
+        },
+      });
       return { ok: true, id: task.t.id };
     } catch (e) {
       console.error("[createTask]", e);
-      return { ok: false, error: "Tapşırıq yaradılmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tapşırıq yaradılmadı: ${msg}` };
     }
   });
 }
@@ -286,20 +348,40 @@ async function sendTaskTelegram(
   }).catch(() => null);
 }
 
-export async function changeTaskStatus(taskId: string, status: "yeni" | "icrada" | "gozlemede" | "tamamlandi" | "legv"): Promise<ActionResult> {
+export async function changeTaskStatus(
+  taskId: string,
+  status: "yeni" | "icrada" | "gozlemede" | "tamamlandi" | "legv",
+  force?: boolean,
+): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      const access = await assertTaskAccess(taskId);
+      if (!access.ok) return access;
+      const existing = await prisma.tapshiriqlar.findFirst({
+        where: { id: taskId, sahibkar_id: sahibkarId },
+        select: { status: true, yaradan_id: true, basliq: true, mesul_id: true },
+      });
+      if (!existing) return { ok: false, error: "Tapşırıq tapılmadı" };
+
+      // 🛑 Ləğv/tamamlandı statusuna keçəndə açıq checklist varsa — blocker
+      if ((status === "legv" || status === "tamamlandi") && !force) {
+        const { findTaskBlockers } = await import("@/lib/blockers/find-task-blockers");
+        const blockers = await findTaskBlockers(taskId, sahibkarId);
+        const openChecklist = blockers.filter((b) => b.badge === "açıq punkt");
+        if (openChecklist.length > 0) {
+          return {
+            ok: false,
+            error: `${openChecklist.length} açıq punkt var — status dəyişdirilə bilməz.`,
+            blockers,
+            hint: "Aşağıdakı punktları işarələyin və ya silin, sonra yenidən cəhd edin.",
+          };
+        }
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const patch: any = { status, yenilendi: new Date() };
       if (status === "tamamlandi") patch.tamamlandi_de = new Date();
       if (status === "icrada") patch.baslandi_de = new Date();
-
-      const existing = await prisma.tapshiriqlar.findFirst({
-        where: { id: taskId, sahibkar_id: sahibkarId },
-        select: { yaradan_id: true, basliq: true, mesul_id: true },
-      });
-      if (!existing) return { ok: false, error: "Tapşırıq tapılmadı" };
 
       await prisma.tapshiriqlar.update({ where: { id: taskId }, data: patch });
 
@@ -334,13 +416,17 @@ export async function changeTaskStatus(taskId: string, status: "yeni" | "icrada"
       }
 
       revalidatePath("/tapshiriqlar");
-      try {
-        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
-      } catch { /* tenant context missing — TTL will catch */ }
+      revalidatePath(`/tapshiriqlar/${taskId}`);
+      bustTaskCache();
+      await audit("status_deyisdi", "tapshiriq", taskId, {
+        evvelki_data: { status: existing.status },
+        yeni_data: { status, basliq: existing.basliq },
+      });
       return { ok: true };
     } catch (e) {
       console.error("[changeTaskStatus]", e);
-      return { ok: false, error: "Status dəyişdirilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Status dəyişdirilmədi: ${msg}` };
     }
   });
 }
@@ -348,36 +434,55 @@ export async function changeTaskStatus(taskId: string, status: "yeni" | "icrada"
 export async function addComment(taskId: string, metn: string): Promise<ActionResult> {
   const text = metn.trim();
   if (!text) return { ok: false, error: "Boş şərh ola bilməz" };
+  if (text.length > 5000) return { ok: false, error: "Şərh 5000 simvoldan uzun ola bilməz" };
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      await prisma.tapshiriq_kommentleri.create({
+      const access = await assertTaskAccess(taskId);
+      if (!access.ok) return access;
+      const row = await prisma.tapshiriq_kommentleri.create({
         data: {
           sahibkar_id: sahibkarId,
           tapshiriq_id: taskId,
           istifadeci_id: istifadeciId,
           metn: text,
         },
+        select: { id: true },
       });
       revalidatePath("/tapshiriqlar");
-      try {
-        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
-      } catch { /* tenant context missing — TTL will catch */ }
+      revalidatePath(`/tapshiriqlar/${taskId}`);
+      bustTaskCache();
+      await audit("yarat", "tapshiriq_kommenti", String(row.id), {
+        yeni_data: { tapshiriq_id: taskId, basliq: access.task.basliq, uzunluq: text.length },
+      });
       return { ok: true };
     } catch (e) {
       console.error("[addComment]", e);
-      return { ok: false, error: "Şərh əlavə edilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Şərh əlavə edilmədi: ${msg}` };
     }
   });
 }
 
 export async function toggleChecklist(itemId: string, done: boolean): Promise<ActionResult> {
   return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // 1) Bigint parse — bad input erkən səhv kimi qaytar
+      let bid: bigint;
+      try { bid = BigInt(itemId); } catch { return { ok: false, error: "Yanlış checklist ID" }; }
+      // 2) Parent tapşırığı tapıb access yoxla
+      const item = await prisma.tapshiriq_checklist.findFirst({
+        where: { id: bid, sahibkar_id: sahibkarId },
+        select: { id: true, metn: true, tapshiriq_id: true, tamamlandi: true },
+      });
+      if (!item) return { ok: false, error: "Checklist tapılmadı" };
+      const access = await assertTaskAccess(item.tapshiriq_id);
+      if (!access.ok) return access;
+      // 3) Update
       await prisma.tapshiriq_checklist.update({
-        where: { id: BigInt(itemId) },
+        where: { id: bid },
         data: {
           tamamlandi: done,
           tamamlandi_de: done ? new Date() : null,
@@ -385,13 +490,17 @@ export async function toggleChecklist(itemId: string, done: boolean): Promise<Ac
         },
       });
       revalidatePath("/tapshiriqlar");
-      try {
-        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
-      } catch { /* tenant context missing — TTL will catch */ }
+      revalidatePath(`/tapshiriqlar/${item.tapshiriq_id}`);
+      bustTaskCache();
+      await audit("yenile", "tapshiriq_checklist", String(bid), {
+        evvelki_data: { tamamlandi: item.tamamlandi },
+        yeni_data: { tamamlandi: done, metn: item.metn, tapshiriq_id: item.tapshiriq_id },
+      });
       return { ok: true };
     } catch (e) {
       console.error("[toggleChecklist]", e);
-      return { ok: false, error: "Yeniləmə alınmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yeniləmə alınmadı: ${msg}` };
     }
   });
 }
@@ -404,6 +513,8 @@ export async function setTaskColor(taskId: string, reng: string): Promise<Action
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      const access = await assertTaskAccess(taskId);
+      if (!access.ok) return access;
       const cleanReng = reng.trim().slice(0, 32);
       const t = await prisma.tapshiriqlar.findFirst({
         where: { id: taskId, sahibkar_id: sahibkarId },
@@ -418,14 +529,16 @@ export async function setTaskColor(taskId: string, reng: string): Promise<Action
         data: { qeyd_daxili: newQeyd, yenilendi: new Date() },
       });
       revalidatePath("/tapshiriqlar");
-      try {
-        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
-      } catch { /* tenant context missing — TTL will catch */ }
+      bustTaskCache();
       revalidatePath(`/tapshiriqlar/${taskId}`);
+      await audit("yenile", "tapshiriq", taskId, {
+        yeni_data: { reng: cleanReng || null, basliq: access.task.basliq },
+      });
       return { ok: true, id: taskId };
     } catch (e) {
       console.error("[setTaskColor]", e);
-      return { ok: false, error: "Rəng qoyulmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Rəng qoyulmadı: ${msg}` };
     }
   });
 }
@@ -462,6 +575,8 @@ export async function setTaskReminder(input: z.input<typeof SetReminderSchema>):
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      const access = await assertTaskAccess(taskId);
+      if (!access.ok) return access;
       const reminderDate = new Date(datetime);
       if (Number.isNaN(reminderDate.getTime())) {
         return { ok: false, error: "Tarix-vaxt yanlışdır" };
@@ -533,14 +648,21 @@ export async function setTaskReminder(input: z.input<typeof SetReminderSchema>):
       });
 
       revalidatePath("/tapshiriqlar");
-      try {
-        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
-      } catch { /* tenant context missing — TTL will catch */ }
+      bustTaskCache();
       revalidatePath(`/tapshiriqlar/${taskId}`);
+      await audit("xatirlatma_qoy", "tapshiriq", taskId, {
+        yeni_data: {
+          xatirlatma_de: new Date(datetime).toISOString(),
+          repeat: repeat ?? "yox",
+          kime_id: kime_id || null,
+          gizlilik,
+        },
+      });
       return { ok: true, id: taskId };
     } catch (e) {
       console.error("[setTaskReminder]", e);
-      return { ok: false, error: "Xatırlatma qoyulmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Xatırlatma qoyulmadı: ${msg}` };
     }
   });
 }
@@ -549,97 +671,118 @@ export async function setTaskReminder(input: z.input<typeof SetReminderSchema>):
 // Overdue check — admin-only cron entrypoint
 // ============================================================
 
+/**
+ * Cari tenant üçün gecikən tapşırıqları aşkar edib alert/bildiriş yaradır.
+ * Tenant context daxilində işləyir — auth yoxlamır (kim çağırdığı çağıranın
+ * öhdəliyidir). Manual `runOverdueCheck` üçün role check edir, cron isə
+ * birbaşa bu helper-i çağırır.
+ */
+export async function _executeOverdueCheckForTenant(): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+  const { sahibkarId } = requireTenant();
+  try {
+    const tapshiriqCat = await prisma.alert_categories.findFirst({
+      where: { kod: "tapshiriq" },
+      select: { id: true },
+    });
+    if (!tapshiriqCat) {
+      return { ok: false, error: "Sistem konfiqurasiyası: 'tapshiriq' alert kateqoriyası tapılmadı" };
+    }
+
+    const now = new Date();
+    const overdueTasks = await prisma.tapshiriqlar.findMany({
+      where: {
+        sahibkar_id: sahibkarId,
+        deadline: { lt: now },
+        status: { notIn: ["tamamlandi", "legv"] },
+        escalation_enabled: true,
+      },
+      select: { id: true, basliq: true, deadline: true, mesul_id: true, escalation_to: true },
+    });
+
+    let created = 0;
+    for (const t of overdueTasks) {
+      const existing = await prisma.alerts.findFirst({
+        where: {
+          sahibkar_id: sahibkarId,
+          tapshiriq_id: t.id,
+          kateqoriya_kod: "tapshiriq",
+          rule_kod: "task_overdue_auto",
+          status: { notIn: ["resolved", "dismissed"] },
+        },
+        select: { id: true },
+      });
+      if (existing) continue;
+
+      await prisma.alerts.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          kateqoriya_id: tapshiriqCat.id,
+          kateqoriya_kod: "tapshiriq",
+          rule_kod: "task_overdue_auto",
+          seviyye: "yuxsek",
+          status: "yeni",
+          basliq: `Gecikən tapşırıq: ${t.basliq}`.slice(0, 255),
+          tesvir: `Tapşırıq son tarixi (${t.deadline?.toISOString() ?? "—"}) keçib və hələ tamamlanmayıb.`,
+          obyekt_nov: "tapshiriq",
+          obyekt_id: t.id,
+          obyekt_basliq: t.basliq.slice(0, 255),
+          assigned_to: t.escalation_to || t.mesul_id || null,
+          due_at: t.deadline,
+          tapshiriq_id: t.id,
+        },
+      });
+
+      if (t.escalation_to) {
+        await prisma.bildirisler.create({
+          data: {
+            istifadeci_id: t.escalation_to,
+            sahibkar_id: sahibkarId,
+            basliq: `Gecikən tapşırıq: ${t.basliq}`.slice(0, 200),
+            metn: `Bu tapşırıq son tarixi keçib və əməkdaş hələ tamamlamayıb. Diqqətinizə.`,
+            nov: "tapshiriq_gecikdi",
+            link: `/tapshiriqlar/${t.id}`,
+            resurs_nov: "tapshiriq",
+            resurs_id: t.id,
+          },
+        }).catch(() => null);
+        try {
+          revalidateTag(`bildirisler:${sahibkarId}:${t.escalation_to}`, "max");
+        } catch { /* non-fatal */ }
+      }
+      created += 1;
+    }
+
+    if (created > 0) {
+      try {
+        revalidatePath("/tapshiriqlar");
+        revalidatePath("/xeberdarliqlar");
+        bustTaskCache();
+        revalidateTag(`alerts:${sahibkarId}`, "max");
+      } catch { /* non-fatal */ }
+    }
+    return { ok: true, created };
+  } catch (e) {
+    console.error("[_executeOverdueCheckForTenant]", e);
+    const msg = e instanceof Error ? e.message : "naməlum səhv";
+    return { ok: false, error: `Yoxlama uğursuz oldu: ${msg}` };
+  }
+}
+
 export async function runOverdueCheck(): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
   return withTenant(async () => {
-    const { sahibkarId, rolAd } = requireTenant();
-    // Yalnız admin və ya sahibkar manual işə sala bilər (digər istifadəçilər
-    // üçün cron endpoint istifadə olunur).
+    const { rolAd } = requireTenant();
     if (rolAd !== "admin" && rolAd !== "sahibkar") {
       return { ok: false, error: "İcazə yoxdur — yalnız admin/sahibkar yoxlama işə sala bilər" };
     }
-    try {
-      // alert_categories.kod = "tapshiriq" → bu kateqoriyaya yazırıq
-      const tapshiriqCat = await prisma.alert_categories.findFirst({
-        where: { kod: "tapshiriq" },
-        select: { id: true },
-      });
-      if (!tapshiriqCat) {
-        return { ok: false, error: "Sistem konfiqurasiyası: 'tapshiriq' alert kateqoriyası tapılmadı" };
-      }
-
-      const now = new Date();
-      const overdueTasks = await prisma.tapshiriqlar.findMany({
-        where: {
-          sahibkar_id: sahibkarId,
-          deadline: { lt: now },
-          status: { notIn: ["tamamlandi", "legv"] },
-          escalation_enabled: true,
-        },
-        select: { id: true, basliq: true, deadline: true, mesul_id: true, escalation_to: true },
-      });
-
-      let created = 0;
-      for (const t of overdueTasks) {
-        // Bu tapşırıq üçün artıq açıq alert varsa, yenisini yaratma
-        const existing = await prisma.alerts.findFirst({
-          where: {
-            sahibkar_id: sahibkarId,
-            tapshiriq_id: t.id,
-            kateqoriya_kod: "tapshiriq",
-            rule_kod: "task_overdue_auto",
-            status: { notIn: ["resolved", "dismissed"] },
-          },
-          select: { id: true },
-        });
-        if (existing) continue;
-
-        await prisma.alerts.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            kateqoriya_id: tapshiriqCat.id,
-            kateqoriya_kod: "tapshiriq",
-            rule_kod: "task_overdue_auto",
-            seviyye: "yuxsek",
-            status: "yeni",
-            basliq: `Gecikən tapşırıq: ${t.basliq}`.slice(0, 255),
-            tesvir: `Tapşırıq son tarixi (${t.deadline?.toISOString() ?? "—"}) keçib və hələ tamamlanmayıb.`,
-            obyekt_nov: "tapshiriq",
-            obyekt_id: t.id,
-            obyekt_basliq: t.basliq.slice(0, 255),
-            assigned_to: t.escalation_to || t.mesul_id || null,
-            due_at: t.deadline,
-            tapshiriq_id: t.id,
-          },
-        });
-
-        // Escalation: rəhbər varsa, ona bildiriş də göndər
-        if (t.escalation_to) {
-          await prisma.bildirisler.create({
-            data: {
-              istifadeci_id: t.escalation_to,
-              sahibkar_id: sahibkarId,
-              basliq: `Gecikən tapşırıq: ${t.basliq}`.slice(0, 200),
-              metn: `Bu tapşırıq son tarixi keçib və əməkdaş hələ tamamlamayıb. Diqqətinizə.`,
-              nov: "tapshiriq_gecikdi",
-              link: `/tapshiriqlar/${t.id}`,
-              resurs_nov: "tapshiriq",
-              resurs_id: t.id,
-            },
-          }).catch(() => null);
-          revalidateTag(`bildirisler:${sahibkarId}:${t.escalation_to}`, "max");
-        }
-        created += 1;
-      }
-
-      revalidatePath("/tapshiriqlar");
-      revalidatePath("/xeberdarliqlar");
+    const result = await _executeOverdueCheckForTenant();
+    if (result.ok && result.created > 0) {
       try {
-        revalidateTag(`mywork:${requireTenant().sahibkarId}`, "max");
-      } catch { /* tenant context missing — TTL will catch */ }
-      return { ok: true, created };
-    } catch (e) {
-      console.error("[runOverdueCheck]", e);
-      return { ok: false, error: "Yoxlama uğursuz oldu" };
+        await audit("overdue_yoxla", "tapshiriq", null, {
+          yeni_data: { yaradilan_alert: result.created, mode: "manual" },
+        });
+      } catch { /* non-fatal */ }
     }
+    return result;
   });
 }
+

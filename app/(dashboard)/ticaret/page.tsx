@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { RefreshButton } from "@/components/refresh-button";
-import { NewOperationButton } from "@/features/ticaret/components/new-operation-dialog";
 import {
   getTradeKpis,
   getSalesByDay,
@@ -269,7 +268,7 @@ export default async function TicaretHubPage() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Ticarət</h1>
         <div className="flex items-center gap-2">
-          <NewOperationButton />
+          {/* «Yeni əməliyyat» düyməsi indi TicaretSubNav-da sabit görünür */}
           <RefreshButton />
         </div>
       </div>

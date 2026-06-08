@@ -17,7 +17,15 @@ type Anbar = {
   filial_id: number | null;
   mesul_id: string | null;
   aktiv: boolean | null;
+  nov?: string | null;
+  aciqlamaq?: string | null;
 };
+
+const NOV_OPTIONS = [
+  { value: "standart", label: "Standart anbar", desc: "Satışa hazır mal", icon: "📦" },
+  { value: "defekt", label: "Defekt / yararsız", desc: "Zədə, son istifadə vaxtı keçmiş", icon: "⚠️" },
+  { value: "karantın", label: "Karantın / izolyasiya", desc: "Yoxlamadan keçməyən mal", icon: "🔒" },
+];
 
 export function AnbarDialog({ filiallar, mesullar, anbar }: { filiallar: Filial[]; mesullar: Mesul[]; anbar?: Anbar }) {
   const [open, setOpen] = useState(false);
@@ -48,6 +56,30 @@ export function AnbarDialog({ filiallar, mesullar, anbar }: { filiallar: Filial[
         </DialogHeader>
         <form action={action} className="space-y-3">
           {anbar ? <input type="hidden" name="id" value={anbar.id} /> : null}
+
+          <div className="space-y-1.5">
+            <Label>Anbar növü</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {NOV_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-border/60 px-2 py-2.5 text-xs font-semibold transition-all has-[:checked]:border-primary has-[:checked]:bg-primary/10 hover:bg-secondary/30"
+                >
+                  <input
+                    type="radio"
+                    name="nov"
+                    value={opt.value}
+                    defaultChecked={(anbar?.nov ?? "standart") === opt.value}
+                    className="sr-only"
+                  />
+                  <span className="text-base">{opt.icon}</span>
+                  <span className="text-center">{opt.label}</span>
+                  <span className="text-center text-[9.5px] font-normal text-muted-foreground">{opt.desc}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="ad">Ad</Label>
             <Input id="ad" name="ad" defaultValue={anbar?.ad ?? ""} required maxLength={100} />
@@ -55,6 +87,18 @@ export function AnbarDialog({ filiallar, mesullar, anbar }: { filiallar: Filial[
           <div className="space-y-1.5">
             <Label htmlFor="unvan">Ünvan</Label>
             <Input id="unvan" name="unvan" defaultValue={anbar?.unvan ?? ""} maxLength={500} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="aciqlamaq">Açıqlama / qeyd (opsional)</Label>
+            <textarea
+              id="aciqlamaq"
+              name="aciqlamaq"
+              rows={2}
+              maxLength={500}
+              defaultValue={anbar?.aciqlamaq ?? ""}
+              placeholder="Hansı növ mal üçündür, hansı şərtlərlə..."
+              className="w-full rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

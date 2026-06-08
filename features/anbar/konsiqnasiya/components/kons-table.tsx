@@ -367,11 +367,39 @@ export function KonsTable({ rows }: Props) {
                     )}
                   </td>
                 ),
-                status: (
-                  <td key="status" className="px-3 py-2">
-                    <span className="inline-block rounded bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase">{r.status}</span>
-                  </td>
-                ),
+                status: (() => {
+                  const map: Record<string, { cls: string; dotCls: string; label: string }> = {
+                    aktiv: {
+                      cls: "bg-gradient-to-b from-emerald-500/15 to-emerald-500/[0.06] text-emerald-700 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-300",
+                      dotCls: "bg-emerald-500 animate-pulse",
+                      label: "Aktiv",
+                    },
+                    qaytarildi: {
+                      cls: "bg-gradient-to-b from-sky-500/15 to-sky-500/[0.06] text-sky-700 ring-1 ring-inset ring-sky-500/20 dark:text-sky-300",
+                      dotCls: "bg-sky-500",
+                      label: "Qaytarıldı",
+                    },
+                    satildi: {
+                      cls: "bg-gradient-to-b from-emerald-500/15 to-emerald-500/[0.06] text-emerald-700 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-300",
+                      dotCls: "bg-emerald-600",
+                      label: "Satıldı",
+                    },
+                    legv: {
+                      cls: "bg-gradient-to-b from-rose-500/15 to-rose-500/[0.06] text-rose-700 ring-1 ring-inset ring-rose-500/20 line-through decoration-rose-500/40 dark:text-rose-300",
+                      dotCls: "bg-rose-500",
+                      label: "Ləğv",
+                    },
+                  };
+                  const info = map[r.status] ?? { cls: "bg-muted text-muted-foreground ring-1 ring-inset ring-border/40", dotCls: "bg-muted-foreground", label: r.status };
+                  return (
+                    <td key="status" className="px-3 py-2">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-semibold leading-none shadow-sm shadow-black/[0.02] dark:shadow-black/20 ${info.cls}`}>
+                        <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${info.dotCls}`} />
+                        {info.label}
+                      </span>
+                    </td>
+                  );
+                })(),
               };
               return (
                 <tr key={r.id} className="border-b border-border/20 hover:bg-secondary/30">

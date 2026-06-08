@@ -117,6 +117,147 @@ export async function getAccounts(): Promise<AccountRow[]> {
   });
 }
 
+// ─── Hesab detail — balans tarixçəsi + son əməliyyatlar ──────────────
+export type AccountOpRow = {
+  id: string;
+  tarix: Date | null;
+  type_kod: string;
+  y_n: string;
+  meblegh: number;
+  status: string;
+  kontragent_ad: string | null;
+  qeyd: string | null;
+  sened_nomresi: string | null;
+};
+
+export type AccountDetail = {
+  id: string;
+  ad: string;
+  nov: string;
+  is_kassa: boolean;
+  bank_adi: string | null;
+  iban: string | null;
+  kart_son4: string | null;
+  qaliq: number;
+  valyuta: string;
+  aktiv: boolean;
+  qeyd: string | null;
+  bugun_giris: number;
+  bugun_cixis: number;
+  ay_giris: number;
+  ay_cixis: number;
+  son_30_gun: Array<{ tarix: string; giris: number; cixis: number; net: number }>;
+  operations: AccountOpRow[];
+};
+
+export async function getAccountDetail(id: string): Promise<AccountDetail | null> {
+  return withTenant(async () => {
+    const h = await prisma.maliye_hesablari.findFirst({
+      where: { id },
+      select: {
+        id: true, ad: true, nov: true, bank_adi: true, iban: true,
+        kart_son4: true, qaliq: true, valyuta: true, aktiv: true, qeyd: true,
+      },
+    });
+    if (!h) return null;
+
+    const now = new Date();
+    const today = new Date(now); today.setHours(0, 0, 0, 0);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thirtyAgo = new Date(now); thirtyAgo.setDate(thirtyAgo.getDate() - 29);
+    thirtyAgo.setHours(0, 0, 0, 0);
+
+    // Bugün və ay aggregates (giriş + çıxış ayrı-ayrı)
+    const [todayAgg, monthAgg, dailyRows, operations] = await Promise.all([
+      prisma.finance_operations.groupBy({
+        by: ["y_n"],
+        where: { hesab_id: id, status: "aktiv", tarix: { gte: today } },
+        _sum: { azn_meblegh: true },
+      }),
+      prisma.finance_operations.groupBy({
+        by: ["y_n"],
+        where: { hesab_id: id, status: "aktiv", tarix: { gte: monthStart } },
+        _sum: { azn_meblegh: true },
+      }),
+      prisma.$queryRaw<{ d: Date; y_n: string; cem: number }[]>(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (await import("@/lib/db/prisma")).Prisma.sql`
+          SELECT tarix AS d, "yön" AS y_n,
+                 SUM(COALESCE(azn_meblegh, meblegh, 0))::float AS cem
+            FROM finance_operations
+           WHERE hesab_id = ${id}::uuid
+             AND status = 'aktiv'
+             AND tarix >= ${thirtyAgo}::date
+           GROUP BY tarix, "yön"
+           ORDER BY tarix
+        `,
+      ),
+      prisma.finance_operations.findMany({
+        where: { hesab_id: id, status: { not: "legv" } },
+        orderBy: { tarix: "desc" },
+        take: 100,
+        select: {
+          id: true, tarix: true, type_kod: true, y_n: true,
+          meblegh: true, status: true, qeyd: true, sened_nomresi: true,
+          kontragentler: { select: { ad: true } },
+        },
+      }),
+    ]);
+
+    const sumByYn = (rows: { y_n: string; _sum: { azn_meblegh: import("@prisma/client/runtime/library").Decimal | null } }[], target: string) => {
+      const r = rows.find((x) => x.y_n === target);
+      return Number(r?._sum.azn_meblegh ?? 0);
+    };
+
+    // 30-gün-lik bucketləri doldur
+    const byDate = new Map<string, { giris: number; cixis: number }>();
+    for (const r of dailyRows) {
+      const key = new Date(r.d).toISOString().slice(0, 10);
+      const cur = byDate.get(key) ?? { giris: 0, cixis: 0 };
+      if (r.y_n === "daxil" || r.y_n === "medaxil") cur.giris += Number(r.cem);
+      else cur.cixis += Number(r.cem);
+      byDate.set(key, cur);
+    }
+    const son30: AccountDetail["son_30_gun"] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+      const key = d.toISOString().slice(0, 10);
+      const x = byDate.get(key) ?? { giris: 0, cixis: 0 };
+      son30.push({ tarix: key, giris: x.giris, cixis: x.cixis, net: x.giris - x.cixis });
+    }
+
+    return {
+      id: h.id,
+      ad: h.ad,
+      nov: h.nov,
+      is_kassa: h.nov === "nagd",
+      bank_adi: h.bank_adi,
+      iban: h.iban,
+      kart_son4: h.kart_son4,
+      qaliq: Number(h.qaliq ?? 0),
+      valyuta: h.valyuta ?? "AZN",
+      aktiv: h.aktiv ?? true,
+      qeyd: h.qeyd,
+      bugun_giris: sumByYn(todayAgg, "daxil"),
+      bugun_cixis: sumByYn(todayAgg, "mexaric"),
+      ay_giris: sumByYn(monthAgg, "daxil"),
+      ay_cixis: sumByYn(monthAgg, "mexaric"),
+      son_30_gun: son30,
+      operations: operations.map((op) => ({
+        id: op.id,
+        tarix: op.tarix,
+        type_kod: op.type_kod,
+        y_n: op.y_n,
+        meblegh: Number(op.meblegh),
+        status: op.status,
+        kontragent_ad: op.kontragentler?.ad ?? null,
+        qeyd: op.qeyd,
+        sened_nomresi: op.sened_nomresi,
+      })),
+    };
+  });
+}
+
 export type AccountStats = {
   hesab_say: number;
   kassa_say: number;

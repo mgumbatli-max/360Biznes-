@@ -6,6 +6,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { safeAuditLog } from "@/lib/audit/safe-log";
+import { requireServisActionPerm, bustServisCache } from "./access-guard";
 
 type ActionResult<T = undefined> = { ok: true; id?: string; data?: T } | { ok: false; error: string };
 
@@ -34,7 +36,22 @@ async function nextUnikalKod(): Promise<string> {
   return `Z-${year}-${String(lastNum + 1).padStart(5, "0")}`;
 }
 
+/**
+ * UTC-əsaslı tarix əlavə etmə — yerli timezone-dan asılı deyil.
+ * baslama_tarixi YYYY-MM-DD kimi gəlir; saat 12:00 UTC-də ankerlənir ki
+ * DST/timezone keçidləri 1 gün sürüşmə yaratmasın.
+ */
+function addMonthsUtc(baseIso: string, months: number): { baslama: Date; bitme: Date } {
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(baseIso) ? baseIso : new Date(baseIso).toISOString().slice(0, 10);
+  const [y, m, d] = ymd.split("-").map(Number);
+  const baslama = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const bitme = new Date(Date.UTC(y, m - 1 + months, d, 12, 0, 0));
+  return { baslama, bitme };
+}
+
 export async function createZemanet(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["zemanet.yarat", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = ZemanetSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış məlumat" };
   const d = parsed.data;
@@ -44,9 +61,7 @@ export async function createZemanet(input: FormData): Promise<ActionResult> {
     try {
       const unikal_kod = await nextUnikalKod();
       const qr_token = crypto.randomBytes(24).toString("hex");
-      const baslama = new Date(d.baslama_tarixi);
-      const bitme = new Date(baslama);
-      bitme.setMonth(bitme.getMonth() + d.ay_sayi);
+      const { baslama, bitme } = addMonthsUtc(d.baslama_tarixi, d.ay_sayi);
 
       const created = await prisma.zemanetler.create({
         data: {
@@ -70,6 +85,24 @@ export async function createZemanet(input: FormData): Promise<ActionResult> {
         },
       });
       revalidatePath("/servis/zemanet");
+      bustServisCache();
+      try {
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "yarat",
+          resurs_nov: "zemanet",
+          resurs_id: created.id,
+          yeni_data: {
+            unikal_kod,
+            mehsul_ad: d.mehsul_ad,
+            musteri_ad: d.musteri_ad,
+            ay_sayi: d.ay_sayi,
+            bitme_tarixi: bitme,
+          },
+          status: "ugur",
+        });
+      } catch { /* non-fatal */ }
       return { ok: true, id: created.id };
     } catch (e) {
       console.error("[createZemanet]", e);
@@ -79,13 +112,30 @@ export async function createZemanet(input: FormData): Promise<ActionResult> {
 }
 
 export async function deactivateZemanet(id: string): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["zemanet.idare", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  if (!id) return { ok: false, error: "ID tələb olunur" };
   return withTenant(async () => {
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      await prisma.zemanetler.update({
-        where: { id },
+      // 🔒 Sahibkar yoxlaması + status filtri
+      const r = await prisma.zemanetler.updateMany({
+        where: { id, sahibkar_id: sahibkarId, status: { not: "ləğv" } },
         data: { status: "ləğv", yenilendi: new Date() },
       });
+      if (r.count === 0) return { ok: false, error: "Zəmanət tapılmadı və ya artıq ləğv edilib" };
       revalidatePath("/servis/zemanet");
+      bustServisCache();
+      try {
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "legv",
+          resurs_nov: "zemanet",
+          resurs_id: id,
+          status: "ugur",
+        });
+      } catch { /* non-fatal */ }
       return { ok: true };
     } catch (e) {
       console.error("[deactivateZemanet]", e);
@@ -98,46 +148,73 @@ export async function deactivateZemanet(id: string): Promise<ActionResult> {
  * Creates a new servis_qeydleri linked to a warranty.
  */
 export async function createServisFromZemanet(zemanetId: string, problem: string): Promise<ActionResult> {
+  const permCheck = await requireServisActionPerm(["servis.yarat", "zemanet.idare", "servis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  if (!problem || problem.trim().length < 5) return { ok: false, error: "Problem təsvir edilməlidir (ən azı 5 simvol)" };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const z = await prisma.zemanetler.findUnique({ where: { id: zemanetId } });
+      // 🔒 Sahibkar yoxlaması
+      const z = await prisma.zemanetler.findFirst({
+        where: { id: zemanetId, sahibkar_id: sahibkarId },
+      });
       if (!z) return { ok: false, error: "Zəmanət tapılmadı" };
+      if (z.status === "ləğv") return { ok: false, error: "Ləğv edilmiş zəmanət" };
+      if (z.bitme_tarixi && z.bitme_tarixi < new Date()) {
+        return { ok: false, error: "Zəmanət müddəti bitib" };
+      }
 
       const year = new Date().getFullYear();
-      const last = await prisma.servis_qeydleri.findFirst({
-        where: { nomre: { startsWith: `SR-${year}-` } },
-        orderBy: { nomre: "desc" },
-        select: { nomre: true },
-      });
-      const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-      const nomre = `SR-${year}-${String(lastNum + 1).padStart(5, "0")}`;
+      const result = await prisma.$transaction(async (tx) => {
+        const last = await tx.servis_qeydleri.findFirst({
+          where: { nomre: { startsWith: `SR-${year}-` } },
+          orderBy: { nomre: "desc" },
+          select: { nomre: true },
+        });
+        const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
+        const nomre = `SR-${year}-${String(lastNum + 1).padStart(5, "0")}`;
 
-      const created = await prisma.servis_qeydleri.create({
-        data: {
-          sahibkar_id: sahibkarId,
-          nomre,
-          musteri_id: z.musteri_id,
-          musteri_ad: z.musteri_ad ?? "—",
-          musteri_telefon: z.musteri_telefon ?? "—",
-          mehsul_id: z.mehsul_id,
-          mehsul_ad: z.mehsul_ad ?? "—",
-          mehsul_seri_nomresi: z.serial_nomre ?? z.imei,
-          problem_tesviri: problem || "Zəmanət əsasında servis qəbulu",
-          qebul_eden_id: istifadeciId,
-          status: "qebul_edildi",
-          zemanet_var: true,
-          zemanet_baslama: z.baslama_tarixi,
-          zemanet_bitme: z.bitme_tarixi,
-        },
+        const created = await tx.servis_qeydleri.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            nomre,
+            musteri_id: z.musteri_id,
+            musteri_ad: z.musteri_ad ?? "—",
+            musteri_telefon: z.musteri_telefon ?? "—",
+            mehsul_id: z.mehsul_id,
+            mehsul_ad: z.mehsul_ad ?? "—",
+            mehsul_seri_nomresi: z.serial_nomre ?? z.imei,
+            problem_tesviri: problem,
+            qebul_eden_id: istifadeciId,
+            status: "qebul_edildi",
+            zemanet_var: true,
+            zemanet_baslama: z.baslama_tarixi,
+            zemanet_bitme: z.bitme_tarixi,
+          },
+        });
+        await tx.zemanetler.update({
+          where: { id: zemanetId },
+          data: { servis_id: created.id, yenilendi: new Date() },
+        });
+        return created;
       });
-      await prisma.zemanetler.update({
-        where: { id: zemanetId },
-        data: { servis_id: created.id, yenilendi: new Date() },
-      });
+
       revalidatePath("/servis");
       revalidatePath("/servis/zemanet");
-      return { ok: true, id: created.id };
+      bustServisCache();
+      try {
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "yarat",
+          resurs_nov: "servis",
+          resurs_id: result.id,
+          yeni_data: { zemanet_id: zemanetId, nomre: result.nomre, problem: problem.slice(0, 200) },
+          sebeb: "Zəmanət əsasında servis qeydi yaradıldı",
+          status: "ugur",
+        });
+      } catch { /* non-fatal */ }
+      return { ok: true, id: result.id };
     } catch (e) {
       console.error("[createServisFromZemanet]", e);
       return { ok: false, error: "Servis qeydi yaradılmadı" };
@@ -146,5 +223,7 @@ export async function createServisFromZemanet(zemanetId: string, problem: string
 }
 
 export async function printZemanetPdf(id: string): Promise<ActionResult<{ url: string }>> {
+  const permCheck = await requireServisActionPerm(["zemanet.oxu", "servis.oxu"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return { ok: true, data: { url: `/api/zemanet/${id}/talon.pdf` } };
 }

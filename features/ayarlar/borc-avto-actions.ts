@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
+import { requireAyarActionPerm, bustAyarCache } from "./access-guard";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -16,13 +17,21 @@ const SETTINGS: Array<{ key: string; type: "bool" | "num" | "str"; min?: number;
 ];
 
 export async function saveBorcAvtoSettings(fd: FormData): Promise<Result> {
-  const s = await auth();
-  if (!s?.user) return { ok: false, error: "Sessiya yoxdur" };
-  if (s.user.rol_id !== 9 && s.user.rol_id !== 1) return { ok: false, error: "İcazəniz yoxdur" };
+  // FIX: Hardcoded rol_id (9, 1) əvəzinə requireAyarActionPerm istifadə olunur
+  const permCheck = await requireAyarActionPerm("ayar.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // Köhnə dəyərləri al — audit üçün
+      const before = await prisma.ayarlar.findMany({
+        where: { sahibkar_id: sahibkarId, qrup: "borc_avto" },
+        select: { acar: true, deyer: true },
+      });
+      const beforeMap = new Map(before.map((r) => [r.acar, r.deyer]));
+
+      const changes: Record<string, { from: string | null; to: string }> = {};
       for (const cfg of SETTINGS) {
         let val: string;
         if (cfg.type === "bool") {
@@ -38,6 +47,8 @@ export async function saveBorcAvtoSettings(fd: FormData): Promise<Result> {
         } else {
           val = String(fd.get(cfg.key) ?? "");
         }
+        const oldVal = beforeMap.get(cfg.key) ?? null;
+        if (oldVal !== val) changes[cfg.key] = { from: oldVal, to: val };
         await prisma.ayarlar.upsert({
           where: {
             sahibkar_id_qrup_acar: { sahibkar_id: sahibkarId, qrup: "borc_avto", acar: cfg.key },
@@ -53,10 +64,18 @@ export async function saveBorcAvtoSettings(fd: FormData): Promise<Result> {
         });
       }
       revalidatePath("/ayarlar/borc-avto");
+      bustAyarCache();
+      if (Object.keys(changes).length > 0) {
+        await audit("yenile", "borc_avto_ayar", null, {
+          yeni_data: changes,
+          sebeb: "Avto-borc xatırlatma ayarları dəyişdirildi",
+        });
+      }
       return { ok: true };
     } catch (e) {
       console.error("[saveBorcAvtoSettings]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }

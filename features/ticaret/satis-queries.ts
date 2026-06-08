@@ -5,6 +5,15 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
 
+export type SaleLineSummary = {
+  ad: string;
+  kod: string | null;
+  miqdar: number;
+  qiymet: number;
+  endirim_faiz: number;
+  cemi: number;
+};
+
 export type SaleListItem = {
   id: string;
   nomre: string;
@@ -23,6 +32,8 @@ export type SaleListItem = {
   filial_ad: string | null;
   kassa_ad: string | null;
   satir_say: number;
+  /** İlk 5 məhsulun xülasəsi — siyahıda peek üçün. */
+  ilk_mehsullar: SaleLineSummary[];
   qaralama: boolean;
   maya_alti: boolean;
   qaime_nomresi: string | null;
@@ -43,6 +54,8 @@ export type SaleFilter = {
   from?: Date;
   to?: Date;
   borc?: "var" | "yox" | "any";
+  /** Soft-delete filter — default "aktiv" */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export type SaleStats = {
@@ -87,7 +100,8 @@ async function fetchSaleStatsRaw(sahibkarId: string) {
       SELECT COALESCE(SUM(son_mebleg - COALESCE(odenilmis, 0)), 0)::float AS total
         FROM satis_sifarisleri
        WHERE sahibkar_id = ${sahibkarId}::uuid
-         AND status NOT IN ('legv')
+         AND status NOT IN ('legv', 'qaytarilib')
+         AND deleted_at IS NULL
          AND qaralama IS NOT TRUE
     `,
   ]);
@@ -135,6 +149,16 @@ export async function getSales(
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = { qaralama: { not: true } };
+    // SOFT-DELETE STANDARTI:
+    //   - aktiv (default): deleted_at IS NULL
+    //   - silinmis: deleted_at IS NOT NULL
+    //   - hamisi: heç bir filter
+    const recordStatus = filter.recordStatus ?? "aktiv";
+    if (recordStatus === "aktiv") {
+      where.deleted_at = null;
+    } else if (recordStatus === "silinmis") {
+      where.deleted_at = { not: null };
+    }
     if (filter.status?.length) where.status = { in: filter.status };
     if (filter.odenis_nov?.length) where.odenis_nov = { in: filter.odenis_nov };
     if (filter.from || filter.to) {
@@ -179,6 +203,17 @@ export async function getSales(
           filiallar: { select: { ad: true } },
           kassalar: { select: { ad: true } },
           _count: { select: { satis_sifaris_satirlari: true } },
+          satis_sifaris_satirlari: {
+            take: 5,
+            orderBy: { id: "asc" },
+            select: {
+              miqdar: true,
+              vahid_qiymet: true,
+              endirim_faiz: true,
+              cemi: true,
+              mehsullar: { select: { ad: true, kod: true } },
+            },
+          },
         },
       }),
       prisma.satis_sifarisleri.count({ where }),
@@ -203,6 +238,14 @@ export async function getSales(
         filial_ad: s.filiallar?.ad ?? null,
         kassa_ad: s.kassalar?.ad ?? null,
         satir_say: s._count.satis_sifaris_satirlari,
+        ilk_mehsullar: s.satis_sifaris_satirlari.map((line) => ({
+          ad: line.mehsullar?.ad ?? "—",
+          kod: line.mehsullar?.kod ?? null,
+          miqdar: Number(line.miqdar),
+          qiymet: Number(line.vahid_qiymet ?? 0),
+          endirim_faiz: Number(line.endirim_faiz ?? 0),
+          cemi: Number(line.cemi ?? 0),
+        })),
         qaralama: s.qaralama ?? false,
         maya_alti: s.maya_alti ?? false,
         qaime_nomresi: s.qaime_nomresi ?? null,

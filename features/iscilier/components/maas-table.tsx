@@ -8,7 +8,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { calculateBordro, payBordro, bulkPayBordro } from "../maas-actions";
+import { calculateBordro, bulkPayBordro } from "../maas-actions";
+import { BordroPayDialog } from "./bordro-pay-dialog";
 import { formatMoney } from "@/lib/utils";
 import type { BordroRow } from "../types";
 
@@ -22,10 +23,10 @@ type Props = {
 
 export function MaasTable({ month, rows, totals }: Props) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const [bulkPending, startBulkTransition] = useTransition();
   const [calcPending, startCalcTransition] = useTransition();
   const [selectedMonth, setSelectedMonth] = useState(`${month.il}-${String(month.ay).padStart(2, "0")}`);
+  const [payDialogRow, setPayDialogRow] = useState<BordroRow | null>(null);
 
   function gotoMonth(m: string) {
     setSelectedMonth(m);
@@ -46,19 +47,12 @@ export function MaasTable({ month, rows, totals }: Props) {
     });
   }
 
-  function onPay(id: number | null) {
-    if (!id) {
+  function openPayDialog(row: BordroRow) {
+    if (!row.id) {
       toast.error("Əvvəlcə bordronu hesablayın");
       return;
     }
-    startTransition(async () => {
-      const fd = new FormData();
-      fd.set("id", String(id));
-      const res = await payBordro(fd);
-      if (res.ok) toast.success("Ödəniş edildi");
-      else toast.error(res.error);
-      router.refresh();
-    });
+    setPayDialogRow(row);
   }
 
   function onBulkPay() {
@@ -256,8 +250,8 @@ export function MaasTable({ month, rows, totals }: Props) {
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={pending || !r.id}
-                            onClick={() => onPay(r.id)}
+                            disabled={!r.id}
+                            onClick={() => openPayDialog(r)}
                             className="text-xs"
                           >
                             <Check className="h-3 w-3" /> Ödə
@@ -288,6 +282,13 @@ export function MaasTable({ month, rows, totals }: Props) {
           </div>
         </div>
       )}
+
+      <BordroPayDialog
+        row={payDialogRow}
+        open={payDialogRow !== null}
+        onOpenChange={(v) => { if (!v) setPayDialogRow(null); }}
+        onDone={() => { setPayDialogRow(null); router.refresh(); }}
+      />
     </div>
   );
 }

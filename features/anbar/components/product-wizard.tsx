@@ -1,12 +1,10 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
   Loader2,
-  Upload,
-  Sparkles,
   Wand2,
   Check,
   ChevronLeft,
@@ -32,6 +30,7 @@ import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { saveProduct } from "../actions";
+import { MultiImageEditor } from "./multi-image-editor";
 
 type CategoryOpt = { id: number; ad: string };
 type BrandOpt = { id: number; ad: string };
@@ -168,7 +167,6 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
   const [data, setData] = useState<FormState>(INITIAL_STATE);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [uploadingImg, setUploadingImg] = useState(false);
   const [generatingImg, setGeneratingImg] = useState(false);
   const [generatingDesc, setGeneratingDesc] = useState(false);
 
@@ -242,7 +240,9 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
     if (data.kateqoriya_id) fd.set("kateqoriya_id", data.kateqoriya_id);
     if (data.marka_id) fd.set("marka_id", data.marka_id);
     if (data.olcu_id) fd.set("olcu_id", data.olcu_id);
-    fd.set("sekil_url", data.sekil_url);
+    // Boş URL göndərmə — server-side `z.preprocess` default "" qoyur,
+    // amma əlavə təhlükəsizlik üçün boş string göndərək (URL validation triggers olmasın).
+    fd.set("sekil_url", (data.sekil_url || "").trim());
     fd.set("qisaca_tesvir", data.qisaca_tesvir);
     fd.set("aciqlamaq", data.aciqlamaq);
     fd.set("alish_qiymeti", data.alish_qiymeti);
@@ -308,32 +308,12 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
     });
   }
 
-  // ===== Image helpers =====
-  async function uploadFile(file: File) {
-    setUploadingImg(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const r = await fetch("/api/anbar/upload-image", { method: "POST", body: fd });
-      const j = await r.json();
-      if (!r.ok) {
-        toast.error(j.error ?? "Yükləmə alınmadı");
-        return;
-      }
-      setField("sekil_url", j.url);
-      toast.success("Fayl yükləndi");
-    } catch {
-      toast.error("Yükləmə xətası");
-    } finally {
-      setUploadingImg(false);
-    }
-  }
 
-  async function aiGenerateImage() {
+  async function aiGenerateImage(): Promise<string | null> {
     const prompt = data.ad.trim();
     if (!prompt) {
       toast.error("AI üçün məhsul adı tələb olunur");
-      return;
+      return null;
     }
     setGeneratingImg(true);
     try {
@@ -345,13 +325,14 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
       const j = await r.json();
       if (!r.ok) {
         toast.error(j.error ?? "Generasiya alınmadı");
-        return;
+        return null;
       }
-      setField("sekil_url", j.url);
       if (j.is_mock && j.notice) toast.info(j.notice);
       else toast.success("AI şəkil generasiya etdi");
+      return j.url as string;
     } catch {
       toast.error("Generasiya xətası");
+      return null;
     } finally {
       setGeneratingImg(false);
     }
@@ -408,20 +389,46 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
           Yeni məhsul
         </Button>
       </DialogTrigger>
-      <DialogContent className="md:max-w-3xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Yeni məhsul yarat</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="md:max-w-3xl max-h-[92vh] overflow-hidden p-0 gap-0">
+        {/* Modern gradient hero header */}
+        <div
+          className="relative border-b border-border/30 px-5 py-3 text-white"
+          style={{ background: "var(--brand-gradient)" }}
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_55%)]" />
+          <div className="relative z-10 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] opacity-80">
+                <Plus className="h-3 w-3" />
+                Yeni məhsul
+              </div>
+              <DialogHeader className="mt-0.5">
+                <DialogTitle className="truncate text-lg font-bold text-white">
+                  {data.ad || "Məhsul kataloquna əlavə et"}
+                </DialogTitle>
+              </DialogHeader>
+            </div>
+            <div className="hidden shrink-0 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold backdrop-blur sm:block">
+              Addım {step} / 5
+            </div>
+          </div>
+        </div>
 
-        <StepIndicator current={step} onClick={handleStepClick} />
+        {/* Modern step indicator */}
+        <div className="border-b border-border/30 bg-card/40 px-5 py-3">
+          <StepIndicator current={step} onClick={handleStepClick} />
+        </div>
 
         {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+          <div className="px-5 pt-3">
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </div>
         )}
 
-        <div className="min-h-[320px] py-2">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-[340px]">
           {step === 1 && (
             <Step1
               data={data}
@@ -438,10 +445,8 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
               data={data}
               setField={setField}
               pending={pending}
-              uploadingImg={uploadingImg}
               generatingImg={generatingImg}
               generatingDesc={generatingDesc}
-              onUpload={uploadFile}
               onAiImage={aiGenerateImage}
               onAiDesc={aiGenerateDescription}
             />
@@ -453,16 +458,29 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-border pt-3">
-          <Button type="button" variant="ghost" onClick={handlePrev} disabled={step === 1 || pending}>
+        {/* Sticky footer */}
+        <div className="flex items-center justify-between gap-2 border-t border-border/40 bg-card/95 px-5 py-3 backdrop-blur">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={handlePrev}
+            disabled={step === 1 || pending}
+            className="gap-1"
+          >
             <ChevronLeft className="h-4 w-4" />
             Geri
           </Button>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-[11px] text-muted-foreground sm:hidden">
             Addım {step} / 5
           </div>
           {step < 5 ? (
-            <Button type="button" onClick={handleNext} disabled={pending}>
+            <Button
+              type="button"
+              onClick={handleNext}
+              disabled={pending}
+              className="gap-1 font-semibold text-white"
+              style={{ background: "var(--brand-gradient)" }}
+            >
               İrəli
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -471,10 +489,10 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
               type="button"
               onClick={handleSubmit}
               disabled={pending}
-              className="font-semibold"
+              className="gap-1.5 font-semibold text-white shadow-lg"
+              style={{ background: "var(--brand-gradient)" }}
             >
-              {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              <Check className="h-4 w-4" />
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Məhsulu yarat
             </Button>
           )}
@@ -494,40 +512,55 @@ function StepIndicator({
   onClick: (s: WizardStep) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto pb-2">
+    <div className="flex items-center gap-0">
       {STEPS.map((s, idx) => {
         const Icon = s.icon;
         const isActive = s.id === current;
         const isDone = s.id < current;
+        const isLast = idx === STEPS.length - 1;
         return (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => onClick(s.id)}
-            className={cn(
-              "flex flex-1 min-w-[110px] items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition",
-              isActive && "border-primary bg-primary/10",
-              isDone && !isActive && "border-emerald-500/40 bg-emerald-500/5",
-              !isActive && !isDone && "border-border bg-secondary/30 opacity-70 hover:opacity-100"
-            )}
-          >
-            <div
+          <div key={s.id} className="flex flex-1 items-center">
+            <button
+              type="button"
+              onClick={() => onClick(s.id)}
               className={cn(
-                "grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-bold",
-                isActive && "bg-primary text-primary-foreground",
-                isDone && !isActive && "bg-emerald-500 text-white",
-                !isActive && !isDone && "bg-secondary text-muted-foreground"
+                "group flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 transition-all",
+                isActive && "bg-primary/10",
+                isDone && !isActive && "hover:bg-emerald-500/5",
+                !isActive && !isDone && "opacity-50 hover:opacity-90"
               )}
             >
-              {isDone ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
-            </div>
-            <div className="min-w-0">
-              <div className="text-[11px] font-semibold leading-tight">
-                {s.id}. {s.title}
+              <div
+                className={cn(
+                  "grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-bold transition-all",
+                  isActive && "bg-primary text-primary-foreground ring-4 ring-primary/20 scale-110",
+                  isDone && !isActive && "bg-emerald-500 text-white shadow-sm",
+                  !isActive && !isDone && "bg-secondary text-muted-foreground"
+                )}
+              >
+                {isDone ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
               </div>
-              <div className="truncate text-[10px] text-muted-foreground">{s.hint}</div>
-            </div>
-          </button>
+              <div className="hidden min-w-0 sm:block">
+                <div
+                  className={cn(
+                    "text-[11px] font-bold leading-tight tracking-tight",
+                    isActive ? "text-foreground" : isDone ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground",
+                  )}
+                >
+                  {s.title}
+                </div>
+                <div className="truncate text-[9.5px] text-muted-foreground">{s.hint}</div>
+              </div>
+            </button>
+            {!isLast && (
+              <div
+                className={cn(
+                  "mx-0.5 h-0.5 flex-1 rounded-full transition-colors",
+                  isDone ? "bg-emerald-500/60" : "bg-border/60",
+                )}
+              />
+            )}
+          </div>
         );
       })}
     </div>
@@ -553,13 +586,50 @@ function Step1({
   pending: boolean;
   onGenerateBarcode: () => void;
 }) {
+  // Live dublikat yoxlaması (debounced 500ms)
+  const [duplicates, setDuplicates] = useState<Array<{
+    id: string; ad: string; kod: string | null; barkod: string | null;
+    marka_ad: string | null; match_type: string;
+  }>>([]);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    const ad = data.ad?.trim();
+    const barkod = data.barkod?.trim();
+    const kod = data.kod?.trim();
+    if (!ad && !barkod && !kod) {
+      setDuplicates([]);
+      return;
+    }
+    if (ad && ad.length < 3 && !barkod && !kod) {
+      setDuplicates([]);
+      return;
+    }
+    setChecking(true);
+    const t = setTimeout(async () => {
+      try {
+        const { checkProductDuplicates } = await import("../duplicate-check-action");
+        const res = await checkProductDuplicates({
+          ad, barkod, kod,
+          marka_id: data.marka_id ? Number(data.marka_id) : undefined,
+        });
+        if (res.ok) setDuplicates(res.matches);
+      } finally {
+        setChecking(false);
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [data.ad, data.barkod, data.kod, data.marka_id]);
+
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Məhsulun əsas məlumatları. <span className="text-foreground">Ad</span> məcburi sahədir.
-      </p>
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+        <p className="font-medium text-foreground">📋 Əsas məlumatlar</p>
+        <p className="mt-0.5 text-muted-foreground">
+          Yalnız <strong>Ad</strong> məcburidir. Digər sahələri sonradan da doldura bilərsən.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div className="space-y-1.5 md:col-span-2">
           <Label htmlFor="ad">Ad *</Label>
           <Input
@@ -570,6 +640,7 @@ function Step1({
             maxLength={200}
             autoFocus
             disabled={pending}
+            className="h-10 text-sm"
           />
         </div>
         <div className="space-y-1.5">
@@ -649,6 +720,57 @@ function Step1({
           />
         </div>
       </div>
+
+      {/* DUBLİKAT YOXLAMASI — live preview */}
+      {(duplicates.length > 0 || checking) && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+          <div className="mb-2 flex items-center justify-between text-xs">
+            <span className="font-semibold text-amber-700 dark:text-amber-400">
+              ⚠ {checking ? "Yoxlanılır..." : `${duplicates.length} oxşar məhsul tapıldı`}
+            </span>
+            {duplicates.length > 0 && !checking && (
+              <span className="text-[10px] text-muted-foreground">
+                Mövcud məhsul açıb dəyişə bilərsən, ya da yeni yarat
+              </span>
+            )}
+          </div>
+          {!checking && (
+            <div className="space-y-1">
+              {duplicates.map((d) => {
+                const matchLabel = d.match_type === "barkod" ? "Eyni barkod"
+                  : d.match_type === "kod" ? "Eyni kod"
+                  : d.match_type === "ad_marka" ? "Eyni ad + marka"
+                  : "Oxşar ad";
+                const tone = d.match_type === "barkod" || d.match_type === "ad_marka"
+                  ? "border-rose-400/50 bg-rose-500/10 text-rose-700 dark:text-rose-400"
+                  : "border-amber-400/50 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+                return (
+                  <a
+                    key={d.id}
+                    href={`/anbar/mehsullar/${d.id}`}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-card/50 px-2.5 py-1.5 text-xs hover:bg-card"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{d.ad}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {d.kod && <span>Kod: <span className="font-mono">{d.kod}</span></span>}
+                        {d.kod && d.barkod && " · "}
+                        {d.barkod && <span>Barkod: <span className="font-mono">{d.barkod}</span></span>}
+                        {d.marka_ad && ` · ${d.marka_ad}`}
+                      </div>
+                    </div>
+                    <span className={cn("shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase", tone)}>
+                      {matchLabel}
+                    </span>
+                  </a>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -659,116 +781,33 @@ function Step2({
   data,
   setField,
   pending,
-  uploadingImg,
   generatingImg,
   generatingDesc,
-  onUpload,
   onAiImage,
   onAiDesc,
 }: {
   data: FormState;
   setField: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   pending: boolean;
-  uploadingImg: boolean;
   generatingImg: boolean;
   generatingDesc: boolean;
-  onUpload: (f: File) => void;
-  onAiImage: () => void;
+  onAiImage: () => Promise<string | null>;
   onAiDesc: () => void;
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
         Şəkil və təsvir məcburi deyil, lakin satışı artırır. AI köməyi mövcuddur.
       </p>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[160px_1fr]">
-        <div className="space-y-2">
-          <Label>Şəkil</Label>
-          <div className="relative h-36 w-full overflow-hidden rounded-md border border-border bg-secondary/30">
-            {data.sekil_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={data.sekil_url}
-                alt=""
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="grid h-full w-full place-items-center text-muted-foreground text-xs">
-                Şəkil yoxdur
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="sekil_url">Şəkil URL</Label>
-          <Input
-            id="sekil_url"
-            value={data.sekil_url}
-            onChange={(e) => setField("sekil_url", e.target.value)}
-            placeholder="https://... və ya /uploads/..."
-            disabled={pending}
-          />
-          <div className="flex flex-wrap gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onUpload(f);
-                if (fileInputRef.current) fileInputRef.current.value = "";
-              }}
-              disabled={pending || uploadingImg}
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={pending || uploadingImg}
-            >
-              {uploadingImg ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Upload className="h-3.5 w-3.5" />
-              )}
-              Kompüterdən yüklə
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={onAiImage}
-              disabled={pending || generatingImg || !data.ad.trim()}
-              title={!data.ad.trim() ? "Əvvəlcə məhsul adını daxil edin" : ""}
-            >
-              {generatingImg ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5" />
-              )}
-              AI generasiya
-            </Button>
-            {data.sekil_url && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setField("sekil_url", "")}
-                disabled={pending}
-              >
-                Sil
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
+      <MultiImageEditor
+        value={data.sekil_url}
+        onChange={(v) => setField("sekil_url", v)}
+        label="Şəkillər"
+        aiDisabled={!data.ad.trim()}
+        aiGenerating={generatingImg}
+        onAiGenerate={onAiImage}
+      />
 
       <div className="space-y-1.5">
         <Label htmlFor="qisaca_tesvir">Qısaca təsvir (kart üzərində görünür)</Label>
@@ -826,46 +865,103 @@ function Step3({
   setField: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   pending: boolean;
 }) {
-  const maya = Number(data.alish_qiymeti) || 0;
   const satis = Number(data.satis_qiymeti) || 0;
-  const marja = satis > 0 && maya > 0 ? ((satis - maya) / satis) * 100 : null;
+
+  // Avtomatik qiymət təklifi — istifadəçi satış qiymətini yazandan sonra,
+  // digər qiymət sahələri boş və ya 0-dırsa, faiz əsasında doldur.
+  // Faizlər indilik hardcoded — gələcəkdə Ayarlar > Qiymət siyasətindən oxunacaq.
+  const PRICE_AUTOFILL = {
+    topdan: 0.60,    // satışdan 40% aşağı
+    partnyor: 0.55,  // satışdan 45% aşağı (diler)
+    vip: 0.90,       // satışdan 10% aşağı
+    min_satis: 0.95, // minimum 5% aşağı
+  };
+
+  function autoFillPrices() {
+    if (satis <= 0) return;
+    const round2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
+    if (!Number(data.topdan_qiymeti)) setField("topdan_qiymeti", round2(satis * PRICE_AUTOFILL.topdan));
+    if (!Number(data.partnyor_qiymeti)) setField("partnyor_qiymeti", round2(satis * PRICE_AUTOFILL.partnyor));
+    if (!Number(data.vip_qiymeti)) setField("vip_qiymeti", round2(satis * PRICE_AUTOFILL.vip));
+    if (!Number(data.min_satis_qiymeti)) setField("min_satis_qiymeti", round2(satis * PRICE_AUTOFILL.min_satis));
+  }
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Yalnız <span className="text-foreground">Pərakəndə satış</span> məcburidir. Boş qalan qiymətlər avtomatik hesablanır.
-      </p>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <NumField label="Maya (alış)" value={data.alish_qiymeti} onChange={(v) => setField("alish_qiymeti", v)} disabled={pending} />
-        <NumField label="Pərakəndə satış *" value={data.satis_qiymeti} onChange={(v) => setField("satis_qiymeti", v)} disabled={pending} required />
-        <NumField label="Endirimli qiymət" value={data.endirimli_qiymet} onChange={(v) => setField("endirimli_qiymet", v)} disabled={pending} />
-        <NumField label="Minimum satış" value={data.min_satis_qiymeti} onChange={(v) => setField("min_satis_qiymeti", v)} disabled={pending} />
-        <NumField label="Topdan" value={data.topdan_qiymeti} onChange={(v) => setField("topdan_qiymeti", v)} disabled={pending} />
-        <NumField label="Partnyor" value={data.partnyor_qiymeti} onChange={(v) => setField("partnyor_qiymeti", v)} disabled={pending} />
-        <NumField label="VIP" value={data.vip_qiymeti} onChange={(v) => setField("vip_qiymeti", v)} disabled={pending} />
-        <NumField label="Komissiya %" value={data.komissiya_faiz} onChange={(v) => setField("komissiya_faiz", v)} disabled={pending} />
-        <NumField label="Çatdırılma xərci" value={data.catdirilma_xerci} onChange={(v) => setField("catdirilma_xerci", v)} disabled={pending} />
-        <NumField label="Digər xərc" value={data.diger_xerc} onChange={(v) => setField("diger_xerc", v)} disabled={pending} />
+      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">💡 Yalnız satış qiyməti məcburidir.</p>
+        <p className="mt-0.5">
+          <strong>Maya/alış qiyməti</strong> sonradan alış qaiməsindən avtomatik hesablanır.
+          Digər qiymətlər avtomatik təklif edilir.
+        </p>
       </div>
 
-      {marja !== null && (
-        <div
-          className={cn(
-            "rounded-md border p-3 text-xs",
-            marja < 0
-              ? "border-rose-500/40 bg-rose-500/5 text-rose-400"
-              : marja < 10
-                ? "border-amber-500/40 bg-amber-500/5 text-amber-400"
-                : "border-emerald-500/40 bg-emerald-500/5 text-emerald-400"
-          )}
-        >
-          📊 Marja: <span className="font-bold">{marja.toFixed(1)}%</span> ({(satis - maya).toFixed(2)} {data.valyuta})
-          {marja < 0 && " — diqqət, mayadan aşağı satırsan!"}
-          {marja >= 0 && marja < 10 && " — aşağı marja"}
-          {marja >= 10 && " — yaxşı marja"}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div className="md:col-span-2">
+          <Label>Pərakəndə satış qiyməti *</Label>
+          <div className="mt-1 flex gap-2">
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={data.satis_qiymeti}
+              onChange={(e) => setField("satis_qiymeti", e.target.value)}
+              disabled={pending}
+              required
+              className="h-9"
+            />
+            {satis > 0 && (
+              <Button type="button" size="sm" variant="outline" onClick={autoFillPrices} disabled={pending}>
+                🪄 Auto qiymət
+              </Button>
+            )}
+          </div>
         </div>
-      )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Qiymət təklifləri (faiz əsasında satışdan azalır)
+        </Label>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <NumField
+            label={`Topdan (~${((1 - PRICE_AUTOFILL.topdan) * 100).toFixed(0)}% ↓)`}
+            value={data.topdan_qiymeti}
+            onChange={(v) => setField("topdan_qiymeti", v)}
+            disabled={pending}
+          />
+          <NumField
+            label={`Diler (~${((1 - PRICE_AUTOFILL.partnyor) * 100).toFixed(0)}% ↓)`}
+            value={data.partnyor_qiymeti}
+            onChange={(v) => setField("partnyor_qiymeti", v)}
+            disabled={pending}
+          />
+          <NumField
+            label={`VIP (~${((1 - PRICE_AUTOFILL.vip) * 100).toFixed(0)}% ↓)`}
+            value={data.vip_qiymeti}
+            onChange={(v) => setField("vip_qiymeti", v)}
+            disabled={pending}
+          />
+          <NumField
+            label={`Minimum (~${((1 - PRICE_AUTOFILL.min_satis) * 100).toFixed(0)}% ↓)`}
+            value={data.min_satis_qiymeti}
+            onChange={(v) => setField("min_satis_qiymeti", v)}
+            disabled={pending}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+          Əlavə qiymət parametrləri (opsional)
+        </Label>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <NumField label="Endirimli qiymət" value={data.endirimli_qiymet} onChange={(v) => setField("endirimli_qiymet", v)} disabled={pending} />
+          <NumField label="Komissiya %" value={data.komissiya_faiz} onChange={(v) => setField("komissiya_faiz", v)} disabled={pending} />
+          <NumField label="Çatdırılma xərci" value={data.catdirilma_xerci} onChange={(v) => setField("catdirilma_xerci", v)} disabled={pending} />
+          <NumField label="Digər xərc" value={data.diger_xerc} onChange={(v) => setField("diger_xerc", v)} disabled={pending} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1036,10 +1132,12 @@ function Step5({
           <dd className="font-medium">{data.ad || "—"}</dd>
           <dt className="text-muted-foreground">Kateqoriya / Marka:</dt>
           <dd className="font-medium">{kateqAd || "—"} / {markaAd || "—"}</dd>
-          <dt className="text-muted-foreground">Maya / Satış:</dt>
+          <dt className="text-muted-foreground">Satış / Topdan / Diler / VIP:</dt>
           <dd className="font-medium">
-            {Number(data.alish_qiymeti).toFixed(2)} / {Number(data.satis_qiymeti).toFixed(2)} {data.valyuta}
+            {Number(data.satis_qiymeti).toFixed(2)} / {Number(data.topdan_qiymeti || 0).toFixed(2)} / {Number(data.partnyor_qiymeti || 0).toFixed(2)} / {Number(data.vip_qiymeti || 0).toFixed(2)} {data.valyuta}
           </dd>
+          <dt className="text-muted-foreground">Maya:</dt>
+          <dd className="font-medium text-muted-foreground italic">Alış qaiməsindən hesablanacaq</dd>
           <dt className="text-muted-foreground">Şəkil:</dt>
           <dd className="font-medium">{data.sekil_url ? "✓ var" : "yoxdur"}</dd>
           <dt className="text-muted-foreground">Stok limit:</dt>

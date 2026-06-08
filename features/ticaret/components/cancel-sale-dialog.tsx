@@ -9,16 +9,22 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { cancelSale } from "../satis-actions";
+import { BlockerList, showActionError } from "@/components/ui/action-error-toast";
+import type { Blocker } from "@/lib/blockers/types";
 
 export function CancelSaleDialog({ saleId, nomre }: { saleId: string; nomre: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockers, setBlockers] = useState<Blocker[]>([]);
+  const [hint, setHint] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setBlockers([]);
+    setHint(null);
     const fd = new FormData(e.currentTarget);
     const reason = String(fd.get("reason") ?? "").trim();
     if (!reason) {
@@ -29,7 +35,9 @@ export function CancelSaleDialog({ saleId, nomre }: { saleId: string; nomre: str
       const res = await cancelSale(saleId, reason);
       if (!res.ok) {
         setError(res.error);
-        toast.error(res.error);
+        setBlockers(res.blockers ?? []);
+        setHint(res.hint ?? null);
+        showActionError(res);
       } else {
         toast.success("Satış ləğv edildi");
         setOpen(false);
@@ -60,7 +68,16 @@ export function CancelSaleDialog({ saleId, nomre }: { saleId: string; nomre: str
 
           {error && (
             <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>
+                <div>{error}</div>
+                {hint && <p className="mt-1.5 text-xs opacity-90">{hint}</p>}
+                {blockers.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] font-medium mb-1 opacity-90">Bağlı sənədlər:</p>
+                    <BlockerList blockers={blockers} />
+                  </div>
+                )}
+              </AlertDescription>
             </Alert>
           )}
 

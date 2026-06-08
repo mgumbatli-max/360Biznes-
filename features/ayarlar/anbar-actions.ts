@@ -14,6 +14,8 @@ const AnbarSchema = z.object({
   unvan: z.string().max(500).optional().or(z.literal("")),
   filial_id: z.coerce.number().int().positive().optional().or(z.literal("")),
   mesul_id: z.string().uuid().optional().or(z.literal("")),
+  nov: z.enum(["standart", "defekt", "karantın"]).default("standart"),
+  aciqlamaq: z.string().max(500).optional().or(z.literal("")),
   aktiv: z.union([z.string(), z.boolean()]).optional(),
 });
 
@@ -28,6 +30,8 @@ export async function saveWarehouse(input: FormData): Promise<ActionResult> {
       unvan: d.unvan?.trim() || null,
       filial_id: typeof d.filial_id === "number" ? d.filial_id : null,
       mesul_id: typeof d.mesul_id === "string" && d.mesul_id ? d.mesul_id : null,
+      nov: d.nov,
+      aciqlamaq: d.aciqlamaq?.trim() || null,
       aktiv: d.aktiv === "on" || d.aktiv === "true" || d.aktiv === true,
     };
     try {

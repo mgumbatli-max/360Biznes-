@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ServisDialog } from "@/features/servis/components/servis-dialog";
 import { ServisTable } from "@/features/servis/components/servis-table";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { ServisKanban } from "@/features/servis/components/servis-kanban";
 import { ViewToggle } from "@/features/servis/components/view-toggle";
 import { StatusKpiStrip } from "@/features/servis/components/status-kpi-strip";
@@ -70,8 +71,14 @@ export default async function ServisPage({
 }) {
   const sp: SP = (await searchParams) ?? {};
 
+  // SOFT-DELETE STANDARTI
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
+
   // URL → filter
-  const filter: ServisListFilter = {};
+  const filter: ServisListFilter = { recordStatus };
   const status = pickStr(sp, "status");
   const prioritet = pickStr(sp, "prioritet");
   const iscisi = pickStr(sp, "iscisi");
@@ -141,6 +148,7 @@ export default async function ServisPage({
           <p className="mt-1 text-sm text-muted-foreground">Müştəri servis sifarişləri və status izi.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <Link
             href="/servis/problemli-mehsullar"
             className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card/40 px-3 text-sm hover:bg-secondary"

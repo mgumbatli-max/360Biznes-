@@ -201,6 +201,60 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
             yenilendi: new Date(),
           },
         });
+
+        // 🔄 Müştəri qaytarması → orijinal satışın son_mebleg + balansını korreksiya et.
+        // Qismən qaytarmada satışın `son_mebleg` (faktiki məbləğ) azalır.
+        // Tam qaytarmada satış statusu `qaytarilib` olur — source-of-truth onu görmür.
+        if (ret.nov === "satis_qaytarma" && ret.original_id) {
+          const original = await tx.satis_sifarisleri.findUnique({
+            where: { id: ret.original_id },
+            select: { id: true, son_mebleg: true, odenilmis: true, musteri_id: true },
+          });
+          if (original) {
+            const yeniSonMebleg = Math.max(0, Number(original.son_mebleg ?? 0) - Number(ret.umumi_mebleg ?? 0));
+            const odenilmis = Number(original.odenilmis ?? 0);
+            // Status: tam qaytarmadasa "qaytarilib", qismən qaytarmada əvvəlki status qalır
+            const tamGeri = yeniSonMebleg < 0.01;
+            await tx.satis_sifarisleri.update({
+              where: { id: original.id },
+              data: {
+                son_mebleg: yeniSonMebleg,
+                // Əgər müştəri artıq qaytarılan məbləğdən çoxunu ödəyibsə —
+                // odenilmis-i kəs (geri qayıdır kassaya, ayrıca kassa əməliyyatı).
+                odenilmis: Math.min(odenilmis, yeniSonMebleg),
+                ...(tamGeri ? { status: "qaytarilib" } : {}),
+              },
+            });
+            // Müştəri balansını source-of-truth ilə yenilə
+            if (original.musteri_id) {
+              const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+              await recalculateCustomerBalance(original.musteri_id, tx);
+            }
+          }
+        }
+
+        // Təchizatçı qaytarması → orijinal alışda eyni korreksiya
+        if (ret.nov === "alis_qaytarma" && ret.original_id) {
+          const original = await tx.alis_sifarisleri.findUnique({
+            where: { id: ret.original_id },
+            select: { id: true, umumi_mebleg: true, odenilmis: true, techiazatci_id: true },
+          });
+          if (original) {
+            const yeniUmumi = Math.max(0, Number(original.umumi_mebleg ?? 0) - Number(ret.umumi_mebleg ?? 0));
+            const odenilmis = Number(original.odenilmis ?? 0);
+            await tx.alis_sifarisleri.update({
+              where: { id: original.id },
+              data: {
+                umumi_mebleg: yeniUmumi,
+                odenilmis: Math.min(odenilmis, yeniUmumi),
+              },
+            });
+            if (original.techiazatci_id) {
+              const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+              await recalculateSupplierBalance(original.techiazatci_id, tx);
+            }
+          }
+        }
       });
 
       revalidatePath("/ticaret/qaytarma");

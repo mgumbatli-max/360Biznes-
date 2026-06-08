@@ -19,12 +19,27 @@ type Props = {
 
 const STORAGE_KEY = "anbar-bron-cols-v4";
 
-const STATUS_CLS: Record<string, string> = {
-  aktiv:       "bg-success/15 text-success",
-  vaxti_bitdi: "bg-warning/15 text-warning",
-  satish_oldu: "bg-info/15 text-info",
-  legv:        "bg-danger/15 text-danger",
+const STATUS_INFO: Record<string, { cls: string; dotCls: string; label?: string }> = {
+  aktiv: {
+    cls: "bg-gradient-to-b from-emerald-500/15 to-emerald-500/[0.06] text-emerald-700 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-300",
+    dotCls: "bg-emerald-500 animate-pulse",
+  },
+  vaxti_bitdi: {
+    cls: "bg-gradient-to-b from-amber-500/15 to-amber-500/[0.06] text-amber-800 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300",
+    dotCls: "bg-amber-500",
+  },
+  satish_oldu: {
+    cls: "bg-gradient-to-b from-sky-500/15 to-sky-500/[0.06] text-sky-700 ring-1 ring-inset ring-sky-500/20 dark:text-sky-300",
+    dotCls: "bg-sky-500",
+  },
+  legv: {
+    cls: "bg-gradient-to-b from-rose-500/15 to-rose-500/[0.06] text-rose-700 ring-1 ring-inset ring-rose-500/20 line-through decoration-rose-500/40 dark:text-rose-300",
+    dotCls: "bg-rose-500",
+  },
 };
+const STATUS_CLS: Record<string, string> = Object.fromEntries(
+  Object.entries(STATUS_INFO).map(([k, v]) => [k, v.cls]),
+);
 
 const COLUMN_DEFS: ColumnDef[] = [
   { key: "tarix",         label: "Başlama tarixi" },
@@ -366,13 +381,17 @@ export function BronTable({ rows }: Props) {
                     )}
                   </td>
                 ),
-                status: (
-                  <td key="status" className="px-3 py-2">
-                    <span className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase ${STATUS_CLS[b.status] ?? "bg-muted text-muted-foreground"}`}>
-                      {b.status.replace("_", " ")}
-                    </span>
-                  </td>
-                ),
+                status: (() => {
+                  const info = STATUS_INFO[b.status];
+                  return (
+                    <td key="status" className="px-3 py-2">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-semibold leading-none shadow-sm shadow-black/[0.02] dark:shadow-black/20 ${info?.cls ?? "bg-muted text-muted-foreground"}`}>
+                        {info && <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${info.dotCls}`} />}
+                        {b.status.replace("_", " ")}
+                      </span>
+                    </td>
+                  );
+                })(),
               };
               return (
                 <tr key={b.id} className="border-b border-border/20 hover:bg-secondary/30">

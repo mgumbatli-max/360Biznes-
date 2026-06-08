@@ -147,6 +147,8 @@ type Props = {
   kassaId: string;
   anbarId: number;
   anbarAd: string;
+  /** POS-da anbar dəyişdirmə üçün siyahı — stoklu anbarlar yuxarıda */
+  anbarOptions?: Array<{ id: number; ad: string; total: number }>;
   saticilar: SalespersonOption[];
   defaultSalespersonId: string;
   initialQuickProducts?: QuickProductRow[];
@@ -163,23 +165,20 @@ type PaymentMethod =
   | "kecirme"
   | "nisye"
   | "bonus"
-  | "qarisiq"
-  | "kreditle"
-  | "taksit";
+  | "qarisiq";
 
 const PAYMENT_OPTIONS: {
   value: PaymentMethod;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
 }[] = [
+  // POS — 90% hallar Nağd. Default Nağd, lakin standart olaraq Borc da var.
   { value: "negd", label: "Nağd", icon: Banknote },
   { value: "kart", label: "Kart", icon: CreditCard },
   { value: "kecirme", label: "Bank", icon: Building2 },
   { value: "nisye", label: "Borc", icon: HandCoins },
   { value: "bonus", label: "Bonus", icon: Sparkles },
   { value: "qarisiq", label: "Qarışıq", icon: Layers },
-  { value: "kreditle", label: "Kreditlə", icon: Wallet },
-  { value: "taksit", label: "Taksit", icon: CalendarClock },
 ];
 
 type ParkedSale = {
@@ -260,8 +259,9 @@ function stokTone(qty: number) {
 
 export function PosClient({
   kassaId,
-  anbarId,
-  anbarAd,
+  anbarId: initialAnbarId,
+  anbarAd: initialAnbarAd,
+  anbarOptions = [],
   saticilar,
   defaultSalespersonId,
   initialQuickProducts = [],
@@ -273,6 +273,9 @@ export function PosClient({
 }: Props) {
   const router = useRouter();
   const icazeler = usePermissions();
+  // Anbar dəyişdirmə — istifadəçi başqa anbara baxa bilsin
+  const [anbarId, setAnbarId] = useState(initialAnbarId);
+  const anbarAd = anbarOptions.find((a) => a.id === anbarId)?.ad ?? initialAnbarAd;
 
   /* ------------------------------ Permissions ----------------------------- */
   const can = useMemo(() => {
@@ -487,16 +490,9 @@ export function PosClient({
 
   useEffect(() => {
     const q = searchQ.trim();
-    if (q.length < 2) {
-      setSearchResults([]);
-      setShowResults(false);
-      setSearching(false);
-      return;
-    }
     if (looksLikeBarcode) {
       // Don't run a text search for pure barcodes; Enter handles them.
       setSearchResults([]);
-      setShowResults(false);
       setSearching(false);
       return;
     }
@@ -504,25 +500,18 @@ export function PosClient({
     const id = setTimeout(async () => {
       const rows = await searchProductsAction(q, anbarId);
       setSearchResults(rows);
-      setShowResults(true);
       setSearching(false);
-    }, 200);
+    }, q.length === 0 ? 0 : 200);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQ, anbarId, looksLikeBarcode]);
 
   /* -------------------------- Debounced customer search ------------------ */
   useEffect(() => {
-    if (customerQ.trim().length < 2) {
-      setCustomerResults([]);
-      setShowCustomerResults(false);
-      return;
-    }
     const id = setTimeout(async () => {
       const rows = await searchCustomersAction(customerQ);
       setCustomerResults(rows);
-      setShowCustomerResults(true);
-    }, 200);
+    }, customerQ.trim().length === 0 ? 0 : 200);
     return () => clearTimeout(id);
   }, [customerQ]);
 
@@ -834,10 +823,6 @@ export function PosClient({
       toast.error("Qarışıq ödəniş cəmi yekun məbləğə bərabər olmalıdır");
       return;
     }
-    if (paymentMethod === "kreditle" && !can.creditSell) {
-      toast.error("Kredit satış üçün icazəniz yoxdur");
-      return;
-    }
     if (cart.some((l) => l.needs_approval)) {
       toast.error("Min qiymət altı sətirlər var — rəhbər təsdiqi tələb olunur");
       return;
@@ -893,23 +878,15 @@ export function PosClient({
         return;
     }
 
-    // Map qarışıq/kreditle/taksit/bonus to a server-known method
+    // Bonus və qarışıq nağd kassaya düşür; nisye birbaşa nisye gedir.
     const serverOdenis: "negd" | "kart" | "kecirme" | "nisye" =
-      paymentMethod === "negd"
-        ? "negd"
-        : paymentMethod === "kart"
-          ? "kart"
-          : paymentMethod === "kecirme"
-            ? "kecirme"
-            : paymentMethod === "nisye"
-              ? "nisye"
-              : paymentMethod === "kreditle"
-                ? "nisye"
-                : paymentMethod === "taksit"
-                  ? "nisye"
-                  : paymentMethod === "qarisiq"
-                    ? "negd"
-                    : "negd";
+      paymentMethod === "kart"
+        ? "kart"
+        : paymentMethod === "kecirme"
+          ? "kecirme"
+          : paymentMethod === "nisye"
+            ? "nisye"
+            : "negd"; // negd / bonus / qarisiq
 
     const customerSnapshotName = customer?.ad ?? null;
     startCompleting(async () => {
@@ -1167,6 +1144,8 @@ export function PosClient({
               placeholder="Barkod / ad / SKU / kod yaz və ya skan et — Enter ilə əlavə et"
               className="h-12 sm:h-14 rounded-lg border-2 border-rose-300 bg-white pl-14 pr-12 text-sm font-medium placeholder:text-rose-300/80 focus-visible:border-rose-400 focus-visible:ring-rose-200"
               onChange={(e) => setSearchQ(e.target.value)}
+              onFocus={() => setShowResults(true)}
+              onBlur={() => setTimeout(() => setShowResults(false), 150)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   e.preventDefault();
@@ -1537,9 +1516,24 @@ export function PosClient({
               <Inbox className="h-3 w-3" />
               Qaralamalar ({parked.length})
             </button>
-            <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-medium text-rose-700">
-              {anbarAd}
-            </span>
+            {anbarOptions.length > 1 ? (
+              <select
+                value={anbarId}
+                onChange={(e) => setAnbarId(Number(e.target.value))}
+                className="rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-700 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                title="Anbar dəyişdir"
+              >
+                {anbarOptions.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.ad} ({a.total})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[10px] font-medium text-rose-700">
+                {anbarAd}
+              </span>
+            )}
           </div>
         </div>
       </section>
@@ -1565,9 +1559,16 @@ export function PosClient({
                       </div>
                     )}
                   </div>
-                  {customer.borc > 0 && (
-                    <Badge className="border-amber-200 bg-amber-50 text-[10px] text-amber-700">
-                      {formatMoney(customer.borc)}
+                  {customer.borc > 0 ? (
+                    <Badge
+                      className="border-amber-400 bg-amber-100 text-[11px] font-semibold tabular-nums text-amber-800"
+                      title={`Cari borc: ${formatMoney(customer.borc)}`}
+                    >
+                      Borc: {formatMoney(customer.borc)}
+                    </Badge>
+                  ) : (
+                    <Badge className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-700">
+                      Borc yox
                     </Badge>
                   )}
                   <button
@@ -1578,6 +1579,12 @@ export function PosClient({
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
+                {/* Nisyə xəbərdarlığı — müştərinin borcu varsa və ya nisyə seçilibsə */}
+                {customer.borc > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50/60 px-2 py-1 text-[11px] text-amber-800">
+                    ⚠️ Bu müştərinin {formatMoney(customer.borc)} ödənilməmiş borcu var
+                  </div>
+                )}
                 {/* Loyalty widget — tier, balans, bonus ilə öde */}
                 <PosLoyaltyWidget
                   kontragentId={customer.id}
@@ -1594,6 +1601,8 @@ export function PosClient({
                   ref={customerInputRef}
                   value={customerQ}
                   onChange={(e) => setCustomerQ(e.target.value)}
+                  onFocus={() => setShowCustomerResults(true)}
+                  onBlur={() => setTimeout(() => setShowCustomerResults(false), 150)}
                   placeholder="Klik et — şəxsiyyət, yaz — axtar"
                   className="h-9 text-sm"
                 />
@@ -1608,17 +1617,20 @@ export function PosClient({
                           setCustomerQ("");
                           setShowCustomerResults(false);
                         }}
-                        className="flex w-full items-center justify-between border-b border-slate-100 p-2 text-left text-sm last:border-0 hover:bg-rose-50/60"
+                        className="flex w-full items-center justify-between gap-2 border-b border-slate-100 p-2 text-left text-sm last:border-0 hover:bg-rose-50/60"
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="truncate">{c.ad}</div>
+                          <div className="truncate font-medium">{c.ad}</div>
                           <div className="text-xs text-slate-500">
                             {c.telefon ?? "—"}
                           </div>
                         </div>
                         {c.borc > 0 && (
-                          <Badge className="border-amber-200 bg-amber-50 text-[10px] text-amber-700">
-                            {formatMoney(c.borc)}
+                          <Badge
+                            className="shrink-0 border-amber-400 bg-amber-100 text-[11px] font-semibold tabular-nums text-amber-800"
+                            title={`Cari borc: ${formatMoney(c.borc)}`}
+                          >
+                            Borc: {formatMoney(c.borc)}
                           </Badge>
                         )}
                       </button>

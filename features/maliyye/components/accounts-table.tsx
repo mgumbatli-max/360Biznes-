@@ -153,7 +153,13 @@ export function AccountsTable({ items }: Props) {
             {sorted.map((a) => {
               const nov = NOV_LABEL[a.nov] ?? { ad: a.nov, cls: "border-muted text-muted-foreground" };
               const cells: Record<string, React.ReactNode> = {
-                ad: <td key="ad" className="px-3 py-2.5 font-medium">{a.ad}</td>,
+                ad: (
+                  <td key="ad" className="px-3 py-2.5 font-medium">
+                    <a href={`/maliyye/hesab/${a.id}`} className="hover:text-primary hover:underline">
+                      {a.ad}
+                    </a>
+                  </td>
+                ),
                 nov: (
                   <td key="nov" className="px-3 py-2.5">
                     <Badge variant="outline" className={`text-[10px] ${nov.cls}`}>{nov.ad}</Badge>

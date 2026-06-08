@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 
 export const metadata: Metadata = { title: "Bron" };
 
-type SP = { status?: string; q?: string; anbar?: string; musteri?: string; from?: string; to?: string };
+type SP = { status?: string; q?: string; anbar?: string; musteri?: string; mehsul?: string; from?: string; to?: string };
 
 const FILTERS: { value: BronStatus; label: string }[] = [
   { value: "",             label: "Hamısı" },
@@ -25,6 +25,16 @@ export default async function BronPage({ searchParams }: { searchParams: Promise
   await requireAnbarPerm("stok.bron");
 
   const sp = await searchParams;
+  // Lazy expire: bitmə tarixi keçmiş bron-ları siyahıdan əvvəl status-larını yenilə.
+  try {
+    const { expireStaleBronReservations } = await import("@/features/anbar/bron/expire-stale");
+    const { requireTenant } = await import("@/lib/db/tenant-context");
+    const { withTenant } = await import("@/lib/db/with-tenant");
+    await withTenant(async () => {
+      const { sahibkarId } = requireTenant();
+      await expireStaleBronReservations(sahibkarId);
+    });
+  } catch { /* non-fatal */ }
   const status = (sp.status ?? "") as BronStatus;
   const anbarId = sp.anbar ? Number(sp.anbar) : undefined;
   const [rows, options, stats] = await Promise.all([
@@ -33,6 +43,7 @@ export default async function BronPage({ searchParams }: { searchParams: Promise
       q: sp.q,
       anbarId: Number.isFinite(anbarId) ? anbarId : undefined,
       musteriId: sp.musteri,
+      mehsulId: sp.mehsul,
       from: sp.from,
       to: sp.to,
     }),

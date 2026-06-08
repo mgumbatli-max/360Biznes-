@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import { requireElaqeActionPerm } from "./access-guard";
 
 /**
  * Doğum günü xatırlatma — cron-əsaslı (manual da işlədilə bilər).
@@ -25,6 +26,8 @@ export type BirthdayResult = {
 };
 
 export async function runBirthdayReminders(): Promise<BirthdayResult | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("elaqe.followup");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -128,6 +131,10 @@ export async function runBirthdayReminders(): Promise<BirthdayResult | { ok: fal
 
       revalidatePath("/elaqe/followup");
       revalidatePath("/tapshiriqlar");
+      try {
+        revalidateTag(`elaqe:${sahibkarId}`, "max");
+        revalidateTag(`mywork:${sahibkarId}`, "max");
+      } catch { /* non-fatal */ }
 
       return { ok: true, scanned: rows.length, created, skipped };
     } catch (e) {

@@ -12,6 +12,7 @@ import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { toast } from "sonner";
 import { isEmbedded, closePageModal } from "@/lib/embed-mode";
 import { createTransfer } from "../actions";
+import { getStockForAnbar } from "../stock-lookup-action";
 
 type Anbar = { id: number; ad: string; filial?: string | null };
 type Product = { id: string; ad: string; kod: string | null; barkod?: string | null };
@@ -20,9 +21,12 @@ type Line = { mehsul_id: string; miqdar: string };
 export function TransferDialog({
   anbarlar,
   products,
+  autoOpen = false,
 }: {
   anbarlar: Anbar[];
   products: Product[];
+  /** True olduqda mount zamanı modal avtomatik açılır (məs. `?new=1` ilə gəlmiş istifadəçi üçün). */
+  autoOpen?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -33,6 +37,24 @@ export function TransferDialog({
   const [qeyd, setQeyd] = useState("");
   const [lines, setLines] = useState<Line[]>([{ mehsul_id: "", miqdar: "" }]);
   const [scan, setScan] = useState("");
+
+  // Mənbə anbarın məhsul stokları (sətirlərdə görünmə üçün)
+  const [stockMap, setStockMap] = useState<Record<string, number>>({});
+
+  // Mənbə anbar və ya sətirlər dəyişəndə → stok yenidən oxu
+  useEffect(() => {
+    const anbarId = Number(kaynak);
+    const ids = lines.map((l) => l.mehsul_id).filter(Boolean);
+    if (!anbarId || ids.length === 0) {
+      setStockMap({});
+      return;
+    }
+    let alive = true;
+    getStockForAnbar(anbarId, ids).then((m) => {
+      if (alive) setStockMap(m);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [kaynak, lines]);
 
   function addLineFromBarcode(code: string) {
     const found = products.find(
@@ -73,10 +95,11 @@ export function TransferDialog({
     setScan("");
   }
 
-  // Auto-open when launched inside PageModal.
+  // Auto-open when launched inside PageModal or with ?new=1.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (isEmbedded()) setOpen(true);
+    if (autoOpen || isEmbedded()) setOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function addLine() {
@@ -107,6 +130,17 @@ export function TransferDialog({
       .map((l) => ({ mehsul_id: l.mehsul_id, miqdar: Number(l.miqdar) }));
     if (valid.length === 0) {
       setError("Ən az 1 sətir əlavə et");
+      return;
+    }
+    // Mənbə anbarda stok yoxlanışı — client-side ön yoxlama
+    const overflowing = valid.filter(
+      (v) => (stockMap[v.mehsul_id] ?? 0) < v.miqdar,
+    );
+    if (overflowing.length > 0) {
+      const first = products.find((p) => p.id === overflowing[0].mehsul_id);
+      setError(
+        `«${first?.ad ?? "məhsul"}» mənbə anbarda kifayət deyil (mövcud: ${stockMap[overflowing[0].mehsul_id] ?? 0}, tələb: ${overflowing[0].miqdar})`,
+      );
       return;
     }
     startTransition(async () => {
@@ -214,26 +248,64 @@ export function TransferDialog({
             </div>
 
             <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
-              {lines.map((l, i) => (
-                <div key={i} className="grid grid-cols-[1fr_120px_36px] gap-2">
-                  <Combobox
-                    options={products.map<ComboOption>((p) => ({
-                      value: String(p.id),
-                      label: p.ad,
-                      hint: p.kod ?? undefined,
-                    }))}
-                    value={l.mehsul_id}
-                    onChange={(v) => update(i, "mehsul_id", v)}
-                    placeholder="— məhsul —"
-                    searchPlaceholder="🔍 Məhsul axtar (ad, kod)..."
-                    emptyText="Məhsul tapılmadı"
-                  />
-                  <Input type="number" min="0" step="0.01" value={l.miqdar} onChange={(e) => update(i, "miqdar", e.target.value)} placeholder="Miqdar" />
-                  <Button type="button" size="icon-sm" variant="ghost" onClick={() => removeLine(i)} disabled={lines.length <= 1}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
+              {lines.map((l, i) => {
+                const stok = l.mehsul_id ? (stockMap[l.mehsul_id] ?? null) : null;
+                const requested = Number(l.miqdar) || 0;
+                const overflow = stok != null && requested > stok;
+                const stokTone =
+                  stok == null
+                    ? ""
+                    : stok <= 0
+                    ? "text-rose-600 bg-rose-500/10 border-rose-500/30"
+                    : stok < 5
+                    ? "text-amber-600 bg-amber-500/10 border-amber-500/30"
+                    : "text-emerald-600 bg-emerald-500/10 border-emerald-500/30";
+                return (
+                  <div key={i} className="space-y-1">
+                    <div className="grid grid-cols-[1fr_120px_36px] gap-2">
+                      <Combobox
+                        options={products.map<ComboOption>((p) => ({
+                          value: String(p.id),
+                          label: p.ad,
+                          hint: p.kod ?? undefined,
+                        }))}
+                        value={l.mehsul_id}
+                        onChange={(v) => update(i, "mehsul_id", v)}
+                        placeholder="— məhsul —"
+                        searchPlaceholder="🔍 Məhsul axtar (ad, kod)..."
+                        emptyText="Məhsul tapılmadı"
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={l.miqdar}
+                        onChange={(e) => update(i, "miqdar", e.target.value)}
+                        placeholder="Miqdar"
+                        className={overflow ? "border-rose-500 focus-visible:ring-rose-500" : ""}
+                      />
+                      <Button type="button" size="icon-sm" variant="ghost" onClick={() => removeLine(i)} disabled={lines.length <= 1}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {l.mehsul_id && stok != null && (
+                      <div className="flex items-center justify-between pl-1 text-[10.5px]">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 tabular-nums ${stokTone}`}
+                          title={kaynak ? "Mənbə anbarda mövcud stok" : ""}
+                        >
+                          Mənbə: {stok} əd. mövcud
+                        </span>
+                        {overflow && (
+                          <span className="text-rose-600 font-semibold">
+                            ⚠️ {requested - stok} ədəd çatmır
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

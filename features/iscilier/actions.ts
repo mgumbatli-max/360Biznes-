@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword } from "@/lib/auth/password";
 import { parseLocalDate } from "@/lib/utils";
 import { audit, diffObjects } from "@/lib/audit/log";
+import { requireHrActionPerm, bustHrCache } from "./access-guard";
 
 const EmployeeSchema = z.object({
   id: z.string().uuid().optional(),
@@ -15,7 +16,6 @@ const EmployeeSchema = z.object({
   email: z.string().email().max(150),
   telefon: z.string().max(20).optional().or(z.literal("")),
   vezife: z.string().max(100).optional().or(z.literal("")),
-  rol_id: z.coerce.number().int().positive(),
   aylik_maas: z.coerce.number().min(0).default(0),
   ise_baslama: z.string().optional().or(z.literal("")),
   sifre: z.string().min(6).max(100).optional().or(z.literal("")),
@@ -31,6 +31,8 @@ const EmployeeSchema = z.object({
 type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
 export async function saveEmployee(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireHrActionPerm("isci.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = EmployeeSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
@@ -41,12 +43,14 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // Rol bilərəkdən burada təyin edilmir — yalnız Ayarlar > İstifadəçi
+      // bölməsindən təyin oluna bilər. Yeni işçi yaradılarkən sxemdəki
+      // default (rol_id = 3) tətbiq olunur.
       const baseData = {
         ad_soyad: d.ad_soyad.trim(),
         email: d.email.toLowerCase().trim(),
         telefon: d.telefon?.trim() || null,
         vezife: d.vezife?.trim() || null,
-        rol_id: d.rol_id,
         aylik_maas: d.aylik_maas,
         ise_baslama: d.ise_baslama ? parseLocalDate(d.ise_baslama) : null,
         aktiv: d.aktiv,
@@ -62,7 +66,7 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
       if (d.id) {
         const before = await prisma.istifadeciler.findUnique({
           where: { id: d.id },
-          select: { ad_soyad: true, email: true, telefon: true, vezife: true, rol_id: true, aylik_maas: true, aktiv: true, default_filial_id: true },
+          select: { ad_soyad: true, email: true, telefon: true, vezife: true, aylik_maas: true, aktiv: true, default_filial_id: true },
         });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = { ...baseData };
@@ -88,11 +92,12 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
         });
         id = created.id;
         await audit("yarat", "iscilier", id, {
-          yeni_data: { ad_soyad: d.ad_soyad, email: d.email, rol_id: d.rol_id, vezife: d.vezife || null, aylik_maas: d.aylik_maas },
+          yeni_data: { ad_soyad: d.ad_soyad, email: d.email, vezife: d.vezife || null, aylik_maas: d.aylik_maas },
           sebeb: "Yeni işçi yaradıldı",
         });
       }
       revalidatePath("/iscilier");
+      bustHrCache();
       return { ok: true, id };
     } catch (e) {
       console.error("[saveEmployee]", e);
@@ -105,6 +110,8 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
 }
 
 export async function deactivateEmployee(id: string): Promise<ActionResult> {
+  const permCheck = await requireHrActionPerm(["isci.idare", "isci.discipline"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
     if (id === istifadeciId) return { ok: false, error: "Özünüzü deaktivləşdirə bilməzsiniz" };
@@ -115,7 +122,13 @@ export async function deactivateEmployee(id: string): Promise<ActionResult> {
       });
       await prisma.istifadeciler.update({
         where: { id },
-        data: { aktiv: false, isden_cixdi: new Date() },
+        data: {
+          aktiv: false,
+          isden_cixdi: new Date(),
+          // SOFT-DELETE STANDART
+          deleted_at: new Date(),
+          deleted_by: istifadeciId,
+        },
       });
       await audit("sil", "iscilier", id, {
         evvelki_data: before as Record<string, unknown> | null,
@@ -123,10 +136,12 @@ export async function deactivateEmployee(id: string): Promise<ActionResult> {
         sebeb: "İşçi deaktivləşdirildi",
       });
       revalidatePath("/iscilier");
+      bustHrCache();
       return { ok: true };
     } catch (e) {
       console.error("[deactivateEmployee]", e);
-      return { ok: false, error: "Alınmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Alınmadı: ${msg}` };
     }
   });
 }

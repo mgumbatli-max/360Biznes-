@@ -3,15 +3,17 @@
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { FileText, Link2 } from "lucide-react";
+import { FileText, Link2, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { formatDate, formatMoney } from "@/lib/utils";
 import type { ExpenseRow } from "../queries";
+import { ExpenseRowActions } from "./expense-row-actions";
+import { RowIconButton, RowIconGroup } from "@/features/shared/row-icon-button";
 
-type Props = { items: ExpenseRow[]; total: number };
+type Props = { items: ExpenseRow[]; total: number; canDelete?: boolean };
 
 const STORAGE_KEY = "maliyye-xercler-cols-v2";
 
@@ -86,7 +88,7 @@ const DEFAULT_VISIBLE: Record<string, boolean> = {
 
 type SortKey = "tarix" | "kateqoriya" | "mebleg" | "kassa" | "valyuta" | "yaradildi";
 
-export function ExpensesTable({ items, total }: Props) {
+export function ExpensesTable({ items, total, canDelete = false }: Props) {
   useEffect(() => {
     try {
       if (!window.localStorage.getItem(STORAGE_KEY)) {
@@ -181,12 +183,13 @@ export function ExpensesTable({ items, total }: Props) {
                   default: return null;
                 }
               })}
+              <th className="px-3 py-2.5 text-right w-12">Əməl</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={cols.order.length} className="py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={cols.order.length + 1} className="py-12 text-center text-sm text-muted-foreground">
                   Xərc yoxdur
                 </td>
               </tr>
@@ -331,9 +334,43 @@ export function ExpensesTable({ items, total }: Props) {
                   </td>
                 ),
               };
+              const isDeleted = !!e.legv_de;
+              const invoiceId = extractInvoiceId(e.qeyd);
               return (
-                <tr key={e.id} className="border-b border-border/30 transition hover:bg-secondary/40">
+                <tr
+                  key={e.id}
+                  className={`border-b border-border/30 transition hover:bg-secondary/40 ${
+                    isDeleted
+                      ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                      : ""
+                  }`}
+                  title={isDeleted && e.legv_sebeb ? `Silinmə səbəbi: ${e.legv_sebeb}` : undefined}
+                >
                   {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
+                  <td className="px-3 py-2.5 text-right no-underline [text-decoration:none] w-20">
+                    <div className="inline-flex items-center gap-1.5 no-underline [text-decoration:none]">
+                      <RowIconGroup>
+                        <RowIconButton
+                          as="a"
+                          tone="print"
+                          title="Print (qəbz)"
+                          href={`/maliyye/xercler/${e.id}/print?auto=1`}
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </RowIconButton>
+                      </RowIconGroup>
+                      <ExpenseRowActions
+                        id={e.id}
+                        tesvir={e.tesvir}
+                        isDeleted={isDeleted}
+                        invoiceId={invoiceId}
+                        faylUrl={e.fayl_url}
+                        canDelete={canDelete}
+                      />
+                    </div>
+                  </td>
                 </tr>
               );
             })}

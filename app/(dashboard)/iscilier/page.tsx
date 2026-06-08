@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmployeeDialog } from "@/features/iscilier/components/employee-dialog";
 import { EmployeesTable } from "@/features/iscilier/components/employees-table";
 import { Button } from "@/components/ui/button";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import {
   getEmployees,
   getRoleOptions,
@@ -35,8 +36,21 @@ import { getHeadcountStats } from "@/features/iscilier/hr-queries";
 export const metadata: Metadata = { title: "Əməkdaşlar" };
 
 async function HeaderActions() {
-  const [roles, filiallar] = await Promise.all([getRoleOptions(), getFilialOptions()]);
-  return <EmployeeDialog roles={roles} filiallar={filiallar} />;
+  // İcazə gate — yalnız `isci.idare` (və ya sahibkar/admin) yeni işçi yarada bilər.
+  const { isHrPrivileged } = await import("@/features/iscilier/access-guard");
+  const { auth } = await import("@/auth");
+  const { getRequestPermissions } = await import("@/lib/auth/get-permissions");
+  const [session, perms, roles, filiallar, vezifeler] = await Promise.all([
+    auth(),
+    getRequestPermissions(),
+    getRoleOptions(),
+    getFilialOptions(),
+    getVezifeOptions(),
+  ]);
+  const allowed =
+    isHrPrivileged(session?.user?.rol_ad) || perms.includes("isci.idare");
+  if (!allowed) return null;
+  return <EmployeeDialog roles={roles} filiallar={filiallar} vezifeler={vezifeler} />;
 }
 
 async function HeadcountSection() {
@@ -62,17 +76,31 @@ function HeadcountSkeleton() {
   );
 }
 
-async function EmployeesSection() {
-  const [items, roles, filiallar, vezifeler] = await Promise.all([
-    getEmployees({}),
+async function EmployeesSection({ recordStatus }: { recordStatus: "aktiv" | "silinmis" | "hamisi" }) {
+  const { isHrPrivileged } = await import("@/features/iscilier/access-guard");
+  const { auth } = await import("@/auth");
+  const { getRequestPermissions } = await import("@/lib/auth/get-permissions");
+  const [items, roles, filiallar, vezifeler, session, perms] = await Promise.all([
+    getEmployees({ recordStatus }),
     getRoleOptions(),
     getFilialOptions(),
     getVezifeOptions(),
+    auth(),
+    getRequestPermissions(),
   ]);
-  return <EmployeesTable items={items} roles={roles} filiallar={filiallar} vezifeler={vezifeler} />;
+  const canEdit =
+    isHrPrivileged(session?.user?.rol_ad) || perms.includes("isci.idare");
+  return <EmployeesTable items={items} roles={roles} filiallar={filiallar} vezifeler={vezifeler} canEdit={canEdit} />;
 }
 
-export default function IscilierPage() {
+export default async function IscilierPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = await searchParams;
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(sp);
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -81,6 +109,7 @@ export default function IscilierPage() {
           <p className="mt-1 text-sm text-muted-foreground">HR Core — heyət, onboarding, performance və org chart.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <Link href="/iscilier/onboarding">
             <Button size="sm" variant="outline">
               <UserPlus className="h-4 w-4" /> Onboarding
@@ -115,7 +144,7 @@ export default function IscilierPage() {
       </div>
 
       <Suspense fallback={<Skeleton className="h-96 rounded-xl" />}>
-        <EmployeesSection />
+        <EmployeesSection recordStatus={recordStatus} />
       </Suspense>
     </div>
   );

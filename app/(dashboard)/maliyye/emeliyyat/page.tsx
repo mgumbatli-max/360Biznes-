@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { MaliyyeSubNav } from "@/components/maliyye-subnav";
 import { OperationsTable } from "@/features/maliyye/components/operations-table";
 import { QuickOpDialog } from "@/features/maliyye/components/quick-op-dialog";
-import { OpPickerTrigger } from "@/features/maliyye/components/op-picker-dialog";
 import { getOperations, getOperationsSummary, type OperationFilter } from "@/features/maliyye/operations-queries";
 import { getQuickRefs } from "@/features/maliyye/queries";
 import { formatMoney } from "@/lib/utils";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 
 export const metadata: Metadata = { title: "Maliyyə əməliyyatları" };
 
@@ -26,9 +26,17 @@ export default async function EmeliyyatPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
-  await requireMaliyyePerm();
+  const { icazeler, isOwnerOrAdmin } = await requireMaliyyePerm();
+  const canApprove =
+    isOwnerOrAdmin || icazeler.includes("fin_op.tesdiq") || icazeler.includes("maliyye.idare");
+  const canCancel =
+    isOwnerOrAdmin || icazeler.includes("fin_op.legv") || icazeler.includes("fin_op.idare") || icazeler.includes("maliyye.idare");
 
   const sp = await searchParams;
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const filter: OperationFilter = {
     search: sp.q,
     qrup: sp.qrup,
@@ -38,6 +46,7 @@ export default async function EmeliyyatPage({
     to: sp.to ? new Date(sp.to) : undefined,
     min: sp.min ? Number(sp.min) : undefined,
     max: sp.max ? Number(sp.max) : undefined,
+    recordStatus,
   };
 
   const [{ items, total }, refs, summary] = await Promise.all([
@@ -74,7 +83,7 @@ export default async function EmeliyyatPage({
             Bütün maliyyə hərəkətlərinin vahid jurnalı — satış ödənişi, alış ödənişi, xərc, transfer, komissiya, vergi.
           </p>
         </div>
-        <OpPickerTrigger />
+        <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
       </header>
 
       <MaliyyeSubNav active="/maliyye/emeliyyat" />
@@ -89,7 +98,7 @@ export default async function EmeliyyatPage({
               type="text"
               name="q"
               defaultValue={sp.q ?? ""}
-              placeholder="Qeyd, sənəd nömrəsi, qarşı tərəf..."
+              placeholder="Qeyd, sənəd, qaimə, müştəri, telefon, VÖEN..."
               className="h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm"
             />
           </div>
@@ -291,7 +300,7 @@ export default async function EmeliyyatPage({
         <Pill label="Net" value={`${summary.net >= 0 ? "+" : "−"}${formatMoney(Math.abs(summary.net))}`} tone={summary.net >= 0 ? "info" : "danger"} />
       </section>
 
-      <OperationsTable items={items} total={total} />
+      <OperationsTable items={items} total={total} canApprove={canApprove} canCancel={canCancel} />
 
       <QuickOpDialog
         hesablar={refs.hesablar}

@@ -1,7 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
+import {
+  SUBNAV_CONTAINER,
+  subnavTabClass,
+  subnavSecondaryClass,
+} from "@/features/shared/subnav-styles";
+
+const NewOperationButton = dynamic(
+  () => import("@/features/ticaret/components/new-operation-dialog").then((m) => m.NewOperationButton),
+  { ssr: false },
+);
 import {
   LayoutDashboard,
   Activity,
@@ -67,17 +78,13 @@ export function TicaretSubNav({ active }: { active: string }) {
 
   return (
     <div className="space-y-2 mb-4" data-subnav>
-      {/* Primary group bar */}
-      <div className="flex min-w-0 rounded-xl border border-border bg-secondary/40 p-1">
+      {/* Primary group bar — sol tərəfdə tab-lar, sağ tərəfdə "Yeni əməliyyat" */}
+      <div className={SUBNAV_CONTAINER}>
         <ScrollActiveIntoView className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
           <Link
             href={DASHBOARD_TAB.href}
             data-active={isDashboard ? "true" : undefined}
-            className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-              isDashboard
-                ? "bg-background text-primary shadow-sm"
-                : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
-            }`}
+            className={subnavTabClass(isDashboard)}
           >
             <DASHBOARD_TAB.Icon className="h-3.5 w-3.5" />
             <span>{DASHBOARD_TAB.label}</span>
@@ -91,11 +98,7 @@ export function TicaretSubNav({ active }: { active: string }) {
                 key={g.key}
                 href={href}
                 data-active={isOn ? "true" : undefined}
-                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  isOn
-                    ? "bg-background text-primary shadow-sm"
-                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
-                }`}
+                className={subnavTabClass(isOn)}
               >
                 <g.Icon className="h-3.5 w-3.5" />
                 <span>{g.label}</span>
@@ -103,6 +106,9 @@ export function TicaretSubNav({ active }: { active: string }) {
             );
           })}
         </ScrollActiveIntoView>
+        <div className="shrink-0 pr-1">
+          <NewOperationButton />
+        </div>
       </div>
 
       {/* Secondary bar — qrupun alt-tab-ları (yalnız 2+ tab olduqda) */}
@@ -119,11 +125,7 @@ export function TicaretSubNav({ active }: { active: string }) {
                   key={t.href}
                   href={t.href}
                   data-active={isOn ? "true" : undefined}
-                  className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
-                    isOn
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                  }`}
+                  className={subnavSecondaryClass(isOn)}
                 >
                   <t.Icon className="h-3 w-3" />
                   <span>{t.label}</span>

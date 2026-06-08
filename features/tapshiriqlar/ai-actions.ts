@@ -1,7 +1,9 @@
 "use server";
 
 import { chatCompletion, isMockMode } from "@/lib/ai/anthropic";
+import { audit } from "@/lib/audit/log";
 import { getTaskPerformanceAnalytics, type UserTaskPerformance } from "./queries";
+import { requireTapshiriqPerm } from "./actions";
 
 export type AiAnalysisResult = {
   ok: true;
@@ -11,6 +13,8 @@ export type AiAnalysisResult = {
 } | { ok: false; error: string };
 
 export async function aiAnalyzePerformance(): Promise<AiAnalysisResult> {
+  const perm = await requireTapshiriqPerm("tapshiriq.ai_analiz");
+  if (!perm.ok) return { ok: false, error: perm.error };
   try {
     const rows = await getTaskPerformanceAnalytics();
     if (rows.length === 0) {
@@ -63,9 +67,13 @@ export async function aiAnalyzePerformance(): Promise<AiAnalysisResult> {
       [{ role: "user", content: prompt }],
       { max_tokens: 700 }
     );
+    await audit("ai_analiz", "tapshiriq", null, {
+      yeni_data: { is_mock: ai.is_mock, isci_sayi: rows.length },
+    });
     return { ok: true, text: ai.text, is_mock: ai.is_mock, rows };
   } catch (e) {
     console.error("[aiAnalyzePerformance]", e);
-    return { ok: false, error: "AI analiz alınmadı" };
+    const msg = e instanceof Error ? e.message : "naməlum səhv";
+    return { ok: false, error: `AI analiz alınmadı: ${msg}` };
   }
 }

@@ -49,38 +49,63 @@ Sistemin terminləri:
 
 Cavab uzunluğu: maksimum 3-4 qısa abzas. Heç vaxt JSON, kod blok və ya HTML qaytarma — sadə mətn ver.`;
 
+/**
+ * Anthropic API çağırışı — 429/503 (overload/rate-limit) üçün
+ * exponential backoff ilə 2 retry.
+ *
+ * Kalıcı xəta halında call-er tərəfindən throw edilir — UI istifadəçiyə
+ * konkret mesajla göstərir (mock-fallback YOX, çünki user səhvi gizli qalmasın).
+ */
 export async function chatCompletion(
   messages: ChatMessage[],
   opts?: { system?: string; max_tokens?: number }
 ): Promise<CompletionResult> {
   if (!hasKey()) return mockResponse(messages);
 
-  try {
-    const response = await getClient().messages.create({
-      model: DEFAULT_MODEL,
-      max_tokens: opts?.max_tokens ?? 600,
-      system: opts?.system ?? SYSTEM_PROMPT_AZ,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    });
-    const text = response.content
-      .map((c) => (c.type === "text" ? c.text : ""))
-      .filter(Boolean)
-      .join("\n");
-    return {
-      text,
-      model: response.model,
-      is_mock: false,
-      input_tokens: response.usage?.input_tokens,
-      output_tokens: response.usage?.output_tokens,
-    };
-  } catch (e) {
-    console.error("[anthropic]", e);
-    return {
-      text: "AI cavabını almaq mümkün olmadı. Texniki xəta baş verib. Bir az sonra yenidən cəhd edin.",
-      model: "error",
-      is_mock: true,
-    };
+  const MAX_ATTEMPTS = 3;
+  let attempt = 0;
+  let lastErr: unknown = null;
+
+  while (attempt < MAX_ATTEMPTS) {
+    attempt += 1;
+    try {
+      const response = await getClient().messages.create({
+        model: DEFAULT_MODEL,
+        max_tokens: opts?.max_tokens ?? 600,
+        system: opts?.system ?? SYSTEM_PROMPT_AZ,
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      });
+      const text = response.content
+        .map((c) => (c.type === "text" ? c.text : ""))
+        .filter(Boolean)
+        .join("\n");
+      return {
+        text,
+        model: response.model,
+        is_mock: false,
+        input_tokens: response.usage?.input_tokens,
+        output_tokens: response.usage?.output_tokens,
+      };
+    } catch (e) {
+      lastErr = e;
+      // Yalnız retryable status-larda yenidən cəhd: 429 (rate limit), 503 (overload), network
+      const status = (e as { status?: number; statusCode?: number })?.status
+        ?? (e as { statusCode?: number })?.statusCode;
+      const retryable = status === 429 || status === 503 || status === 502 || status === 504 || status === undefined;
+      if (!retryable || attempt >= MAX_ATTEMPTS) break;
+      const backoffMs = 500 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 250);
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
   }
+
+  console.error("[anthropic] all retries failed", lastErr);
+  const status = (lastErr as { status?: number })?.status;
+  const errMsg =
+    status === 429 ? "AI servisinin saatlıq limit-i aşıldı, 1 dəq sonra cəhd edin"
+    : status === 503 ? "AI servisi həddən artıq yüklüdür, qısa müddət sonra cəhd edin"
+    : status === 401 ? "AI servisi açarı qəbul etmir — admin ilə əlaqə saxlayın"
+    : "AI cavabını almaq mümkün olmadı, bir az sonra yenidən cəhd edin";
+  throw new Error(errMsg);
 }
 
 /* Local mock — produces a context-aware response based on keywords. */

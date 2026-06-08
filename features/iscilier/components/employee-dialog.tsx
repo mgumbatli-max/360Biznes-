@@ -12,24 +12,53 @@ import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { saveEmployee } from "../actions";
+import { createVezife } from "../vezife-actions";
 import type { EmployeeRow, FilialOpt, RoleOpt } from "../types";
 
 type Props = {
-  roles: RoleOpt[];
+  // Rol bu dialoqdan idarə olunmur. Prop yalnız geriyə uyğunluq üçün
+  // saxlanılır — Ayarlar > İstifadəçilər bölməsinə bax.
+  roles?: RoleOpt[];
   filiallar?: FilialOpt[];
+  vezifeler?: string[];
   initial?: EmployeeRow;
   trigger?: "new" | "edit";
 };
 
-export function EmployeeDialog({ roles, filiallar = [], initial, trigger = "new" }: Props) {
+export function EmployeeDialog({ filiallar = [], vezifeler = [], initial, trigger = "new" }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [rolId, setRolId] = useState<string>(String(initial?.rol_id ?? 3));
   const [filialId, setFilialId] = useState<string>(
     initial?.default_filial_id ? String(initial.default_filial_id) : "",
   );
+  const [vezife, setVezife] = useState<string>(initial?.vezife ?? "");
+  const [vezifeList, setVezifeList] = useState<string[]>(vezifeler);
+  const [yeniVezifeOpen, setYeniVezifeOpen] = useState(false);
+  const [yeniVezifeAd, setYeniVezifeAd] = useState("");
+  const [yeniPending, startYeniTransition] = useTransition();
+
+  function onCreateVezife() {
+    const ad = yeniVezifeAd.trim();
+    if (ad.length < 2) {
+      toast.error("Vəzifə adı ən az 2 simvol olmalıdır");
+      return;
+    }
+    startYeniTransition(async () => {
+      const res = await createVezife(ad);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      const newAd = res.data?.ad ?? ad;
+      setVezifeList((prev) => (prev.includes(newAd) ? prev : [...prev, newAd].sort()));
+      setVezife(newAd);
+      setYeniVezifeAd("");
+      setYeniVezifeOpen(false);
+      toast.success(`«${newAd}» əlavə olundu`);
+    });
+  }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -116,8 +145,52 @@ export function EmployeeDialog({ roles, filiallar = [], initial, trigger = "new"
             <TabsContent value="is" className="space-y-4 pt-3">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="vezife">Vəzifə</Label>
-                  <Input id="vezife" name="vezife" maxLength={100} defaultValue={initial?.vezife ?? ""} placeholder="Satıcı, Mühasib, ..." disabled={pending} />
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="vezife">Vəzifə</Label>
+                    <button
+                      type="button"
+                      onClick={() => setYeniVezifeOpen((v) => !v)}
+                      className="text-[11px] text-primary hover:underline"
+                      disabled={pending}
+                    >
+                      {yeniVezifeOpen ? "İptal" : "+ Yeni"}
+                    </button>
+                  </div>
+                  {yeniVezifeOpen ? (
+                    <div className="flex gap-1">
+                      <Input
+                        value={yeniVezifeAd}
+                        onChange={(e) => setYeniVezifeAd(e.target.value)}
+                        maxLength={150}
+                        placeholder="Yeni vəzifə adı"
+                        autoFocus
+                        disabled={yeniPending}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            onCreateVezife();
+                          }
+                        }}
+                      />
+                      <Button type="button" size="sm" onClick={onCreateVezife} disabled={yeniPending}>
+                        {yeniPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Əlavə"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Combobox
+                      options={[
+                        { value: "", label: "— Seçin —" },
+                        ...vezifeList.map<ComboOption>((v) => ({ value: v, label: v })),
+                      ]}
+                      value={vezife}
+                      onChange={setVezife}
+                      placeholder="— Vəzifə seçin —"
+                      searchPlaceholder="Vəzifə axtar..."
+                      emptyText="Tapılmadı"
+                      disabled={pending}
+                    />
+                  )}
+                  <input type="hidden" name="vezife" value={vezife} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="default_filial_id">Filial</Label>
@@ -160,19 +233,12 @@ export function EmployeeDialog({ roles, filiallar = [], initial, trigger = "new"
             </TabsContent>
 
             <TabsContent value="sistem" className="space-y-4 pt-3">
-              <div className="space-y-2">
-                <Label htmlFor="rol_id">Rol *</Label>
-                <Combobox
-                  options={roles.map<ComboOption>((r) => ({ value: String(r.id), label: r.ad }))}
-                  value={rolId}
-                  onChange={setRolId}
-                  placeholder="— Seçin —"
-                  searchPlaceholder="Rol axtar..."
-                  emptyText="Tapılmadı"
-                  disabled={pending}
-                />
-                <input type="hidden" name="rol_id" value={rolId} />
-              </div>
+              <Alert>
+                <AlertDescription className="text-xs">
+                  Rol və icazələr buradan idarə olunmur. Yeni işçi default «Kassir» rolu ilə yaradılır —
+                  rolu dəyişmək üçün <strong>Ayarlar &gt; İstifadəçilər</strong> bölməsinə keçin.
+                </AlertDescription>
+              </Alert>
               <div className="space-y-2">
                 <Label htmlFor="sifre">{initial ? "Yeni şifrə (boş buraxsanız dəyişmir)" : "Şifrə *"}</Label>
                 <Input

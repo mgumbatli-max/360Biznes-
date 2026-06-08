@@ -59,7 +59,7 @@ export async function getTodayPulse(): Promise<TodayPulse> {
         _count: { _all: true },
       }),
       prisma.xercl_r.aggregate({
-        where: { sahibkar_id: sahibkarId, tarix: { gte: today, lt: tomorrow } },
+        where: { sahibkar_id: sahibkarId, tarix: { gte: today, lt: tomorrow }, legv_de: null },
         _sum: { mebleg: true },
       }),
       prisma.kontragentler.count({

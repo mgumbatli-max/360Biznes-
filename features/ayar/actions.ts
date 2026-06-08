@@ -1005,16 +1005,28 @@ export async function setUserSessionLimit(input: FormData): Promise<ActionResult
   });
 }
 
+/**
+ * Anbar növləri:
+ *  - standart   → adi satış anbarı (default)
+ *  - defekt     → defekt / zədəli mallar (satışa açıq stoka daxil deyil)
+ *  - karantın   → karantın / yoxlama altında (satışa açıq stoka daxil deyil)
+ *  - servis     → servisə ayrılan mallar
+ *  - transit    → bir anbardan digərinə yola çıxan
+ */
+const ANBAR_NOV_VALUES = ["standart", "defekt", "karantın", "servis", "transit"] as const;
+
 const AnbarSchema = z.object({
   filial_id: z.coerce.number().int().positive(),
   ad: z.string().min(2).max(100),
   unvan: z.string().max(500).optional().or(z.literal("")),
+  nov: z.enum(ANBAR_NOV_VALUES).default("standart"),
 });
 
 const AnbarUpdateSchema = z.object({
   id: z.coerce.number().int().positive(),
   ad: z.string().min(2).max(100),
   unvan: z.string().max(500).optional().or(z.literal("")),
+  nov: z.enum(ANBAR_NOV_VALUES).optional(),
   aktiv: z.coerce.boolean().default(true),
 });
 
@@ -1029,7 +1041,12 @@ export async function updateFilialAnbar(input: FormData): Promise<ActionResult> 
       if (!a) return { ok: false, error: "Anbar tapılmadı" };
       await prisma.anbarlar.update({
         where: { id: d.id },
-        data: { ad: d.ad.trim(), unvan: d.unvan?.trim() || null, aktiv: d.aktiv },
+        data: {
+          ad: d.ad.trim(),
+          unvan: d.unvan?.trim() || null,
+          aktiv: d.aktiv,
+          ...(d.nov ? { nov: d.nov } : {}),
+        },
       });
       revalidatePath("/ayarlar/filiallar");
       revalidatePath("/ayarlar/anbar");
@@ -1142,6 +1159,7 @@ export async function createFilialAnbar(input: FormData): Promise<ActionResult> 
           filial_id: d.filial_id,
           ad: d.ad.trim(),
           unvan: d.unvan?.trim() || null,
+          nov: d.nov,
           aktiv: true,
         },
       });

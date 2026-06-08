@@ -8,6 +8,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 export async function getRecentReturns(limit = 10) {
   return withTenant(async () => {
     const rows = await prisma.qaytarma_sifarisleri.findMany({
+      where: { deleted_at: null },
       orderBy: { yaradildi: "desc" },
       take: limit,
       include: {

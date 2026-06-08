@@ -11,6 +11,7 @@ import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { audit } from "@/lib/audit/log";
 import { createApprovalRequest } from "@/features/tesdiq/create";
 import { getRiskRules } from "@/features/ayarlar/risk-rules";
+import { safeUserMessage } from "@/lib/error/user-message";
 
 async function requireStockPerm(perm: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await auth();
@@ -186,9 +187,13 @@ export async function adjustStock(
 
       return { ok: true };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Xəta";
       console.error("[adjustStock]", e);
-      return { ok: false, error: msg };
+      // safeStockDecrement-dən gələn dostca mesajları olduğu kimi göstər
+      const raw = e instanceof Error ? e.message : "";
+      if (/stok|miqdar|məhsul|məxariç/i.test(raw)) {
+        return { ok: false, error: raw };
+      }
+      return { ok: false, error: safeUserMessage(e, "Stok düzəlişi uğursuz oldu") };
     }
   });
 }
@@ -283,9 +288,12 @@ export async function transferStock(input: z.input<typeof TransferSchema>): Prom
       });
       return { ok: true };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Xəta";
       console.error("[transferStock]", e);
-      return { ok: false, error: msg };
+      const raw = e instanceof Error ? e.message : "";
+      if (/stok|miqdar|anbar/i.test(raw)) {
+        return { ok: false, error: raw };
+      }
+      return { ok: false, error: safeUserMessage(e, "Transfer uğursuz oldu") };
     }
   });
 }

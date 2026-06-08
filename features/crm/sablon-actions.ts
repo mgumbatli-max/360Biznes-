@@ -6,6 +6,13 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit, diffObjects } from "@/lib/audit/log";
+import { requireCrmActionPerm, bustCrmCache } from "./access-guard";
+
+// Whitelist — yalnız bu placeholder-lərə icazə var
+const ALLOWED_PLACEHOLDERS = new Set([
+  "musteri_ad", "ad", "telefon", "email", "tarix", "saat",
+  "sirket", "kupon", "endirim", "borc", "balans",
+]);
 
 type ActionResult = { ok: true; id?: number } | { ok: false; error: string };
 
@@ -20,6 +27,8 @@ const TemplateSchema = z.object({
 });
 
 export async function saveTemplate(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireCrmActionPerm("sablon.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = TemplateSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -29,6 +38,11 @@ export async function saveTemplate(input: FormData): Promise<ActionResult> {
     try {
       const vars = Array.from(d.matn.matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g)).map((m) => m[1]);
       const uniqueVars = [...new Set(vars)];
+      // Whitelist yoxlanması — bilinməyən placeholder rədd
+      const invalid = uniqueVars.filter((v) => !ALLOWED_PLACEHOLDERS.has(v.toLowerCase()));
+      if (invalid.length > 0) {
+        return { ok: false, error: `Bilinməyən placeholder(lər): ${invalid.join(", ")}. İcazəli: ${Array.from(ALLOWED_PLACEHOLDERS).join(", ")}` };
+      }
       const data = {
         ad: d.ad.trim(),
         hadisi: d.hadisi.trim(),
@@ -52,26 +66,33 @@ export async function saveTemplate(input: FormData): Promise<ActionResult> {
       }
       revalidatePath("/crm/sablonlar");
       revalidatePath("/ayarlar/mesaj-sablon");
+      bustCrmCache();
       return { ok: true, id };
     } catch (e) {
       console.error("[saveTemplate]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
 
 export async function deleteTemplate(id: number): Promise<ActionResult> {
+  const permCheck = await requireCrmActionPerm("sablon.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const before = await prisma.mesaj_sablonlari.findUnique({ where: { id }, select: { ad: true, hadisi: true, kanal: true } });
+      if (!before) return { ok: false, error: "Şablon tapılmadı" };
       await prisma.mesaj_sablonlari.delete({ where: { id } });
       await audit("sil", "mesaj_sablon", id, { evvelki_data: before as Record<string, unknown> | null, sebeb: "Şablon silindi" });
       revalidatePath("/crm/sablonlar");
       revalidatePath("/ayarlar/mesaj-sablon");
+      bustCrmCache();
       return { ok: true };
     } catch (e) {
       console.error("[deleteTemplate]", e);
-      return { ok: false, error: "Silinmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Silinmədi: ${msg}` };
     }
   });
 }

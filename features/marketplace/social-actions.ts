@@ -6,6 +6,13 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
+import { safeFetch, SsrfError } from "@/lib/utils/safe-fetch";
+import { encryptString, decryptString, maskSecret } from "@/lib/security/encrypt";
+import {
+  requireMarketplaceActionPerm,
+  bustMarketplaceCache,
+} from "./access-guard";
 import {
   ensurePostsContainer,
   POSTS_CHANNEL,
@@ -33,6 +40,8 @@ const ConnectSchema = z.object({
 });
 
 export async function connectSocialAccount(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireMarketplaceActionPerm("marketplace.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = ConnectSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -41,13 +50,15 @@ export async function connectSocialAccount(input: FormData): Promise<ActionResul
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
-      await prisma.sosial_hesablar.create({
+      // Token encrypt-at-rest
+      const apiTokenEnc = d.api_token?.trim() ? encryptString(d.api_token.trim()) : null;
+      const created = await prisma.sosial_hesablar.create({
         data: {
           sahibkar_id: sahibkarId,
           kanal: d.kanal,
           ad: d.ad.trim(),
           hesab_id: d.hesab_id?.trim() || null,
-          api_token: d.api_token?.trim() || null,
+          api_token: apiTokenEnc,
           webhook_url: d.webhook_url?.trim() || null,
           send_url: d.send_url?.trim() || null,
           aktiv: true,
@@ -55,45 +66,82 @@ export async function connectSocialAccount(input: FormData): Promise<ActionResul
       });
       revalidatePath("/marketplace/sosial");
       revalidatePath("/marketplace/avto-poster");
+      bustMarketplaceCache();
+      await audit("yarat", "sosial_hesab", created.id, {
+        yeni_data: {
+          kanal: d.kanal,
+          ad: d.ad,
+          token_mask: d.api_token ? maskSecret(d.api_token) : null,
+          has_webhook: !!d.webhook_url,
+        },
+        sebeb: `Sosial hesab qoşuldu: ${d.kanal} / ${d.ad}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[connectSocialAccount]", e);
-      return { ok: false, error: "Qoşulmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Qoşulmadı: ${msg}` };
     }
   });
 }
 
 export async function toggleSocialAccount(id: string, aktiv: boolean): Promise<ActionResult> {
+  const permCheck = await requireMarketplaceActionPerm("marketplace.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
+      const before = await prisma.sosial_hesablar.findUnique({
+        where: { id },
+        select: { ad: true, kanal: true, aktiv: true },
+      });
+      if (!before) return { ok: false, error: "Hesab tapılmadı" };
       await prisma.sosial_hesablar.update({ where: { id }, data: { aktiv } });
       revalidatePath("/marketplace/sosial");
+      bustMarketplaceCache();
+      await audit(aktiv ? "aktivlesh" : "deaktivlesh", "sosial_hesab", id, {
+        evvelki_data: { aktiv: before.aktiv },
+        yeni_data: { aktiv, ad: before.ad, kanal: before.kanal },
+        sebeb: `Sosial hesab ${aktiv ? "aktiv" : "passiv"}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[toggleSocialAccount]", e);
-      return { ok: false, error: "Dəyişdirilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Dəyişdirilmədi: ${msg}` };
     }
   });
 }
 
 export async function deleteSocialAccount(id: string): Promise<ActionResult> {
+  const permCheck = await requireMarketplaceActionPerm("marketplace.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const r = await prisma.sosial_hesablar.findUnique({
         where: { id },
-        select: { kanal: true },
+        select: { kanal: true, ad: true },
       });
       if (!r) return { ok: false, error: "Tapılmadı" };
       if (r.kanal === POSTS_CHANNEL) {
         return { ok: false, error: "Post anbarı silinə bilməz" };
       }
-      await prisma.sosial_hesablar.delete({ where: { id } });
+      // Soft delete — aktiv=false (audit qorunur)
+      await prisma.sosial_hesablar.update({
+        where: { id },
+        data: { aktiv: false },
+      });
       revalidatePath("/marketplace/sosial");
       revalidatePath("/marketplace/avto-poster");
+      bustMarketplaceCache();
+      await audit("arxiv", "sosial_hesab", id, {
+        yeni_data: { ad: r.ad, kanal: r.kanal },
+        sebeb: `Sosial hesab arxivləndi: ${r.ad}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[deleteSocialAccount]", e);
-      return { ok: false, error: "Silinmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Arxivlənmədi: ${msg}` };
     }
   });
 }
@@ -103,7 +151,9 @@ export async function deleteSocialAccount(id: string): Promise<ActionResult> {
  * üçün spesifik API çağrısı olur. Burada send_url varsa POST göndərib status status
  * qaytarır, son_sync yenilənir.
  */
-export async function testSocialAccount(id: string): Promise<ActionResult<{ status: number; ok: boolean }>> {
+export async function testSocialAccount(id: string): Promise<ActionResult<{ status: number; ok: boolean; ssrf_blok?: boolean }>> {
+  const permCheck = await requireMarketplaceActionPerm(["marketplace.idare", "marketplace.sync"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const r = await prisma.sosial_hesablar.findUnique({
@@ -113,7 +163,6 @@ export async function testSocialAccount(id: string): Promise<ActionResult<{ stat
       if (!r) return { ok: false, error: "Hesab tapılmadı" };
       const url = r.send_url || r.webhook_url;
       if (!url) {
-        // URL yoxdursa mock olaraq uğurlu qəbul et
         await prisma.sosial_hesablar.update({
           where: { id },
           data: { son_sync: new Date() },
@@ -123,16 +172,19 @@ export async function testSocialAccount(id: string): Promise<ActionResult<{ stat
       }
       let status = 0;
       let success = false;
+      let ssrfBlok = false;
       try {
-        const res = await fetch(url, {
+        // SSRF-safe fetch — internal IPs/private addresses blok
+        const res = await safeFetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ test: true, channel: r.kanal, account: r.ad }),
-          signal: AbortSignal.timeout(5_000),
+          timeoutMs: 5_000,
         });
         status = res.status;
         success = res.ok;
-      } catch {
+      } catch (err) {
+        if (err instanceof SsrfError) ssrfBlok = true;
         status = 0;
         success = false;
       }
@@ -141,10 +193,16 @@ export async function testSocialAccount(id: string): Promise<ActionResult<{ stat
         data: { son_sync: new Date() },
       });
       revalidatePath("/marketplace/sosial");
-      return { ok: true, data: { status, ok: success } };
+      bustMarketplaceCache();
+      await audit("test", "sosial_hesab", id, {
+        yeni_data: { kanal: r.kanal, ad: r.ad, status, ssrf_blok: ssrfBlok },
+        sebeb: `Sosial hesab test: ${r.ad}`,
+      });
+      return { ok: true, data: { status, ok: success, ssrf_blok: ssrfBlok } };
     } catch (e) {
       console.error("[testSocialAccount]", e);
-      return { ok: false, error: "Test alınmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Test alınmadı: ${msg}` };
     }
   });
 }
@@ -185,6 +243,8 @@ export async function createPost(
   input: FormData,
   saveAs: "qaralama" | "planlasdirilmis" | "indi" = "qaralama",
 ): Promise<ActionResult<{ id: string }>> {
+  const permCheck = await requireMarketplaceActionPerm(saveAs === "indi" ? "social.publish" : "marketplace.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = PostSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -223,15 +283,23 @@ export async function createPost(
       }
 
       revalidatePath("/marketplace/avto-poster");
+      bustMarketplaceCache();
+      await audit("yarat", "sosial_post", post.id, {
+        yeni_data: { basliq: d.basliq, hesab_say: hesab_ids.length, saveAs },
+        sebeb: `Sosial post yaradıldı (${saveAs})`,
+      });
       return { ok: true, data: { id: post.id } };
     } catch (e) {
       console.error("[createPost]", e);
-      return { ok: false, error: "Yaradılmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yaradılmadı: ${msg}` };
     }
   });
 }
 
 export async function updatePost(id: string, input: FormData): Promise<ActionResult> {
+  const permCheck = await requireMarketplaceActionPerm("marketplace.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = PostSchema.partial().safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Yanlış" };
   const d = parsed.data;
@@ -256,15 +324,19 @@ export async function updatePost(id: string, input: FormData): Promise<ActionRes
       };
       await writePosts(sahibkarId, posts);
       revalidatePath("/marketplace/avto-poster");
+      bustMarketplaceCache();
       return { ok: true };
     } catch (e) {
       console.error("[updatePost]", e);
-      return { ok: false, error: "Yenilənmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yenilənmədi: ${msg}` };
     }
   });
 }
 
 export async function deletePost(id: string): Promise<ActionResult> {
+  const permCheck = await requireMarketplaceActionPerm("marketplace.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
@@ -273,10 +345,15 @@ export async function deletePost(id: string): Promise<ActionResult> {
       if (next.length === posts.length) return { ok: false, error: "Tapılmadı" };
       await writePosts(sahibkarId, next);
       revalidatePath("/marketplace/avto-poster");
+      bustMarketplaceCache();
+      await audit("sil", "sosial_post", id, {
+        sebeb: "Sosial post silindi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[deletePost]", e);
-      return { ok: false, error: "Silinmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Silinmədi: ${msg}` };
     }
   });
 }
@@ -308,16 +385,16 @@ async function publishPostInternal(sahibkarId: string, postId: string): Promise<
   const errors: string[] = [];
   for (const acc of accounts) {
     const url = acc.send_url || acc.webhook_url;
-    if (!url) {
-      // URL yoxdursa "mock göndərmə" — yalnız local olaraq qeyd
-      continue;
-    }
+    if (!url) continue;
     try {
-      const res = await fetch(url, {
+      // Encrypted token-i decrypt et (köhnə plaintext token-lar da işləyir)
+      const apiToken = acc.api_token ? decryptString(acc.api_token) : null;
+      // SSRF-safe fetch — internal/private IP-lər blok
+      const res = await safeFetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(acc.api_token ? { Authorization: `Bearer ${acc.api_token}` } : {}),
+          ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
         },
         body: JSON.stringify({
           channel: acc.kanal,
@@ -327,11 +404,15 @@ async function publishPostInternal(sahibkarId: string, postId: string): Promise<
           image_url: post.sekil_url,
           metadata: { mehsul_id: post.mehsul_id, post_id: post.id },
         }),
-        signal: AbortSignal.timeout(10_000),
+        timeoutMs: 10_000,
       });
       if (!res.ok) errors.push(`${acc.kanal}: HTTP ${res.status}`);
     } catch (e) {
-      errors.push(`${acc.kanal}: ${e instanceof Error ? e.message : "naməlum xəta"}`);
+      if (e instanceof SsrfError) {
+        errors.push(`${acc.kanal}: SSRF blok — ${e.message}`);
+      } else {
+        errors.push(`${acc.kanal}: ${e instanceof Error ? e.message : "naməlum xəta"}`);
+      }
     }
   }
 
@@ -349,15 +430,24 @@ async function publishPostInternal(sahibkarId: string, postId: string): Promise<
 }
 
 export async function publishPost(id: string): Promise<ActionResult> {
+  const permCheck = await requireMarketplaceActionPerm("social.publish");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     const r = await publishPostInternal(sahibkarId, id);
     revalidatePath("/marketplace/avto-poster");
+    bustMarketplaceCache();
+    await audit("dərc", "sosial_post", id, {
+      yeni_data: { ok: r.ok, error: r.ok ? undefined : r.error },
+      sebeb: "Sosial post manual dərc",
+    });
     return r;
   });
 }
 
 export async function schedulePost(id: string, when: string): Promise<ActionResult> {
+  const permCheck = await requireMarketplaceActionPerm("marketplace.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!when) return { ok: false, error: "Tarix lazımdır" };
   const dt = new Date(when);
   if (isNaN(dt.getTime())) return { ok: false, error: "Tarix yanlışdır" };
@@ -374,18 +464,27 @@ export async function schedulePost(id: string, when: string): Promise<ActionResu
       };
       await writePosts(sahibkarId, posts);
       revalidatePath("/marketplace/avto-poster");
+      bustMarketplaceCache();
+      await audit("planlasdir", "sosial_post", id, {
+        yeni_data: { planlasdirilan: dt.toISOString() },
+        sebeb: "Sosial post planlaşdırıldı",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[schedulePost]", e);
-      return { ok: false, error: "Yenilənmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yenilənmədi: ${msg}` };
     }
   });
 }
 
 /**
  * Cron / page-load ilə çağırılır: planlaşdırılma vaxtı gələnləri dərc et.
+ * Manual çağırılarsa social.publish icazə tələb olunur.
  */
 export async function publishDuePosts(): Promise<ActionResult<{ published: number }>> {
+  const permCheck = await requireMarketplaceActionPerm("social.publish");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {

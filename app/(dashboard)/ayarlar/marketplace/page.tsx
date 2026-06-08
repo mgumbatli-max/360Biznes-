@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Store, ArrowRight, Percent, ShoppingCart } from "lucide-react";
+import { Store, ArrowRight, Percent, ShoppingCart, Sliders } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SettingsTopNav } from "@/features/ayar/components/settings-top-nav";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
+import { getMarketplaceDefaults } from "@/features/ticaret/marketplace-defaults";
+import { MarketplaceDefaultsForm } from "@/features/ayarlar/components/marketplace-defaults-form";
 
 export const metadata: Metadata = { title: "Marketplace inteqrasiyalar" };
 export const dynamic = "force-dynamic";
 
 async function getData() {
   return withTenant(async () => {
-    const [accounts, commissions, orders24h] = await Promise.all([
+    const { sahibkarId } = requireTenant();
+    const [accounts, commissions, orders24h, hesablar, anbarlar] = await Promise.all([
       prisma.marketplace_hesablari.findMany({
         select: { id: true, platform: true, ad: true, status: true, son_sync: true },
         orderBy: { yaradildi: "desc" },
@@ -24,8 +28,27 @@ async function getData() {
       prisma.marketplace_sifarisleri
         .count({ where: { yaradildi: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } })
         .catch(() => 0),
+      prisma.maliye_hesablari.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        orderBy: [{ nov: "asc" }, { ad: "asc" }],
+        select: { id: true, ad: true, bank_adi: true },
+      }),
+      prisma.anbarlar.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        orderBy: { ad: "asc" },
+        select: { id: true, ad: true },
+      }),
     ]);
-    return { accounts, commissions, orders24h };
+    return {
+      accounts,
+      commissions,
+      orders24h,
+      hesablar: hesablar.map((h) => ({
+        id: h.id,
+        ad: `${h.ad}${h.bank_adi ? ` · ${h.bank_adi}` : ""}`,
+      })),
+      anbarlar,
+    };
   });
 }
 
@@ -41,7 +64,10 @@ const PLATFORMS = [
 ];
 
 export default async function Page() {
-  const { accounts, commissions, orders24h } = await getData();
+  const [{ accounts, commissions, orders24h, hesablar, anbarlar }, defaults] = await Promise.all([
+    getData(),
+    getMarketplaceDefaults(),
+  ]);
   const activeAccounts = accounts.filter((a) => a.status === "aktiv").length;
   const connectedPlatforms = new Set(accounts.map((a) => a.platform));
 
@@ -143,6 +169,27 @@ export default async function Page() {
           <div className="text-xs text-muted-foreground">
             Hər platforma və kateqoriya üçün komisyon faizini təyin et — net qazanc hesablanması düzgün olsun.
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Marketplace satış formada avtomatik tətbiq olunan defaultlar (Wave 2) */}
+      <Card className="glass">
+        <CardContent className="space-y-3 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Sliders className="h-4 w-4 text-violet-500" />
+              Satış formada default-lar
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Marketplace satış pəncərəsində platforma seçildikdə komissiya, bank hesabı və anbar
+            avtomatik gəlir. Kassir əl ilə dəyişə bilər.
+          </p>
+          <MarketplaceDefaultsForm
+            initial={defaults}
+            hesablar={hesablar}
+            anbarlar={anbarlar}
+          />
         </CardContent>
       </Card>
 

@@ -124,7 +124,7 @@ export const TRIGGERS: Trigger[] = [
   { kod: "qaytarma_yarandi", ad: "Qaytarma yaradıldı", modul: "ticaret", icon: RotateCcw, shertler: ["mebleg"], scopes: ["all", "filial", "musteri", "mehsul"], tesvir: "Müştəri məhsulu qaytardı" },
 
   // Alış
-  { kod: "alish_yarandi", ad: "Alış yaradıldı", modul: "alish", icon: Truck, shertler: ["mebleg"], scopes: ["all", "tedarukcu", "anbar"], tesvir: "Yeni alış sifarişi yarandı" },
+  { kod: "alish_yarandi", ad: "Alış yaradıldı", modul: "alish", icon: Truck, shertler: ["mebleg"], scopes: ["all", "tedarukcu", "anbar"], tesvir: "Yeni alış qaiməsi yarandı" },
 
   // Maliyyə
   { kod: "qiymet_deyisdi", ad: "Qiymət dəyişdi", modul: "ticaret", icon: Tag, shertler: ["qiymet_ferq_pct"], scopes: ["all", "mehsul", "kateqoriya", "marka"], tesvir: "Məhsulun satış qiyməti dəyişdirildi" },

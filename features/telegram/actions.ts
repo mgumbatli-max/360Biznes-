@@ -5,7 +5,10 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
 import { sendTelegramMessage, isTelegramConfigured } from "@/lib/telegram/notifier";
+import { encryptString, decryptString, maskSecret } from "@/lib/security/encrypt";
+import { requireAyarActionPerm, bustAyarCache } from "@/features/ayarlar/access-guard";
 
 const QRUP = "telegram";
 
@@ -35,7 +38,8 @@ export async function getTelegramSettings(): Promise<TelegramSettings> {
     if (row?.deyer) {
       try {
         const p = JSON.parse(row.deyer) as { chat_id?: string; events?: string[] };
-        chat_id = p.chat_id ?? null;
+        // Encrypted chat_id-i decrypt et (köhnə plaintext də çalışır)
+        chat_id = p.chat_id ? decryptString(p.chat_id) : null;
         events = Array.isArray(p.events) ? p.events : [];
       } catch {}
     }
@@ -44,17 +48,26 @@ export async function getTelegramSettings(): Promise<TelegramSettings> {
 }
 
 export async function saveTelegramSettings(input: z.input<typeof ChatIdSchema>): Promise<Result> {
+  const permCheck = await requireAyarActionPerm(["ayar.kanal", "ayar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = ChatIdSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Yanlış: chat_id və ya events" };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const payload = JSON.stringify({ chat_id: parsed.data.chat_id, events: parsed.data.events });
+    // 🔒 chat_id-i encrypt et — DB sızması halında açıq olmasın
+    const encryptedChatId = encryptString(parsed.data.chat_id);
+    const payload = JSON.stringify({ chat_id: encryptedChatId, events: parsed.data.events });
     await prisma.ayarlar.upsert({
       where: { sahibkar_id_qrup_acar: { sahibkar_id: sahibkarId, qrup: QRUP, acar: "config" } },
       create: { sahibkar_id: sahibkarId, qrup: QRUP, acar: "config", deyer: payload, nov: "string" },
       update: { deyer: payload, yenilendi: new Date() },
     });
     revalidatePath("/ayarlar/telegram");
+    bustAyarCache();
+    await audit("yenile", "telegram_ayar", null, {
+      yeni_data: { chat_id_mask: maskSecret(parsed.data.chat_id), events: parsed.data.events },
+      sebeb: "Telegram ayarları yeniləndi",
+    });
     return { ok: true };
   });
 }
@@ -69,7 +82,8 @@ export async function sendTestTelegram(): Promise<Result> {
     if (!row?.deyer) return { ok: false, error: "Əvvəlcə chat_id qoyub saxlayın" };
     let chatId: string | null = null;
     try {
-      chatId = (JSON.parse(row.deyer) as { chat_id?: string }).chat_id ?? null;
+      const stored = (JSON.parse(row.deyer) as { chat_id?: string }).chat_id ?? null;
+      chatId = stored ? decryptString(stored) : null;
     } catch {}
     if (!chatId) return { ok: false, error: "chat_id boşdur" };
     const res = await sendTelegramMessage({
@@ -91,7 +105,9 @@ export async function getTelegramConfigForSahibkar(sahibkarId: string): Promise<
   if (!row?.deyer) return { chat_id: null, events: [] };
   try {
     const p = JSON.parse(row.deyer) as { chat_id?: string; events?: string[] };
-    return { chat_id: p.chat_id ?? null, events: Array.isArray(p.events) ? p.events : [] };
+    // Encrypted chat_id-i decrypt et
+    const chat_id = p.chat_id ? decryptString(p.chat_id) : null;
+    return { chat_id, events: Array.isArray(p.events) ? p.events : [] };
   } catch {
     return { chat_id: null, events: [] };
   }

@@ -1,9 +1,19 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+
+function bustAlertCache() {
+  try {
+    const { sahibkarId } = requireTenant();
+    revalidateTag(`nezaret:${sahibkarId}`, "max");
+    revalidateTag(`alerts:${sahibkarId}`, "max");
+  } catch {
+    // tenant yox — sessizcə keç
+  }
+}
 
 export async function acknowledgeAlert(alertId: string) {
   return withTenant(async () => {
@@ -12,6 +22,7 @@ export async function acknowledgeAlert(alertId: string) {
       data: { status: "baxilir", yenilendi: new Date() },
     });
     revalidatePath("/xeberdarliqlar");
+    bustAlertCache();
     return { ok: true };
   });
 }
@@ -30,6 +41,7 @@ export async function resolveAlert(alertId: string, note?: string) {
       },
     });
     revalidatePath("/xeberdarliqlar");
+    bustAlertCache();
     return { ok: true };
   });
 }
@@ -45,6 +57,7 @@ export async function snoozeAlert(alertId: string, untilISO: string) {
       },
     });
     revalidatePath("/xeberdarliqlar");
+    bustAlertCache();
     return { ok: true };
   });
 }
@@ -60,6 +73,7 @@ export async function assignAlert(alertId: string, istifadeciId: string | null) 
       },
     });
     revalidatePath("/xeberdarliqlar");
+    bustAlertCache();
     return { ok: true };
   });
 }
@@ -73,6 +87,7 @@ export async function assignAlertToMe(alertId: string) {
       data: { assigned_to: istifadeciId, assigned_at: new Date(), yenilendi: new Date() },
     });
     revalidatePath("/xeberdarliqlar");
+    bustAlertCache();
     return { ok: true };
   });
 }
@@ -100,6 +115,7 @@ export async function escalateAlert(alertId: string, sebeb?: string) {
       }),
     ]);
     revalidatePath("/xeberdarliqlar");
+    bustAlertCache();
     return { ok: true as const, severity: next };
   });
 }
@@ -116,6 +132,7 @@ export async function addAlertComment(alertId: string, metn: string) {
     });
     revalidatePath("/xeberdarliqlar");
     revalidatePath(`/xeberdarliqlar/${alertId}`);
+    bustAlertCache();
     return { ok: true as const };
   });
 }
@@ -163,6 +180,7 @@ export async function createTaskFromAlert(alertId: string, mesul_id?: string) {
       });
       revalidatePath("/xeberdarliqlar");
       revalidatePath(`/xeberdarliqlar/${alertId}`);
+      bustAlertCache();
       return { ok: true as const, task_id: task.id };
     } catch (e) {
       console.error("[createTaskFromAlert]", e);
@@ -210,6 +228,7 @@ export async function sendAlertToApproval(alertId: string) {
       revalidatePath("/xeberdarliqlar");
       revalidatePath(`/xeberdarliqlar/${alertId}`);
       revalidatePath("/tesdiq");
+      bustAlertCache();
       return { ok: true as const, telep_id: t.id };
     } catch (e) {
       console.error("[sendAlertToApproval]", e);
@@ -229,6 +248,7 @@ export async function markAllRead() {
       data: { status: "baxilir", yenilendi: new Date() },
     });
     revalidatePath("/xeberdarliqlar");
+    bustAlertCache();
     return { ok: true, count: r.count };
   });
 }

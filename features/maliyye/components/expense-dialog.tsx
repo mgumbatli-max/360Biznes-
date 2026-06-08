@@ -13,13 +13,23 @@ import { toast } from "sonner";
 import { saveExpense } from "../actions";
 
 type CategoryOpt = { id: number; ad: string };
+type HesabOpt = { id: string; ad: string; nov: string };
 
-export function ExpenseDialog({ categories }: { categories: CategoryOpt[] }) {
+export function ExpenseDialog({
+  categories,
+  hesablar = [],
+}: {
+  categories: CategoryOpt[];
+  hesablar?: HesabOpt[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [kateqoriyaId, setKateqoriyaId] = useState<string>("");
+  const [hesabId, setHesabId] = useState<string>(hesablar[0]?.id ?? "");
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [tarixVal, setTarixVal] = useState<string>(todayStr);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -74,9 +84,17 @@ export function ExpenseDialog({ categories }: { categories: CategoryOpt[] }) {
                 name="tarix"
                 type="date"
                 required
-                defaultValue={new Date().toISOString().slice(0, 10)}
+                value={tarixVal}
+                max={todayStr}
+                onChange={(e) => setTarixVal(e.target.value)}
+                className={tarixVal !== todayStr ? "border-amber-500/60 ring-1 ring-amber-500/20" : ""}
                 disabled={pending}
               />
+              {tarixVal !== todayStr && (
+                <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                  ⚠ Köhnə tarix — «tarix.geri» icazəsi tələb olunur
+                </p>
+              )}
             </div>
           </div>
 
@@ -114,6 +132,35 @@ export function ExpenseDialog({ categories }: { categories: CategoryOpt[] }) {
             <Label htmlFor="qebz_nomresi">Qəbz nömrəsi (istəyə bağlı)</Label>
             <Input id="qebz_nomresi" name="qebz_nomresi" maxLength={50} disabled={pending} />
           </div>
+
+          {/* Hesab/kassa seçimi — VACİB:
+              Hesab seçilərsə, kassa qaliqı avtomatik azalır + maliyyə əməliyyatı qeydə alınır.
+              Boş qoyularsa yalnız xərc qeydi yaranır (yalnız hesabat üçün, balans dəyişmir). */}
+          {hesablar.length > 0 && (
+            <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
+              <Label htmlFor="hesab_id" className="text-xs">
+                Hansı kassa / hesabdan?
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                  (seçilərsə qaliq azalacaq)
+                </span>
+              </Label>
+              <select
+                id="hesab_id"
+                name="hesab_id"
+                value={hesabId}
+                onChange={(e) => setHesabId(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                disabled={pending}
+              >
+                <option value="">— Yalnız qeyd kimi (balansa təsirsiz) —</option>
+                {hesablar.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.ad} ({h.nov})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>İmtina</Button>

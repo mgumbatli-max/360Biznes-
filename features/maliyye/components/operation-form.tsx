@@ -33,8 +33,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/utils";
-import { saveQuickOperation } from "../actions";
+import { saveQuickOperation, payAllOpenInvoices, applyAdvanceToInvoice, paySupplierAllOpen, paySupplierInvoice } from "../actions";
 import { KIND_META, XERC_KATEQORIYALARI } from "./quick-op-dialog";
+import { getCustomerOpenInvoicesAction, type OpenInvoice } from "../customer-invoices-action";
+import { getSupplierOpenPurchasesAction, type OpenPurchase } from "../supplier-invoices-action";
+import { Layers } from "lucide-react";
+import { ContactContextPanel } from "@/features/elaqe/components/contact-context-panel";
 
 type EntityOpt = { id: string; ad: string };
 
@@ -48,7 +52,8 @@ type Props = {
 };
 
 const TAB_ORDER: { kod: string; label: string; Icon: LucideIcon }[] = [
-  { kod: "qaime",            label: "Qaimə",              Icon: FileText },
+  { kod: "qaime",            label: "Qaimə (müştəri)",    Icon: FileText },
+  { kod: "alis_odenis",      label: "Alış ödənişi",       Icon: ShoppingBag },
   { kod: "xercler",          label: "Xərclər",            Icon: ShoppingBag },
   { kod: "maas",             label: "Əməkhaqqı ödənişi",  Icon: BadgeDollarSign },
   { kod: "avans",            label: "Avans",              Icon: HandHelping },
@@ -99,6 +104,20 @@ export function OperationForm({ initialTip, hesablar, iscilier, kontragentler, o
   // File attachments (queued in memory; uploaded after submit when operation id is known)
   const [files, setFiles] = useState<File[]>([]);
 
+  // ── Qaimə tipi üçün — müştəri açıq sənədləri
+  const [customerInvoices, setCustomerInvoices] = useState<OpenInvoice[]>([]);
+  const [customerAvans, setCustomerAvans] = useState<number>(0);
+  const [customerTotalOpen, setCustomerTotalOpen] = useState<number>(0);
+  const [selectedQaimeId, setSelectedQaimeId] = useState<string>("");
+  const [payMode, setPayMode] = useState<"specific" | "fifo" | "advance">("fifo");
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+
+  // ── Alış ödənişi (təchizatçı) üçün — açıq alış sənədləri
+  const [supplierPurchases, setSupplierPurchases] = useState<OpenPurchase[]>([]);
+  const [supplierTotalOpen, setSupplierTotalOpen] = useState<number>(0);
+  const [selectedAlishId, setSelectedAlishId] = useState<string>("");
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
+
   // Recurring controls
   const [recurOn, setRecurOn] = useState(false);
   const [recurTezlik, setRecurTezlik] = useState("monthly");
@@ -112,6 +131,66 @@ export function OperationForm({ initialTip, hesablar, iscilier, kontragentler, o
   useEffect(() => {
     setError(null);
   }, [tip]);
+
+  // Qaimə tipi + müştəri seçilibsə açıq sənədləri yüklə
+  useEffect(() => {
+    if (tip !== "qaime" || !kontragentId) {
+      setCustomerInvoices([]);
+      setCustomerAvans(0);
+      setCustomerTotalOpen(0);
+      setSelectedQaimeId("");
+      return;
+    }
+    let cancelled = false;
+    setLoadingInvoices(true);
+    getCustomerOpenInvoicesAction(kontragentId)
+      .then((data) => {
+        if (cancelled) return;
+        setCustomerInvoices(data.invoices);
+        setCustomerAvans(data.avans);
+        setCustomerTotalOpen(data.cemi_qaliq);
+        if (data.invoices.length > 0) {
+          setSelectedQaimeId(data.invoices[0].id);
+        } else {
+          setSelectedQaimeId("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInvoices(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tip, kontragentId]);
+
+  // Alış ödənişi tipi + təchizatçı seçilibsə açıq alış sənədləri
+  useEffect(() => {
+    if (tip !== "alis_odenis" || !kontragentId) {
+      setSupplierPurchases([]);
+      setSupplierTotalOpen(0);
+      setSelectedAlishId("");
+      return;
+    }
+    let cancelled = false;
+    setLoadingPurchases(true);
+    getSupplierOpenPurchasesAction(kontragentId)
+      .then((data) => {
+        if (cancelled) return;
+        setSupplierPurchases(data.invoices);
+        setSupplierTotalOpen(data.cemi_qaliq);
+        if (data.invoices.length > 0) {
+          setSelectedAlishId(data.invoices[0].id);
+        } else {
+          setSelectedAlishId("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingPurchases(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tip, kontragentId]);
 
   // Live balance fetch when account changes
   useEffect(() => {
@@ -190,6 +269,75 @@ export function OperationForm({ initialTip, hesablar, iscilier, kontragentler, o
     }
 
     startTransition(async () => {
+      // Alış ödənişi tipində — təchizatçı paterni
+      if (tip === "alis_odenis" && kontragentId) {
+        if (payMode === "fifo" && supplierPurchases.length > 0) {
+          const fifoFd = new FormData();
+          fifoFd.set("techizatci_id", kontragentId);
+          fifoFd.set("mebleg", mebleg);
+          if (hesabId) fifoFd.set("hesab_id", hesabId);
+          if (qeyd) fifoFd.set("qeyd", qeyd);
+          const r = await paySupplierAllOpen(fifoFd);
+          if (!r.ok) { setError(r.error); toast.error(r.error); return; }
+          toast.success(`${r.closed} alış sənədi tam, ${r.partial} qismən bağlandı`);
+          if (onSaved) onSaved(); else router.push("/maliyye/emeliyyat");
+          return;
+        }
+        // specific mode
+        if (selectedAlishId) {
+          const sf = new FormData();
+          sf.set("techizatci_id", kontragentId);
+          sf.set("alish_id", selectedAlishId);
+          sf.set("mebleg", mebleg);
+          if (hesabId) sf.set("hesab_id", hesabId);
+          if (qeyd) sf.set("qeyd", qeyd);
+          const r = await paySupplierInvoice(sf);
+          if (!r.ok) { setError(r.error); toast.error(r.error); return; }
+          toast.success(r.message ?? "Ödəniş edildi");
+          if (onSaved) onSaved(); else router.push("/maliyye/emeliyyat");
+          return;
+        }
+      }
+
+      // Qaimə tipində ödəniş rejiminə görə fərqli action çağırılır
+      if (tip === "qaime" && kontragentId) {
+        if (payMode === "advance") {
+          if (!selectedQaimeId) {
+            setError("Avans tətbiqi üçün sənəd seçin");
+            toast.error("Avans tətbiqi üçün sənəd seçin");
+            return;
+          }
+          const advFd = new FormData();
+          advFd.set("musteri_id", kontragentId);
+          advFd.set("qaime_id", selectedQaimeId);
+          advFd.set("mebleg", mebleg);
+          const r = await applyAdvanceToInvoice(advFd);
+          if (!r.ok) { setError(r.error); toast.error(r.error); return; }
+          toast.success(r.message ?? "Avans tətbiq edildi");
+          if (onSaved) onSaved(); else router.push("/maliyye/emeliyyat");
+          return;
+        }
+        if (payMode === "fifo" && customerInvoices.length > 0) {
+          const fifoFd = new FormData();
+          fifoFd.set("musteri_id", kontragentId);
+          fifoFd.set("mebleg", mebleg);
+          if (hesabId) fifoFd.set("hesab_id", hesabId);
+          if (qeyd) fifoFd.set("qeyd", qeyd);
+          const r = await payAllOpenInvoices(fifoFd);
+          if (!r.ok) { setError(r.error); toast.error(r.error); return; }
+          toast.success(
+            `${r.closed} sənəd tam, ${r.partial} qismən bağlandı` +
+            (r.toAdvance > 0 ? ` · ${r.toAdvance.toFixed(2)} ₼ avans` : ""),
+          );
+          if (onSaved) onSaved(); else router.push("/maliyye/emeliyyat");
+          return;
+        }
+        // specific mode — seçilmiş sənədə bağla
+        if (selectedQaimeId) {
+          fd.set("satis_id", selectedQaimeId);
+        }
+      }
+
       const res = await saveQuickOperation(fd);
       if (!res.ok) {
         setError(res.error);
@@ -504,10 +652,273 @@ export function OperationForm({ initialTip, hesablar, iscilier, kontragentler, o
                   emptyText="Tapılmadı"
                   disabled={pending}
                 />
+                {kontragentId && (
+                  <ContactContextPanel
+                    kontragentId={kontragentId}
+                    side={tip === "alis_odenis" ? "supplier" : "customer"}
+                    compact
+                  />
+                )}
               </div>
             )}
 
-            {need.sened && (
+            {/* Qaimə tipi + müştəri seçilibsə — açıq sənədlər + ödəniş üsulu */}
+            {tip === "qaime" && kontragentId && (
+              <div className="space-y-2 rounded-lg border border-sky-300 bg-sky-50/60 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-700">
+                    <FileText className="h-3.5 w-3.5" />
+                    Müştərinin açıq qaimələri
+                  </div>
+                  <div className="text-[10.5px] text-sky-700">
+                    Cəmi qalıq: <span className="font-bold tabular-nums">{formatMoney(customerTotalOpen)}</span>
+                    {customerAvans > 0 && (
+                      <span className="ml-2">· Avans: <span className="font-bold tabular-nums">{formatMoney(customerAvans)}</span></span>
+                    )}
+                  </div>
+                </div>
+
+                {loadingInvoices ? (
+                  <div className="py-4 text-center text-xs text-muted-foreground">
+                    <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                  </div>
+                ) : customerInvoices.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-sky-300 bg-background/60 py-3 text-center text-xs text-muted-foreground">
+                    Bu müştərinin açıq qaiməsi yoxdur
+                    {customerAvans > 0 && " — avansdan tətbiq edə bilərsiniz"}
+                  </div>
+                ) : (
+                  <>
+                    {/* Mode pills */}
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPayMode("fifo")}
+                        className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                          payMode === "fifo"
+                            ? "border-emerald-500 bg-emerald-100 text-emerald-700"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Layers className="h-3 w-3" />
+                        Ardıcıl bağla (FIFO)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPayMode("specific")}
+                        className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                          payMode === "specific"
+                            ? "border-primary bg-primary/15 text-primary-light"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <FileText className="h-3 w-3" />
+                        Konkret qaiməyə
+                      </button>
+                      {customerAvans > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setPayMode("advance")}
+                          className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                            payMode === "advance"
+                              ? "border-amber-500 bg-amber-100 text-amber-700"
+                              : "border-border bg-card text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Wallet className="h-3 w-3" />
+                          Avansdan
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Sənəd siyahısı */}
+                    <div className="max-h-64 space-y-1 overflow-auto rounded-md border border-border bg-background/50 p-1">
+                      {customerInvoices.map((inv) => {
+                        const isSelected = selectedQaimeId === inv.id;
+                        const isFifo = payMode === "fifo";
+                        const ageTone =
+                          inv.gun >= 90 ? "text-rose-600" :
+                          inv.gun >= 30 ? "text-amber-600" :
+                          "text-muted-foreground";
+                        return (
+                          <label
+                            key={inv.id}
+                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2 py-2 text-xs transition ${
+                              isFifo
+                                ? "border-emerald-200 bg-emerald-50/50 cursor-default"
+                                : isSelected
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border bg-card hover:border-primary"
+                            }`}
+                            onClick={() => {
+                              if (!isFifo) {
+                                setSelectedQaimeId(inv.id);
+                                // Məbləğ avtomatik sənədin qalıqı qədər dolur
+                                setMebleg(String(inv.qalig));
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {!isFifo && (
+                                <input
+                                  type="radio"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedQaimeId(inv.id);
+                                    setMebleg(String(inv.qalig));
+                                  }}
+                                  className="accent-primary"
+                                />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-mono font-semibold truncate">#{inv.nomre}</div>
+                                <div className={`text-[10px] inline-flex items-center gap-1 ${ageTone}`}>
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {new Date(inv.tarix).toLocaleDateString("az-AZ")}
+                                  {inv.gun > 0 && ` · ${inv.gun} gün`}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="font-bold tabular-nums text-rose-600">{formatMoney(inv.qalig)}</div>
+                              {inv.odenilmis > 0 && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  {formatMoney(inv.odenilmis)} / {formatMoney(inv.son_mebleg)}
+                                </div>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <p className="text-[10px] text-sky-700/80">
+                      ⓘ {payMode === "fifo"
+                        ? "Ödəniş ən köhnə qaimədən başlayaraq sıraya tətbiq olunur. Artıq məbləğ avansa keçir."
+                        : payMode === "advance"
+                          ? "Müştərinin avansından seçilmiş qaiməyə tətbiq olunur. Kassa hərəkəti yoxdur."
+                          : "Yalnız seçilmiş qaiməyə tətbiq olunur. Qaiməni klikləyəndə məbləğ qalıq qədər avtomatik dolur."}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Alış ödənişi tipi + təchizatçı seçilibsə — açıq alış sənədləri */}
+            {tip === "alis_odenis" && kontragentId && (
+              <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50/60 p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                    <ShoppingBag className="h-3.5 w-3.5" />
+                    Açıq alış sənədləri (təchizatçıya borc)
+                  </div>
+                  <div className="text-[10.5px] text-amber-700">
+                    Cəmi qalıq: <span className="font-bold tabular-nums">{formatMoney(supplierTotalOpen)}</span>
+                  </div>
+                </div>
+
+                {loadingPurchases ? (
+                  <div className="py-4 text-center text-xs text-muted-foreground">
+                    <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                  </div>
+                ) : supplierPurchases.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-amber-300 bg-background/60 py-3 text-center text-xs text-muted-foreground">
+                    Bu təchizatçının açıq alış sənədi yoxdur
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPayMode("fifo")}
+                        className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                          payMode === "fifo"
+                            ? "border-emerald-500 bg-emerald-100 text-emerald-700"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Layers className="h-3 w-3" />
+                        Ardıcıl bağla (FIFO)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPayMode("specific")}
+                        className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                          payMode === "specific"
+                            ? "border-primary bg-primary/15 text-primary-light"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <FileText className="h-3 w-3" />
+                        Konkret sənədə
+                      </button>
+                    </div>
+
+                    <div className="max-h-64 space-y-1 overflow-auto rounded-md border border-border bg-background/50 p-1">
+                      {supplierPurchases.map((p) => {
+                        const isSelected = selectedAlishId === p.id;
+                        const isFifo = payMode === "fifo";
+                        const ageTone =
+                          p.gun >= 90 ? "text-rose-600" :
+                          p.gun >= 30 ? "text-amber-600" :
+                          "text-muted-foreground";
+                        return (
+                          <label
+                            key={p.id}
+                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2 py-2 text-xs transition ${
+                              isFifo
+                                ? "border-emerald-200 bg-emerald-50/50 cursor-default"
+                                : isSelected
+                                  ? "border-primary bg-primary/10"
+                                  : "border-border bg-card hover:border-primary"
+                            }`}
+                            onClick={() => {
+                              if (!isFifo) {
+                                setSelectedAlishId(p.id);
+                                setMebleg(String(p.qalig));
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {!isFifo && (
+                                <input
+                                  type="radio"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedAlishId(p.id);
+                                    setMebleg(String(p.qalig));
+                                  }}
+                                  className="accent-primary"
+                                />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="font-mono font-semibold truncate">#{p.nomre}</div>
+                                <div className={`text-[10px] inline-flex items-center gap-1 ${ageTone}`}>
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {new Date(p.tarix).toLocaleDateString("az-AZ")}
+                                  {p.gun > 0 && ` · ${p.gun} gün`}
+                                  {p.qaime_nomre && ` · qaimə: ${p.qaime_nomre}`}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="font-bold tabular-nums text-rose-600">{formatMoney(p.qalig)}</div>
+                              {p.odenilmis > 0 && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  {formatMoney(p.odenilmis)} / {formatMoney(p.umumi_mebleg)}
+                                </div>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {need.sened && tip !== "qaime" && tip !== "alis_odenis" && (
               <div className="space-y-2">
                 <Label htmlFor="sened_nomresi">Sənəd nömrəsi</Label>
                 <Input

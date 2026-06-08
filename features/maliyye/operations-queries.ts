@@ -13,6 +13,8 @@ export type OperationFilter = {
   to?: Date;
   min?: number;
   max?: number;
+  /** Soft-delete filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export type OperationRow = {
@@ -30,10 +32,21 @@ export type OperationRow = {
   mezenne: number;
   komissiya: number;
   hesab_ad: string | null;
+  hesab_id: string | null;
   hesab2_ad: string | null;
+  hesab2_id: string | null;
   kontragent_ad: string | null;
+  kontragent_id: string | null;
+  /** Kontragentin növü — müştəri/təchizatçı/her_ikisi (link route üçün) */
+  kontragent_nov: string | null;
   qarsi_teref: string | null;
   isci_ad: string | null;
+  isci_id: string | null;
+  satis_id: string | null;
+  satis_nomre: string | null;
+  alish_id: string | null;
+  alish_nomre: string | null;
+  servis_id: string | null;
   sened_nomresi: string | null;
   status: string;
   qeyd: string | null;
@@ -49,6 +62,9 @@ export async function getOperations(
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
     if (filter.status) where.status = filter.status;
     if (filter.yon) where.y_n = filter.yon;
     if (filter.hesab_id) {
@@ -66,10 +82,20 @@ export async function getOperations(
       if (filter.max != null) where.meblegh.lte = filter.max;
     }
     if (filter.search) {
+      const q = filter.search.trim();
       where.OR = [
-        { qeyd: { contains: filter.search, mode: "insensitive" } },
-        { sened_nomresi: { contains: filter.search, mode: "insensitive" } },
-        { qarsi_teref_ad: { contains: filter.search, mode: "insensitive" } },
+        { qeyd: { contains: q, mode: "insensitive" } },
+        { sened_nomresi: { contains: q, mode: "insensitive" } },
+        { qarsi_teref_ad: { contains: q, mode: "insensitive" } },
+        // Kontragent ad, telefon, voen
+        { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
+        { kontragentler: { telefon: { contains: q } } },
+        { kontragentler: { voen: { contains: q } } },
+        // Bağlı satış nömrəsi
+        { satis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+        // Bağlı alış nömrəsi
+        { alis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+        { alis_sifarisleri: { qaime_nomre: { contains: q, mode: "insensitive" } } },
       ];
     }
     if (filter.qrup) {
@@ -90,13 +116,15 @@ export async function getOperations(
           maliye_hesablari_finance_operations_hesab_id2Tomaliye_hesablari: {
             select: { ad: true },
           },
-          kontragentler: { select: { ad: true } },
+          kontragentler: { select: { ad: true, nov: true } },
           istifadeciler_finance_operations_isci_idToistifadeciler: {
             select: { ad_soyad: true },
           },
           istifadeciler_finance_operations_yaradan_idToistifadeciler: {
             select: { ad_soyad: true },
           },
+          satis_sifarisleri: { select: { nomre: true } },
+          alis_sifarisleri: { select: { nomre: true } },
         },
       }).catch(() => [] as never[]),
       prisma.finance_operations.count({ where }).catch(() => 0),
@@ -119,11 +147,21 @@ export async function getOperations(
         komissiya: Number(o.komissiya ?? 0),
         hesab_ad:
           o.maliye_hesablari_finance_operations_hesab_idTomaliye_hesablari?.ad ?? null,
+        hesab_id: o.hesab_id ?? null,
         hesab2_ad:
           o.maliye_hesablari_finance_operations_hesab_id2Tomaliye_hesablari?.ad ?? null,
+        hesab2_id: o.hesab_id2 ?? null,
         kontragent_ad: o.kontragentler?.ad ?? null,
+        kontragent_id: o.kontragent_id ?? null,
+        kontragent_nov: o.kontragentler?.nov ?? null,
         qarsi_teref: o.qarsi_teref_ad ?? null,
         isci_ad: o.istifadeciler_finance_operations_isci_idToistifadeciler?.ad_soyad ?? null,
+        isci_id: o.isci_id ?? null,
+        satis_id: o.satis_id ?? null,
+        satis_nomre: o.satis_sifarisleri?.nomre ?? null,
+        alish_id: o.alish_id ?? null,
+        alish_nomre: o.alis_sifarisleri?.nomre ?? null,
+        servis_id: o.servis_id ?? null,
         sened_nomresi: o.sened_nomresi ?? null,
         status: o.status ?? "aktiv",
         qeyd: o.qeyd ?? null,
@@ -155,10 +193,17 @@ export async function getOperationsSummary(filter: OperationFilter) {
       if (filter.max != null) where.meblegh.lte = filter.max;
     }
     if (filter.search) {
+      const q = filter.search.trim();
       where.OR = [
-        { qeyd: { contains: filter.search, mode: "insensitive" } },
-        { sened_nomresi: { contains: filter.search, mode: "insensitive" } },
-        { qarsi_teref_ad: { contains: filter.search, mode: "insensitive" } },
+        { qeyd: { contains: q, mode: "insensitive" } },
+        { sened_nomresi: { contains: q, mode: "insensitive" } },
+        { qarsi_teref_ad: { contains: q, mode: "insensitive" } },
+        { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
+        { kontragentler: { telefon: { contains: q } } },
+        { kontragentler: { voen: { contains: q } } },
+        { satis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+        { alis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+        { alis_sifarisleri: { qaime_nomre: { contains: q, mode: "insensitive" } } },
       ];
     }
     if (filter.qrup) where.finance_operation_types = { qrup: filter.qrup };

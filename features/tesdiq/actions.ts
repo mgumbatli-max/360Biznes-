@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -9,6 +9,15 @@ import { audit } from "@/lib/audit/log";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 type BulkResult = { ok: true; affected: number } | { ok: false; error: string };
+
+function bustTesdiqCache() {
+  try {
+    const { sahibkarId } = requireTenant();
+    revalidateTag(`nezaret:${sahibkarId}`, "max");
+  } catch {
+    // tenant yox — sessizcə keç
+  }
+}
 
 async function logTransition(telepId: number, istifadeciId: string, evvelki: string | null, yeni: string, emeliyyat: string, qeyd?: string | null) {
   try {
@@ -82,6 +91,7 @@ export async function approveRequest(id: number, note?: string): Promise<ActionR
       revalidatePath("/tesdiq");
       revalidatePath(`/tesdiq/${id}`);
       revalidatePath("/ticaret/alislar");
+      bustTesdiqCache();
       return { ok: true };
     } catch (e) {
       console.error("[approveRequest]", e);
@@ -111,13 +121,12 @@ async function propagateDocumentApproval(
         where: { id: resursId },
         data: { status: "gozlemede" },
       });
-      // Təchizatçı borcunu artır (createPurchase təsdiq-gözləyəndə skip etmişdi).
-      // Yeni model: borc = bizim təchizatçıya borcumuz (musbet).
-      if (purchase.techiazatci_id && purchase.umumi_mebleg != null) {
-        await prisma.kontragentler.update({
-          where: { id: purchase.techiazatci_id },
-          data: { borc: { increment: purchase.umumi_mebleg } },
-        });
+      // Təchizatçı borcu source-of-truth recalc — manual increment YOX.
+      // Status `gozlemede`-yə dəyişdiyi üçün calculateSupplierBalance avtomatik
+      // bu alışı qalığa əlavə edəcək.
+      if (purchase.techiazatci_id) {
+        const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+        await recalculateSupplierBalance(purchase.techiazatci_id, prisma);
       }
       return;
     }
@@ -259,6 +268,7 @@ export async function rejectRequest(id: number, reason: string): Promise<ActionR
       revalidatePath("/tesdiq");
       revalidatePath(`/tesdiq/${id}`);
       revalidatePath("/ticaret/alislar");
+      bustTesdiqCache();
       return { ok: true };
     } catch (e) {
       console.error("[rejectRequest]", e);
@@ -274,11 +284,21 @@ async function propagateDocumentReject(
   detayJson?: unknown,
 ): Promise<void> {
   try {
+    // Helper — sənəd ləğv edildikdə audit log yazır ki, müştəri "nə oldu?"
+    // sualına cavab tarixçədə olsun.
+    const writeReject = async (nov: string) => {
+      await audit("legv", nov, resursId, {
+        yeni_data: { status: "legv" },
+        sebeb: "Təsdiq sorğusu rədd edildi",
+      });
+    };
+
     if (emeliyyatNov === "alis_qaime" && resursNov === "alis_sifarisi") {
       await prisma.alis_sifarisleri.update({
         where: { id: resursId },
         data: { status: "legv" },
       });
+      await writeReject("alis_sifarisi");
       return;
     }
     if (emeliyyatNov === "satis_qaime" && resursNov === "satis_sifarisi") {
@@ -286,19 +306,17 @@ async function propagateDocumentReject(
         where: { id: resursId },
         data: { status: "legv" },
       });
+      await writeReject("satis_sifarisi");
       return;
     }
     if (emeliyyatNov === "mehsul_yaratma" && resursNov === "mehsul") {
       const detay = detayJson as { tip?: "create" | "update" } | null;
-      // create rədd: draft məhsulu sil (heç vaxt aktiv olmadı)
-      // update rədd: original məhsul dəyişməyib — heç nə etmə
       if (detay?.tip === "create") {
-        // Hard delete deyil — referans bütünlüyü üçün passiv saxla.
-        // (Əgər heç bir əlaqəli stok/satış yoxdursa təhlükəsizdir sırf passiv qoymaq)
         await prisma.mehsullar.update({
           where: { id: resursId },
           data: { aktiv: false },
         });
+        await writeReject("mehsul");
       }
       return;
     }
@@ -307,6 +325,7 @@ async function propagateDocumentReject(
         where: { id: resursId },
         data: { status: "legv" },
       });
+      await writeReject("anbar_transferi");
       return;
     }
     if (emeliyyatNov === "qaytarma" && resursNov === "qaytarma_sifarisi") {
@@ -314,10 +333,9 @@ async function propagateDocumentReject(
         where: { id: resursId },
         data: { status: "legv" },
       });
+      await writeReject("qaytarma_sifarisi");
       return;
     }
-    // xerc: rədd halında xərc qeydini silmək — yalnız istifadəçi qərarı ilə
-    // (auto-silmə kassa balansını dolanlıdıra bilər)
   } catch (e) {
     console.warn("[propagateDocumentReject] skipped:", e);
   }
@@ -344,6 +362,7 @@ export async function cancelRequest(id: number, reason?: string): Promise<Action
       });
       revalidatePath("/tesdiq");
       revalidatePath(`/tesdiq/${id}`);
+      bustTesdiqCache();
       return { ok: true };
     } catch (e) {
       console.error("[cancelRequest]", e);
@@ -397,6 +416,7 @@ export async function bulkApprove(ids: number[]): Promise<BulkResult> {
         sebeb: skippedSelf > 0 ? `Bulk təsdiq (${skippedSelf} öz sorğu skip)` : "Bulk təsdiq",
       });
       revalidatePath("/tesdiq");
+      bustTesdiqCache();
       return { ok: true, affected: result.count };
     } catch (e) {
       console.error("[bulkApprove]", e);
@@ -443,6 +463,7 @@ export async function bulkReject(ids: number[], reason: string): Promise<BulkRes
         sebeb: reason.trim(),
       });
       revalidatePath("/tesdiq");
+      bustTesdiqCache();
       return { ok: true, affected: result.count };
     } catch (e) {
       console.error("[bulkReject]", e);

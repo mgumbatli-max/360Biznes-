@@ -43,11 +43,17 @@ export type ServisListFilter = {
   filial_id?: number | null;
   marka_id?: number | null;
   kateqoriya_id?: number | null;
+  /** Soft-delete standart filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export async function getServisRequests(filter: ServisListFilter = {}): Promise<ServisRow[]> {
   return withTenant(async () => {
     const where: Prisma.servis_qeydleriWhereInput = {};
+    // SOFT-DELETE: standart filter
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") (where as Record<string, unknown>).deleted_at = null;
+    else if (rs === "silinmis") (where as Record<string, unknown>).deleted_at = { not: null };
     if (filter.status) where.status = filter.status;
     if (filter.iscisi_id) where.servis_iscisi_id = filter.iscisi_id;
     if (filter.zemanet_only) where.zemanet_var = true;

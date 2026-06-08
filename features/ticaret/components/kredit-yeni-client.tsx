@@ -63,13 +63,15 @@ export function KreditYeniClient({
 
   // Header
   const [anbarId, setAnbarId] = useState<number>(defaultAnbarId);
-  const [tarix, setTarix] = useState(new Date().toISOString().slice(0, 10));
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [tarix, setTarix] = useState(todayStr);
 
   // Lines
   const [lines, setLines] = useState<Line[]>([]);
   const [productQ, setProductQ] = useState("");
   const [productResults, setProductResults] = useState<ProductRow[]>([]);
   const [productSearching, setProductSearching] = useState(false);
+  const [productFocused, setProductFocused] = useState(false);
 
   // Credit "qeyd" details
   const [bank, setBank] = useState(BANKS[0].kod);
@@ -84,31 +86,21 @@ export function KreditYeniClient({
 
   /* ---------------- Customer search ---------------- */
   useEffect(() => {
-    if (musteriQ.trim().length < 2) {
-      setMusteriResults([]);
-      setShowCustResults(false);
-      return;
-    }
     const id = setTimeout(async () => {
       const r = await searchCustomersAction(musteriQ);
       setMusteriResults(r);
-      setShowCustResults(true);
-    }, 200);
+    }, musteriQ.trim().length === 0 ? 0 : 200);
     return () => clearTimeout(id);
   }, [musteriQ]);
 
   /* ---------------- Product search ---------------- */
   useEffect(() => {
-    if (productQ.trim().length < 2) {
-      setProductResults([]);
-      return;
-    }
     setProductSearching(true);
     const id = setTimeout(async () => {
       const r = await searchProductsAction(productQ, anbarId);
       setProductResults(r);
       setProductSearching(false);
-    }, 200);
+    }, productQ.trim().length === 0 ? 0 : 200);
     return () => clearTimeout(id);
   }, [productQ, anbarId]);
 
@@ -203,7 +195,14 @@ export function KreditYeniClient({
                 </div>
               ) : (
                 <>
-                  <Input value={musteriQ} onChange={(e) => setMusteriQ(e.target.value)} placeholder="Müştəri axtar..." className="h-9" />
+                  <Input
+                    value={musteriQ}
+                    onChange={(e) => setMusteriQ(e.target.value)}
+                    onFocus={() => setShowCustResults(true)}
+                    onBlur={() => setTimeout(() => setShowCustResults(false), 150)}
+                    placeholder="Müştəri axtar və ya seçin..."
+                    className="h-9"
+                  />
                   {showCustResults && (
                     <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[200px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
                       {musteriResults.map((c) => (
@@ -232,7 +231,18 @@ export function KreditYeniClient({
 
             <div className="space-y-1">
               <Label>Tarix</Label>
-              <Input type="date" value={tarix} onChange={(e) => setTarix(e.target.value)} className="h-9" />
+              <Input
+                type="date"
+                value={tarix}
+                max={todayStr}
+                onChange={(e) => setTarix(e.target.value)}
+                className={`h-9 ${tarix !== todayStr ? "border-amber-500/60 ring-1 ring-amber-500/20" : ""}`}
+              />
+              {tarix !== todayStr && (
+                <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                  ⚠ Köhnə tarix — «tarix.geri» icazəsi tələb olunur
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <Label>Müqavilə №</Label>
@@ -285,9 +295,16 @@ export function KreditYeniClient({
             </h3>
 
             <div className="relative">
-              <Input value={productQ} onChange={(e) => setProductQ(e.target.value)} placeholder="Məhsul axtar..." className="h-9" />
+              <Input
+                value={productQ}
+                onChange={(e) => setProductQ(e.target.value)}
+                onFocus={() => setProductFocused(true)}
+                onBlur={() => setTimeout(() => setProductFocused(false), 150)}
+                placeholder="Məhsul axtar və ya seçin..."
+                className="h-9"
+              />
               {productSearching && <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />}
-              {productResults.length > 0 && (
+              {productFocused && productResults.length > 0 && (
                 <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[260px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
                   {productResults.map((p) => (
                     <button key={p.id} type="button" onClick={() => addLine(p)} className="flex w-full items-center justify-between gap-3 border-b border-border/40 p-2 text-left text-sm hover:bg-secondary">

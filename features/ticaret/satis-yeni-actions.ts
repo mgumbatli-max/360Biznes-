@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -13,7 +13,8 @@ import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesd
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { safeAuditLog } from "@/lib/audit/safe-log";
-import { requireTicaretActionPerm } from "./access-guard";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
+import { getRiskRules } from "@/features/ayarlar/risk-rules";
 
 /**
  * Sale-date helper: if user typed only YYYY-MM-DD use parseLocalDate (local noon)
@@ -63,6 +64,15 @@ const HeaderSchema = z.object({
   odenis_nov: z.enum(["negd", "kart", "kecirme", "nisye"]).default("negd"),
   /** seçilmiş kassa/maliyye hesabı — finalize üçün */
   kassa_id: z.string().uuid().nullish(),
+  /** Ödənilən hissə hansı maliyə hesabına düşür (nağd/kart/bank) */
+  hesab_id: z.string().uuid().nullish(),
+  /**
+   * Hissəvi ödəniş: müştəri 100 AZN-lik satışa 30 AZN nağd verə bilər.
+   * - boş/null: tam ödəniş (odenis_nov=nisye olarsa, 0 borc)
+   * - 0: tam borc
+   * - 0 < N < sonMebleg: hissəvi — N kassaya/hesaba düşür, qalıq nisyəyə
+   */
+  odenilen_mebleg: z.coerce.number().min(0).nullish(),
 });
 
 const CreateSchema = HeaderSchema.extend({
@@ -99,8 +109,74 @@ export async function createOrUpdateSatisYeni(
   }
   const data = parsed.data;
 
+  // 📅 Real-time tarix məcburiyyəti — köhnə tarix yalnız `tarix.geri` icazəsi ilə.
+  const { validateOperationDate } = await import("@/lib/operation-date-guard");
+  const dateCheck = await validateOperationDate(data.tarix, { fieldLabel: "Satış tarixi" });
+  if (!dateCheck.ok) return { ok: false, error: dateCheck.error };
+  const isBackdated = dateCheck.isBackdated;
+  const backdatedDays = dateCheck.daysAgo;
+
+  // 💸 Endirim limiti enforce — qaralama olmayan satışlar üçün
+  if (!data.qaralama) {
+    const subtotal = data.lines.reduce(
+      (s, l) => s + l.miqdar * l.qiymet * (1 - l.endirim_faiz / 100),
+      0,
+    );
+    const effectivePercent = subtotal > 0
+      ? Math.min(100, Math.max(0, (data.endirim_mebleg / subtotal) * 100))
+      : 0;
+    if (effectivePercent > 0) {
+      const dc = await checkDiscountLimit(effectivePercent);
+      if (!dc.ok) {
+        return {
+          ok: false,
+          error: `Endirim limiti aşılır (${effectivePercent.toFixed(1)}% > ${dc.limit}%). ${dc.userRole ? `Rol: ${dc.userRole}` : ""} — yüksək rol və ya təsdiq tələb olunur. requestSaleApprovalAction istifadə edin.`.trim(),
+        };
+      }
+    }
+  }
+
   // 4-eyes təsdiqi: yalnız aktiv satış (qaralama yox) üçün
   const needsApproval = !data.qaralama && (await shouldRequireDocApproval("satis_qaime"));
+
+  // 📉 Maya altı (below-cost) yoxlaması — qaralama olmayan satışlar üçün
+  let mayaAltiBlocked = false;
+  let mayaAltiNeedsApproval = false;
+  const mayaAltiLines: { mehsul_id: string; satis: number; maya: number }[] = [];
+  if (!data.qaralama) {
+    try {
+      const rules = await getRiskRules();
+      if (rules.maya_alti_action !== "warn") {
+        const mehsulIds = data.lines.map((l) => l.mehsul_id);
+        const mayaMap = await withTenant(async () => {
+          const rows = await prisma.mehsullar.findMany({
+            where: { id: { in: mehsulIds } },
+            select: { id: true, alish_qiymeti: true },
+          });
+          return new Map(rows.map((r) => [r.id, Number(r.alish_qiymeti ?? 0)]));
+        });
+        for (const line of data.lines) {
+          const maya = mayaMap.get(line.mehsul_id) ?? 0;
+          const netSatis = line.qiymet * (1 - line.endirim_faiz / 100);
+          if (maya > 0 && netSatis < maya) {
+            mayaAltiLines.push({ mehsul_id: line.mehsul_id, satis: netSatis, maya });
+          }
+        }
+        if (mayaAltiLines.length > 0) {
+          if (rules.maya_alti_action === "block") mayaAltiBlocked = true;
+          else mayaAltiNeedsApproval = true;
+        }
+      }
+    } catch (e) {
+      console.error("[satis-yeni maya-altı check]", e);
+    }
+  }
+  if (mayaAltiBlocked) {
+    return {
+      ok: false,
+      error: `Maya altı satış qadağandır. ${mayaAltiLines.length} sətir maya qiymətindən aşağıdır.`,
+    };
+  }
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -114,7 +190,8 @@ export async function createOrUpdateSatisYeni(
         const afterDiscount = Math.max(0, umumi - data.endirim_mebleg);
         const vat = afterDiscount * (data.vat_faiz / 100);
         const sonMebleg = afterDiscount + vat + data.catdirma_xerc;
-        const initialStatus = data.qaralama ? "qaralama" : needsApproval ? "tesdiq_gozleyir" : "yeni";
+        const effectiveNeedsApproval = needsApproval || mayaAltiNeedsApproval;
+        const initialStatus = data.qaralama ? "qaralama" : effectiveNeedsApproval ? "tesdiq_gozleyir" : "yeni";
 
         // Embed meta in qeyd as a JSON block + plain notes
         const meta = {
@@ -140,10 +217,10 @@ export async function createOrUpdateSatisYeni(
           });
           if (!existing) throw new Error("Qaralama tapılmadı");
           if (existing.sahibkar_id !== sahibkarId) throw new Error("İcazə yoxdur");
-          // Wipe old lines and bron
-          await tx.satis_sifaris_satirlari.deleteMany({ where: { sifaris_id: existing.id } });
+          // Wipe old lines and bron — explicit sahibkar_id qoruması
+          await tx.satis_sifaris_satirlari.deleteMany({ where: { sahibkar_id: sahibkarId, sifaris_id: existing.id } });
           await tx.stok_bron.deleteMany({
-            where: { satis_id: existing.id, status: "aktiv" },
+            where: { sahibkar_id: sahibkarId, satis_id: existing.id, status: "aktiv" },
           });
           await tx.satis_sifarisleri.update({
             where: { id: existing.id },
@@ -234,7 +311,7 @@ export async function createOrUpdateSatisYeni(
         /* finalize edilir (changeSaleStatus action).              */
         /* ====================================================== */
         const affectedMehsulIds: string[] = [];
-        if (!data.qaralama && !needsApproval) {
+        if (!data.qaralama && !effectiveNeedsApproval) {
           // 1. Stock decrement + anbar_hereketleri (mexaric) per line
           for (const line of data.lines) {
             // Atomic check-and-decrement: race-safe, refuse if insufficient
@@ -263,89 +340,129 @@ export async function createOrUpdateSatisYeni(
             affectedMehsulIds.push(line.mehsul_id);
           }
 
-          // 2. Apply payment method side-effects (kassa/finance vs borc)
-          const isCashOrCard = data.odenis_nov !== "nisye";
-          if (isCashOrCard && sonMebleg > 0) {
-            // (a) Persist payment metadata on the sale itself
+          // 2. HYBRID payment məntiqi:
+          //    - tam ödəniş: odenilen >= sonMebleg → status=tamamlandi
+          //    - tam borc: odenilen=0 (və ya kassa yoxdursa) → status=yeni, nisyə
+          //    - hissəvi: 0 < odenilen < sonMebleg → status=yeni, kassaya odenilen,
+          //      qalıq borca; odenis_nov="nisye" (FIFO ilə bağlana bilsin)
+          if (sonMebleg > 0) {
+            const odenilenRaw = data.odenilen_mebleg;
+            // Defaultlar: nisyə-də 0; nağd/kart/köçürmədə tam
+            const defaultOdenilen = data.odenis_nov === "nisye" ? 0 : sonMebleg;
+            const odenilen = Math.max(0, Math.min(sonMebleg,
+              odenilenRaw == null ? defaultOdenilen : Number(odenilenRaw),
+            ));
+            const isFullPaid = odenilen >= sonMebleg - 0.001;
+            const isPartial = odenilen > 0 && !isFullPaid;
+            // Hissəvi və ya tam borc → odenis_nov="nisye" (FIFO ilə bağlana bilsin)
+            const finalOdenisNov = isFullPaid ? data.odenis_nov : "nisye";
+            const finalStatus = isFullPaid ? "tamamlandi" : "yeni";
+
             await tx.satis_sifarisleri.update({
               where: { id: saleId },
               data: {
-                odenis_nov: data.odenis_nov,
+                odenis_nov: finalOdenisNov,
                 kassa_id: data.kassa_id ?? null,
-                odenilmis: new Prisma.Decimal(sonMebleg),
-                status: "tamamlandi",
+                odenilmis: new Prisma.Decimal(odenilen.toFixed(2)),
+                status: finalStatus,
               },
             });
-            // (b) Kassa emeliyyatı (if cash register selected)
-            if (data.kassa_id) {
+
+            // Kassa/hesab əməliyyatı — yalnız ödənilən hissə üçün
+            if (odenilen > 0 && data.kassa_id) {
               try {
                 await tx.kassa_emeliyyatlari.create({
                   data: {
                     sahibkar_id: sahibkarId,
                     kassa_id: data.kassa_id,
                     emeliyyat_nov: "satis",
-                    odenis_nov: data.odenis_nov,
-                    mebleg: new Prisma.Decimal(sonMebleg),
+                    odenis_nov: data.odenis_nov === "nisye" ? "negd" : data.odenis_nov,
+                    mebleg: new Prisma.Decimal(odenilen.toFixed(2)),
                     ref_nov: "satis_sifarisi",
                     ref_id: saleId,
                     istifadeci_id: istifadeciId,
-                    qeyd: `Satış #${nomre}`,
+                    qeyd: isPartial
+                      ? `Satış #${nomre} — hissəvi (${odenilen.toFixed(2)} / ${sonMebleg.toFixed(2)})`
+                      : `Satış #${nomre}`,
                   },
                 });
               } catch (e) {
                 console.warn("[createOrUpdateSatisYeni] kassa_emeliyyati skipped:", e);
               }
-            }
-            // (c) finance_operations — "qaime" income (best-effort, won't rollback)
-            try {
-              let type = await tx.finance_operation_types
-                .findUnique({ where: { kod: "qaime" } })
-                .catch(() => null);
-              if (!type) {
-                type = await tx.finance_operation_types.create({
-                  data: { kod: "qaime", ad: "Qaimə", qrup: "qaime", y_n: "daxil", link_satish: true },
-                });
+
+              // finance_operations — ödənilən hissə daxil + hesab balansı sinxron
+              try {
+                let type = await tx.finance_operation_types
+                  .findUnique({ where: { kod: "qaime" } })
+                  .catch(() => null);
+                if (!type) {
+                  type = await tx.finance_operation_types.create({
+                    data: { kod: "qaime", ad: "Qaimə", qrup: "qaime", y_n: "daxil", link_satish: true },
+                  });
+                }
+                if (type) {
+                  // Hesab seçimi prioriteti:
+                  // 1) İstifadəçi formada konkret hesab seçibsə — o
+                  // 2) POS kassasının bağlı olduğu maliye hesabı (varsa)
+                  // 3) Ödəniş növünə görə default (nağd/kart/bank)
+                  let hesabIdForOp: string | null = data.hesab_id ?? null;
+                  if (!hesabIdForOp && data.kassa_id) {
+                    const kassaRow = await tx.kassalar.findFirst({
+                      where: { id: data.kassa_id, sahibkar_id: sahibkarId },
+                      select: { maliye_hesab_id: true },
+                    });
+                    hesabIdForOp = kassaRow?.maliye_hesab_id ?? null;
+                  }
+                  if (!hesabIdForOp) {
+                    const fallbackNov =
+                      data.odenis_nov === "kart" ? "kart" :
+                      data.odenis_nov === "kecirme" ? "bank" : "negd";
+                    const def = await tx.maliye_hesablari.findFirst({
+                      where: { sahibkar_id: sahibkarId, aktiv: true, nov: fallbackNov },
+                      orderBy: { yaradildi: "asc" },
+                      select: { id: true },
+                    });
+                    hesabIdForOp = def?.id ?? null;
+                  }
+                  await tx.finance_operations.create({
+                    data: {
+                      sahibkar_id: sahibkarId,
+                      type_id: type.id,
+                      type_kod: type.kod,
+                      y_n: "daxil",
+                      tarix: parseSaleDate(data.tarix),
+                      meblegh: new Prisma.Decimal(odenilen.toFixed(2)),
+                      valyuta: "AZN",
+                      mezenne: 1,
+                      azn_meblegh: new Prisma.Decimal(odenilen.toFixed(2)),
+                      hesab_id: hesabIdForOp,
+                      kontragent_id: data.musteri_id ?? null,
+                      satis_id: saleId,
+                      sened_nomresi: nomre,
+                      qeyd: isPartial
+                        ? `Satış #${nomre} hissəvi (qalıq: ${(sonMebleg - odenilen).toFixed(2)} ₼ borc)`
+                        : `Satış #${nomre} — ${data.odenis_nov}`,
+                      yaradan_id: istifadeciId,
+                    },
+                  });
+                  // Source-of-truth-dan hesab qaliqını yenilə
+                  if (hesabIdForOp) {
+                    const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+                    await recalculateAccountBalance(hesabIdForOp, tx);
+                  }
+                }
+              } catch (e) {
+                console.warn("[createOrUpdateSatisYeni] finance_operations skipped:", e);
               }
-              if (type) {
-                await tx.finance_operations.create({
-                  data: {
-                    sahibkar_id: sahibkarId,
-                    type_id: type.id,
-                    type_kod: type.kod,
-                    y_n: "daxil",
-                    tarix: parseSaleDate(data.tarix),
-                    meblegh: new Prisma.Decimal(sonMebleg),
-                    valyuta: "AZN",
-                    mezenne: 1,
-                    azn_meblegh: new Prisma.Decimal(sonMebleg),
-                    kontragent_id: data.musteri_id ?? null,
-                    satis_id: saleId,
-                    sened_nomresi: nomre,
-                    qeyd: `Satış #${nomre} — ${data.odenis_nov}`,
-                    yaradan_id: istifadeciId,
-                  },
-                });
-              }
-            } catch (e) {
-              console.warn("[createOrUpdateSatisYeni] finance_operations skipped:", e);
             }
-          } else if (data.odenis_nov === "nisye" && sonMebleg > 0) {
-            // Borc — increment kontragent.borc, keep status=yeni / odenilmis=0
-            await tx.satis_sifarisleri.update({
-              where: { id: saleId },
-              data: {
-                odenis_nov: "borc",
-                odenilmis: new Prisma.Decimal(0),
-                status: "yeni",
-              },
-            });
-            if (data.musteri_id) {
-              // Satış nisyə → müştəri bizə borclu (alacaq artır)
-              await tx.kontragentler.update({
-                where: { id: data.musteri_id },
-                data: { alacaq: { increment: new Prisma.Decimal(sonMebleg) } },
-              });
-            }
+          }
+
+          // Müştəri balansını yenidən hesabla — istənilən ödəniş növündə
+          // (qaralama -> aktiv keçidi, nisyə yaradılması, redaktə zamanı
+          // ödəniş növü dəyişikliyi). Müştəri varsa, balans drift olmasın.
+          if (data.musteri_id) {
+            const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+            await recalculateCustomerBalance(data.musteri_id, tx);
           }
 
           // 3. Audit log — outbox-safe (transaksiya bitdikdən sonra çağırılır,
@@ -361,7 +478,11 @@ export async function createOrUpdateSatisYeni(
               son_mebleg: sonMebleg,
               odenis_nov: data.odenis_nov,
               lines: data.lines.length,
+              ...(isBackdated ? { backdated: true, backdated_days: backdatedDays } : {}),
             },
+            sebeb: isBackdated
+              ? `Köhnə tarixlə satış (${backdatedDays} gün əvvəl)`
+              : undefined,
             status: "ugur",
           });
         }
@@ -375,7 +496,8 @@ export async function createOrUpdateSatisYeni(
       }
 
       // 5. Təsdiq tələbi yarat — yalnız yeni satışlar (qaralama yox + təsdiq aktiv)
-      if (needsApproval) {
+      const effectiveApprovalNeeded = needsApproval || mayaAltiNeedsApproval;
+      if (effectiveApprovalNeeded) {
         const sonMebleg = await prisma.satis_sifarisleri.findUnique({
           where: { id: result.id },
           select: { son_mebleg: true },
@@ -385,14 +507,17 @@ export async function createOrUpdateSatisYeni(
           emeliyyat_nov: "satis_qaime",
           resurs_nov: "satis_sifarisi",
           resurs_id: result.id,
-          basliq: `Satış qaiməsi ${result.nomre}`,
-          risk_sebeb: "Satış qaiməsi yaradanda təsdiq tələb olunur",
+          basliq: `Satış qaiməsi ${result.nomre}${mayaAltiNeedsApproval ? " — maya altı" : ""}`,
+          risk_sebeb: mayaAltiNeedsApproval
+            ? `Maya altı satış: ${mayaAltiLines.length} sətir maya qiymətindən aşağıdır`
+            : "Satış qaiməsi yaradanda təsdiq tələb olunur",
           mebleg,
-          prioritet: mebleg > 5000 ? "yuxsek" : "orta",
+          prioritet: mayaAltiNeedsApproval || mebleg > 5000 ? "yuxsek" : "orta",
           detay_json: {
             line_count: data.lines.length,
             musteri_id: data.musteri_id ?? null,
             odenis_nov: data.odenis_nov,
+            maya_alti_lines: mayaAltiLines,
           },
         });
       }
@@ -402,7 +527,11 @@ export async function createOrUpdateSatisYeni(
       revalidatePath("/ticaret");
       revalidatePath("/anbar");
       revalidatePath("/xeberdarliqlar");
-      if (needsApproval) revalidatePath("/tesdiq");
+      if (effectiveApprovalNeeded) revalidatePath("/tesdiq");
+      // Dashboard cache invalidate
+      revalidateTag(`dashboard:${sahibkarId}`, "max");
+      revalidateTag(`stok:${sahibkarId}`, "max");
+      bustTicaretCache();
 
       // Yeni satış (B2B sənəd) stoku azalır — kanal-larına sync
       try {
@@ -417,12 +546,11 @@ export async function createOrUpdateSatisYeni(
         satis_id: result.id,
         nomre: result.nomre,
         qaralama: data.qaralama,
-        pending_approval: needsApproval,
+        pending_approval: needsApproval || mayaAltiNeedsApproval,
       };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Xəta";
-      console.error("[createOrUpdateSatisYeni]", e);
-      return { ok: false, error: msg };
+      const { logAndFriendly } = await import("@/lib/error/user-message");
+      return { ok: false, error: logAndFriendly("createOrUpdateSatisYeni", e, "Satış yaradılmadı") };
     }
   });
 }
@@ -433,6 +561,9 @@ export async function saveSatisSablon(
   ad: string,
   payload: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  // İcazə: satış şablonu yarat — `satis.yarat` və ya `satis.idare`
+  const permCheck = await requireTicaretActionPerm(["satis.yarat", "satis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!ad.trim() || ad.length > 100) return { ok: false, error: "Şablon adı yanlışdır" };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
@@ -463,7 +594,9 @@ export async function saveSatisSablon(
   });
 }
 
-export async function deleteSatisSablon(id: number): Promise<{ ok: boolean }> {
+export async function deleteSatisSablon(id: number): Promise<{ ok: boolean; error?: string }> {
+  const permCheck = await requireTicaretActionPerm(["satis.idare", "satis.yarat"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     await prisma.ayarlar.deleteMany({
@@ -527,13 +660,14 @@ export async function validateCartStock(
       const k = `${it.mehsul_id}::${it.anbar_id}`;
       totalsByKey.set(k, (totalsByKey.get(k) ?? 0) + Number(it.miqdar || 0));
     }
+    const { sahibkarId } = requireTenant();
     const keys = Array.from(totalsByKey.keys());
-    // Fetch one stok row per unique pair in parallel.
+    // Fetch one stok row per unique pair in parallel — explicit sahibkar_id qoruması.
     const stockRows = await Promise.all(
       keys.map((k) => {
         const [mehsul_id, anbar_id] = k.split("::");
         return prisma.stok.findFirst({
-          where: { mehsul_id, anbar_id: Number(anbar_id) },
+          where: { sahibkar_id: sahibkarId, mehsul_id, anbar_id: Number(anbar_id) },
           select: { miqdar: true },
         });
       }),
@@ -588,18 +722,47 @@ export async function getCustomerCreditStatus(
 ): Promise<CustomerCreditStatus | null> {
   if (!musteriId) return null;
   return withTenant(async () => {
-    const c = await prisma.kontragentler.findUnique({
-      where: { id: musteriId },
-      select: { id: true, ad: true, borc: true, borc_limiti: true },
+    const { sahibkarId } = requireTenant();
+    // Yeni model üzrə:
+    //   alacaq = müştəri bizdən almalı (debitor — müştərinin bizə borcu)
+    //   borc   = bizim təchizatçıya verməli (kreditor)
+    // Köhnə model üzrə isə `borc` müsbət/mənfi qarışıq idi — legacy fallback.
+    const c = await prisma.kontragentler.findFirst({
+      where: { id: musteriId, sahibkar_id: sahibkarId },
+      select: { id: true, ad: true, borc: true, alacaq: true, borc_limiti: true },
     });
     if (!c) return null;
-    const borc = Number(c.borc ?? 0);
+
+    // Müştərinin bizə qalan borcu — əsas mənbə: alacaq (yeni model).
+    // Əgər alacaq 0-dırsa, faktiki açıq satışlardan hesabla (data uyğunlaşdırma üçün).
+    const alacaq = Number(c.alacaq ?? 0);
+    const legacyBorc = Math.max(0, Number(c.borc ?? 0));
+
+    // Cari açıq borcu satışlardan hesabla — alacaq field-i sinxron olmasa belə düzgün cavab versin.
+    const openAgg = await prisma.$queryRaw<{ total: number | string | null }[]>(
+      Prisma.sql`
+        SELECT COALESCE(SUM(son_mebleg - COALESCE(odenilmis, 0)), 0)::float AS total
+          FROM satis_sifarisleri
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND musteri_id = ${c.id}::uuid
+           AND status <> 'legv'
+           AND COALESCE(qaralama, false) = false
+           AND odenis_nov IN ('nisye', 'borc')
+           AND son_mebleg - COALESCE(odenilmis, 0) > 0
+      `,
+    );
+    const openFromSales = Number(openAgg[0]?.total ?? 0);
+
+    // Ən etibarlı dəyər: alacaq vs satışlardan hesablanan açıq borc — daha böyüyünü götür
+    // (data drift halında belə doğru göstərilir).
+    const borc = Math.max(alacaq, legacyBorc, openFromSales);
+
     const limit =
       c.borc_limiti === null || c.borc_limiti === undefined
         ? null
         : Number(c.borc_limiti);
 
-    // Overdue exposure: sum unpaid balance on sales older than 90 days.
+    // Overdue exposure: sum unpaid balance on sales older than 90 days
     const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const overdueAgg = await prisma.$queryRaw<
       { total: number | string | null; cnt: number | string | null }[]
@@ -607,9 +770,11 @@ export async function getCustomerCreditStatus(
         SELECT COALESCE(SUM(son_mebleg - COALESCE(odenilmis, 0)), 0)::float AS total,
                COUNT(*)::int AS cnt
           FROM satis_sifarisleri
-         WHERE musteri_id = ${c.id}::uuid
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND musteri_id = ${c.id}::uuid
            AND status <> 'legv'
            AND COALESCE(qaralama, false) = false
+           AND odenis_nov IN ('nisye', 'borc')
            AND tarix < ${cutoff}
            AND son_mebleg - COALESCE(odenilmis, 0) > 0
     `);
@@ -669,6 +834,9 @@ export async function requestSaleApprovalAction(
   saleId: string,
   effectivePercent: number,
 ): Promise<{ ok: true; telep_id: number } | { ok: false; error: string }> {
+  // İcazə: təsdiq sorğusu yarat — satışı yarada bilən hər kəs bunu da edə bilər
+  const permCheck = await requireTicaretActionPerm(["satis.yarat", "satis.duzelt", "satis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     const sale = await prisma.satis_sifarisleri.findFirst({

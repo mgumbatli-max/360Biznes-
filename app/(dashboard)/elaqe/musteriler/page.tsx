@@ -8,6 +8,7 @@ import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
 import { ContactsTable } from "@/features/elaqe/components/contacts-table";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { SegmentTabs } from "@/features/elaqe/components/segment-tabs";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 import {
@@ -166,8 +167,13 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
 
   const sp = await searchParams;
   const f = (sp.filter ?? "").toLowerCase();
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const filter: ContactFilter = {
     nov: "musteri",
+    recordStatus,
     search: sp.q,
     borc: (sp.borc as ContactFilter["borc"]) ?? (f === "borclu" ? "var" : "any"),
     qiymet_tipi: sp.qiymet,
@@ -200,6 +206,7 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <SavedUrlFiltersChip storageKey="musteriler" basePath="/elaqe/musteriler" />
           <Link href="/ayarlar/inteqrasiya?key=musteri">
             <Button variant="outline" size="sm">

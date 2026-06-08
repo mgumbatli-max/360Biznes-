@@ -9,6 +9,8 @@ import {
   getSalespersonCommissions,
   type SalespersonCommission,
 } from "./commission-queries";
+import { audit } from "@/lib/audit/log";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
 const TierSchema = z.object({
   from: z.coerce.number().min(0),
@@ -30,6 +32,8 @@ const ACAR_BONUS_TIER = "commission_bonus_tier";
 export async function saveCommissionRules(
   input: z.input<typeof SaveSchema>,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const permCheck = await requireTicaretActionPerm(["komissiya.idare", "ayarlar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = SaveSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış format" };
@@ -63,6 +67,13 @@ export async function saveCommissionRules(
     });
     revalidatePath("/ayarlar/komissiya-qaydalari");
     revalidatePath("/hesabatlar/emekdas");
+    bustTicaretCache();
+    try {
+      await audit("yenile", "commission_rules", null, {
+        yeni_data: { tier_count: sorted.length, bonus_on_target: parsed.data.bonus_on_target, tiers: sorted },
+        sebeb: "Komissiya qaydaları yeniləndi",
+      });
+    } catch { /* non-fatal */ }
     return { ok: true };
   });
 }
@@ -81,6 +92,8 @@ export async function calculateCommission(
   | { ok: true; updated: number; skipped: number; rows: SalespersonCommission[] }
   | { ok: false; error: string }
 > {
+  const permCheck = await requireTicaretActionPerm(["komissiya.idare", "maas.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     return { ok: false, error: "İl yanlışdır" };
   }
@@ -126,6 +139,13 @@ export async function calculateCommission(
     }
     revalidatePath("/iscilier");
     revalidatePath("/hesabatlar/emekdas");
+    bustTicaretCache();
+    try {
+      await audit("hesabla", "commission", null, {
+        yeni_data: { il: year, ay: month, updated, skipped, total_rows: rows.length },
+        sebeb: `Komissiya hesablandı: ${year}-${String(month).padStart(2, "0")}`,
+      });
+    } catch { /* non-fatal */ }
     return { ok: true, updated, skipped, rows };
   });
 }

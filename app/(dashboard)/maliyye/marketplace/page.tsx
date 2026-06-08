@@ -4,11 +4,14 @@ import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { MaliyyeSubNav } from "@/components/maliyye-subnav";
 import { MarketplaceTable } from "@/features/maliyye/components/marketplace-table";
 import { MarketplaceReconcileDialog } from "@/features/maliyye/components/marketplace-reconcile-dialog";
+import { MarketplaceCommissionEditor } from "@/features/maliyye/components/marketplace-commission-editor";
 import {
   getMarketplacePayments,
   getMarketplaceStats,
   getMarketplacePlatformCards,
 } from "@/features/maliyye/marketplace-queries";
+import { getMarketplaceCommissions, PLATFORM_DEFAULTS } from "@/features/maliyye/marketplace-commission";
+import { getAccounts } from "@/features/maliyye/account-queries";
 import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Marketplace ödənişləri" };
@@ -22,7 +25,7 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 export default async function MarketplacePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const [items, stats, platformCards] = await Promise.all([
+  const [items, stats, platformCards, commissionMap, accounts] = await Promise.all([
     getMarketplacePayments({
       platforma: sp.platforma,
       status: sp.status,
@@ -31,7 +34,19 @@ export default async function MarketplacePage({ searchParams }: { searchParams: 
     }),
     getMarketplaceStats(),
     getMarketplacePlatformCards(),
+    getMarketplaceCommissions(),
+    getAccounts(),
   ]);
+
+  // Yalnız payout-a uyğun hesablar (bank, kart, marketplace, pos)
+  const accountOptions = accounts
+    .filter((a) => ["bank", "kart", "marketplace", "pos"].includes(a.nov))
+    .map((a) => ({ id: a.id, ad: a.ad, nov: a.nov }));
+
+  const commissionInitial: Record<string, number> = {};
+  for (const k of Object.keys(PLATFORM_DEFAULTS)) {
+    commissionInitial[k] = commissionMap.get(k) ?? PLATFORM_DEFAULTS[k];
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -117,7 +132,9 @@ export default async function MarketplacePage({ searchParams }: { searchParams: 
         <button type="submit" className="h-9 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground">Filtrlə</button>
       </form>
 
-      <MarketplaceTable items={items} />
+      <MarketplaceCommissionEditor initial={commissionInitial} />
+
+      <MarketplaceTable items={items} accountOptions={accountOptions} />
     </div>
   );
 }

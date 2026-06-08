@@ -20,18 +20,38 @@ import { getNezaretBadges } from "@/features/nezaret-merkezi/counts";
 
 export const metadata: Metadata = { title: "Təsdiq Mərkəzi" };
 
-const STATUS: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
-  gozleyir: { label: "Gözləyir", cls: "bg-amber-500/15 text-amber-500 border-amber-500/30", icon: Clock },
-  tesdiq:   { label: "Təsdiq",   cls: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30", icon: CheckCircle2 },
-  red:      { label: "Rədd",     cls: "bg-rose-500/15 text-rose-500 border-rose-500/30", icon: X },
-  legv:     { label: "Ləğv",     cls: "bg-secondary text-muted-foreground border-border", icon: X },
+const STATUS: Record<string, { label: string; cls: string; dotCls: string; icon: typeof CheckCircle2 }> = {
+  gozleyir: {
+    label: "Gözləyir",
+    cls: "bg-gradient-to-b from-amber-500/15 to-amber-500/[0.06] text-amber-800 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300",
+    dotCls: "bg-amber-500 animate-pulse",
+    icon: Clock,
+  },
+  tesdiq: {
+    label: "Təsdiq",
+    cls: "bg-gradient-to-b from-emerald-500/15 to-emerald-500/[0.06] text-emerald-700 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-300",
+    dotCls: "bg-emerald-500",
+    icon: CheckCircle2,
+  },
+  red: {
+    label: "Rədd",
+    cls: "bg-gradient-to-b from-rose-500/15 to-rose-500/[0.06] text-rose-700 ring-1 ring-inset ring-rose-500/20 dark:text-rose-300",
+    dotCls: "bg-rose-500",
+    icon: X,
+  },
+  legv: {
+    label: "Ləğv",
+    cls: "bg-gradient-to-b from-slate-500/15 to-slate-500/[0.06] text-slate-700 ring-1 ring-inset ring-slate-500/20 line-through decoration-slate-500/40 dark:text-slate-300",
+    dotCls: "bg-slate-500",
+    icon: X,
+  },
 };
 
 const PRIORITY_CLS: Record<string, string> = {
-  kritik: "bg-rose-500 text-white border-rose-600",
-  yuxsek: "bg-rose-500/15 text-rose-500 border-rose-500/30",
-  orta:   "bg-amber-500/15 text-amber-500 border-amber-500/30",
-  asagi:  "bg-secondary text-muted-foreground border-border",
+  kritik: "bg-gradient-to-b from-rose-600 to-rose-700 text-white ring-1 ring-inset ring-rose-700/40 shadow-md shadow-rose-500/30",
+  yuxsek: "bg-gradient-to-b from-rose-500/15 to-rose-500/[0.06] text-rose-700 ring-1 ring-inset ring-rose-500/20 dark:text-rose-300",
+  orta:   "bg-gradient-to-b from-amber-500/15 to-amber-500/[0.06] text-amber-800 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300",
+  asagi:  "bg-gradient-to-b from-slate-500/15 to-slate-500/[0.06] text-slate-700 ring-1 ring-inset ring-slate-500/20 dark:text-slate-300",
 };
 
 type TypeMeta = { label: string; icon: typeof Tag; color: string; group: "sened" | "qiymet" | "anbar" | "maliyye" | "diger" };

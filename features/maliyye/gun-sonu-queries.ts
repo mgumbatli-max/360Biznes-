@@ -26,7 +26,7 @@ export async function getGunSonuToday(): Promise<GunSonuToday> {
         _count: { _all: true },
       }),
       prisma.xercl_r.aggregate({
-        where: { tarix: { gte: today } },
+        where: { tarix: { gte: today }, legv_de: null },
         _sum: { mebleg: true },
       }),
       prisma.kassalar.aggregate({

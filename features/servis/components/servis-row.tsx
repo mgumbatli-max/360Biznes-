@@ -2,15 +2,16 @@
 
 import { useTransition } from "react";
 import Link from "next/link";
-import { Phone, ShieldCheck, ArrowRight, ExternalLink } from "lucide-react";
+import { Phone, ShieldCheck, MoreHorizontal, ExternalLink, X, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProductInline } from "@/features/anbar/components/product-inline";
 import { changeServisStatus } from "../actions";
@@ -39,8 +40,16 @@ export function ServisRowItem({ row }: { row: ServisRow }) {
     });
   }
 
+  const isCancelled = row.status === "qaytarildi" || row.status === "redd_edildi";
+
   return (
-    <tr className={`border-b border-border/30 transition hover:bg-secondary/40 ${pending && "opacity-50"}`}>
+    <tr
+      className={`border-b border-border/30 transition hover:bg-secondary/40 ${pending ? "opacity-50" : ""} ${
+        isCancelled
+          ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+          : ""
+      }`}
+    >
       <td className="px-3 py-2.5">
         <Link href={`/servis/${row.id}`} className="hover:text-primary-light">
           <div className="font-mono text-xs font-medium">{row.nomre}</div>
@@ -90,31 +99,59 @@ export function ServisRowItem({ row }: { row: ServisRow }) {
           <div className="tabular-nums text-sm font-semibold">{formatMoney(row.musteriden_alinan)}</div>
         )}
       </td>
-      <td className="px-3 py-2.5 text-right">
-        <div className="flex items-center justify-end gap-0.5">
-          <Link
-            href={`/servis/${row.id}`}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-            title="Detay"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Link>
-          {possibleNext.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="icon-sm" variant="ghost" disabled={pending} title="Növbəti mərhələ">
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {possibleNext.map((s) => (
+      <td className="px-3 py-2.5 text-right no-underline [text-decoration:none]">
+        <div className="flex items-center justify-end gap-0.5 no-underline [text-decoration:none]">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+                disabled={pending}
+                aria-label="Əməliyyatlar"
+                title="Əməliyyatlar"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                {row.nomre}
+                {isCancelled && (
+                  <span className="ml-1 rounded bg-destructive/15 px-1 py-px text-[9px] text-destructive">
+                    {row.status === "qaytarildi" ? "Qaytarıldı" : "Rədd"}
+                  </span>
+                )}
+              </DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link href={`/servis/${row.id}`} className="cursor-pointer">
+                  <ExternalLink className="h-4 w-4" />
+                  Tam detay
+                </Link>
+              </DropdownMenuItem>
+              {possibleNext
+                .filter((s) => s !== "redd_edildi" && s !== "qaytarildi")
+                .map((s) => (
                   <DropdownMenuItem key={s} onSelect={() => changeStatus(s)}>
                     → {SERVIS_STATUS_LABELS[s]?.label ?? s}
                   </DropdownMenuItem>
                 ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+              {!isCancelled && possibleNext.includes("redd_edildi") && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onSelect={() => changeStatus("redd_edildi")}>
+                    <X className="h-4 w-4" />
+                    Rədd et
+                  </DropdownMenuItem>
+                </>
+              )}
+              {!isCancelled && possibleNext.includes("qaytarildi") && (
+                <DropdownMenuItem variant="destructive" onSelect={() => changeStatus("qaytarildi")}>
+                  <Undo2 className="h-4 w-4" />
+                  Müştəriyə qaytar
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </td>
     </tr>

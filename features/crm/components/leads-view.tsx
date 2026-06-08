@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { LeadCardItem } from "./lead-card";
+import { LeadRowActions } from "./lead-row-actions";
+import { LeadStatusBadge, LeadPriorityBadge } from "./lead-status-badge";
 import { changeLeadStage } from "../actions";
 import { bulkChangeLeadStage } from "../leadler-actions";
 import { LEAD_STAGES, LEAD_PRIORITY, type LeadCard, type LeadListRow, type LeadStatus } from "../types";
@@ -21,9 +23,19 @@ type Props = {
   stages: Record<LeadStatus, LeadCard[]>;
   listRows: LeadListRow[];
   users: UserOption[];
+  canEdit?: boolean;
+  canConvert?: boolean;
+  canDelete?: boolean;
 };
 
-export function LeadsView({ stages, listRows, users }: Props) {
+export function LeadsView({
+  stages,
+  listRows,
+  users,
+  canEdit = false,
+  canConvert = false,
+  canDelete = false,
+}: Props) {
   const router = useRouter();
   const sp = useSearchParams();
   const view = (sp.get("view") as "kanban" | "list") || "kanban";
@@ -121,7 +133,7 @@ export function LeadsView({ stages, listRows, users }: Props) {
       {view === "kanban" ? (
         <KanbanView stages={stages} />
       ) : (
-        <ListView rows={listRows} />
+        <ListView rows={listRows} canEdit={canEdit} canConvert={canConvert} canDelete={canDelete} />
       )}
     </>
   );
@@ -158,7 +170,17 @@ function KanbanView({ stages }: { stages: Record<LeadStatus, LeadCard[]> }) {
   );
 }
 
-function ListView({ rows }: { rows: LeadListRow[] }) {
+function ListView({
+  rows,
+  canEdit,
+  canConvert,
+  canDelete,
+}: {
+  rows: LeadListRow[];
+  canEdit: boolean;
+  canConvert: boolean;
+  canDelete: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -261,11 +283,21 @@ function ListView({ rows }: { rows: LeadListRow[] }) {
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2">Növbəti</th>
             <th className="px-3 py-2 text-right">Tarix</th>
+            <th className="px-3 py-2 text-right w-12">Əməl</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border/40">
-          {rows.map((r) => (
-            <tr key={r.id} className="hover:bg-secondary/30">
+          {rows.map((r) => {
+            const isCancelled = r.status === "silinib" || r.status === "itirildi";
+            return (
+            <tr
+              key={r.id}
+              className={`hover:bg-secondary/30 ${
+                isCancelled
+                  ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                  : ""
+              }`}
+            >
               <td className="w-8 px-2 py-2">
                 <input
                   type="checkbox"
@@ -290,9 +322,7 @@ function ListView({ rows }: { rows: LeadListRow[] }) {
               <td className="px-3 py-2 text-muted-foreground">{r.menbe ?? "—"}</td>
               <td className="px-3 py-2 text-muted-foreground">{r.menecer_ad ?? "—"}</td>
               <td className="px-3 py-2">
-                <Badge variant="outline" className={`${LEAD_PRIORITY[r.prioritet].cls} text-[10px]`}>
-                  {LEAD_PRIORITY[r.prioritet].label}
-                </Badge>
+                <LeadPriorityBadge value={r.prioritet} />
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{r.budce > 0 ? formatMoney(r.budce) : "—"}</td>
               <td className="px-3 py-2 text-right tabular-nums">{r.ehtimal}%</td>
@@ -321,8 +351,17 @@ function ListView({ rows }: { rows: LeadListRow[] }) {
                 )}
               </td>
               <td className="px-3 py-2 text-right text-muted-foreground">{r.yaradildi ? formatDate(r.yaradildi) : "—"}</td>
+              <td className="px-3 py-2 text-right no-underline [text-decoration:none]">
+                <LeadRowActions
+                  lead={r as unknown as LeadCard}
+                  canEdit={canEdit}
+                  canConvert={canConvert}
+                  canDelete={canDelete}
+                />
+              </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

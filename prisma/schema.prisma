@@ -281,33 +281,41 @@ model alis_sifaris_satirlari {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model alis_sifarisleri {
-  id                                                       String                   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nomre                                                    String                   @unique @db.VarChar(50)
-  techiazatci_id                                           String?                  @db.Uuid
-  anbar_id                                                 Int?
-  tarix                                                    DateTime                 @default(dbgenerated("CURRENT_DATE")) @db.Date
-  status                                                   String?                  @default("gozlemede") @db.VarChar(30)
-  umumi_mebleg                                             Decimal?                 @default(0) @db.Decimal(12, 2)
-  odenilmis                                                Decimal?                 @default(0) @db.Decimal(12, 2)
-  qeyd                                                     String?
-  yaradan_id                                               String?                  @db.Uuid
-  yaradildi                                                DateTime?                @default(now()) @db.Timestamp(6)
-  yenilendi                                                DateTime?                @default(now()) @db.Timestamp(6)
-  sahibkar_id                                              String                   @db.Uuid
-  menecer_id                                               String?                  @db.Uuid
-  elave_xerc                                               Decimal?                 @default(0) @db.Decimal(12, 2)
-  xerc_qeyd                                                String?
-  qaime_nomre                                              String?                  @db.VarChar(50)
-  alis_sifaris_satirlari                                   alis_sifaris_satirlari[]
-  anbarlar                                                 anbarlar?                @relation(fields: [anbar_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  istifadeciler_alis_sifarisleri_menecer_idToistifadeciler istifadeciler?           @relation("alis_sifarisleri_menecer_idToistifadeciler", fields: [menecer_id], references: [id], onUpdate: NoAction)
-  sahibkarlar                                              sahibkarlar              @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  kontragentler                                            kontragentler?           @relation(fields: [techiazatci_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  istifadeciler_alis_sifarisleri_yaradan_idToistifadeciler istifadeciler?           @relation("alis_sifarisleri_yaradan_idToistifadeciler", fields: [yaradan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  finance_operations                                       finance_operations[]
-  sahibkar_partiya                                         sahibkar_partiya[]
-  satinalma_tovsiye                                        satinalma_tovsiye[]
-  seri_nomreler                                            seri_nomreler[]
+  id                                                        String                        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nomre                                                     String                        @unique @db.VarChar(50)
+  techiazatci_id                                            String?                       @db.Uuid
+  anbar_id                                                  Int?
+  tarix                                                     DateTime                      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  status                                                    String?                       @default("gozlemede") @db.VarChar(30)
+  umumi_mebleg                                              Decimal?                      @default(0) @db.Decimal(12, 2)
+  odenilmis                                                 Decimal?                      @default(0) @db.Decimal(12, 2)
+  qeyd                                                      String?
+  yaradan_id                                                String?                       @db.Uuid
+  yaradildi                                                 DateTime?                     @default(now()) @db.Timestamp(6)
+  yenilendi                                                 DateTime?                     @default(now()) @db.Timestamp(6)
+  sahibkar_id                                               String                        @db.Uuid
+  menecer_id                                                String?                       @db.Uuid
+  elave_xerc                                                Decimal?                      @default(0) @db.Decimal(12, 2)
+  xerc_qeyd                                                 String?
+  qaime_nomre                                               String?                       @db.VarChar(50)
+  deleted_at                                                DateTime?                     @db.Timestamp(6)
+  deleted_by                                                String?                       @db.Uuid
+  delete_reason                                             String?
+  restored_at                                               DateTime?                     @db.Timestamp(6)
+  restored_by                                               String?                       @db.Uuid
+  alis_sifaris_satirlari                                    alis_sifaris_satirlari[]
+  anbarlar                                                  anbarlar?                     @relation(fields: [anbar_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  istifadeciler_alis_sifarisleri_deleted_byToistifadeciler  istifadeciler?                @relation("alis_sifarisleri_deleted_byToistifadeciler", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  istifadeciler_alis_sifarisleri_menecer_idToistifadeciler  istifadeciler?                @relation("alis_sifarisleri_menecer_idToistifadeciler", fields: [menecer_id], references: [id], onUpdate: NoAction)
+  istifadeciler_alis_sifarisleri_restored_byToistifadeciler istifadeciler?                @relation("alis_sifarisleri_restored_byToistifadeciler", fields: [restored_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sahibkarlar                                               sahibkarlar                   @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kontragentler                                             kontragentler?                @relation(fields: [techiazatci_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  istifadeciler_alis_sifarisleri_yaradan_idToistifadeciler  istifadeciler?                @relation("alis_sifarisleri_yaradan_idToistifadeciler", fields: [yaradan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  finance_operations                                        finance_operations[]
+  finance_payment_allocations                               finance_payment_allocations[]
+  sahibkar_partiya                                          sahibkar_partiya[]
+  satinalma_tovsiye                                         satinalma_tovsiye[]
+  seri_nomreler                                             seri_nomreler[]
 
   @@index([nomre(ops: raw("gin_trgm_ops"))], map: "idx_alis_nomre_trgm", type: Gin)
   @@index([sahibkar_id], map: "idx_alis_sifarisleri_sahibkar")
@@ -356,6 +364,11 @@ model anbar_transferleri {
   yaradildi                                             DateTime?            @default(now()) @db.Timestamp(6)
   yenilendi                                             DateTime?            @default(now()) @db.Timestamp(6)
   sahibkar_id                                           String               @db.Uuid
+  deleted_at                                            DateTime?            @db.Timestamp(6)
+  deleted_by                                            String?              @db.Uuid
+  delete_reason                                         String?
+  restored_at                                           DateTime?            @db.Timestamp(6)
+  restored_by                                           String?              @db.Uuid
   anbarlar_anbar_transferleri_hedef_anbar_idToanbarlar  anbarlar             @relation("anbar_transferleri_hedef_anbar_idToanbarlar", fields: [hedef_anbar_id], references: [id], onUpdate: NoAction)
   anbarlar_anbar_transferleri_kaynak_anbar_idToanbarlar anbarlar             @relation("anbar_transferleri_kaynak_anbar_idToanbarlar", fields: [kaynak_anbar_id], references: [id], onUpdate: NoAction)
   sahibkarlar                                           sahibkarlar          @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -378,6 +391,9 @@ model anbarlar {
   aktiv                                                           Boolean?                       @default(true)
   yaradildi                                                       DateTime?                      @default(now()) @db.Timestamp(6)
   sahibkar_id                                                     String                         @db.Uuid
+  nov                                                             String                         @default("standart") @db.VarChar(20)
+  reng                                                            String?                        @db.VarChar(20)
+  aciqlamaq                                                       String?
   alis_sifarisleri                                                alis_sifarisleri[]
   anbar_hereketleri                                               anbar_hereketleri[]
   anbar_transferleri_anbar_transferleri_hedef_anbar_idToanbarlar  anbar_transferleri[]           @relation("anbar_transferleri_hedef_anbar_idToanbarlar")
@@ -385,6 +401,7 @@ model anbarlar {
   filiallar                                                       filiallar?                     @relation(fields: [filial_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   istifadeciler                                                   istifadeciler?                 @relation(fields: [mesul_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sahibkarlar                                                     sahibkarlar                    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  defekt_qeydleri                                                 defekt_qeydleri[]
   finance_operations                                              finance_operations[]
   inventarizasiyalar                                              inventarizasiyalar[]
   konsiqnasiya                                                    konsiqnasiya[]
@@ -1704,11 +1721,62 @@ model finance_internal_balances {
   yaradan_id                                                        String?        @db.Uuid
   yaradildi                                                         DateTime?      @default(now()) @db.Timestamp(6)
   istifadeciler_finance_internal_balances_isci_idToistifadeciler    istifadeciler? @relation("finance_internal_balances_isci_idToistifadeciler", fields: [isci_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  kontragentler                                                     kontragentler? @relation(fields: [kontragent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kontragentler                                                     kontragentler? @relation(fields: [kontragent_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
   sahibkarlar                                                       sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   istifadeciler_finance_internal_balances_yaradan_idToistifadeciler istifadeciler? @relation("finance_internal_balances_yaradan_idToistifadeciler", fields: [yaradan_id], references: [id], onUpdate: NoAction)
 
   @@unique([sahibkar_id, sahib_nov, isci_id, kontragent_id])
+}
+
+/// Bir ödənişin bir və ya bir neçə qaiməyə paylanmasını saxlayır.
+/// Bir finance_operations qeydi → çoxlu satış sənədinə allocation
+/// Bir satış sənədi → çoxlu allocation (qismən ödənişlər)
+model finance_payment_allocations {
+  id                 String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sahibkar_id        String             @db.Uuid
+  payment_op_id      String             @db.Uuid
+  satis_id           String?            @db.Uuid
+  alish_id           String?            @db.Uuid
+  mebleg             Decimal            @db.Decimal(14, 2)
+  qeyd               String?
+  yaradan_id         String?            @db.Uuid
+  yaradildi          DateTime?          @default(now()) @db.Timestamp(6)
+  alis_sifarisleri   alis_sifarisleri?  @relation(fields: [alish_id], references: [id], onUpdate: NoAction)
+  finance_operations finance_operations @relation(fields: [payment_op_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sahibkarlar        sahibkarlar        @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  satis_sifarisleri  satis_sifarisleri? @relation(fields: [satis_id], references: [id], onUpdate: NoAction)
+
+  @@index([payment_op_id], map: "idx_alloc_payment")
+  @@index([satis_id], map: "idx_alloc_satis")
+  @@index([alish_id], map: "idx_alloc_alish")
+  @@index([sahibkar_id], map: "idx_alloc_sahibkar")
+}
+
+model finance_recurring_rules {
+  id               String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sahibkar_id      String      @db.Uuid
+  ad               String      @db.VarChar(200)
+  type_kod         String      @db.VarChar(40)
+  y_n              String      @map("yön") @db.VarChar(15)
+  mebleg           Decimal     @db.Decimal(14, 2)
+  valyuta          String?     @default("AZN") @db.VarChar(8)
+  hesab_id         String?     @db.Uuid
+  kontragent_id    String?     @db.Uuid
+  isci_id          String?     @db.Uuid
+  expense_kateq_id Int?
+  tezlik           String      @db.VarChar(20)
+  son_icra         DateTime?   @db.Date
+  sonraki_icra     DateTime?   @db.Date
+  son_tarix        DateTime?   @db.Date
+  aktiv            Boolean     @default(true)
+  qeyd             String?
+  yaradan_id       String?     @db.Uuid
+  yaradildi        DateTime?   @default(now()) @db.Timestamp(6)
+  yenilendi        DateTime?   @default(now()) @db.Timestamp(6)
+  sahibkarlar      sahibkarlar @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([sahibkar_id, aktiv, sonraki_icra], map: "idx_recurring_sah_aktiv_next")
+  @@index([sahibkar_id], map: "idx_recurring_sah")
 }
 
 model finance_marketplace_payments {
@@ -1819,6 +1887,9 @@ model finance_operations {
   legv_sebeb                                                      String?
   yaradildi                                                       DateTime?                      @default(now()) @db.Timestamp(6)
   yenilendi                                                       DateTime?                      @default(now()) @db.Timestamp(6)
+  deleted_at                                                      DateTime?                      @db.Timestamp(6)
+  deleted_by                                                      String?                        @db.Uuid
+  delete_reason                                                   String?
   finance_approval_requests                                       finance_approval_requests[]
   finance_attachments                                             finance_attachments[]
   finance_audit_logs                                              finance_audit_logs[]
@@ -1831,6 +1902,7 @@ model finance_operations {
   finance_operation_items                                         finance_operation_items[]
   alis_sifarisleri                                                alis_sifarisleri?              @relation(fields: [alish_id], references: [id], onUpdate: NoAction)
   anbarlar                                                        anbarlar?                      @relation(fields: [anbar_id], references: [id], onUpdate: NoAction)
+  istifadeciler_finance_operations_deleted_byToistifadeciler      istifadeciler?                 @relation("finance_operations_deleted_byToistifadeciler", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   finance_expense_categories                                      finance_expense_categories?    @relation(fields: [expense_kateq_id], references: [id], onUpdate: NoAction)
   filiallar                                                       filiallar?                     @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
   maliye_hesablari_finance_operations_hesab_id2Tomaliye_hesablari maliye_hesablari?              @relation("finance_operations_hesab_id2Tomaliye_hesablari", fields: [hesab_id2], references: [id], onUpdate: NoAction)
@@ -1843,6 +1915,7 @@ model finance_operations {
   istifadeciler_finance_operations_tesdiq_eden_idToistifadeciler  istifadeciler?                 @relation("finance_operations_tesdiq_eden_idToistifadeciler", fields: [tesdiq_eden_id], references: [id], onUpdate: NoAction)
   finance_operation_types                                         finance_operation_types        @relation(fields: [type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   istifadeciler_finance_operations_yaradan_idToistifadeciler      istifadeciler?                 @relation("finance_operations_yaradan_idToistifadeciler", fields: [yaradan_id], references: [id], onUpdate: NoAction)
+  finance_payment_allocations                                     finance_payment_allocations[]
   servis_qeydleri                                                 servis_qeydleri[]
 
   @@index([sahibkar_id, tarix(sort: Desc)], map: "idx_fop_sah_tarix")
@@ -2068,6 +2141,11 @@ model inventarizasiyalar {
   yaradildi                                                     DateTime?            @default(now()) @db.Timestamp(6)
   yenilendi                                                     DateTime?            @default(now()) @db.Timestamp(6)
   sahibkar_id                                                   String               @db.Uuid
+  deleted_at                                                    DateTime?            @db.Timestamp(6)
+  deleted_by                                                    String?              @db.Uuid
+  delete_reason                                                 String?
+  restored_at                                                   DateTime?            @db.Timestamp(6)
+  restored_by                                                   String?              @db.Uuid
   inventar_satirlari                                            inventar_satirlari[]
   anbarlar                                                      anbarlar             @relation(fields: [anbar_id], references: [id], onUpdate: NoAction)
   sahibkarlar                                                   sahibkarlar          @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -2340,6 +2418,11 @@ model istifadeciler {
   deaktiv_sebeb                                                                     String?
   default_filial_id                                                                 Int?
   butun_filiallari_gor                                                              Boolean                        @default(false)
+  deleted_at                                                                        DateTime?                      @db.Timestamp(6)
+  deleted_by                                                                        String?                        @db.Uuid
+  delete_reason                                                                     String?
+  restored_at                                                                       DateTime?                      @db.Timestamp(6)
+  restored_by                                                                       String?                        @db.Uuid
   ai_insiqht                                                                        ai_insiqht[]
   ai_sohbet_loq                                                                     ai_sohbet_loq[]
   ai_sual                                                                           ai_sual[]
@@ -2351,7 +2434,9 @@ model istifadeciler {
   alert_user_preferences                                                            alert_user_preferences?
   alerts_alerts_assigned_toToistifadeciler                                          alerts[]                       @relation("alerts_assigned_toToistifadeciler")
   alerts_alerts_resolved_byToistifadeciler                                          alerts[]                       @relation("alerts_resolved_byToistifadeciler")
+  alis_sifarisleri_alis_sifarisleri_deleted_byToistifadeciler                       alis_sifarisleri[]             @relation("alis_sifarisleri_deleted_byToistifadeciler")
   alis_sifarisleri_alis_sifarisleri_menecer_idToistifadeciler                       alis_sifarisleri[]             @relation("alis_sifarisleri_menecer_idToistifadeciler")
+  alis_sifarisleri_alis_sifarisleri_restored_byToistifadeciler                      alis_sifarisleri[]             @relation("alis_sifarisleri_restored_byToistifadeciler")
   alis_sifarisleri_alis_sifarisleri_yaradan_idToistifadeciler                       alis_sifarisleri[]             @relation("alis_sifarisleri_yaradan_idToistifadeciler")
   anbar_hereketleri                                                                 anbar_hereketleri[]
   anbar_transferleri                                                                anbar_transferleri[]
@@ -2371,6 +2456,7 @@ model istifadeciler {
   contact_merge_logs                                                                contact_merge_logs[]
   davamiyyet_davamiyyet_istifadeci_idToistifadeciler                                davamiyyet[]                   @relation("davamiyyet_istifadeci_idToistifadeciler")
   davamiyyet_davamiyyet_yaradan_idToistifadeciler                                   davamiyyet[]                   @relation("davamiyyet_yaradan_idToistifadeciler")
+  defekt_qeydleri                                                                   defekt_qeydleri[]
   filial_mesaj_gondericiToistifadeciler                                             filial_mesaj[]                 @relation("filial_mesaj_gonderici")
   filial_mesaj_oxuyanToistifadeciler                                                filial_mesaj[]                 @relation("filial_mesaj_oxuyan")
   filiallar_filiallar_cavabdeh_idToistifadeciler                                    filiallar[]                    @relation("filiallar_cavabdeh_idToistifadeciler")
@@ -2390,6 +2476,7 @@ model istifadeciler {
   finance_internal_balances_finance_internal_balances_isci_idToistifadeciler        finance_internal_balances[]    @relation("finance_internal_balances_isci_idToistifadeciler")
   finance_internal_balances_finance_internal_balances_yaradan_idToistifadeciler     finance_internal_balances[]    @relation("finance_internal_balances_yaradan_idToistifadeciler")
   finance_marketplace_payments                                                      finance_marketplace_payments[]
+  finance_operations_finance_operations_deleted_byToistifadeciler                   finance_operations[]           @relation("finance_operations_deleted_byToistifadeciler")
   finance_operations_finance_operations_isci_idToistifadeciler                      finance_operations[]           @relation("finance_operations_isci_idToistifadeciler")
   finance_operations_finance_operations_legv_eden_idToistifadeciler                 finance_operations[]           @relation("finance_operations_legv_eden_idToistifadeciler")
   finance_operations_finance_operations_tesdiq_eden_idToistifadeciler               finance_operations[]           @relation("finance_operations_tesdiq_eden_idToistifadeciler")
@@ -2458,6 +2545,7 @@ model istifadeciler {
   odenis_jurnali                                                                    odenis_jurnali[]
   owner_widget_konfig                                                               owner_widget_konfig[]
   pos_sessions                                                                      pos_sessions[]
+  qaytarma_sifarisleri_qaytarma_sifarisleri_deleted_byToistifadeciler               qaytarma_sifarisleri[]         @relation("qaytarma_sifarisleri_deleted_byToistifadeciler")
   qaytarma_sifarisleri                                                              qaytarma_sifarisleri[]
   qeydler                                                                           qeydler[]
   qiymet_kanal                                                                      qiymet_kanal[]
@@ -2478,6 +2566,8 @@ model istifadeciler {
   sahibkar_ticaret_qeyd                                                             sahibkar_ticaret_qeyd[]
   satinalma_teklif_baxanToistifadeciler                                             satinalma_teklif[]             @relation("satinalma_baxan")
   satinalma_teklif_yaradanToistifadeciler                                           satinalma_teklif[]             @relation("satinalma_yaradan")
+  satis_sifarisleri_satis_sifarisleri_deleted_byToistifadeciler                     satis_sifarisleri[]            @relation("satis_sifarisleri_deleted_byToistifadeciler")
+  satis_sifarisleri_satis_sifarisleri_restored_byToistifadeciler                    satis_sifarisleri[]            @relation("satis_sifarisleri_restored_byToistifadeciler")
   satis_sifarisleri_satis_sifarisleri_satis_meneceri_idToistifadeciler              satis_sifarisleri[]            @relation("satis_sifarisleri_satis_meneceri_idToistifadeciler")
   satis_sifarisleri_satis_sifarisleri_yaradan_idToistifadeciler                     satis_sifarisleri[]            @relation("satis_sifarisleri_yaradan_idToistifadeciler")
   seher_briefing                                                                    seher_briefing[]
@@ -2507,6 +2597,7 @@ model istifadeciler {
   team_mesaj_log_event_userToistifadeciler                                          team_mesaj_log[]               @relation("team_mesaj_log_event_user")
   team_mesaj_log_gondericiToistifadeciler                                           team_mesaj_log[]               @relation("team_mesaj_log_gonderici")
   team_uzv_istifadeciToistifadeciler                                                team_uzv[]                     @relation("team_uzv_istifadeci")
+  teklifler_teklifler_deleted_byToistifadeciler                                     teklifler[]                    @relation("teklifler_deleted_byToistifadeciler")
   teklifler_teklifler_menecer_idToistifadeciler                                     teklifler[]                    @relation("teklifler_menecer_idToistifadeciler")
   teklifler_teklifler_tesdiq_eden_idToistifadeciler                                 teklifler[]                    @relation("teklifler_tesdiq_eden_idToistifadeciler")
   teklifler_teklifler_yaradan_idToistifadeciler                                     teklifler[]                    @relation("teklifler_yaradan_idToistifadeciler")
@@ -2570,17 +2661,20 @@ model kassalar {
   qeyd                                              String?
   yaradildi                                         DateTime?             @default(now()) @db.Timestamp(6)
   yenilendi                                         DateTime?             @default(now()) @db.Timestamp(6)
+  maliye_hesab_id                                   String?               @db.Uuid
   kassa_emeliyyatlari                               kassa_emeliyyatlari[]
   istifadeciler_kassalar_acan_idToistifadeciler     istifadeciler?        @relation("kassalar_acan_idToistifadeciler", fields: [acan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   istifadeciler_kassalar_baglayan_idToistifadeciler istifadeciler?        @relation("kassalar_baglayan_idToistifadeciler", fields: [baglayan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   filiallar                                         filiallar?            @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
   sahibkarlar                                       sahibkarlar           @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  maliye_hesablari                                  maliye_hesablari?     @relation(fields: [maliye_hesab_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   satis_sifarisleri                                 satis_sifarisleri[]
   vergi_cekleri                                     vergi_cekleri[]
 
   @@index([acilis_tarixi(sort: Desc)], map: "idx_kassa_acilis")
   @@index([filial_id], map: "idx_kassa_filial")
   @@index([sahibkar_id, status], map: "idx_kassa_sahibkar_status")
+  @@index([maliye_hesab_id], map: "idx_kassalar_maliye_hesab")
 }
 
 model kateqoriyalar {
@@ -2648,7 +2742,7 @@ model konsiqnasiya {
   yaradan_id         String?        @db.Uuid
   yaradildi          DateTime?      @default(now()) @db.Timestamp(6)
   anbarlar           anbarlar?      @relation(fields: [anbar_id], references: [id], onUpdate: NoAction)
-  kontragentler      kontragentler  @relation(fields: [kontragent_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  kontragentler      kontragentler  @relation(fields: [kontragent_id], references: [id], onUpdate: NoAction)
   mehsullar          mehsullar      @relation("mehsul_konsiqnasiya", fields: [mehsul_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   sahibkarlar        sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   istifadeciler      istifadeciler? @relation(fields: [yaradan_id], references: [id], onUpdate: NoAction)
@@ -2712,6 +2806,12 @@ model kontragentler {
   qara_siyahi_sebeb                                        String?
   alacaq                                                   Decimal?                      @default(0) @db.Decimal(14, 2)
   getirdi_id                                               String?                       @db.Uuid
+  avans                                                    Decimal?                      @default(0) @db.Decimal(14, 2)
+  deleted_at                                               DateTime?                     @db.Timestamp(6)
+  deleted_by                                               String?                       @db.Uuid
+  delete_reason                                            String?
+  restored_at                                              DateTime?                     @db.Timestamp(6)
+  restored_by                                              String?                       @db.Uuid
   alis_sifarisleri                                         alis_sifarisleri[]
   auto_log                                                 auto_log[]
   broadcast_log                                            broadcast_log[]
@@ -2963,6 +3063,11 @@ model kredit_satislari {
   pul_alinma_tarixi   DateTime?            @db.Date
   hesab_id            String?              @db.Uuid
   hesab_emeliyyat_id  String?              @db.Uuid
+  deleted_at          DateTime?            @db.Timestamp(6)
+  deleted_by          String?              @db.Uuid
+  delete_reason       String?
+  restored_at         DateTime?            @db.Timestamp(6)
+  restored_by         String?              @db.Uuid
   hesab_emeliyyatlari hesab_emeliyyatlari? @relation(fields: [hesab_emeliyyat_id], references: [id], onUpdate: NoAction)
   maliye_hesablari    maliye_hesablari?    @relation(fields: [hesab_id], references: [id], onUpdate: NoAction)
   sahibkarlar         sahibkarlar          @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -3432,6 +3537,7 @@ model maliye_hesablari {
   finance_operations_finance_operations_hesab_idTomaliye_hesablari                       finance_operations[]           @relation("finance_operations_hesab_idTomaliye_hesablari")
   hesab_emeliyyatlari                                                                    hesab_emeliyyatlari[]
   isci_odenisleri                                                                        isci_odenisleri[]
+  kassalar                                                                               kassalar[]
   kpi_payments                                                                           kpi_payments[]
   kredit_satislari                                                                       kredit_satislari[]
   maas_hesablamalar                                                                      maas_hesablamalar[]
@@ -3799,9 +3905,15 @@ model mehsullar {
   seo_acharlar             String?
   marketplace_aktiv        Json?                      @default("{}")
   stok_cemi                Decimal?                   @default(0) @db.Decimal(14, 3)
+  deleted_at               DateTime?                  @db.Timestamp(6)
+  deleted_by               String?                    @db.Uuid
+  delete_reason            String?
+  restored_at              DateTime?                  @db.Timestamp(6)
+  restored_by              String?                    @db.Uuid
   alis_sifaris_satirlari   alis_sifaris_satirlari[]
   anbar_hereketleri        anbar_hereketleri[]
   auto_log                 auto_log[]
+  defekt_qeydleri          defekt_qeydleri[]
   inventar_satirlari       inventar_satirlari[]
   konsiqnasiyalar          konsiqnasiya[]             @relation("mehsul_konsiqnasiya")
   marketplace_sifarisleri  marketplace_sifarisleri[]
@@ -4059,29 +4171,33 @@ model qaytarma_satirlari {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model qaytarma_sifarisleri {
-  id                 String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nomre              String               @unique @db.VarChar(50)
-  nov                String               @db.VarChar(20)
-  original_id        String?              @db.Uuid
-  kontragent_id      String?              @db.Uuid
-  anbar_id           Int
-  tarix              DateTime             @default(dbgenerated("CURRENT_DATE")) @db.Date
-  status             String?              @default("tesdiqlenmemis") @db.VarChar(30)
-  umumi_mebleg       Decimal              @default(0) @db.Decimal(12, 2)
-  geri_qaytarildi    Decimal              @default(0) @db.Decimal(12, 2)
-  sebeb              String?
-  qeyd               String?
-  yaradan_id         String?              @db.Uuid
-  yaradildi          DateTime?            @default(now()) @db.Timestamp(6)
-  yenilendi          DateTime?            @default(now()) @db.Timestamp(6)
-  sahibkar_id        String               @db.Uuid
-  qaytarma_satirlari qaytarma_satirlari[]
-  anbarlar           anbarlar             @relation(fields: [anbar_id], references: [id], onUpdate: NoAction)
-  kontragentler      kontragentler?       @relation(fields: [kontragent_id], references: [id], onUpdate: NoAction)
-  sahibkarlar        sahibkarlar          @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  istifadeciler      istifadeciler?       @relation(fields: [yaradan_id], references: [id], onUpdate: NoAction)
-  vergi_cekleri      vergi_cekleri[]
-  zemanetler         zemanetler[]
+  id                                                           String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nomre                                                        String               @unique @db.VarChar(50)
+  nov                                                          String               @db.VarChar(20)
+  original_id                                                  String?              @db.Uuid
+  kontragent_id                                                String?              @db.Uuid
+  anbar_id                                                     Int
+  tarix                                                        DateTime             @default(dbgenerated("CURRENT_DATE")) @db.Date
+  status                                                       String?              @default("tesdiqlenmemis") @db.VarChar(30)
+  umumi_mebleg                                                 Decimal              @default(0) @db.Decimal(12, 2)
+  geri_qaytarildi                                              Decimal              @default(0) @db.Decimal(12, 2)
+  sebeb                                                        String?
+  qeyd                                                         String?
+  yaradan_id                                                   String?              @db.Uuid
+  yaradildi                                                    DateTime?            @default(now()) @db.Timestamp(6)
+  yenilendi                                                    DateTime?            @default(now()) @db.Timestamp(6)
+  sahibkar_id                                                  String               @db.Uuid
+  deleted_at                                                   DateTime?            @db.Timestamp(6)
+  deleted_by                                                   String?              @db.Uuid
+  delete_reason                                                String?
+  qaytarma_satirlari                                           qaytarma_satirlari[]
+  anbarlar                                                     anbarlar             @relation(fields: [anbar_id], references: [id], onUpdate: NoAction)
+  istifadeciler_qaytarma_sifarisleri_deleted_byToistifadeciler istifadeciler?       @relation("qaytarma_sifarisleri_deleted_byToistifadeciler", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  kontragentler                                                kontragentler?       @relation(fields: [kontragent_id], references: [id], onUpdate: NoAction)
+  sahibkarlar                                                  sahibkarlar          @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  istifadeciler                                                istifadeciler?       @relation(fields: [yaradan_id], references: [id], onUpdate: NoAction)
+  vergi_cekleri                                                vergi_cekleri[]
+  zemanetler                                                   zemanetler[]
 
   @@index([kontragent_id], map: "idx_qaytarma_kontr")
   @@index([original_id], map: "idx_qaytarma_orig")
@@ -4252,6 +4368,8 @@ model qiymet_tarixce {
 
   @@index([mehsul_id, yaradildi(sort: Desc)], map: "idx_qtarix_mehsul")
   @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_qtarix_sah")
+  @@index([mehsul_id, yaradildi(sort: Desc)], map: "idx_qtarixce_mehsul")
+  @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_qtarixce_sahibkar")
 }
 
 model reqib_qiymet {
@@ -4827,6 +4945,7 @@ model sahibkarlar {
   coupons                       coupons[]
   data_saglamliq                data_saglamliq[]
   davamiyyet                    davamiyyet[]
+  defekt_qeydleri               defekt_qeydleri[]
   demo_trials                   demo_trials[]
   etiket_sablonu                etiket_sablonu[]
   filial_gorunush               filial_gorunush[]
@@ -4846,6 +4965,8 @@ model sahibkarlar {
   finance_internal_balances     finance_internal_balances[]
   finance_marketplace_payments  finance_marketplace_payments[]
   finance_operations            finance_operations[]
+  finance_payment_allocations   finance_payment_allocations[]
+  finance_recurring_rules       finance_recurring_rules[]
   gift_cards                    gift_cards[]
   gun_sonu                      gun_sonu[]
   hesab_emeliyyatlari           hesab_emeliyyatlari[]
@@ -4980,6 +5101,7 @@ model sahibkarlar {
   tesdiq_telep                  tesdiq_telep[]
   transfer_satirlari            transfer_satirlari[]
   vergi_cekleri                 vergi_cekleri[]
+  vezifeler                     vezifeler[]
   webhook_delivery              webhook_delivery[]
   webhook_endpoints             webhook_endpoints[]
   webhook_log                   webhook_log[]
@@ -5079,9 +5201,15 @@ model satis_sifarisleri {
   marketplace_magaza_id                                            String?                       @db.Uuid
   komisyon_meblegh                                                 Decimal?                      @default(0) @db.Decimal(14, 2)
   xalis_meblegh                                                    Decimal?                      @db.Decimal(14, 2)
+  deleted_at                                                       DateTime?                     @db.Timestamp(6)
+  deleted_by                                                       String?                       @db.Uuid
+  delete_reason                                                    String?
+  restored_at                                                      DateTime?                     @db.Timestamp(6)
+  restored_by                                                      String?                       @db.Uuid
   campaign_usage                                                   campaign_usage[]
   catdirmalar                                                      catdirmalar[]
   finance_operations                                               finance_operations[]
+  finance_payment_allocations                                      finance_payment_allocations[]
   gift_cards                                                       gift_cards[]
   kredit_satislari                                                 kredit_satislari?
   leads                                                            leads[]
@@ -5091,10 +5219,12 @@ model satis_sifarisleri {
   kassalar                                                         kassalar?                     @relation(fields: [kassa_id], references: [id], onUpdate: NoAction, map: "fk_satis_kassa")
   kompaniyalar                                                     kompaniyalar?                 @relation(fields: [kompaniya_id], references: [id], onUpdate: NoAction, map: "satis_kompaniya_fk")
   anbarlar                                                         anbarlar?                     @relation(fields: [anbar_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  istifadeciler_satis_sifarisleri_deleted_byToistifadeciler        istifadeciler?                @relation("satis_sifarisleri_deleted_byToistifadeciler", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   filiallar                                                        filiallar?                    @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
   marketplace_magaza_hesablari                                     marketplace_magaza_hesablari? @relation(fields: [marketplace_magaza_id], references: [id], onUpdate: NoAction)
   kontragentler                                                    kontragentler?                @relation(fields: [musteri_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pos_sessions                                                     pos_sessions?                 @relation(fields: [pos_session_id], references: [id], onUpdate: NoAction)
+  istifadeciler_satis_sifarisleri_restored_byToistifadeciler       istifadeciler?                @relation("satis_sifarisleri_restored_byToistifadeciler", fields: [restored_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sahibkarlar                                                      sahibkarlar                   @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   istifadeciler_satis_sifarisleri_satis_meneceri_idToistifadeciler istifadeciler?                @relation("satis_sifarisleri_satis_meneceri_idToistifadeciler", fields: [satis_meneceri_id], references: [id], onUpdate: NoAction)
   istifadeciler_satis_sifarisleri_yaradan_idToistifadeciler        istifadeciler?                @relation("satis_sifarisleri_yaradan_idToistifadeciler", fields: [yaradan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -5314,6 +5444,11 @@ model servis_qeydleri {
   xarici_servis                                                 Boolean?                @default(false)
   xidmet_geliri_op_id                                           String?                 @db.Uuid
   xidmet_hesab_id                                               String?                 @db.Uuid
+  deleted_at                                                    DateTime?               @db.Timestamp(6)
+  deleted_by                                                    String?                 @db.Uuid
+  delete_reason                                                 String?
+  restored_at                                                   DateTime?               @db.Timestamp(6)
+  restored_by                                                   String?                 @db.Uuid
   seri_nomreler                                                 seri_nomreler[]
   servis_fayllari                                               servis_fayllari[]
   servis_defekt_kateq                                           servis_defekt_kateq?    @relation(fields: [defekt_kateq_id], references: [id], onUpdate: NoAction)
@@ -5744,8 +5879,12 @@ model teklifler {
   tesdiq_tarixi                                         DateTime?          @db.Timestamp(6)
   yaradildi                                             DateTime?          @default(now()) @db.Timestamp(6)
   yenilendi                                             DateTime?          @default(now()) @db.Timestamp(6)
+  deleted_at                                            DateTime?          @db.Timestamp(6)
+  deleted_by                                            String?            @db.Uuid
+  delete_reason                                         String?
   leads                                                 leads[]
   teklif_satirlari                                      teklif_satirlari[]
+  istifadeciler_teklifler_deleted_byToistifadeciler     istifadeciler?     @relation("teklifler_deleted_byToistifadeciler", fields: [deleted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   filiallar                                             filiallar?         @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
   istifadeciler_teklifler_menecer_idToistifadeciler     istifadeciler?     @relation("teklifler_menecer_idToistifadeciler", fields: [menecer_id], references: [id], onUpdate: NoAction)
   kontragentler                                         kontragentler?     @relation(fields: [musteri_id], references: [id], onUpdate: NoAction)
@@ -5832,6 +5971,8 @@ model transfer_satirlari {
   miqdar             Decimal            @db.Decimal(12, 3)
   qiymet             Decimal?           @default(0) @db.Decimal(12, 2)
   sahibkar_id        String             @db.Uuid
+  qebul_edilen       Decimal?           @db.Decimal(12, 3)
+  qebul_qeyd         String?
   mehsullar          mehsullar          @relation(fields: [mehsul_id], references: [id], onUpdate: NoAction)
   sahibkarlar        sahibkarlar        @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   anbar_transferleri anbar_transferleri @relation(fields: [transfer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -6060,6 +6201,7 @@ model xerc_kateqoriyalari {
   qrup        String?     @db.VarChar(50)
   aktiv       Boolean?    @default(true)
   yaradildi   DateTime?   @default(now()) @db.Timestamp(6)
+  ay_budce    Decimal?    @default(0) @db.Decimal(14, 2)
   sahibkarlar sahibkarlar @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   xercl_r     xercl_r[]
 
@@ -6085,6 +6227,14 @@ model xercl_r {
   qeyd                String?
   yaradildi           DateTime?            @default(now()) @db.Timestamp(6)
   yenilendi           DateTime?            @default(now()) @db.Timestamp(6)
+  legv_de             DateTime?            @db.Timestamp(6)
+  legv_eden_id        String?              @db.Uuid
+  legv_sebeb          String?
+  deleted_at          DateTime?            @db.Timestamp(6)
+  deleted_by          String?              @db.Uuid
+  delete_reason       String?
+  restored_at         DateTime?            @db.Timestamp(6)
+  restored_by         String?              @db.Uuid
   filiallar           filiallar?           @relation(fields: [filial_id], references: [id], onUpdate: NoAction)
   istifadeciler       istifadeciler?       @relation(fields: [istifadeci_id], references: [id], onUpdate: NoAction)
   xerc_kateqoriyalari xerc_kateqoriyalari? @relation(fields: [kateqoriya_id], references: [id], onUpdate: NoAction)
@@ -6340,4 +6490,39 @@ model loyalty_tx {
 
   @@index([kart_id, yaradildi(sort: Desc)], map: "idx_loyalty_tx_kart")
   @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_loyalty_tx_sah")
+}
+
+model vezifeler {
+  id          Int         @id @default(autoincrement())
+  sahibkar_id String      @db.Uuid
+  ad          String      @db.VarChar(150)
+  aktiv       Boolean     @default(true)
+  yaradildi   DateTime?   @default(now()) @db.Timestamp(6)
+  sahibkarlar sahibkarlar @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sahibkar_id, ad], map: "vezifeler_sahibkar_ad_unique")
+  @@index([sahibkar_id], map: "idx_vezifeler_sahibkar")
+}
+
+model defekt_qeydleri {
+  id            String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sahibkar_id   String         @db.Uuid
+  anbar_id      Int
+  mehsul_id     String         @db.Uuid
+  miqdar        Decimal        @default(0) @db.Decimal(14, 3)
+  kateqoriya    String         @db.VarChar(40)
+  sebeb         String
+  sekil_url     String?
+  status        String         @default("aktiv") @db.VarChar(20)
+  yaradan_id    String?        @db.Uuid
+  yaradildi     DateTime       @default(now()) @db.Timestamp(6)
+  yenilendi     DateTime?      @default(now()) @db.Timestamp(6)
+  anbarlar      anbarlar       @relation(fields: [anbar_id], references: [id], onUpdate: NoAction)
+  mehsullar     mehsullar      @relation(fields: [mehsul_id], references: [id], onUpdate: NoAction)
+  sahibkarlar   sahibkarlar    @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  istifadeciler istifadeciler? @relation(fields: [yaradan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([sahibkar_id, yaradildi(sort: Desc)], map: "idx_defekt_sahibkar")
+  @@index([anbar_id], map: "idx_defekt_anbar")
+  @@index([mehsul_id], map: "idx_defekt_mehsul")
 }

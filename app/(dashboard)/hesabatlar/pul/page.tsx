@@ -12,6 +12,7 @@ import {
 } from "@/features/hesabatlar/pul-queries";
 import { getPlSummary } from "@/features/hesabatlar/maliyye-queries";
 import { thisMonthRange } from "@/features/hesabatlar/shared";
+import { requireHesabatPagePerm } from "@/features/hesabatlar/access-guard";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Pul axını hesabatı" };
@@ -20,6 +21,7 @@ const PAYMENT_LABELS: Record<string, string> = { negd: "Nağd", kart: "Kart", ke
 const CRITICAL_BALANCE = 5000;
 
 export default async function PulReportPage() {
+  await requireHesabatPagePerm("maliye.view");
   const range = thisMonthRange();
   const daily = await getDailyCashFlow30();
   const [byPay, accounts, expenseCats, pl, summary] = await Promise.all([

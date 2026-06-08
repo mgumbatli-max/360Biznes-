@@ -13,10 +13,21 @@ import { openKassa } from "../session-actions";
 import type { FilialOption } from "../session-queries";
 import { useState } from "react";
 
-export function OpenSessionCard({ filiallar }: { filiallar: FilialOption[] }) {
+type HesabOpt = { id: string; ad: string; nov: string };
+
+export function OpenSessionCard({
+  filiallar,
+  hesablar = [],
+}: {
+  filiallar: FilialOption[];
+  hesablar?: HesabOpt[];
+}) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [filialId, setFilialId] = useState<string>(filiallar[0]?.id ? String(filiallar[0].id) : "");
+  // Default — ilk nağd hesab (POS adətən nağd-dır)
+  const defaultHesab = hesablar.find((h) => h.nov === "negd") ?? hesablar[0];
+  const [hesabId, setHesabId] = useState<string>(defaultHesab?.id ?? "");
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -109,6 +120,31 @@ export function OpenSessionCard({ filiallar }: { filiallar: FilialOption[] }) {
               Sessiyaya başlayanda kassada olan nağd məbləğ.
             </p>
           </div>
+
+          {/* Maliyə hesabı seçimi — POS-dan gələn pul bu hesaba düşür.
+              VACİB: bu seçilmədikdə satışlar real bank/nağd balansa təsir göstərməyəcək. */}
+          {hesablar.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="maliye_hesab_id">Pul hansı kassa/hesaba düşür?</Label>
+              <select
+                id="maliye_hesab_id"
+                name="maliye_hesab_id"
+                value={hesabId}
+                onChange={(e) => setHesabId(e.target.value)}
+                disabled={pending}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {hesablar.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.ad} ({h.nov})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Bu sessiyada hər satış seçilən hesabın qaliqını avtomatik artıracaq.
+              </p>
+            </div>
+          )}
 
           <Button
             type="submit"

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
 import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
+import { OpPickerTrigger } from "@/features/maliyye/components/op-picker-dialog";
 import {
   Activity,
   Wallet,
@@ -12,7 +12,6 @@ import {
   Truck,
   Receipt,
   BarChart3,
-  Plus,
   Repeat2,
   Calculator,
   LayoutDashboard,
@@ -141,18 +140,8 @@ function findActiveGroup(active: string): Group | null {
 }
 
 export function MaliyyeSubNav({ active }: { active: string }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const activeGroup = findActiveGroup(active);
   const isDashboard = active === DASHBOARD_TAB.href;
-
-  const handleNewOp = () => {
-    if (pathname === "/maliyye") {
-      window.dispatchEvent(new CustomEvent("maliyye:new-op"));
-    } else {
-      router.push("/maliyye?yeni=open");
-    }
-  };
 
   return (
     <div className="space-y-2 mb-4" data-subnav>
@@ -165,8 +154,8 @@ export function MaliyyeSubNav({ active }: { active: string }) {
               data-active={isDashboard ? "true" : undefined}
               className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                 isDashboard
-                  ? "bg-background text-primary shadow-sm"
-                  : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                  ? "bg-gradient-to-b from-background to-background/80 text-primary shadow-md shadow-primary/10 ring-1 ring-primary/15"
+                  : "text-muted-foreground hover:bg-background/60 hover:text-foreground hover:-translate-y-px active:translate-y-0"
               }`}
             >
               <DASHBOARD_TAB.Icon className="h-3.5 w-3.5" />
@@ -183,8 +172,8 @@ export function MaliyyeSubNav({ active }: { active: string }) {
                   data-active={isOn ? "true" : undefined}
                   className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                     isOn
-                      ? "bg-background text-primary shadow-sm"
-                      : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                      ? "bg-gradient-to-b from-background to-background/80 text-primary shadow-md shadow-primary/10 ring-1 ring-primary/15"
+                      : "text-muted-foreground hover:bg-background/60 hover:text-foreground hover:-translate-y-px active:translate-y-0"
                   }`}
                 >
                   <g.Icon className="h-3.5 w-3.5" />
@@ -195,16 +184,8 @@ export function MaliyyeSubNav({ active }: { active: string }) {
           </ScrollActiveIntoView>
         </div>
 
-        {/* "Yeni əməliyyat" — vahid yeradılış nöqtəsi */}
-        <button
-          type="button"
-          onClick={handleNewOp}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-white shadow-sm hover:shadow"
-          style={{ background: "var(--brand-gradient)" }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>Yeni əməliyyat</span>
-        </button>
+        {/* "Yeni əməliyyat" — hər maliyyə səhifəsində mövcuddur */}
+        <OpPickerTrigger />
       </div>
 
       {/* Secondary bar — qrupun alt-tab-ları */}
@@ -223,7 +204,7 @@ export function MaliyyeSubNav({ active }: { active: string }) {
                   data-active={isOn ? "true" : undefined}
                   className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
                     isOn
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 shadow-sm shadow-primary/10"
                       : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                   }`}
                 >

@@ -6,8 +6,16 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { checkAndCreateStockAlertBatch } from "@/features/anbar/alert-helpers";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+type ActionResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      blockers?: import("@/lib/blockers/types").Blocker[];
+      hint?: string;
+    };
 
 const ALLOWED_STATUSES = ["yeni", "tesdiq", "gonderildi", "tamamlandi"] as const;
 type SaleStatus = (typeof ALLOWED_STATUSES)[number];
@@ -23,6 +31,8 @@ export async function recordSalePayment(
   odenis_nov: "negd" | "kart" | "kecirme",
   qeyd: string | null,
 ): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm(["satis.odenis", "satis.idare", "kassa.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!(mebleg > 0)) return { ok: false, error: "Məbləğ 0-dan böyük olmalıdır" };
   if (!["negd", "kart", "kecirme"].includes(odenis_nov))
     return { ok: false, error: "Ödəniş üsulu yanlışdır" };
@@ -31,6 +41,16 @@ export async function recordSalePayment(
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       await prisma.$transaction(async (tx) => {
+        // 🔒 FOR UPDATE LOCK — paralel ödənişlərdə over-payment önlənir
+        const lockedRows = await tx.$queryRaw<Array<{
+          id: string; son_mebleg: number; odenilmis: number; status: string;
+        }>>`
+          SELECT id, son_mebleg::float, COALESCE(odenilmis, 0)::float AS odenilmis, status
+          FROM satis_sifarisleri WHERE id = ${saleId}::uuid FOR UPDATE
+        `;
+        if (lockedRows.length === 0) throw new Error("Satış tapılmadı");
+        if (lockedRows[0].status === "legv") throw new Error("Ləğv edilmiş satışa ödəniş əlavə oluna bilməz");
+
         const sale = await tx.satis_sifarisleri.findUnique({
           where: { id: saleId },
           select: {
@@ -44,27 +64,47 @@ export async function recordSalePayment(
           },
         });
         if (!sale) throw new Error("Satış tapılmadı");
-        if (sale.status === "legv") throw new Error("Ləğv edilmiş satışa ödəniş əlavə oluna bilməz");
 
         const son = Number(sale.son_mebleg ?? 0);
         const already = Number(sale.odenilmis ?? 0);
         const qaliq = son - already;
-        if (mebleg > qaliq + 0.01)
+        if (mebleg > qaliq + 0.001)
           throw new Error(`Məbləğ qalıq borcdan çoxdur (qalıq: ${qaliq.toFixed(2)})`);
 
-        if (sale.kassa_id) {
-          await tx.kassa_emeliyyatlari.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              kassa_id: sale.kassa_id,
-              emeliyyat_nov: "satis",
-              odenis_nov,
-              mebleg: new Prisma.Decimal(mebleg),
-              ref_nov: "satis_odenis",
-              ref_id: sale.id,
-              istifadeci_id: istifadeciId,
-              qeyd: qeyd ?? "Sonradan ödəniş",
-            },
+        // ÖNƏMLİ: NULL kassa olarsa default aktiv nağd kassa istifadə olunur.
+        // Beləliklə müştəri ödədi, kassa yox kimi əməliyyat itməz.
+        let resolvedKassaId = sale.kassa_id;
+        if (!resolvedKassaId) {
+          const defaultKassa = await tx.kassalar.findFirst({
+            where: { sahibkar_id: sahibkarId, status: "acig" },
+            orderBy: { yaradildi: "asc" },
+            select: { id: true },
+          });
+          resolvedKassaId = defaultKassa?.id ?? null;
+        }
+        if (!resolvedKassaId) {
+          throw new Error(
+            "Aktiv kassa tapılmadı — ödənişi qəbul etmək üçün əvvəlcə kassa açın",
+          );
+        }
+        await tx.kassa_emeliyyatlari.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            kassa_id: resolvedKassaId,
+            emeliyyat_nov: "satis",
+            odenis_nov,
+            mebleg: new Prisma.Decimal(mebleg),
+            ref_nov: "satis_odenis",
+            ref_id: sale.id,
+            istifadeci_id: istifadeciId,
+            qeyd: qeyd ?? "Sonradan ödəniş",
+          },
+        });
+        // Satışın kassa_id-i NULL idisə, yenilə — gələcək ödənişlər eyni kassaya
+        if (!sale.kassa_id) {
+          await tx.satis_sifarisleri.updateMany({
+            where: { id: sale.id, kassa_id: null },
+            data: { kassa_id: resolvedKassaId },
           });
         }
 
@@ -77,17 +117,29 @@ export async function recordSalePayment(
           },
         });
 
-        if (sale.odenis_nov === "borc" && sale.musteri_id) {
-          await tx.kontragentler.update({
-            where: { id: sale.musteri_id },
-            data: { borc: { decrement: new Prisma.Decimal(mebleg) } },
-          });
+        // Müştəri balansını source-of-truth-dan yenidən hesabla.
+        // Manual increment/decrement DRIFT yaradır — bütün təsir burada
+        // satis_sifarisleri-dan derive olunur.
+        if (sale.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(sale.musteri_id, tx);
         }
+      });
+
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "odenis",
+        resurs_nov: "satis_sifarisi",
+        resurs_id: saleId,
+        yeni_data: { mebleg, odenis_nov, qeyd },
+        status: "ugur",
       });
 
       revalidatePath(`/ticaret/satislar/${saleId}`);
       revalidatePath("/ticaret/satislar");
       revalidatePath("/ticaret/kredit");
+      bustTicaretCache();
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
@@ -100,6 +152,8 @@ export async function recordSalePayment(
  * -> tamamlandi. Does NOT allow going back to a prior step (use cancelSale for legv).
  */
 export async function changeSaleStatus(saleId: string, status: SaleStatus): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm(["satis.idare", "satis.status"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!ALLOWED_STATUSES.includes(status))
     return { ok: false, error: "Status yanlışdır" };
 
@@ -134,6 +188,7 @@ export async function changeSaleStatus(saleId: string, status: SaleStatus): Prom
       revalidatePath(`/ticaret/satislar/${saleId}`);
       revalidatePath("/ticaret/satislar");
       revalidatePath("/ticaret/pipeline");
+      bustTicaretCache();
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
@@ -146,7 +201,10 @@ export async function changeSaleStatus(saleId: string, status: SaleStatus): Prom
  * customer debt. Only allowed for sales in status 'tamamlandi' or 'yeni'.
  */
 export async function cancelSale(saleId: string, reason: string): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm(["satis.legv", "satis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!reason.trim()) return { ok: false, error: "Səbəb göstərilməlidir" };
+  if (reason.length > 1000) return { ok: false, error: "Səbəb çox uzundur" };
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -161,6 +219,29 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
         if (sale.status === "legv") throw new Error("Bu satış artıq ləğv edilib");
 
         const sonMebleg = Number(sale.son_mebleg ?? 0);
+        const odenilmis = Number(sale.odenilmis ?? 0);
+
+        // 🛑 Ödəniş və ya digər bağlı sənədlər varsa — STRUKTURLU blocker cavabı.
+        // Throw etmirik: birbaşa qaytarırıq ki UI klik edilə bilən link göstərsin.
+        if (odenilmis > 0.001) {
+          const { findSaleBlockers } = await import("@/lib/blockers/find-sale-blockers");
+          const blockers = await findSaleBlockers(saleId, tx);
+
+          const sebebLower = reason.toLowerCase();
+          const acknowledged =
+            sebebLower.includes("ödəniş") ||
+            sebebLower.includes("odenis") ||
+            sebebLower.includes("refund") ||
+            sebebLower.includes("geri qayt") ||
+            sebebLower.includes("avans");
+          if (!acknowledged && blockers.length > 0) {
+            // İstisna ilə deyil — strukturlu obyekti tutulan blok-da geri qaytarırıq.
+            const err = new Error("__BLOCKED__") as Error & { blockers?: typeof blockers; odenilmis?: number };
+            err.blockers = blockers;
+            err.odenilmis = odenilmis;
+            throw err;
+          }
+        }
 
         // 1. Restore stock + reverse warehouse movement
         for (const line of sale.satis_sifaris_satirlari) {
@@ -203,19 +284,25 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
           });
         }
 
-        // 3. Reverse customer debt if it was a credit sale (yeni model: alacaq)
-        if (sale.odenis_nov === "borc" && sale.musteri_id) {
-          await tx.kontragentler.update({
-            where: { id: sale.musteri_id },
-            data: { alacaq: { decrement: sonMebleg } },
-          });
-        }
-
-        // 4. Mark sale as cancelled
+        // 3. Mark sale as cancelled — STANDART soft-delete sahələri də yazılır
         await tx.satis_sifarisleri.update({
           where: { id: sale.id },
-          data: { status: "legv", qeyd: `Ləğv səbəbi: ${reason}\n${sale.qeyd ?? ""}`.trim() },
+          data: {
+            status: "legv",
+            qeyd: `Ləğv səbəbi: ${reason}\n${sale.qeyd ?? ""}`.trim(),
+            // SOFT-DELETE STANDART
+            deleted_at: new Date(),
+            deleted_by: istifadeciId,
+            delete_reason: reason,
+          },
         });
+
+        // 4. Müştəri balansını yenidən hesabla (status=legv olduğu üçün
+        // bu satış artıq aktiv borc sayılmır → alacaq avtomatik azalır).
+        if (sale.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(sale.musteri_id, tx);
+        }
       });
 
       // Auto-clear stock alerts if stock back to safe levels
@@ -223,14 +310,61 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
         await checkAndCreateStockAlertBatch(restoredMehsulIds);
       }
 
+      // 🔒 Kritik audit — satış ləğvi
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "legv",
+        resurs_nov: "satis_sifarisi",
+        resurs_id: saleId,
+        yeni_data: { sebeb: reason, restored_count: restoredMehsulIds.length },
+        status: "ugur",
+      });
+
       revalidatePath("/ticaret/satislar");
       revalidatePath("/dashboard");
       revalidatePath("/anbar");
       revalidatePath("/xeberdarliqlar");
+      bustTicaretCache();
       return { ok: true };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Xəta";
       console.error("[cancelSale]", e);
+
+      // 🛑 STRUKTURLU BLOCKER cavabı — UI klik edilə bilən link göstərir.
+      if (e instanceof Error && e.message === "__BLOCKED__") {
+        const err = e as Error & { blockers?: import("@/lib/blockers/types").Blocker[]; odenilmis?: number };
+        const odenilmis = err.odenilmis ?? 0;
+        try {
+          await safeAuditLog({
+            sahibkar_id: sahibkarId,
+            istifadeci_id: istifadeciId,
+            emeliyyat: "legv",
+            resurs_nov: "satis_sifarisi",
+            resurs_id: saleId,
+            yeni_data: { sebeb: reason, blocked: true, blockers_count: err.blockers?.length ?? 0 },
+            status: "xeta",
+          });
+        } catch {/* non-fatal */}
+        return {
+          ok: false,
+          error: `Bu satışa ${odenilmis.toFixed(2)} ₼ ödəniş bağlanıb. Aşağıdakı sənədləri yoxlayın və ya səbəbdə "ödəniş geri qaytarıldı" qeyd edin.`,
+          blockers: err.blockers ?? [],
+          hint: "Sənədə klik edib oradan sil və ya səbəbdə geri ödənişi qeyd et.",
+        } as ActionResult;
+      }
+
+      try {
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "legv",
+          resurs_nov: "satis_sifarisi",
+          resurs_id: saleId,
+          yeni_data: { sebeb: reason, error: msg },
+          status: "xeta",
+        });
+      } catch {/* non-fatal */}
       return { ok: false, error: msg };
     }
   });
@@ -245,16 +379,31 @@ export async function updateSaleNote(
   saleId: string,
   qeyd: string,
 ): Promise<{ ok: true; data: { qeyd: string } } | { ok: false; error: string }> {
+  const permCheck = await requireTicaretActionPerm(["satis.idare", "satis.yenile"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const trimmed = qeyd.trim().slice(0, 4000);
-      const updated = await prisma.satis_sifarisleri.update({
-        where: { id: saleId },
+      // 🔒 Açıq sahibkar_id qoruması — updateMany ilə tenant-scoped update
+      const r = await prisma.satis_sifarisleri.updateMany({
+        where: { id: saleId, sahibkar_id: sahibkarId },
         data: { qeyd: trimmed || null, yenilendi: new Date() },
-        select: { qeyd: true },
       });
+      if (r.count === 0) return { ok: false, error: "Satış tapılmadı" };
       revalidatePath(`/ticaret/satislar/${saleId}`);
-      return { ok: true, data: { qeyd: updated.qeyd ?? "" } };
+      try {
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "yenile",
+          resurs_nov: "satis_sifarisi",
+          resurs_id: saleId,
+          yeni_data: { qeyd_uzunluq: trimmed.length },
+          status: "ugur",
+        });
+      } catch { /* non-fatal */ }
+      return { ok: true, data: { qeyd: trimmed } };
     } catch (e) {
       console.error("[updateSaleNote]", e);
       return { ok: false, error: "Yadda saxlanmadı" };
@@ -274,6 +423,8 @@ export async function createTaskForSale(
   deadline: string | null,
   prioritet: "asagi" | "normal" | "yuksek" | "tecili",
 ): Promise<{ ok: true; data: { id: string } } | { ok: false; error: string }> {
+  const permCheck = await requireTicaretActionPerm(["tapshiriq.yarat", "satis.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const title = basliq.trim();
   if (title.length < 3) return { ok: false, error: "Başlıq ən az 3 simvol olmalıdır" };
   if (!["asagi", "normal", "yuksek", "tecili"].includes(prioritet))
@@ -330,16 +481,31 @@ export async function bulkChangeSaleStatus(
   ids: string[],
   status: SaleStatus,
 ): Promise<{ ok: true; data: { count: number } } | { ok: false; error: string }> {
+  const permCheck = await requireTicaretActionPerm(["satis.idare", "satis.status"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!ids.length) return { ok: false, error: "Heç bir satış seçilməyib" };
+  if (ids.length > 1000) return { ok: false, error: "Bir dəfəyə 1000-dən çox satış olmamalıdır" };
   if (!ALLOWED_STATUSES.includes(status)) return { ok: false, error: "Status yanlışdır" };
 
   return withTenant(async () => {
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // 🔒 Cross-tenant qoruması — açıq sahibkar_id filtri
       const r = await prisma.satis_sifarisleri.updateMany({
-        where: { id: { in: ids }, status: { not: "legv" } },
+        where: { sahibkar_id: sahibkarId, id: { in: ids }, status: { not: "legv" } },
         data: { status, yenilendi: new Date() },
       });
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "bulk_yenile",
+        resurs_nov: "satis_sifarisi",
+        resurs_id: null,
+        yeni_data: { status, requested_count: ids.length, updated_count: r.count },
+        status: "ugur",
+      });
       revalidatePath("/ticaret/satislar");
+      bustTicaretCache();
       return { ok: true, data: { count: r.count } };
     } catch (e) {
       console.error("[bulkChangeSaleStatus]", e);

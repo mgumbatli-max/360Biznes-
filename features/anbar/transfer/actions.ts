@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { safeUserMessage } from "@/lib/error/user-message";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -31,6 +32,9 @@ async function nextTransferNo(sahibkarId: string): Promise<string> {
 }
 
 export async function createTransfer(input: z.input<typeof CreateTransferSchema>): Promise<ActionResult<{ id: string }>> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  const permCheck = await requireAnbarActionPerm(["stok.transfer", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = CreateTransferSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -82,7 +86,7 @@ export async function createTransfer(input: z.input<typeof CreateTransferSchema>
       return { ok: true, data: { id: transfer.id } };
     } catch (e) {
       console.error("[createTransfer]", e);
-      return { ok: false, error: "Yaradılmadı" };
+      return { ok: false, error: safeUserMessage(e, "Transfer yaradılmadı") };
     }
   });
 }
@@ -113,26 +117,28 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
             select: { son_qiymet: true },
           });
 
-          // Increment dest
-          const dst = await tx.stok.findFirst({
-            where: { mehsul_id: line.mehsul_id, anbar_id: t.hedef_anbar_id },
-          });
-          if (dst) {
-            await tx.stok.update({
-              where: { id: dst.id },
-              data: { miqdar: { increment: line.miqdar }, son_qiymet: src?.son_qiymet ?? undefined },
-            });
-          } else {
-            await tx.stok.create({
-              data: {
-                sahibkar_id: sahibkarId,
+          // Increment dest — atomic upsert (race-safe).
+          // Əgər concurrent transfer eyni hədəfə qəbul edirsə,
+          // update OR create-də race olur; upsert bunu önləyir.
+          await tx.stok.upsert({
+            where: {
+              mehsul_id_anbar_id: {
                 mehsul_id: line.mehsul_id,
                 anbar_id: t.hedef_anbar_id,
-                miqdar: line.miqdar,
-                son_qiymet: src?.son_qiymet,
               },
-            });
-          }
+            },
+            update: {
+              miqdar: { increment: line.miqdar },
+              son_qiymet: src?.son_qiymet ?? undefined,
+            },
+            create: {
+              sahibkar_id: sahibkarId,
+              mehsul_id: line.mehsul_id,
+              anbar_id: t.hedef_anbar_id,
+              miqdar: line.miqdar,
+              son_qiymet: src?.son_qiymet,
+            },
+          });
 
           // Movement records
           await tx.anbar_hereketleri.createMany({
@@ -188,7 +194,140 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
       return { ok: true };
     } catch (e) {
       console.error("[acceptTransfer]", e);
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      const raw = e instanceof Error ? e.message : "";
+      if (/tapılmadı|qəbul|stok|miqdar|anbar/i.test(raw)) {
+        return { ok: false, error: raw };
+      }
+      return { ok: false, error: safeUserMessage(e, "Transfer qəbul edilmədi") };
+    }
+  });
+}
+
+/**
+ * Transferin HİSSƏVİ qəbulu — sətir-sətir miqdarla qəbul.
+ *
+ * İstifadə: mənbə anbar 10 göndərib, qəbul edən 8 alır (2-si əskik/zədəli).
+ * Sətirlərdə `qebul_edilen` doldurulur, status="qebul_qismi" olur.
+ * Tam qəbul: bütün `qebul_edilen` = `miqdar` → status="tesdiqlendi".
+ */
+export async function partialAcceptTransfer(input: {
+  id: string;
+  lines: Array<{ satir_id: number; qebul_edilen: number; qeyd?: string }>;
+}): Promise<ActionResult> {
+  return withTenant(async () => {
+    const { sahibkarId, istifadeciId } = requireTenant();
+    try {
+      await prisma.$transaction(async (tx) => {
+        const t = await tx.anbar_transferleri.findUnique({
+          where: { id: input.id },
+          include: { transfer_satirlari: true },
+        });
+        if (!t) throw new Error("Tapılmadı");
+        if (t.status === "tesdiqlendi") throw new Error("Artıq tam qəbul edilib");
+        if (t.status === "legv") throw new Error("Ləğv olunmuş transferi qəbul etmək olmaz");
+
+        // Sətir tap-yox: map_id → received
+        const receivedByLine = new Map(input.lines.map((l) => [l.satir_id, l]));
+
+        let allFullyReceived = true;
+        for (const line of t.transfer_satirlari) {
+          const received = receivedByLine.get(line.id);
+          // Əgər input-da göstərilməyibsə, sıfır qəbul olunmuş hesab et
+          const qebulMiqdar = received ? Number(received.qebul_edilen) : 0;
+          const planedMiqdar = Number(line.miqdar);
+
+          if (qebulMiqdar < 0) throw new Error("Mənfi miqdar olmaz");
+          if (qebulMiqdar > planedMiqdar) {
+            throw new Error(`Qəbul (${qebulMiqdar}) sifariş miqdarından (${planedMiqdar}) çox ola bilməz`);
+          }
+          if (qebulMiqdar < planedMiqdar) allFullyReceived = false;
+
+          if (qebulMiqdar > 0) {
+            // Mənbə anbar — yalnız qəbul ediləcək hissə qədər çıx
+            const dec = await safeStockDecrement(tx, {
+              mehsulId: line.mehsul_id,
+              anbarId: t.kaynak_anbar_id,
+              miqdar: qebulMiqdar,
+            });
+            if (!dec.ok) throw new Error(dec.error);
+
+            const src = await tx.stok.findFirst({
+              where: { mehsul_id: line.mehsul_id, anbar_id: t.kaynak_anbar_id },
+              select: { son_qiymet: true },
+            });
+
+            await tx.stok.upsert({
+              where: {
+                mehsul_id_anbar_id: {
+                  mehsul_id: line.mehsul_id,
+                  anbar_id: t.hedef_anbar_id,
+                },
+              },
+              update: {
+                miqdar: { increment: qebulMiqdar },
+                son_qiymet: src?.son_qiymet ?? undefined,
+              },
+              create: {
+                sahibkar_id: sahibkarId,
+                mehsul_id: line.mehsul_id,
+                anbar_id: t.hedef_anbar_id,
+                miqdar: qebulMiqdar,
+                son_qiymet: src?.son_qiymet,
+              },
+            });
+
+            await tx.anbar_hereketleri.createMany({
+              data: [
+                {
+                  sahibkar_id: sahibkarId,
+                  anbar_id: t.kaynak_anbar_id,
+                  mehsul_id: line.mehsul_id,
+                  nov: "transfer_cixis",
+                  miqdar: qebulMiqdar,
+                  qiymet: src?.son_qiymet ?? null,
+                  ref_nov: "transfer_qismi",
+                  ref_id: t.id,
+                  edilen_id: istifadeciId,
+                },
+                {
+                  sahibkar_id: sahibkarId,
+                  anbar_id: t.hedef_anbar_id,
+                  mehsul_id: line.mehsul_id,
+                  nov: "transfer_giris",
+                  miqdar: qebulMiqdar,
+                  qiymet: src?.son_qiymet ?? null,
+                  ref_nov: "transfer_qismi",
+                  ref_id: t.id,
+                  edilen_id: istifadeciId,
+                },
+              ],
+            });
+          }
+
+          // Sətrdə qəbul olunmuş miqdarı qeyd et
+          await tx.transfer_satirlari.update({
+            where: { id: line.id },
+            data: {
+              qebul_edilen: qebulMiqdar,
+              qebul_qeyd: received?.qeyd ?? null,
+            },
+          });
+        }
+
+        // Status: hamısı tam qəbul → tesdiqlendi; əks halda qebul_qismi
+        await tx.anbar_transferleri.update({
+          where: { id: t.id },
+          data: {
+            status: allFullyReceived ? "tesdiqlendi" : "qebul_qismi",
+          },
+        });
+      });
+      revalidatePath("/anbar/transfer");
+      revalidatePath("/anbar/hereketler");
+      return { ok: true };
+    } catch (e) {
+      console.error("[partialAcceptTransfer]", e);
+      return { ok: false, error: safeUserMessage(e, "Hissəvi qəbul alınmadı") };
     }
   });
 }

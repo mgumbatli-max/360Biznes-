@@ -105,15 +105,16 @@ export async function saveBonusProfil(input: z.input<typeof ProfilSchema>): Prom
   const data = parsed.data;
   return withTenant(async () => {
     const { sahibkarId, rolAd, icazeler } = requireTenant();
-    // İcazə yoxlanışı — admin, sahibkar və ya `isci.bonus_idare` icazəsi
+    // İcazə yoxlanışı — yalnız sahibkar/admin/direktor və ya `hr.bonus_idare`
+    const r = (rolAd ?? "").toLowerCase();
     const allowed =
-      rolAd === "admin" ||
-      rolAd === "sahibkar" ||
-      (icazeler ?? []).includes("isci.bonus_idare") ||
-      (icazeler ?? []).includes("istifadeci.idare") ||
-      (icazeler ?? []).includes("sahibkar.access");
+      r.includes("sahibkar") ||
+      r.includes("owner") ||
+      r.includes("admin") ||
+      r.includes("direktor") ||
+      (icazeler ?? []).includes("hr.bonus_idare");
     if (!allowed) {
-      return { ok: false, error: "Bonus qaydalarını dəyişdirmək icazəniz yoxdur" };
+      return { ok: false, error: "Bonus qaydalarını dəyişdirmək icazəniz yoxdur (hr.bonus_idare lazımdır)" };
     }
     try {
       const profil: BonusProfil = {
@@ -145,10 +146,21 @@ export async function saveBonusProfil(input: z.input<typeof ProfilSchema>): Prom
         },
       });
       revalidatePath(`/iscilier/${data.istifadeciId}`);
+      try {
+        const { revalidateTag } = await import("next/cache");
+        revalidateTag(`iscilier:${sahibkarId}`, "max");
+        revalidateTag(`dashboard:${sahibkarId}`, "max");
+      } catch { /* non-fatal */ }
+      const { audit } = await import("@/lib/audit/log");
+      await audit("yenile", "bonus_profil", data.istifadeciId, {
+        yeni_data: { metod: data.metod, paylanma: data.paylanma, excluded: data.excluded_kontragent_ids.length },
+        sebeb: "Bonus profili yeniləndi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[saveBonusProfil]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }

@@ -7,8 +7,90 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
 import { audit } from "@/lib/audit/log";
+import { requireHrActionPerm, bustHrCache } from "./access-guard";
+import { safeUserMessage } from "@/lib/error/user-message";
+
+// Extended prisma client-in transaction client tipini extension-aware şəkildə çıxar.
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 type Result = { ok: true; count?: number } | { ok: false; error: string };
+
+/**
+ * Helper: Maaş ödənişində kassa/bank qalığını azaldıb maliyə əməliyyatı yarat.
+ *
+ * @returns true uğurlu yazıldısa, false hesab yoxdursa (yumşaq fallback — UX-i pozma)
+ */
+async function recordMaasFinanceLeg(
+  tx: TxClient,
+  opts: {
+    sahibkarId: string;
+    yaradanId: string;
+    istifadeciId: string;
+    bordroId: number;
+    meblegh: number;
+    qeyd: string;
+    hesabId?: string | null;
+  },
+): Promise<{ ok: boolean; hesabId?: string }> {
+  if (opts.meblegh <= 0) return { ok: true };
+
+  // 1) Hesab seç — manual yoxdursa default kassa, kassa yoxdursa bank
+  let hesabId = opts.hesabId ?? null;
+  if (!hesabId) {
+    const defaultKassa = await tx.maliye_hesablari.findFirst({
+      where: { sahibkar_id: opts.sahibkarId, aktiv: true, nov: "nagd" },
+      orderBy: { yaradildi: "asc" },
+      select: { id: true },
+    });
+    hesabId = defaultKassa?.id ?? null;
+    if (!hesabId) {
+      const defaultBank = await tx.maliye_hesablari.findFirst({
+        where: { sahibkar_id: opts.sahibkarId, aktiv: true, nov: { in: ["bank", "kart"] } },
+        orderBy: { yaradildi: "asc" },
+        select: { id: true },
+      });
+      hesabId = defaultBank?.id ?? null;
+    }
+  }
+  if (!hesabId) return { ok: false };
+
+  // 2) Maaş tip-i tap
+  const maasType = await tx.finance_operation_types.findUnique({
+    where: { kod: "maas" },
+    select: { id: true },
+  });
+  if (!maasType) return { ok: false };
+
+  // 3) Source-of-truth ilə yetərlilik yoxlaması — mənfi balansın qarşısı alınır
+  const { checkAccountSufficient, recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+  const sufficient = await checkAccountSufficient(hesabId, opts.meblegh, tx);
+  if (!sufficient.ok) {
+    return { ok: false };
+  }
+
+  // 4) finance_operations qeyd
+  await tx.finance_operations.create({
+    data: {
+      sahibkar_id: opts.sahibkarId,
+      type_id: maasType.id,
+      type_kod: "maas",
+      y_n: "mexaric",
+      meblegh: opts.meblegh,
+      azn_meblegh: opts.meblegh,
+      hesab_id: hesabId,
+      isci_id: opts.istifadeciId,
+      status: "aktiv",
+      qeyd: opts.qeyd,
+      yaradan_id: opts.yaradanId,
+      sened_nomresi: `MAAS-${opts.bordroId}`,
+    },
+  });
+
+  // 5) Source-of-truth-dan qaliq cache-i yenilə
+  await recalculateAccountBalance(hesabId, tx);
+
+  return { ok: true, hesabId };
+}
 
 const MonthSchema = z.object({
   il: z.coerce.number().int().min(2000).max(2100),
@@ -24,6 +106,8 @@ const COMMISSION_RATE = 0.03;
  * If an existing maas_hesablamalar row exists (any status), it's left untouched.
  */
 export async function calculateBordro(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("maas.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = MonthSchema.safeParse({
     il: input.get("il"),
     ay: input.get("ay"),
@@ -140,10 +224,18 @@ export async function calculateBordro(input: FormData): Promise<Result> {
         created++;
       }
       revalidatePath("/iscilier/maas");
+      bustHrCache();
+      if (created > 0) {
+        await audit("hesabla", "maas_hesablama", null, {
+          yeni_data: { il, ay, yaradilan: created, isci_say: employees.length },
+          sebeb: `Payroll çernovik hesablanıb (${il}-${String(ay).padStart(2, "0")})`,
+        });
+      }
       return { ok: true, count: created };
     } catch (e) {
       console.error("[calculateBordro]", e);
-      return { ok: false, error: "Bordro hesablanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Bordro hesablanmadı: ${msg}` };
     }
   });
 }
@@ -161,9 +253,17 @@ const BonusSchema = z.object({
 });
 
 export async function saveBonusOrPenalty(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm(["maas.idare", "isci.discipline"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = BonusSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
+
+  // 📅 Real-time tarix məcburiyyəti
+  const { validateOperationDate } = await import("@/lib/operation-date-guard");
+  const dateCheck = await validateOperationDate(d.tarix, { fieldLabel: "Bonus/cərimə tarixi" });
+  if (!dateCheck.ok) return { ok: false, error: dateCheck.error };
+
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -239,18 +339,38 @@ export async function saveBonusOrPenalty(input: FormData): Promise<Result> {
       });
       revalidatePath("/iscilier/maas");
       revalidatePath(`/iscilier/${d.istifadeci_id}`);
+      bustHrCache();
+      await audit("yenile", "maas_hesablama", b.id, {
+        yeni_data: {
+          nov: d.nov,
+          meblegh: d.meblegh,
+          istifadeci_id: d.istifadeci_id,
+          il, ay,
+          yeni_son: son,
+        },
+        sebeb: `${d.nov === "bonus" ? "Bonus" : "Cərimə"}: ${d.sebeb}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[saveBonusOrPenalty]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
 
-const PaySchema = z.object({ id: z.coerce.number().int().positive() });
+const PaySchema = z.object({
+  id: z.coerce.number().int().positive(),
+  hesab_id: z.string().uuid().optional().or(z.literal("").transform(() => undefined)),
+});
 
 export async function payBordro(input: FormData): Promise<Result> {
-  const parsed = PaySchema.safeParse({ id: input.get("id") });
+  const permCheck = await requireHrActionPerm("maas.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  const parsed = PaySchema.safeParse({
+    id: input.get("id"),
+    hesab_id: input.get("hesab_id"),
+  });
   if (!parsed.success) return { ok: false, error: "Yanlış ID" };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -260,6 +380,10 @@ export async function payBordro(input: FormData): Promise<Result> {
       if (b.status === "odenilib") return { ok: false, error: "Artıq ödənilib" };
 
       const now = new Date();
+      let financeOk = false;
+      let usedHesabId: string | undefined;
+      const meblegh = Number(b.son_meblegh ?? 0);
+
       await prisma.$transaction(async (tx) => {
         await tx.maas_hesablamalar.update({
           where: { id: b.id },
@@ -276,26 +400,47 @@ export async function payBordro(input: FormData): Promise<Result> {
             yaradan_id: istifadeciId,
           },
         });
+        // 🔗 Maliyə bağlantısı — kassa/bank məxariç + finance_operations
+        const res = await recordMaasFinanceLeg(tx, {
+          sahibkarId,
+          yaradanId: istifadeciId,
+          istifadeciId: b.istifadeci_id,
+          bordroId: b.id,
+          meblegh,
+          qeyd: `${b.il}-${String(b.ay).padStart(2, "0")} ayı üçün maaş`,
+          hesabId: parsed.data.hesab_id ?? null,
+        });
+        financeOk = res.ok;
+        usedHesabId = res.hesabId;
       });
       await audit("yarat", "maas_odenis", b.id, {
         yeni_data: {
           istifadeci_id: b.istifadeci_id,
           il: b.il,
           ay: b.ay,
-          meblegh: Number(b.son_meblegh ?? 0),
+          meblegh,
+          hesab_id: usedHesabId,
+          finance_leg: financeOk,
         },
-        sebeb: `Maaş ödənildi (${b.il}-${String(b.ay).padStart(2, "0")})`,
+        sebeb: `Maaş ödənildi (${b.il}-${String(b.ay).padStart(2, "0")})${financeOk ? "" : " — DİQQƏT: hesab bağlanmadı"}`,
       });
       revalidatePath("/iscilier/maas");
-      return { ok: true };
+      revalidatePath("/maliyye");
+      bustHrCache();
+      return {
+        ok: true,
+        ...(financeOk ? {} : { count: 0 }),
+      };
     } catch (e) {
       console.error("[payBordro]", e);
-      return { ok: false, error: "Ödəniş alınmadı" };
+      return { ok: false, error: safeUserMessage(e, "Ödəniş alınmadı") };
     }
   });
 }
 
 export async function bulkPayBordro(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("maas.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = MonthSchema.safeParse({ il: input.get("il"), ay: input.get("ay") });
   if (!parsed.success) return { ok: false, error: "Yanlış ay" };
   const { il, ay } = parsed.data;
@@ -307,6 +452,7 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
       });
       const now = new Date();
       let count = 0;
+      let financeFailCount = 0;
       for (const b of list) {
         await prisma.$transaction(async (tx) => {
           await tx.maas_hesablamalar.update({
@@ -324,9 +470,22 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
               yaradan_id: istifadeciId,
             },
           });
+          const res = await recordMaasFinanceLeg(tx, {
+            sahibkarId,
+            yaradanId: istifadeciId,
+            istifadeciId: b.istifadeci_id,
+            bordroId: b.id,
+            meblegh: Number(b.son_meblegh ?? 0),
+            qeyd: `${il}-${String(ay).padStart(2, "0")} ayı üçün maaş (toplu)`,
+          });
+          if (!res.ok) financeFailCount++;
         });
         count++;
       }
+      if (financeFailCount > 0) {
+        console.warn(`[bulkPayBordro] ${financeFailCount}/${count} ödəniş hesab-a bağlanmadı (default kassa/bank yox)`);
+      }
+      revalidatePath("/maliyye");
       await audit("yarat", "maas_odenis_bulk", null, {
         yeni_data: {
           il, ay, count,
@@ -335,10 +494,12 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
         sebeb: `Toplu maaş ödənişi (${il}-${String(ay).padStart(2, "0")})`,
       });
       revalidatePath("/iscilier/maas");
+      bustHrCache();
       return { ok: true, count };
     } catch (e) {
       console.error("[bulkPayBordro]", e);
-      return { ok: false, error: "Toplu ödəniş alınmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Toplu ödəniş alınmadı: ${msg}` };
     }
   });
 }
@@ -350,6 +511,8 @@ const AdjustSchema = z.object({
 });
 
 export async function adjustBordro(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("maas.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = AdjustSchema.safeParse({
     id: input.get("id"),
     field: input.get("field"),
@@ -388,10 +551,12 @@ export async function adjustBordro(input: FormData): Promise<Result> {
         sebeb: `Bordro düzəlişi: ${field}`,
       });
       revalidatePath("/iscilier/maas");
+      bustHrCache();
       return { ok: true };
     } catch (e) {
       console.error("[adjustBordro]", e);
-      return { ok: false, error: "Yenilənmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yenilənmədi: ${msg}` };
     }
   });
 }

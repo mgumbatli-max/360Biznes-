@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * "Yeni alış sifarişi" — compact, native (non-iframe) modal.
+ * "Yeni alış qaiməsi" — compact, native (non-iframe) modal.
  *
  * Visual target: /tmp/s4.png + /tmp/s5.png.
  *
- *   ┌─ Yeni alış sifarişi ─────────────────────── ✕ ┐
+ *   ┌─ Yeni alış qaiməsi ─────────────────────── ✕ ┐
  *   │  [ Barkod skan et və ya yaz, sonra Enter… ]   │
  *   │  Təchizatçı  |  Məsul menecer  |  Anbar       │
  *   │  Tarix       |  Sənəd / Qaimə №               │
@@ -21,19 +21,38 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2, ScanBarcode, Search, FileText } from "lucide-react";
+import { Loader2, Plus, Trash2, ScanBarcode, Search, FileText, PackagePlus } from "lucide-react";
 import { toast } from "sonner";
+import dynamic from "next/dynamic";
+import { ContactContextPanel } from "@/features/elaqe/components/contact-context-panel";
+import { QuickCreateSupplierDialog } from "@/features/elaqe/components/quick-create-supplier-dialog";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatMoney } from "@/lib/utils";
-import { searchProductsAction } from "@/features/pos/search-actions";
+import { searchProductsForPurchaseAction as searchProductsAction } from "@/features/pos/search-actions";
 import type { ProductRow, SalespersonOption } from "@/features/pos/sale-queries";
 import { createPurchase } from "../alis-actions";
 import { OperationModalShell, Kbd } from "./operation-modal-shell";
 
+const QuickCreateProductModal = dynamic(
+  () =>
+    import("@/features/anbar/components/quick-create-product-modal").then(
+      (m) => m.QuickCreateProductModal,
+    ),
+  { ssr: false },
+);
+
 export type AnbarOpt = { id: number; ad: string };
-export type SupplierOpt = { id: string; ad: string; telefon?: string | null };
+export type SupplierOpt = {
+  id: string;
+  ad: string;
+  telefon?: string | null;
+  /** Bizim təchizatçıya cari borcumuz. */
+  borc?: number;
+};
+export type KassaOpt = { id: string; ad: string };
+export type HesabOpt = { id: string; ad: string; nov: string; bank_adi: string | null };
 
 type Line = {
   mehsul_id: string;
@@ -49,6 +68,8 @@ export function YeniAlisModal({
   anbarlar,
   suppliers,
   menecerler,
+  kassalar = [],
+  hesablar = [],
   defaultManagerId,
 }: {
   open: boolean;
@@ -56,6 +77,8 @@ export function YeniAlisModal({
   anbarlar: AnbarOpt[];
   suppliers: SupplierOpt[];
   menecerler: SalespersonOption[];
+  kassalar?: KassaOpt[];
+  hesablar?: HesabOpt[];
   defaultManagerId: string | null;
 }) {
   const router = useRouter();
@@ -63,6 +86,8 @@ export function YeniAlisModal({
 
   /* ── Header ──────────────────────────────────────── */
   const [barcode, setBarcode] = useState("");
+  // Local suppliers list — quick-create ilə yeni təchizatçı əlavə oluna bilsin
+  const [localSuppliers, setLocalSuppliers] = useState<SupplierOpt[]>(suppliers);
   const [techizatciId, setTechizatciId] = useState<string>("");
   const [menecerId, setMenecerId] = useState<string>(defaultManagerId ?? "");
   const [anbarId, setAnbarId] = useState<number>(anbarlar[0]?.id ?? 0);
@@ -76,9 +101,17 @@ export function YeniAlisModal({
   const [searchResults, setSearchResults] = useState<ProductRow[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
 
+  /* ── Quick create product modal ─────────────────── */
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+
   /* ── Extra costs ─────────────────────────────────── */
   const [elaveXerc, setElaveXerc] = useState<number>(0);
   const [elaveXercIzah, setElaveXercIzah] = useState<string>("");
+
+  /* ── Payment ─────────────────────────────────────── */
+  // Hesab/kassa seçimi: boş = nisyə (təchizatçıya borc), seçilibsə avtomatik ödə.
+  const [payHesabId, setPayHesabId] = useState<string>("");
+  const payNow = payHesabId !== "";
 
   /* ── Notes ──────────────────────────────────────── */
   const [qeyd, setQeyd] = useState("");
@@ -92,26 +125,23 @@ export function YeniAlisModal({
     setSearchResults([]);
     setElaveXerc(0);
     setElaveXercIzah("");
+    setPayHesabId("");
     setQeyd("");
     setQaimeNomre("");
   }, [open]);
 
   /* ── Product search ─────────────────────────────── */
   useEffect(() => {
-    if (searchQ.trim().length < 2) {
-      setSearchResults([]);
-      setSearchOpen(false);
-      return;
-    }
     let alive = true;
-    searchProductsAction(searchQ).then((r) => {
-      if (alive) {
-        setSearchResults(r);
-        setSearchOpen(true);
-      }
-    });
+    const delay = searchQ.trim().length === 0 ? 0 : 200;
+    const id = setTimeout(() => {
+      searchProductsAction(searchQ).then((r) => {
+        if (alive) setSearchResults(r);
+      });
+    }, delay);
     return () => {
       alive = false;
+      clearTimeout(id);
     };
   }, [searchQ]);
 
@@ -184,14 +214,13 @@ export function YeniAlisModal({
         qaime_nomre: qaimeNomre || undefined,
         qeyd: qeydParts.join("\n") || undefined,
         receive_now: true,
+        diger_xerc: elaveXerc,
+        pay_now: payNow,
+        hesab_id: payNow ? payHesabId : undefined,
         lines: lines.map((l) => ({
           mehsul_id: l.mehsul_id,
           miqdar: l.miqdar,
-          // Distribute extra cost proportionally → store as effective alış qiymət.
-          qiymet:
-            mehsulMebleg > 0
-              ? l.qiymet + (elaveXerc * ((l.miqdar * l.qiymet) / mehsulMebleg)) / l.miqdar
-              : l.qiymet,
+          qiymet: l.qiymet,
         })),
       });
       if (!res.ok) {
@@ -221,11 +250,12 @@ export function YeniAlisModal({
   }, [open, lines, elaveXerc, elaveXercIzah, techizatciId, anbarId, tarix, qaimeNomre, qeyd]);
 
   return (
+    <>
     <OperationModalShell
       open={open}
       onOpenChange={onOpenChange}
-      title="Yeni alış sifarişi"
-      size="2xl"
+      title="Yeni alış qaiməsi"
+      size="4xl"
       footerHints={
         <>
           <span><Kbd>F3</Kbd> Təchizatçı</span>
@@ -287,18 +317,39 @@ export function YeniAlisModal({
       <div className="mb-3 grid grid-cols-3 gap-2">
         <div>
           <Label1>Təchizatçı</Label1>
-          <Combobox
-            options={suppliers.map<ComboOption>((s) => ({
-              value: s.id,
-              label: s.ad,
-              hint: s.telefon ?? undefined,
-            }))}
-            value={techizatciId}
-            onChange={setTechizatciId}
-            placeholder="Təchizatçı seçilməyib —"
-            className="h-8 text-xs"
-            searchPlaceholder="🔍 Təchizatçı axtar..."
-          />
+          <div className="flex items-start gap-1">
+            <div className="flex-1">
+              <Combobox
+                options={localSuppliers.map<ComboOption>((s) => ({
+                  value: s.id,
+                  label: (s.borc ?? 0) > 0 ? `${s.ad}  💰${formatMoney(s.borc ?? 0)}` : s.ad,
+                  hint: s.telefon ?? undefined,
+                }))}
+                value={techizatciId}
+                onChange={setTechizatciId}
+                placeholder="Təchizatçı seçilməyib —"
+                className="h-8 text-xs"
+                searchPlaceholder="🔍 Təchizatçı axtar..."
+              />
+            </div>
+            <QuickCreateSupplierDialog
+              onCreated={(s) => {
+                const newSupplier: SupplierOpt = {
+                  id: s.id,
+                  ad: s.ad,
+                  telefon: s.telefon,
+                  borc: 0,
+                };
+                setLocalSuppliers((prev) => [newSupplier, ...prev]);
+                setTechizatciId(s.id);
+              }}
+            />
+          </div>
+          {techizatciId && (
+            <div className="mt-2">
+              <ContactContextPanel kontragentId={techizatciId} side="supplier" compact />
+            </div>
+          )}
         </div>
         <div>
           <Label1>Məsul menecer</Label1>
@@ -346,38 +397,65 @@ export function YeniAlisModal({
 
       {/* Məhsullar */}
       <div className="mb-3">
-        <Label1>Məhsullar</Label1>
+        <div className="mb-1 flex items-center justify-between">
+          <Label1>Məhsullar</Label1>
+          <button
+            type="button"
+            onClick={() => setQuickCreateOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 hover:bg-emerald-500/20"
+          >
+            <PackagePlus className="h-3 w-3" />
+            Yeni məhsul yarat
+          </button>
+        </div>
         <div className="relative">
           <div className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1">
             <Search className="h-3.5 w-3.5 text-muted-foreground" />
             <input
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
               placeholder="Məhsul axtar (ad, kod, barkod)…"
               className="h-7 flex-1 bg-transparent text-xs outline-none"
             />
           </div>
-          {searchOpen && searchResults.length > 0 && (
+          {searchOpen && (searchResults.length > 0 || searchQ.trim().length >= 2) && (
             <ul className="absolute top-full left-0 right-0 z-20 mt-0.5 max-h-52 overflow-y-auto rounded-md border border-border bg-popover shadow">
-              {searchResults.map((p) => (
-                <li key={p.id}>
+              {searchResults.length === 0 ? (
+                <li>
                   <button
                     type="button"
-                    onClick={() => addProduct(p)}
-                    className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-secondary"
+                    onClick={() => setQuickCreateOpen(true)}
+                    className="flex w-full items-center gap-2 px-2 py-2 text-left text-xs hover:bg-emerald-500/10"
                   >
+                    <PackagePlus className="h-3.5 w-3.5 text-emerald-600" />
                     <span>
-                      <span className="font-medium">{p.ad}</span>
-                      {p.kod && (
-                        <span className="ml-1 text-muted-foreground">({p.kod})</span>
-                      )}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {formatMoney(p.alish_qiymeti)}
+                      «{searchQ}» tapılmadı — <span className="font-semibold text-emerald-700">Yeni məhsul yarat</span>
                     </span>
                   </button>
                 </li>
-              ))}
+              ) : (
+                searchResults.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => addProduct(p)}
+                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-secondary"
+                    >
+                      <span>
+                        <span className="font-medium">{p.ad}</span>
+                        {p.kod && (
+                          <span className="ml-1 text-muted-foreground">({p.kod})</span>
+                        )}
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">
+                        {formatMoney(p.alish_qiymeti)}
+                      </span>
+                    </button>
+                  </li>
+                ))
+              )}
             </ul>
           )}
         </div>
@@ -403,7 +481,8 @@ export function YeniAlisModal({
                         type="number"
                         min={0.001}
                         step="0.01"
-                        value={l.miqdar}
+                        value={l.miqdar > 0 ? l.miqdar : ""}
+                        placeholder="0"
                         onChange={(e) => updateLine(idx, { miqdar: Number(e.target.value) || 0 })}
                         className="h-6 w-14 rounded border border-border bg-background px-1 text-right text-xs tabular-nums"
                       />
@@ -413,7 +492,8 @@ export function YeniAlisModal({
                         type="number"
                         min={0}
                         step="0.01"
-                        value={l.qiymet}
+                        value={l.qiymet > 0 ? l.qiymet : ""}
+                        placeholder="0"
                         onChange={(e) => updateLine(idx, { qiymet: Number(e.target.value) || 0 })}
                         className="h-6 w-20 rounded border border-border bg-background px-1 text-right text-xs tabular-nums"
                       />
@@ -463,7 +543,8 @@ export function YeniAlisModal({
               type="number"
               min={0}
               step="0.01"
-              value={elaveXerc}
+              value={elaveXerc > 0 ? elaveXerc : ""}
+              placeholder="0"
               onChange={(e) => setElaveXerc(Number(e.target.value) || 0)}
               className="h-8 text-xs tabular-nums"
             />
@@ -481,6 +562,41 @@ export function YeniAlisModal({
         <p className="mt-1.5 text-[10px] text-amber-700/80">
           ⓘ Hər bir məhsulun məbləğinə görə proporsional bölüşdürüləcək və real maya
           dəyəri buna əsasən hesablanacaq
+        </p>
+      </div>
+
+      {/* Ödəniş — boş = nisyə, hesab/kassa seçilərsə avtomatik ödə */}
+      <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50/50 px-3 py-2.5">
+        <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-sky-700">
+          Hesab / kassa (boş = nisyə)
+        </div>
+        <select
+          value={payHesabId}
+          onChange={(e) => setPayHesabId(e.target.value)}
+          className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="">— Nisyə (təchizatçıya borc) —</option>
+          {kassalar.length > 0 && (
+            <optgroup label="Kassalar (nəğd ödəniş)">
+              {kassalar.map((k) => (
+                <option key={k.id} value={k.id}>{k.ad}</option>
+              ))}
+            </optgroup>
+          )}
+          {hesablar.length > 0 && (
+            <optgroup label="Bank / kart (köçürmə)">
+              {hesablar.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.ad}{h.bank_adi ? ` · ${h.bank_adi}` : ""}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+        <p className="mt-1.5 text-[10px] text-sky-700/80">
+          ⓘ {payHesabId
+            ? "Seçilmiş hesabdan məbləğ məxariç olunacaq və finance qeydi yaranacaq."
+            : "Boş saxlasanız təchizatçı borcu artırılacaq. Sonradan ödəniş etmək olar."}
         </p>
       </div>
 
@@ -516,6 +632,34 @@ export function YeniAlisModal({
         />
       </div>
     </OperationModalShell>
+
+    {/* Sürətli məhsul yaratma — modal-in-modal */}
+    <QuickCreateProductModal
+      open={quickCreateOpen}
+      onOpenChange={setQuickCreateOpen}
+      defaultAd={searchQ.trim()}
+      onCreated={(p) => {
+        // Yeni məhsulu birbaşa cədvələ əlavə et
+        addProduct({
+          id: p.id,
+          ad: p.ad,
+          kod: p.kod,
+          barkod: p.barkod,
+          satis_qiymeti: p.satis_qiymeti,
+          alish_qiymeti: p.alish_qiymeti,
+          min_satis_qiymeti: 0,
+          topdan_qiymeti: 0,
+          partnyor_qiymeti: 0,
+          vip_qiymeti: 0,
+          stok_miqdari: 0,
+          diger_anbarlarda: [],
+        });
+        setSearchQ("");
+        setSearchResults([]);
+        setSearchOpen(false);
+      }}
+    />
+    </>
   );
 }
 

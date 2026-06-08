@@ -19,11 +19,16 @@ export type TransferFilter = {
   hedefId?: number;
   from?: string;
   to?: string;
+  /** Soft-delete standart filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export async function getTransfers(filter: TransferFilter = {}): Promise<TransferRow[]> {
   return withTenant(async () => {
     const where: Record<string, unknown> = {};
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
     if (filter.status) where.status = filter.status;
     if (filter.kaynakId) where.kaynak_anbar_id = filter.kaynakId;
     if (filter.hedefId) where.hedef_anbar_id = filter.hedefId;
@@ -85,3 +90,4 @@ export async function getTransferOptions() {
     };
   });
 }
+

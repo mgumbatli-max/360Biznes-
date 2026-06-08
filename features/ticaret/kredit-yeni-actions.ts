@@ -8,6 +8,8 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { audit } from "@/lib/audit/log";
+import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
 function parseSaleDate(s: string): Date {
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return parseLocalDate(s) ?? new Date();
@@ -57,11 +59,18 @@ const PREFIX = "KRD";
 export async function createKreditSatis(
   input: CreateKreditQeydInput,
 ): Promise<CreateKreditQeydResult> {
+  const permCheck = await requireTicaretActionPerm(["kredit.yarat", "kredit.idare", "satis.yarat"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   }
   const d = parsed.data;
+
+  // 📅 Real-time tarix məcburiyyəti
+  const { validateOperationDate } = await import("@/lib/operation-date-guard");
+  const dateCheck = await validateOperationDate(d.tarix, { fieldLabel: "Kredit tarixi" });
+  if (!dateCheck.ok) return { ok: false, error: dateCheck.error };
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -79,17 +88,15 @@ export async function createKreditSatis(
         const musteriCemi = umumi * (1 + (d.aylik_faiz / 100) * d.muddet_ay);
         const aylik = d.muddet_ay > 0 ? musteriCemi / d.muddet_ay : 0;
 
-        const year = new Date().getFullYear();
-        const last = await tx.satis_sifarisleri.findFirst({
-          where: { nomre: { startsWith: `${PREFIX}-${year}-` } },
-          orderBy: { nomre: "desc" },
-          select: { nomre: true },
-        });
-        const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-        const nomre = `${PREFIX}-${year}-${String(lastNum + 1).padStart(5, "0")}`;
+        // Atomic, race-safe sənəd nömrəsi
+        const nomre = await nextDocNumber(tx, sahibkarId, "kredit");
 
-        // satis_sifarisleri — `qaralama=true` ilə yaradılır,
-        // bu qeyd ödəniş gəlinənə qədər real satış kimi sayılmasın.
+        // satis_sifarisleri — real satış kimi yaranır, çünki müştəri məhsulu fiziki olaraq götürür.
+        // Müştəri borcu yaranmır (kredit şirkəti vasitəsilədir, müştəri bizə yox banka borcludur).
+        // Status="yeni" — pul bankdan yatınca tamamlandı olur.
+        // DB constraint `satis_odenis_nov_dogru` artıq "kredit"-i dəstəkləyir.
+        // Mağaza neti = umumi − bank komissiyası. Bu məbləğ kassaya/banka düşür.
+        // Müştəri borclu görünmür (kredit təşkilatı bizim qarşı tərəfimizdir).
         const sale = await tx.satis_sifarisleri.create({
           data: {
             sahibkar_id: sahibkarId,
@@ -98,10 +105,12 @@ export async function createKreditSatis(
             anbar_id: d.anbar_id,
             tarix: parseSaleDate(d.tarix),
             status: "yeni",
-            odenis_nov: "kredit_qeyd",
+            odenis_nov: "kredit",
             umumi_mebleg: umumi,
             endirim_mebleg: 0,
             son_mebleg: umumi,
+            // Mağaza neti pul kreditdən gəldikdə "tamamlandı"-ya keçər;
+            // hələ qeyd statusunda odenilmis = 0.
             odenilmis: 0,
             qeyd: [
               `[KREDIT_QEYD]`,
@@ -110,14 +119,16 @@ export async function createKreditSatis(
               `müddət=${d.muddet_ay}ay`,
               `aylıq faiz=${d.aylik_faiz}%`,
               `bank komissiyası=${d.bank_komissiya_faiz}%`,
+              `[MAGAZA_NET:${magazaNet.toFixed(2)}]`,
               d.qeyd ? `qeyd: ${d.qeyd}` : "",
             ].filter(Boolean).join(" "),
             yaradan_id: istifadeciId,
             satis_meneceri_id: istifadeciId,
-            qaralama: true, // qeyd statusunda saxla, bank ödədikdə aktivləşdir
+            qaralama: false, // real satışdır — müştəri məhsulu götürür
           },
         });
 
+        // Sətirlər + atomic stok düşürmə (müştəri məhsulu fiziki götürür)
         for (const line of d.lines) {
           await tx.satis_sifaris_satirlari.create({
             data: {
@@ -129,7 +140,30 @@ export async function createKreditSatis(
               endirim_faiz: line.endirim_faiz,
             },
           });
-          // Qeyd statusunda stok düşürülmür — bank ödəyəndə düşür.
+
+          // Race-safe stok düşürmə
+          const dec = await safeStockDecrement(tx, {
+            mehsulId: line.mehsul_id,
+            anbarId: d.anbar_id,
+            miqdar: line.miqdar,
+          });
+          if (!dec.ok) throw new Error(dec.error);
+
+          // Anbar hərəkəti — audit izi üçün
+          await tx.anbar_hereketleri.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              anbar_id: d.anbar_id,
+              mehsul_id: line.mehsul_id,
+              nov: "mexaric",
+              miqdar: line.miqdar,
+              qiymet: line.qiymet,
+              ref_nov: "satis_sifarisi",
+              ref_id: sale.id,
+              edilen_id: istifadeciId,
+              qeyd: `Kreditlə satış: ${nomre} (bank: ${d.bank})`,
+            },
+          });
         }
 
         // kredit_satislari — yalnız qeyd kimi yarat (status="qeyd")
@@ -161,11 +195,20 @@ export async function createKreditSatis(
           },
         });
 
+        // Müştəri balansı recalc — kredit satış müştəri borcu YARATMIR
+        // (source-of-truth `odenis_nov IN ('nisye','borc')` filter-i kredit-i istisna edir),
+        // amma cache field-in drift olmaması üçün defensive çağırış.
+        if (d.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(d.musteri_id, tx);
+        }
+
         return { id: sale.id, nomre, magazaNet, umumi, aylik };
       });
 
       revalidatePath("/ticaret/kredit");
       revalidatePath("/ticaret/kredit-yeni");
+      bustTicaretCache();
       await audit("yarat", "kredit_satis", result.id, {
         yeni_data: {
           nomre: result.nomre,
@@ -190,8 +233,8 @@ export async function createKreditSatis(
         aylik_odenis: result.aylik,
       };
     } catch (e) {
-      console.error("[createKreditSatis]", e);
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      const { logAndFriendly } = await import("@/lib/error/user-message");
+      return { ok: false, error: logAndFriendly("createKreditSatis", e, "Kreditlə satış yaradılmadı") };
     }
   });
 }

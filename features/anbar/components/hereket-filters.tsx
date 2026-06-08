@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
+import { cn } from "@/lib/utils";
 
 export const HEREKET_NOV_OPTIONS: ComboOption[] = [
   { value: "medaxil",         label: "Mədaxil" },
@@ -43,10 +44,87 @@ export function HereketFilters({ anbarlar }: { anbarlar: Array<{ id: number; ad:
     startTransition(() => router.push("/anbar/hereketler"));
   }
 
+  function isoDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }
+
+  function applyRange(range: "today" | "yesterday" | "week" | "month") {
+    const now = new Date();
+    let f = now;
+    const t = now;
+    if (range === "today") {
+      f = now;
+    } else if (range === "yesterday") {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      f = y;
+    } else if (range === "week") {
+      const w = new Date(now);
+      w.setDate(w.getDate() - 6);
+      f = w;
+    } else if (range === "month") {
+      f = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    const fromStr = isoDate(f);
+    const toStr = isoDate(range === "yesterday" ? f : t);
+    setFrom(fromStr);
+    setTo(toStr);
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (nov) params.set("nov", nov);
+    if (anbar) params.set("anbar", anbar);
+    params.set("from", fromStr);
+    params.set("to", toStr);
+    startTransition(() => router.push(`/anbar/hereketler?${params.toString()}`));
+  }
+
+  function activeRange(): "today" | "yesterday" | "week" | "month" | null {
+    if (!from || !to) return null;
+    const now = new Date();
+    const today = isoDate(now);
+    const y = new Date(now); y.setDate(y.getDate() - 1);
+    const w = new Date(now); w.setDate(w.getDate() - 6);
+    const mStart = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    if (from === today && to === today) return "today";
+    if (from === isoDate(y) && to === isoDate(y)) return "yesterday";
+    if (from === isoDate(w) && to === today) return "week";
+    if (from === mStart && to === today) return "month";
+    return null;
+  }
+
+  const range = activeRange();
   const hasFilters = !!(q || nov || anbar || from || to);
 
   return (
-    <form onSubmit={apply} className="grid grid-cols-1 gap-2 rounded-xl border border-border bg-card/40 p-3 md:grid-cols-[1.6fr_180px_180px_140px_140px_auto]">
+    <div className="space-y-2 rounded-xl border border-border bg-card/40 p-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tez seçim</span>
+        {[
+          { v: "today" as const, l: "Bu gün" },
+          { v: "yesterday" as const, l: "Dünən" },
+          { v: "week" as const, l: "Son 7 gün" },
+          { v: "month" as const, l: "Bu ay" },
+        ].map((r) => (
+          <button
+            key={r.v}
+            type="button"
+            onClick={() => applyRange(r.v)}
+            disabled={pending}
+            className={cn(
+              "inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-medium transition",
+              range === r.v
+                ? "border-primary/40 bg-primary/15 text-primary-light"
+                : "border-border bg-card text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {r.l}
+          </button>
+        ))}
+      </div>
+      <form onSubmit={apply} className="grid grid-cols-1 gap-2 md:grid-cols-[1.6fr_180px_180px_140px_140px_auto]">
       <div>
         <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Məhsul</label>
         <div className="relative">
@@ -112,6 +190,7 @@ export function HereketFilters({ anbarlar }: { anbarlar: Array<{ id: number; ad:
           </Button>
         )}
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

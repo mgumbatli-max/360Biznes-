@@ -1,12 +1,14 @@
 "use server";
 
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit } from "@/lib/audit/log";
+import { requireAyarActionPerm, bustAyarCache } from "./access-guard";
 
 /**
  * Sahibkarın ümumi REST API açarları.
@@ -22,14 +24,18 @@ const CreateSchema = z.object({
 
 type Result<T = void> = { ok: true; data?: T } | { ok: false; error: string };
 
-function bcryptLikeHash(value: string): string {
-  // bcrypt-əvəzinə HMAC-SHA256 ilə hash (server-side verify zamanı timingSafeEqual)
-  return crypto.createHash("sha256").update(value).digest("hex");
+/**
+ * Bcrypt ilə hash — SHA256 əvəzinə (12 round = ~250ms = offline brute force çox bahalı).
+ */
+async function hashApiKey(value: string): Promise<string> {
+  return bcrypt.hash(value, 12);
 }
 
 export async function generateApiKey(
   input: FormData,
 ): Promise<Result<{ key: string; prefix: string }>> {
+  const permCheck = await requireAyarActionPerm("ayar.api_key");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = CreateSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
@@ -41,7 +47,7 @@ export async function generateApiKey(
       const prefix = crypto.randomBytes(4).toString("hex");
       const secret = crypto.randomBytes(24).toString("hex");
       const fullKey = `bk_${prefix}_${secret}`;
-      const hash = bcryptLikeHash(fullKey);
+      const hash = await hashApiKey(fullKey);
 
       const scopes = (d.scopes ?? "").split(",").map((s) => s.trim()).filter(Boolean);
       const bitme = d.bitme_gun && d.bitme_gun > 0
@@ -67,15 +73,19 @@ export async function generateApiKey(
       });
 
       revalidatePath("/ayarlar/webhook-api");
+      bustAyarCache();
       return { ok: true, data: { key: fullKey, prefix } };
     } catch (e) {
       console.error("[generateApiKey]", e);
-      return { ok: false, error: "Yaradılmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yaradılmadı: ${msg}` };
     }
   });
 }
 
 export async function revokeApiKey(id: string): Promise<Result> {
+  const permCheck = await requireAyarActionPerm("ayar.api_key");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const before = await prisma.api_keys.findUnique({ where: { id }, select: { ad: true, key_prefix: true } });
@@ -94,6 +104,8 @@ export async function revokeApiKey(id: string): Promise<Result> {
 }
 
 export async function deleteApiKey(id: string): Promise<Result> {
+  const permCheck = await requireAyarActionPerm("ayar.api_key");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const before = await prisma.api_keys.findUnique({ where: { id }, select: { ad: true, key_prefix: true } });

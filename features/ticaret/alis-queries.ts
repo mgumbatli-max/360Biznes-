@@ -2,6 +2,14 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 
+export type PurchaseLineSummary = {
+  ad: string;
+  kod: string | null;
+  miqdar: number;
+  qiymet: number;
+  cemi: number;
+};
+
 export type PurchaseListItem = {
   id: string;
   nomre: string;
@@ -19,6 +27,8 @@ export type PurchaseListItem = {
   odenilmis: number;
   elave_xerc: number;
   satir_say: number;
+  /** İlk 5 məhsulun xülasəsi — siyahıda peek üçün. */
+  ilk_mehsullar: PurchaseLineSummary[];
   qeyd: string | null;
   xerc_qeyd: string | null;
   yaradildi: Date | null;
@@ -32,6 +42,10 @@ export type PurchaseFilter = {
   to?: Date;
   techizatci_id?: string;
   anbar_id?: number;
+  /** "var" → bizim borcumuz olan açıq qaimələr; "yox" → ödənilmiş; undefined → hamısı */
+  borc?: "var" | "yox";
+  /** Soft-delete filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export async function getPurchases(
@@ -44,6 +58,9 @@ export async function getPurchases(
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
     if (filter.status?.length) where.status = { in: filter.status };
     if (filter.from || filter.to) {
       where.tarix = {};
@@ -59,6 +76,25 @@ export async function getPurchases(
     }
     if (filter.techizatci_id) where.techiazatci_id = filter.techizatci_id;
     if (filter.anbar_id) where.anbar_id = filter.anbar_id;
+    if (filter.borc === "var") {
+      // Açıq borc olan qaimələr: umumi_mebleg > odenilmis
+      where.AND = [
+        ...(where.AND ?? []),
+        { umumi_mebleg: { gt: 0 } },
+        {
+          OR: [
+            { odenilmis: null },
+            { odenilmis: { lt: prisma.alis_sifarisleri.fields.umumi_mebleg } },
+          ],
+        },
+        { status: { not: "legv" } },
+      ];
+    } else if (filter.borc === "yox") {
+      where.AND = [
+        ...(where.AND ?? []),
+        { odenilmis: { gte: prisma.alis_sifarisleri.fields.umumi_mebleg } },
+      ];
+    }
 
     const [items, total] = await Promise.all([
       prisma.alis_sifarisleri.findMany({
@@ -72,6 +108,16 @@ export async function getPurchases(
           istifadeciler_alis_sifarisleri_menecer_idToistifadeciler: { select: { ad_soyad: true } },
           istifadeciler_alis_sifarisleri_yaradan_idToistifadeciler: { select: { ad_soyad: true } },
           _count: { select: { alis_sifaris_satirlari: true } },
+          alis_sifaris_satirlari: {
+            take: 5,
+            orderBy: { id: "asc" },
+            select: {
+              miqdar: true,
+              vahid_qiymet: true,
+              cemi: true,
+              mehsullar: { select: { ad: true, kod: true } },
+            },
+          },
         },
       }),
       prisma.alis_sifarisleri.count({ where }),
@@ -95,6 +141,13 @@ export async function getPurchases(
         odenilmis: Number(a.odenilmis ?? 0),
         elave_xerc: Number(a.elave_xerc ?? 0),
         satir_say: a._count.alis_sifaris_satirlari,
+        ilk_mehsullar: a.alis_sifaris_satirlari.map((line) => ({
+          ad: line.mehsullar?.ad ?? "—",
+          kod: line.mehsullar?.kod ?? null,
+          miqdar: Number(line.miqdar),
+          qiymet: Number(line.vahid_qiymet ?? 0),
+          cemi: Number(line.cemi ?? 0),
+        })),
         qeyd: a.qeyd ?? null,
         xerc_qeyd: a.xerc_qeyd ?? null,
         yaradildi: a.yaradildi ?? null,

@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { FileText, ExternalLink, ArrowRight, Check, X, Trash2, RefreshCw } from "lucide-react";
+import { FileText, Eye, ChevronDown, ChevronRight } from "lucide-react";
+import { TeklifRowActions } from "./teklif-row-actions";
 import { Badge } from "@/components/ui/badge";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { formatDate, formatMoney } from "@/lib/utils";
-import { convertTeklifToSale, updateTeklifStatus, deleteTeklif } from "../teklif-actions";
 import type { TeklifListItem } from "../teklif-queries";
 import { CustomerDrawer } from "@/features/elaqe/components/customer-drawer";
 
-type Props = { items: TeklifListItem[]; total: number };
+type Props = {
+  items: TeklifListItem[];
+  total: number;
+  canConvert?: boolean;
+  canChangeStatus?: boolean;
+  canDelete?: boolean;
+};
 
 const STORAGE_KEY = "ticaret-teklif-cols-v1";
 
@@ -76,7 +82,13 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 
 type SortKey = "tarix" | "nomre" | "musteri" | "status" | "son" | "satir" | "bitme";
 
-export function TeklifTable({ items, total }: Props) {
+export function TeklifTable({
+  items,
+  total,
+  canConvert = false,
+  canChangeStatus = false,
+  canDelete = false,
+}: Props) {
   useEffect(() => {
     try {
       if (!window.localStorage.getItem(STORAGE_KEY)) {
@@ -95,8 +107,15 @@ export function TeklifTable({ items, total }: Props) {
   const sortBy = (sp.get("sort") ?? "") as SortKey | "";
   const sortDir = (sp.get("dir") as SortDir) ?? "asc";
 
-  const [busy, setBusy] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
+  const [openPeeks, setOpenPeeks] = useState<Set<string>>(new Set());
+  function togglePeek(id: string) {
+    setOpenPeeks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function setSort(key: string) {
     const newDir: SortDir = sortBy === key && sortDir === "asc" ? "desc" : "asc";
@@ -126,36 +145,6 @@ export function TeklifTable({ items, total }: Props) {
       }
     });
   }, [items, sortBy, sortDir]);
-
-  async function onConvert(t: TeklifListItem) {
-    if (!confirm(`"${t.nomre}" təklifini satışa çevirməyə əminsiniz?`)) return;
-    setBusy(t.id);
-    const r = await convertTeklifToSale(t.id);
-    setBusy(null);
-    if (!r.ok) alert(r.error);
-    else {
-      const id = r.data?.id;
-      if (id) router.push(`/ticaret/satislar/${id}`);
-      else startTransition(() => router.refresh());
-    }
-  }
-
-  async function onStatus(t: TeklifListItem, status: string) {
-    setBusy(t.id);
-    const r = await updateTeklifStatus(t.id, status);
-    setBusy(null);
-    if (!r.ok) alert(r.error);
-    else startTransition(() => router.refresh());
-  }
-
-  async function onDelete(t: TeklifListItem) {
-    if (!confirm(`"${t.nomre}" təklifi silinsin?`)) return;
-    setBusy(t.id);
-    const r = await deleteTeklif(t.id);
-    setBusy(null);
-    if (!r.ok) alert(r.error);
-    else startTransition(() => router.refresh());
-  }
 
   if (items.length === 0) {
     return (
@@ -215,7 +204,6 @@ export function TeklifTable({ items, total }: Props) {
           <tbody>
             {sorted.map((t) => {
               const st = STATUS[t.status] ?? STATUS.qaralama;
-              const isBusy = busy === t.id;
               const isExpired =
                 t.bitme_tarixi && new Date(t.bitme_tarixi) < new Date() && !t.satish_id && t.status !== "redd";
 
@@ -251,6 +239,24 @@ export function TeklifTable({ items, total }: Props) {
                       </CustomerDrawer>
                     ) : (
                       <div className="text-sm">{t.musteri_ad ?? <span className="text-muted-foreground">—</span>}</div>
+                    )}
+                    {/* Cərgədə təklif məhsulları — daxil olmadan görünür */}
+                    {t.ilk_mehsullar.length > 0 && (
+                      <div
+                        className="mt-0.5 line-clamp-1 text-[10.5px] text-muted-foreground"
+                        title={t.ilk_mehsullar.map((m) => `${m.ad} ×${m.miqdar}`).join(", ")}
+                      >
+                        {t.ilk_mehsullar.slice(0, 2).map((m, i) => (
+                          <span key={i}>
+                            {i > 0 && " · "}
+                            <span>{m.ad}</span>
+                            <span className="text-muted-foreground/70"> ×{m.miqdar}</span>
+                          </span>
+                        ))}
+                        {t.satir_say > 2 && (
+                          <span className="text-muted-foreground/70"> +{t.satir_say - 2}</span>
+                        )}
+                      </div>
                     )}
                   </td>
                 ),
@@ -327,73 +333,149 @@ export function TeklifTable({ items, total }: Props) {
                   </td>
                 ),
               };
+              const isOpen = openPeeks.has(t.id);
+              const visibleColCount = cols.order.filter((k) => cols.isVisible(k)).length + 1;
+              const isCancelled = t.status === "legv" || t.status === "redd";
               return (
-                <tr key={t.id} className="border-b border-border/30 transition hover:bg-secondary/40">
+                <Fragment key={t.id}>
+                <tr
+                  className={`border-b border-border/30 transition hover:bg-secondary/40 ${
+                    isCancelled
+                      ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                      : ""
+                  }`}
+                >
                   {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
-                  <td className="px-3 py-2.5 text-right">
-                    <div className="inline-flex items-center gap-1">
-                      {!t.satish_id && t.status !== "redd" && (
+                  <td className="px-3 py-2.5 text-right no-underline [text-decoration:none]">
+                    <div className="inline-flex items-center gap-1 no-underline [text-decoration:none]">
+                      {t.ilk_mehsullar.length > 0 && (
                         <button
                           type="button"
-                          onClick={() => onConvert(t)}
-                          disabled={isBusy}
-                          title="Satışa çevir"
-                          className="inline-flex h-7 items-center gap-0.5 rounded-md bg-primary/15 px-2 text-[10.5px] font-semibold text-primary-light hover:bg-primary/25 disabled:opacity-50"
+                          onClick={() => togglePeek(t.id)}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${
+                            isOpen
+                              ? "bg-primary/15 text-primary"
+                              : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          }`}
+                          title={isOpen ? "Bağla" : "Tez baxış (məhsulları gör)"}
                         >
-                          {isBusy ? <RefreshCw className="h-3 w-3 animate-spin" /> : <ArrowRight className="h-3 w-3" />}
-                          Satışa çevir
+                          {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                         </button>
                       )}
-                      {t.status === "qaralama" && !t.satish_id && (
-                        <button
-                          type="button"
-                          onClick={() => onStatus(t, "gonderildi")}
-                          disabled={isBusy}
-                          title="Göndərildi olaraq qeyd et"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      {!t.satish_id && t.status !== "redd" && (
-                        <button
-                          type="button"
-                          onClick={() => onStatus(t, "redd")}
-                          disabled={isBusy}
-                          title="Rədd et"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      {!t.satish_id && (
-                        <button
-                          type="button"
-                          onClick={() => onDelete(t)}
-                          disabled={isBusy}
-                          title="Sil"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-danger/15 hover:text-danger"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      {t.satish_id && (
-                        <Link
-                          href={`/ticaret/satislar/${t.satish_id}`}
-                          title="Satışa bax"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Link>
-                      )}
+                      <TeklifRowActions
+                        teklifId={t.id}
+                        nomre={t.nomre}
+                        status={t.status}
+                        satishId={t.satish_id ?? null}
+                        canConvert={canConvert}
+                        canChangeStatus={canChangeStatus}
+                        canDelete={canDelete}
+                      />
                     </div>
                   </td>
                 </tr>
+                {isOpen && t.ilk_mehsullar.length > 0 && (
+                  <tr className="border-b border-border/30 bg-secondary/30">
+                    <td colSpan={visibleColCount} className="px-3 py-3">
+                      <TeklifPeekContent teklif={t} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function TeklifPeekContent({ teklif }: { teklif: TeklifListItem }) {
+  const totalLines = teklif.ilk_mehsullar.reduce((s, l) => s + l.cemi, 0);
+  return (
+    <div className="rounded-lg border border-border bg-card/40 p-3">
+      <div className="mb-2 flex items-center justify-between text-xs">
+        <span className="font-semibold uppercase tracking-wider text-muted-foreground">
+          {teklif.nomre} — Təklif sətirləri
+        </span>
+        {teklif.satish_id && (
+          <Link
+            href={`/ticaret/satislar/${teklif.satish_id}`}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-0.5 text-[10.5px] text-muted-foreground hover:text-foreground"
+          >
+            Çevrildiyi satışa bax
+            <ChevronRight className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+      <table className="w-full text-xs">
+        <thead className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <tr>
+            <th className="pb-1 text-left">Məhsul</th>
+            <th className="pb-1 text-right w-20">Miqdar</th>
+            <th className="pb-1 text-right w-24">Qiymət</th>
+            <th className="pb-1 text-right w-24">Cəmi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {teklif.ilk_mehsullar.map((line, idx) => (
+            <tr key={idx} className="border-t border-border/30">
+              <td className="py-1.5">
+                <div className="font-medium">{line.ad}</div>
+                {line.kod && (
+                  <div className="font-mono text-[10px] text-muted-foreground">{line.kod}</div>
+                )}
+              </td>
+              <td className="py-1.5 text-right tabular-nums">{line.miqdar}</td>
+              <td className="py-1.5 text-right tabular-nums text-muted-foreground">
+                {formatMoney(line.qiymet)}
+              </td>
+              <td className="py-1.5 text-right tabular-nums font-medium">
+                {formatMoney(line.cemi)}
+              </td>
+            </tr>
+          ))}
+          {teklif.satir_say > teklif.ilk_mehsullar.length && (
+            <tr>
+              <td colSpan={4} className="pt-2 text-center text-[10.5px] italic text-muted-foreground">
+                + {teklif.satir_say - teklif.ilk_mehsullar.length} əlavə sətr
+              </td>
+            </tr>
+          )}
+          <tr className="border-t-2 border-border/60">
+            <td colSpan={3} className="pt-1.5 text-right text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              Sətirlər cəmi
+            </td>
+            <td className="pt-1.5 text-right tabular-nums font-bold">
+              {formatMoney(totalLines)}
+            </td>
+          </tr>
+          {teklif.endirim_meblegh > 0 && (
+            <tr>
+              <td colSpan={3} className="text-right text-[10.5px] text-muted-foreground">
+                Endirim
+              </td>
+              <td className="text-right tabular-nums text-warning">
+                −{formatMoney(teklif.endirim_meblegh)}
+              </td>
+            </tr>
+          )}
+          <tr>
+            <td colSpan={3} className="text-right text-[10.5px] font-semibold uppercase tracking-wider">
+              Təklif yekunu
+            </td>
+            <td className="text-right tabular-nums font-bold brand-text">
+              {formatMoney(teklif.son_meblegh)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {teklif.shertler && (
+        <div className="mt-3 rounded-md border border-border/40 bg-secondary/30 px-2.5 py-2 text-[11px] text-muted-foreground">
+          <strong>Şərtlər:</strong> {teklif.shertler}
+        </div>
+      )}
     </div>
   );
 }

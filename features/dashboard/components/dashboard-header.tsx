@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ShieldAlert, FileBarChart, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AutoRefresh } from "@/features/audit-log/components/auto-refresh";
 import type { SessionUser } from "@/lib/auth/types";
 
 function getGreeting(): { label: string; emoji: string } {
@@ -77,7 +76,6 @@ export function DashboardHeader({ user }: { user: SessionUser }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <AutoRefresh />
           <Button asChild size="sm" variant="outline" className="backdrop-blur">
             <Link href="/nezaret-merkezi">
               <ShieldAlert className="h-3.5 w-3.5" /> Nəzarət

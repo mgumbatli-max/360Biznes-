@@ -11,6 +11,7 @@ import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 
 export const metadata: Metadata = { title: "Alışlar" };
 
@@ -21,6 +22,7 @@ type SearchParams = {
   anbar?: string;
   from?: string;
   to?: string;
+  borc?: string;
 };
 
 function asArray(v: string | string[] | undefined): string[] {
@@ -44,9 +46,15 @@ export default async function AlislarPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
-  await requireTicaretPerm("alis.oxu");
+  const { icazeler, isOwnerOrAdmin } = await requireTicaretPerm("alis.oxu");
+  const canReceive = isOwnerOrAdmin || icazeler.includes("alis.qebul") || icazeler.includes("alis.idare");
+  const canCancel = isOwnerOrAdmin || icazeler.includes("alis.legv") || icazeler.includes("alis.idare");
 
   const sp = await searchParams;
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const filter: PurchaseFilter = {
     search: sp.q,
     status: asArray(sp.status),
@@ -54,6 +62,8 @@ export default async function AlislarPage({
     anbar_id: sp.anbar ? Number(sp.anbar) : undefined,
     from: sp.from ? new Date(sp.from) : undefined,
     to: sp.to ? new Date(sp.to + "T23:59:59") : undefined,
+    borc: sp.borc === "var" || sp.borc === "yox" ? sp.borc : undefined,
+    recordStatus,
   };
   const [{ items, total }, suppliers, products, anbarlar, defaultAnbar] = await Promise.all([
     getPurchases(filter),
@@ -73,6 +83,7 @@ export default async function AlislarPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <SavedUrlFiltersChip storageKey="alislar" basePath="/ticaret/alislar" />
           <Button asChild size="sm" variant="outline">
             <Link href="/api/ticaret/alis-export" target="_blank">
@@ -100,13 +111,13 @@ export default async function AlislarPage({
           <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-secondary">
             <Truck className="h-5 w-5 text-muted-foreground" />
           </div>
-          <h3 className="font-semibold">Alış sifarişi yoxdur</h3>
+          <h3 className="font-semibold">Alış qaiməsi yoxdur</h3>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Yuxarıdakı «Yeni alış» düyməsi ilə başlayın.
+            Yuxarıdakı «Yeni alış qaiməsi» düyməsi ilə başlayın.
           </p>
         </div>
       ) : (
-        <PurchasesTable items={items} total={total} />
+        <PurchasesTable items={items} total={total} canReceive={canReceive} canCancel={canCancel} />
       )}
 
       <Link

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { CreditCard, ExternalLink, RefreshCw, Wallet } from "lucide-react";
+import { CreditCard, RefreshCw, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
@@ -11,6 +11,7 @@ import { formatDate, formatMoney } from "@/lib/utils";
 import { recordKreditPayment } from "../kredit-actions";
 import type { KreditRow } from "../kredit-queries";
 import { CustomerDrawer } from "@/features/elaqe/components/customer-drawer";
+import { SaleRowActions } from "./sale-row-actions";
 
 const STORAGE_KEY = "ticaret-kredit-cols-v2";
 
@@ -60,10 +61,12 @@ export function KreditTable({
   items,
   total,
   hesablar = [],
+  canCancel = false,
 }: {
   items: KreditRow[];
   total: number;
   hesablar?: Hesab[];
+  canCancel?: boolean;
 }) {
   useEffect(() => {
     try {
@@ -283,13 +286,21 @@ export function KreditTable({
                   </td>
                 ),
               };
+              const isCancelled = t.status === "legv";
               return (
                 <>
-                  <tr key={t.id} className="border-b border-border/30 transition hover:bg-secondary/40">
+                  <tr
+                    key={t.id}
+                    className={`border-b border-border/30 transition hover:bg-secondary/40 ${
+                      isCancelled
+                        ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                        : ""
+                    }`}
+                  >
                     {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
-                    <td className="px-3 py-2.5 text-right">
-                      <div className="inline-flex items-center gap-1">
-                        {t.qeyd_status !== "tamamlandi" && t.kredit_id && (
+                    <td className="px-3 py-2.5 text-right no-underline [text-decoration:none]">
+                      <div className="inline-flex items-center gap-1 no-underline [text-decoration:none]">
+                        {t.qeyd_status !== "tamamlandi" && t.kredit_id && !isCancelled && (
                           <button
                             type="button"
                             onClick={() => setOpenPay(isOpen ? null : t.id)}
@@ -301,13 +312,14 @@ export function KreditTable({
                             Ödəniş qeyd et
                           </button>
                         )}
-                        <Link
-                          href={`/ticaret/satislar/${t.id}`}
-                          title="Satış detalı"
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Link>
+                        <SaleRowActions
+                          saleId={t.id}
+                          nomre={t.nomre}
+                          status={t.status ?? null}
+                          qaliq={Math.max(0, t.qaliq)}
+                          canPay={false}
+                          canCancel={canCancel}
+                        />
                       </div>
                     </td>
                   </tr>

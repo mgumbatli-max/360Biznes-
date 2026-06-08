@@ -54,22 +54,34 @@ export default async function AyarAnbarPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {rows.map((a) => (
-            <Card key={a.id} className={`glass ${!a.aktiv && "opacity-60"}`}>
+          {rows.map((a) => {
+            const novInfo = a.nov === "defekt"
+              ? { label: "Defekt", icon: "⚠️", cls: "border-rose-500/40 text-rose-600 dark:text-rose-400 bg-rose-500/5" }
+              : a.nov === "karantın"
+              ? { label: "Karantın", icon: "🔒", cls: "border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/5" }
+              : { label: "Standart", icon: "📦", cls: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5" };
+            return (
+            <Card key={a.id} className={`glass ${!a.aktiv && "opacity-60"} ${a.nov === "defekt" ? "ring-1 ring-rose-500/20" : ""}`}>
               <CardContent className="space-y-2 py-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <Boxes className="h-4 w-4 text-primary-light" />
+                      <span className="text-base">{novInfo.icon}</span>
                       <h3 className="truncate font-semibold">{a.ad}</h3>
+                      <Badge variant="outline" className={`text-[9px] ${novInfo.cls}`}>{novInfo.label}</Badge>
                       {!a.aktiv && <Badge variant="outline" className="text-[10px]">passiv</Badge>}
                     </div>
                     {a.unvan && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.unvan}</p>}
+                    {a.aciqlamaq && (
+                      <p className="mt-1 line-clamp-2 text-[11px] italic text-muted-foreground/80">
+                        {a.aciqlamaq}
+                      </p>
+                    )}
                   </div>
                   <AnbarDialog
                     filiallar={opts.filiallar}
                     mesullar={opts.mesullar}
-                    anbar={{ id: a.id, ad: a.ad, unvan: a.unvan, filial_id: a.filial_id, mesul_id: a.mesul_id, aktiv: a.aktiv }}
+                    anbar={{ id: a.id, ad: a.ad, unvan: a.unvan, filial_id: a.filial_id, mesul_id: a.mesul_id, aktiv: a.aktiv, nov: a.nov, aciqlamaq: a.aciqlamaq }}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-2 border-t border-border/40 pt-2 text-xs">
@@ -82,7 +94,8 @@ export default async function AyarAnbarPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { BackButton } from "@/components/ui/back-button";
 import { PrintTrigger } from "@/features/servis/components/print-trigger";
+import { canViewSalary } from "@/features/iscilier/access-guard";
 import { getEmployeeFullDetail, getEmployeeBordroHistory } from "@/features/iscilier/detail-queries";
 import { formatMoney, formatDate } from "@/lib/utils";
 
@@ -29,6 +30,12 @@ export default async function BordroPrintPage({
   const sp = (await searchParams) ?? {};
   const ay = pickStr(sp, "ay");
   const il = pickStr(sp, "il");
+
+  // KRİTİK: bordro maaş + bank məlumatı göstərir — yalnız özünə və ya səlahiyyətliyə icazə.
+  const canSee = await canViewSalary(id);
+  if (!canSee) {
+    redirect("/icaze-yox?kod=maas.view&from=bordro_print");
+  }
 
   const [e, bordroHistory] = await Promise.all([
     getEmployeeFullDetail(id),

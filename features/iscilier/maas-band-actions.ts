@@ -5,6 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
+import { requireHrActionPerm, bustHrCache } from "./access-guard";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -16,6 +18,8 @@ const BandSchema = z.object({
 });
 
 export async function saveMaasBand(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("maas.skala");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = BandSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const { vezife, min, ortalama, max } = parsed.data;
@@ -38,10 +42,16 @@ export async function saveMaasBand(input: FormData): Promise<Result> {
         },
       });
       revalidatePath("/ayarlar/maas-band");
+      bustHrCache();
+      await audit("yenile", "maas_band", vezife, {
+        yeni_data: { vezife, min, ortalama, max },
+        sebeb: `Maaş aralığı: ${vezife}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[saveMaasBand]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
@@ -49,6 +59,8 @@ export async function saveMaasBand(input: FormData): Promise<Result> {
 const DeleteSchema = z.object({ vezife: z.string().min(1).max(100) });
 
 export async function deleteMaasBand(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("maas.skala");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = DeleteSchema.safeParse({ vezife: input.get("vezife") });
   if (!parsed.success) return { ok: false, error: "Yanlış" };
   return withTenant(async () => {
@@ -58,10 +70,13 @@ export async function deleteMaasBand(input: FormData): Promise<Result> {
         where: { sahibkar_id: sahibkarId, qrup: "maas_band", acar: parsed.data.vezife },
       });
       revalidatePath("/ayarlar/maas-band");
+      bustHrCache();
+      await audit("sil", "maas_band", parsed.data.vezife, { sebeb: `Maaş aralığı silindi: ${parsed.data.vezife}` });
       return { ok: true };
     } catch (e) {
       console.error("[deleteMaasBand]", e);
-      return { ok: false, error: "Silinmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Silinmədi: ${msg}` };
     }
   });
 }

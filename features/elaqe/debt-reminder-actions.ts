@@ -1,9 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
+import { requireElaqeActionPerm } from "./access-guard";
 
 type Result = { ok: true; data?: { id: string } } | { ok: false; error: string };
 
@@ -28,8 +30,16 @@ export async function createDebtReminderTask(input: {
   mesulId: string | null;
   mesajMetn: string;
 }): Promise<Result> {
+  const permCheck = await requireElaqeActionPerm("elaqe.borc");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!/^\d{1,2}:\d{2}$/.test(input.hour)) {
     return { ok: false, error: "Saat formatı yanlışdır (HH:MM)" };
+  }
+  if (input.weekday < 0 || input.weekday > 6) {
+    return { ok: false, error: "Həftə günü 0-6 aralığında olmalıdır" };
+  }
+  if (!input.mesajMetn?.trim() || input.mesajMetn.length > 2000) {
+    return { ok: false, error: "Mesaj boş və ya 2000 simvoldan uzun ola bilməz" };
   }
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -89,6 +99,20 @@ export async function createDebtReminderTask(input: {
         });
         revalidatePath("/tapshiriqlar");
         revalidatePath("/elaqe/borclar");
+        try {
+          revalidateTag(`dashboard:${sahibkarId}`, "max");
+          revalidateTag(`nezaret:${sahibkarId}`, "max");
+          revalidateTag(`elaqe:${sahibkarId}`, "max");
+        } catch { /* non-fatal */ }
+        await audit("yarat", "borc_xatirlatma", tapshiriq.id, {
+          yeni_data: {
+            kontragent_id: input.kontragentId,
+            borc: input.borc,
+            tekrar: true,
+            weekday: input.weekday,
+            hour: input.hour,
+          },
+        });
         return { ok: true, data: { id: tapshiriq.id } };
       } else {
         // Birdəfəlik
@@ -116,11 +140,25 @@ export async function createDebtReminderTask(input: {
         });
         revalidatePath("/tapshiriqlar");
         revalidatePath("/elaqe/borclar");
+        try {
+          revalidateTag(`dashboard:${sahibkarId}`, "max");
+          revalidateTag(`nezaret:${sahibkarId}`, "max");
+          revalidateTag(`elaqe:${sahibkarId}`, "max");
+        } catch { /* non-fatal */ }
+        await audit("yarat", "borc_xatirlatma", tapshiriq.id, {
+          yeni_data: {
+            kontragent_id: input.kontragentId,
+            borc: input.borc,
+            tekrar: false,
+            deadline: next.toISOString(),
+          },
+        });
         return { ok: true, data: { id: tapshiriq.id } };
       }
     } catch (e) {
       console.error("[createDebtReminderTask]", e);
-      return { ok: false, error: "Tapşırıq yaradıla bilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tapşırıq yaradıla bilmədi: ${msg}` };
     }
   });
 }

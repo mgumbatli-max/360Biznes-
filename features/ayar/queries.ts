@@ -182,7 +182,7 @@ export async function getFilialDetail(filialId: number) {
       where: { id: filialId, sahibkar_id: sahibkarId },
       include: {
         anbarlar: {
-          select: { id: true, ad: true, aktiv: true, unvan: true },
+          select: { id: true, ad: true, aktiv: true, unvan: true, nov: true },
           orderBy: { id: "asc" },
         },
         maliye_hesablari: {

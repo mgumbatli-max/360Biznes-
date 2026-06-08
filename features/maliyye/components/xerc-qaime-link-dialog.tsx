@@ -29,6 +29,8 @@ type PurchaseOpt = {
   umumi_mebleg: number;
 };
 
+type HesabOpt = { id: string; ad: string; nov: string };
+
 type Props = {
   categories: CategoryOpt[];
   purchases: PurchaseOpt[];
@@ -38,6 +40,8 @@ type Props = {
   triggerLabel?: string;
   /** Use as compact action (no full button) */
   variant?: "default" | "compact";
+  /** Optional hesab/kassa list — seçilərsə qaliq azalır */
+  hesablar?: HesabOpt[];
 };
 
 export function XercQaimeLinkDialog({
@@ -46,6 +50,7 @@ export function XercQaimeLinkDialog({
   lockedAlisId,
   triggerLabel,
   variant = "default",
+  hesablar = [],
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -54,6 +59,7 @@ export function XercQaimeLinkDialog({
   const [kateqoriyaId, setKateqoriyaId] = useState<string>("");
   const [alisId, setAlisId] = useState<string>(lockedAlisId ?? "");
   const [mebleg, setMebleg] = useState<string>("");
+  const [hesabId, setHesabId] = useState<string>("");
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -62,6 +68,8 @@ export function XercQaimeLinkDialog({
     if (kateqoriyaId) fd.set("kateqoriya_id", kateqoriyaId);
     else fd.delete("kateqoriya_id");
     if (alisId) fd.set("alis_id", alisId);
+    if (hesabId) fd.set("hesab_id", hesabId);
+    else fd.delete("hesab_id");
     startTransition(async () => {
       const res = await saveExpenseWithInvoiceLink(fd);
       if (!res.ok) setError(res.error);
@@ -234,6 +242,31 @@ export function XercQaimeLinkDialog({
             <Label htmlFor="qebz_nomresi">Qəbz nömrəsi (istəyə bağlı)</Label>
             <Input id="qebz_nomresi" name="qebz_nomresi" maxLength={50} disabled={pending} />
           </div>
+
+          {hesablar.length > 0 && (
+            <div className="space-y-1.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
+              <Label htmlFor="hesab_id" className="text-xs">
+                Hansı kassa / hesabdan?
+                <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                  (seçilərsə qaliq azalacaq)
+                </span>
+              </Label>
+              <select
+                id="hesab_id"
+                value={hesabId}
+                onChange={(e) => setHesabId(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                disabled={pending}
+              >
+                <option value="">— Yalnız qeyd kimi (balansa təsirsiz) —</option>
+                {hesablar.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.ad} ({h.nov})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>

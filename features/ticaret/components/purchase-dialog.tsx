@@ -41,12 +41,12 @@ export function PurchaseDialog({ suppliers, products, anbarlar }: Props) {
   const [receiveNow, setReceiveNow] = useState(true);
 
   // Auto-open when launched inside PageModal or via ?new=1 query.
+  // Plus: ?mehsul=UUID → ilk açılışda həmin məhsulu cart-a əlavə et.
+  const [mehsulPrefillDone, setMehsulPrefillDone] = useState(false);
   useEffect(() => {
     if (isEmbedded()) {
       setOpen(true);
-      return;
-    }
-    if (typeof window !== "undefined") {
+    } else if (typeof window !== "undefined") {
       try {
         const p = new URLSearchParams(window.location.search);
         if (p.get("new") === "1") setOpen(true);
@@ -55,6 +55,28 @@ export function PurchaseDialog({ suppliers, products, anbarlar }: Props) {
       }
     }
   }, []);
+  // Məhsul prefill: dialog açıldıqdan sonra products içində tap və əlavə et.
+  useEffect(() => {
+    if (mehsulPrefillDone || !open || typeof window === "undefined") return;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const mehsulId = p.get("mehsul");
+      if (!mehsulId) {
+        setMehsulPrefillDone(true);
+        return;
+      }
+      const match = products.find((x) => x.id === mehsulId);
+      if (match) {
+        addLine(match);
+        toast.success(`«${match.ad}» avtomatik əlavə edildi`);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setMehsulPrefillDone(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, products, mehsulPrefillDone]);
 
   const umumi = useMemo(() => lines.reduce((s, l) => s + l.miqdar * l.qiymet, 0), [lines]);
 
@@ -109,12 +131,12 @@ export function PurchaseDialog({ suppliers, products, anbarlar }: Props) {
       <DialogTrigger asChild>
         <Button size="sm" className="font-semibold text-white" style={{ background: "var(--brand-gradient)" }}>
           <Plus className="h-4 w-4" />
-          Yeni alış
+          Yeni alış qaiməsi
         </Button>
       </DialogTrigger>
       <DialogContent className="md:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Yeni alış sifarişi</DialogTitle>
+          <DialogTitle>Yeni alış qaiməsi</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">

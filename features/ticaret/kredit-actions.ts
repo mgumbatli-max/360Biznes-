@@ -6,6 +6,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
 import { audit } from "@/lib/audit/log";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -15,6 +16,8 @@ type ActionResult = { ok: true } | { ok: false; error: string };
  * if available; falls back gracefully if model differs.
  */
 export async function acceptKreditPayment(saleId: string, amount: number): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm(["kredit.odenis", "kredit.idare", "satis.odenis"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Məbləğ düzgün deyil" };
 
   return withTenant(async () => {
@@ -47,6 +50,7 @@ export async function acceptKreditPayment(saleId: string, amount: number): Promi
       revalidatePath("/ticaret/satislar");
       revalidatePath(`/ticaret/satislar/${saleId}`);
       revalidatePath("/ticaret");
+      bustTicaretCache();
       await audit("yenile", "kredit_satis_odenis", saleId, {
         evvelki_data: { odenilmis: prevOdenilmis },
         yeni_data: { odenis: appliedAmount, yeni_odenilmis: prevOdenilmis + appliedAmount },
@@ -71,6 +75,8 @@ export async function recordKreditPayment(
   hesabId: string,
   tarix?: string,
 ): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm(["kredit.odenis", "kredit.idare", "maliyye.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!Number.isFinite(mebleg) || mebleg <= 0) return { ok: false, error: "Məbləğ düzgün deyil" };
   if (!hesabId) return { ok: false, error: "Hesab seçilməlidir" };
 
@@ -78,6 +84,13 @@ export async function recordKreditPayment(
     const { sahibkarId, istifadeciId: userId } = requireTenant();
     try {
       await prisma.$transaction(async (tx) => {
+        // 🔒 FOR UPDATE LOCK — paralel kredit ödənişlərində duplikat-i önləyir
+        const lockedKredit = await tx.$queryRaw<Array<{ id: string; satis_id: string | null; status: string }>>`
+          SELECT id, satis_id::text AS satis_id, status FROM kredit_satislari
+          WHERE id = ${kreditId}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE
+        `;
+        if (lockedKredit.length === 0) throw new Error("Kredit qeydi tapılmadı");
+
         const k = await tx.kredit_satislari.findFirst({
           where: { id: kreditId, sahibkar_id: sahibkarId },
           select: {
@@ -90,7 +103,12 @@ export async function recordKreditPayment(
         });
         if (!k) throw new Error("Kredit qeydi tapılmadı");
 
-        // satış məlumatı
+        // satış məlumatı + lock
+        if (k.satis_id) {
+          await tx.$queryRaw`
+            SELECT id FROM satis_sifarisleri WHERE id = ${k.satis_id}::uuid FOR UPDATE
+          `;
+        }
         const sale = k.satis_id
           ? await tx.satis_sifarisleri.findUnique({
               where: { id: k.satis_id },
@@ -136,11 +154,16 @@ export async function recordKreditPayment(
               yaradan_id: userId ?? null,
             },
           });
+          // Hesab balansı artımı — əvvəl yox idi, bu kassa/bank sapmasına səbəb olurdu
+          await tx.maliye_hesablari.updateMany({
+            where: { id: hesabId, sahibkar_id: sahibkarId },
+            data: { qaliq: { increment: tutulan } },
+          });
         }
 
         // Update credit record
         const yeniOdenilmisCem = odenilmisIndi + tutulan;
-        const tamOdendi = yeniOdenilmisCem >= magazaNet - 0.01;
+        const tamOdendi = yeniOdenilmisCem >= magazaNet - 0.001;
         await tx.kredit_satislari.update({
           where: { id: kreditId },
           data: {
@@ -152,7 +175,8 @@ export async function recordKreditPayment(
           },
         });
 
-        // Update sales — once first payment arrives, lift qaralama flag
+        // Update sales — stok artıq createKreditSatis-də düşürülüb, indi yalnız
+        // ödənilmiş məbləği və statusu yeniləyirik.
         if (sale) {
           await tx.satis_sifarisleri.update({
             where: { id: sale.id },
@@ -169,6 +193,7 @@ export async function recordKreditPayment(
       revalidatePath("/ticaret/kredit");
       revalidatePath("/maliyye/emeliyyat");
       revalidatePath("/maliyye");
+      bustTicaretCache();
       // Audit: bank/kredit ödənişi qəbul edildi — maliyyəyə daxil olan vəsait
       await audit("yarat", "kredit_bank_odenis", kreditId, {
         yeni_data: { mebleg, hesab_id: hesabId, tarix: tarix ?? null },

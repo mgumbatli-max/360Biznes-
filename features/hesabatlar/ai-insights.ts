@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -7,6 +8,7 @@ import { thisMonthRange, lastMonthRange } from "./shared";
 import { getSalesKpi, getYoyComparison } from "./satis-queries";
 import { getPlSummary } from "./maliyye-queries";
 import { getDailyCashFlow30, getCashFlowSummary30 } from "./pul-queries";
+import { checkAiReportQuota } from "./access-guard";
 
 export type Insight = {
   kind: "info" | "success" | "warning" | "danger";
@@ -312,6 +314,16 @@ export async function buildAiInsights(): Promise<{ insights: Insight[]; ai_text:
       supplierConc[0] ? `Top təchizatçı payı: ${Number(supplierConc[0].share).toFixed(1)}% (${supplierConc[0].ad}).` : "",
     ].filter(Boolean).join("\n");
 
+    // AI quota yoxlanması
+    const quota = await checkAiReportQuota();
+    if (!quota.ok) {
+      return {
+        insights,
+        ai_text: `⚠ ${quota.error}\n\nQuota ayarlarını dəyişmək üçün sahibkar ilə əlaqə saxlayın.`,
+        is_mock: true,
+      };
+    }
+
     const ai = await chatCompletion(
       [
         {
@@ -322,6 +334,40 @@ export async function buildAiInsights(): Promise<{ insights: Insight[]; ai_text:
       { max_tokens: 600 }
     );
 
+    // Token + cost tracking — ai_sohbet_loq-a yaz
+    try {
+      const niyyet = ai.input_tokens != null && ai.output_tokens != null
+        ? `i:${ai.input_tokens}/o:${ai.output_tokens}`
+        : null;
+      await prisma.ai_sohbet_loq.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          model: ai.model,
+          prompt: context.slice(0, 2000),
+          cavab: ai.text,
+          kanal: "hesabat_ai",
+          niyyet,
+        },
+      });
+    } catch { /* noop */ }
+
     return { insights, ai_text: ai.text, is_mock: ai.is_mock || isMockMode() };
+  });
+}
+
+/**
+ * Cache-li wrapper — 30 dəq boyu eyni nəticə qaytarır.
+ * Tag-lar: `hesabat:${sahibkarId}` (dashboard mutation-larında bust olunur).
+ */
+export async function buildAiInsightsCached(): Promise<{ insights: Insight[]; ai_text: string; is_mock: boolean; cached?: boolean }> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const cached = unstable_cache(
+      () => buildAiInsights(),
+      [`hesabat-ai-insights`, sahibkarId],
+      { revalidate: 1800, tags: [`hesabat:${sahibkarId}`, `dashboard:${sahibkarId}`] },
+    );
+    const result = await cached();
+    return { ...result, cached: true };
   });
 }

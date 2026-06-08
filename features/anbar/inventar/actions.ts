@@ -6,8 +6,16 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit } from "@/lib/audit/log";
+import { safeUserMessage } from "@/lib/error/user-message";
 
-type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
+type ActionResult<T = undefined> =
+  | { ok: true; data?: T }
+  | {
+      ok: false;
+      error: string;
+      blockers?: import("@/lib/blockers/types").Blocker[];
+      hint?: string;
+    };
 
 /**
  * Sayım növləri:
@@ -40,12 +48,21 @@ const TIP_LABEL: Record<string, string> = {
 };
 
 export async function createInventar(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  const permCheck = await requireAnbarActionPerm(["inventar.idare", "stok.idare", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = CreateSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
     return { ok: false, error: first ?? "Forma yanlışdır" };
   }
   const d = parsed.data;
+
+  // 📅 Real-time tarix məcburiyyəti — sayım tarixi gələcəkdə ola bilməz
+  const { validateOperationDate } = await import("@/lib/operation-date-guard");
+  const dateCheck = await validateOperationDate(d.tarix, { fieldLabel: "Sayım tarixi" });
+  if (!dateCheck.ok) return { ok: false, error: dateCheck.error };
+
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -111,7 +128,7 @@ export async function createInventar(formData: FormData): Promise<ActionResult<{
       return { ok: true, data: { id: inv.id } };
     } catch (e) {
       console.error("[createInventar]", e);
-      return { ok: false, error: "Yaradılmadı" };
+      return { ok: false, error: safeUserMessage(e, "Sayım yaradılmadı") };
     }
   });
 }
@@ -122,6 +139,9 @@ const UpdateRowSchema = z.object({
 });
 
 export async function updateInventarRow(input: z.input<typeof UpdateRowSchema>): Promise<ActionResult> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  const permCheck = await requireAnbarActionPerm(["inventar.idare", "stok.idare", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = UpdateRowSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Yanlış" };
   const d = parsed.data;
@@ -134,12 +154,16 @@ export async function updateInventarRow(input: z.input<typeof UpdateRowSchema>):
       return { ok: true };
     } catch (e) {
       console.error("[updateInventarRow]", e);
-      return { ok: false, error: "Yenilənmədi" };
+      return { ok: false, error: safeUserMessage(e, "Sətir yenilənmədi") };
     }
   });
 }
 
 export async function bulkUpdateInventarRows(rows: Array<{ satir_id: number; fakti_miqdar: number }>): Promise<ActionResult> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  const permCheck = await requireAnbarActionPerm(["inventar.idare", "stok.idare", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  if (rows.length > 1000) return { ok: false, error: "1000-dən çox sətir ola bilməz" };
   return withTenant(async () => {
     try {
       await prisma.$transaction(
@@ -153,7 +177,7 @@ export async function bulkUpdateInventarRows(rows: Array<{ satir_id: number; fak
       return { ok: true };
     } catch (e) {
       console.error("[bulkUpdateInventarRows]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      return { ok: false, error: safeUserMessage(e, "Sayım sətrləri yadda saxlanmadı") };
     }
   });
 }
@@ -180,12 +204,16 @@ export async function setInventarRowReasons(
       return { ok: true };
     } catch (e) {
       console.error("[setInventarRowReasons]", e);
-      return { ok: false, error: "Səbəb yazılmadı" };
+      return { ok: false, error: safeUserMessage(e, "Səbəb yazılmadı") };
     }
   });
 }
 
 export async function completeInventar(id: string, opts?: { allowMissingReasons?: boolean }): Promise<ActionResult & { missingReasonCount?: number }> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  // 💰 İnventar tamamlama = variance write-off, pul ekvivalenti
+  const permCheck = await requireAnbarActionPerm(["inventar.idare", "stok.idare", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     const { parseVarianceQeyd, reasonToExpenseCategory } = await import("./variance-reasons");
@@ -240,13 +268,15 @@ export async function completeInventar(id: string, opts?: { allowMissingReasons?
             });
           }
 
-          // Movement record (inventar correction)
+          // Movement record (inventar correction) — SIGNED delta
+          // ferq > 0 → artım (stoka əlavə), ferq < 0 → azalma (çıxış).
+          // Source-of-truth bu növləri ayrı işarə ilə hesablayır.
           await tx.anbar_hereketleri.create({
             data: {
               sahibkar_id: sahibkarId,
               anbar_id: inv.anbar_id,
               mehsul_id: r.mehsul_id,
-              nov: "inventar",
+              nov: ferq > 0 ? "inventar_artim" : "inventar_azalma",
               miqdar: Math.abs(ferq),
               qiymet: r.qiymet ?? 0,
               ref_nov: "inventar",
@@ -346,14 +376,37 @@ export async function completeInventar(id: string, opts?: { allowMissingReasons?
       return { ok: true };
     } catch (e) {
       console.error("[completeInventar]", e);
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      const raw = e instanceof Error ? e.message : "";
+      if (/səbəb|sayım|status|tapılmadı|qaralama/i.test(raw)) {
+        return { ok: false, error: raw };
+      }
+      return { ok: false, error: safeUserMessage(e, "Sayım tamamlanmadı") };
     }
   });
 }
 
 export async function cancelInventar(id: string): Promise<ActionResult> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  const permCheck = await requireAnbarActionPerm(["inventar.idare", "stok.idare", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
+      const inv = await prisma.inventarizasiyalar.findUnique({
+        where: { id },
+        select: { status: true, nomre: true },
+      });
+      if (!inv) return { ok: false, error: "Sayım tapılmadı" };
+      if (inv.status === "tamamlandi") {
+        return {
+          ok: false,
+          error: `${inv.nomre} artıq tamamlanıb — ləğv edilə bilməz.`,
+          hint: "Tamamlanmış sayımı ləğv etmək üçün ona uyğun düzəliş sənədi yaradın.",
+        };
+      }
+      if (inv.status === "legv") {
+        return { ok: false, error: "Bu sayım artıq ləğv edilib" };
+      }
+
       await prisma.inventarizasiyalar.update({
         where: { id },
         data: { status: "legv" },
@@ -367,7 +420,7 @@ export async function cancelInventar(id: string): Promise<ActionResult> {
       return { ok: true };
     } catch (e) {
       console.error("[cancelInventar]", e);
-      return { ok: false, error: "Ləğv edilmədi" };
+      return { ok: false, error: safeUserMessage(e, "Sayım ləğv edilmədi") };
     }
   });
 }

@@ -7,6 +7,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnbarSubNav } from "@/components/anbar-subnav";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { ProductWizard } from "@/features/anbar/components/product-wizard";
 import { ProductFilters } from "@/features/anbar/components/product-filters";
 import { ProductTable } from "@/features/anbar/components/product-table";
@@ -39,6 +40,7 @@ type SearchParams = {
   sirala?: string;
   anbar?: string;
   servis?: string;
+  rezerv?: string;
   view?: string;
   page?: string;
 };
@@ -75,6 +77,20 @@ async function getAnbarOptions() {
 
 const PAGE_SIZE = 50;
 
+async function ProblemPanelSection() {
+  const { getProductProblemStats } = await import("@/features/anbar/problem-stats-queries");
+  const { ProductProblemPanel } = await import("@/features/anbar/components/product-problem-panel");
+  const stats = await getProductProblemStats();
+  return <ProductProblemPanel stats={stats} />;
+}
+
+async function KpiHeroSection() {
+  const { getAnbarKpis } = await import("@/features/anbar/queries");
+  const { ProductKpiHero } = await import("@/features/anbar/components/product-kpi-hero");
+  const kpis = await getAnbarKpis();
+  return <ProductKpiHero kpis={kpis} />;
+}
+
 function TableSkeleton() {
   return (
     <div className="space-y-2">
@@ -94,6 +110,9 @@ async function ProductListSection({
   brandsP,
   anbarlarP,
   unitsP,
+  canEdit,
+  canDelete,
+  canAdjustStock,
 }: {
   filter: ProductFilter;
   page: number;
@@ -102,6 +121,9 @@ async function ProductListSection({
   brandsP: ReturnType<typeof getBrandOptions>;
   anbarlarP: ReturnType<typeof getAnbarOptions>;
   unitsP: ReturnType<typeof getUnitOptions>;
+  canEdit: boolean;
+  canDelete: boolean;
+  canAdjustStock: boolean;
 }) {
   // Cache-də olan referans listələri (paralel resolve) + əsl məhsul sorğusu
   const [{ items, total }, categories, brands, anbarlar, units] = await Promise.all([
@@ -124,9 +146,28 @@ async function ProductListSection({
       </div>
 
       {view === "grid" ? (
-        <ProductGrid items={items} categories={categories} brands={brands} units={units} anbarlar={anbarlar} />
+        <ProductGrid
+          items={items}
+          categories={categories}
+          brands={brands}
+          units={units}
+          anbarlar={anbarlar}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          canAdjustStock={canAdjustStock}
+        />
       ) : (
-        <ProductTable items={items} total={total} categories={categories} brands={brands} units={units} anbarlar={anbarlar} />
+        <ProductTable
+          items={items}
+          total={total}
+          categories={categories}
+          brands={brands}
+          units={units}
+          anbarlar={anbarlar}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          canAdjustStock={canAdjustStock}
+        />
       )}
 
       <Pagination total={total} pageSize={PAGE_SIZE} page={page} basePath="/anbar/mehsullar" />
@@ -161,10 +202,20 @@ async function HeaderActions({
 
 export default async function MehsullarPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
-  await requireAnbarPerm("mehsul.oxu");
+  const { icazeler, isOwnerOrAdmin } = await requireAnbarPerm("mehsul.oxu");
+  const canEdit =
+    isOwnerOrAdmin || icazeler.includes("mehsul.duzelt") || icazeler.includes("mehsul.idare");
+  const canDelete = isOwnerOrAdmin || icazeler.includes("mehsul.sil") || icazeler.includes("mehsul.idare");
+  const canAdjustStock =
+    isOwnerOrAdmin || icazeler.includes("stok.duzelis") || icazeler.includes("anbar.idare");
 
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
+
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
 
   const filter: ProductFilter = {
     search: sp.q,
@@ -179,6 +230,8 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
     sirala: sp.sirala,
     anbar_id: sp.anbar ? Number(sp.anbar) : undefined,
     servisde_olmus: sp.servis === "1",
+    rezervde: sp.rezerv === "1",
+    recordStatus,
   };
 
   // Promise-ləri page-də başlat ki, paralel resolve olsunlar — Suspense
@@ -192,25 +245,29 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
     <div className="mx-auto max-w-7xl">
       <AnbarSubNav active="/anbar/mehsullar" />
       <div className="space-y-4">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Məhsullar</h1>
+        <header className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+              Məhsullar və stok
+            </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Katalog idarəetməsi — qiymət, stok səviyyəsi, kateqoriya və marka.
+              Katalog · qiymət · stok səviyyəsi · maya
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/ayarlar/inteqrasiya?key=mehsul">
-              <Button variant="outline" size="sm">
-                <FileSpreadsheet className="h-4 w-4" /> Excel idxal
+          {/* Primary action — həmişə görünür, sağ üstə bağlıdır */}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
+            <Link href="/ayarlar/inteqrasiya?key=mehsul" title="Excel idxal">
+              <Button variant="outline" size="icon-sm" className="h-9 w-9">
+                <FileSpreadsheet className="h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/api/anbar/mehsullar/export" prefetch={false}>
-              <Button variant="outline" size="sm">
-                <FileDown className="h-4 w-4" /> Excel ixrac
+            <Link href="/api/anbar/mehsullar/export" prefetch={false} title="Excel ixrac">
+              <Button variant="outline" size="icon-sm" className="h-9 w-9">
+                <FileDown className="h-4 w-4" />
               </Button>
             </Link>
-            <Suspense fallback={<Skeleton className="h-9 w-28 rounded-md" />}>
+            <Suspense fallback={<Skeleton className="h-9 w-32 rounded-md" />}>
               <HeaderActions
                 categoriesP={categoriesP}
                 brandsP={brandsP}
@@ -221,6 +278,24 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
           </div>
         </header>
 
+        {/* Modern KPI hero — 5 ən vacib göstərici */}
+        <Suspense
+          fallback={
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-[88px] rounded-2xl" />
+              ))}
+            </div>
+          }
+        >
+          <KpiHeroSection />
+        </Suspense>
+
+        {/* Sürətli stok + problem filterləri — chip stilli */}
+        <Suspense fallback={<Skeleton className="h-14 w-full rounded-xl" />}>
+          <ProblemPanelSection />
+        </Suspense>
+
         <Suspense fallback={<TableSkeleton />}>
           <ProductListSection
             filter={filter}
@@ -230,6 +305,9 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
             brandsP={brandsP}
             anbarlarP={anbarlarP}
             unitsP={unitsP}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            canAdjustStock={canAdjustStock}
           />
         </Suspense>
       </div>

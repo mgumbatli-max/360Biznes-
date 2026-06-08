@@ -23,6 +23,8 @@ import { BarcodeScanDialog } from "@/components/ui/barcode-scan-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Pencil } from "lucide-react";
 import type { QuickViewData } from "../quick-view-queries";
+import { ProductImageGallery } from "./product-image-gallery";
+import { primarySekilUrl, parseSekilUrls } from "@/lib/mehsul/sekil-urls";
 
 export function QuickViewTrigger({
   mehsulId,
@@ -99,19 +101,31 @@ export function QuickViewDialog({
                 className="relative block h-20 w-20 shrink-0 overflow-hidden rounded-lg border border-border bg-secondary/40"
                 title={data.sekil_url ? "Şəkli böyüt" : "Şəkil yoxdur"}
               >
-                {data.sekil_url ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img loading="lazy" decoding="async" src={data.sekil_url} alt={data.ad} className="h-full w-full object-cover" />
-                    <div className="absolute inset-0 grid place-items-center bg-black/0 opacity-0 transition hover:bg-black/30 hover:opacity-100">
-                      <ZoomIn className="h-4 w-4 text-white" />
-                    </div>
-                  </>
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-muted-foreground">
-                    <ImageIcon className="h-6 w-6 opacity-40" />
-                  </div>
-                )}
+                {(() => {
+                  const primary = primarySekilUrl(data.sekil_url);
+                  const count = parseSekilUrls(data.sekil_url).length;
+                  if (!primary) {
+                    return (
+                      <div className="grid h-full w-full place-items-center text-muted-foreground">
+                        <ImageIcon className="h-6 w-6 opacity-40" />
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img loading="lazy" decoding="async" src={primary} alt={data.ad} className="h-full w-full object-cover" />
+                      <div className="absolute inset-0 grid place-items-center bg-black/0 opacity-0 transition hover:bg-black/30 hover:opacity-100">
+                        <ZoomIn className="h-4 w-4 text-white" />
+                      </div>
+                      {count > 1 && (
+                        <div className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                          +{count - 1}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </button>
 
               <div className="min-w-0 flex-1">
@@ -266,13 +280,12 @@ export function QuickViewDialog({
         </DialogFooter>
       </DialogContent>
 
-      {/* Image lightbox */}
+      {/* Image gallery dialog — multi-image lightbox */}
       {data?.sekil_url && (
         <Dialog open={imgOpen} onOpenChange={setImgOpen}>
-          <DialogContent className="md:max-w-3xl bg-black/95 border-none p-2">
+          <DialogContent className="md:max-w-3xl">
             <DialogTitle className="sr-only">{data.ad}</DialogTitle>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img loading="lazy" decoding="async" src={data.sekil_url} alt={data.ad} className="mx-auto max-h-[80vh] w-auto" />
+            <ProductImageGallery sekilUrl={data.sekil_url} ad={data.ad} />
           </DialogContent>
         </Dialog>
       )}

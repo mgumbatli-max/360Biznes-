@@ -36,7 +36,9 @@ export function NewInventarDialog({ anbarlar, kateqoriyalar = [], markalar = [],
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const todayStr = new Date().toISOString().slice(0, 10);
   const [anbarId, setAnbarId] = useState<string>(anbarlar[0] ? String(anbarlar[0].id) : "");
+  const [tarix, setTarix] = useState<string>(todayStr);
   const [tip, setTip] = useState<Tip>("tam");
   const [kateqoriyaId, setKateqoriyaId] = useState("");
   const [markaId, setMarkaId] = useState("");
@@ -131,7 +133,19 @@ export function NewInventarDialog({ anbarlar, kateqoriyalar = [], markalar = [],
             </div>
             <div>
               <Label>Tarix</Label>
-              <Input type="date" name="tarix" defaultValue={new Date().toISOString().slice(0, 10)} />
+              <Input
+                type="date"
+                name="tarix"
+                value={tarix}
+                max={todayStr}
+                onChange={(e) => setTarix(e.target.value)}
+                className={tarix !== todayStr ? "border-amber-500/60 ring-1 ring-amber-500/20" : ""}
+              />
+              {tarix !== todayStr && (
+                <p className="mt-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                  ⚠ Köhnə tarix — «tarix.geri» icazəsi tələb olunur
+                </p>
+              )}
             </div>
           </div>
 

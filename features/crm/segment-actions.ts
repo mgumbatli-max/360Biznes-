@@ -47,8 +47,18 @@ Yalnız aid olan açarları daxil et. Yalnız JSON qaytar.`;
 
 /** AI-dən təbii dil → seqment qaydası */
 export async function aiBuildSegmentRule(input: FormData): Promise<ActionResult> {
+  // Hər iki icazə (AI istifadəsi və seqment idarəsi)
+  const { requireCrmActionPerm: rp } = await import("./access-guard");
+  const permCheck = await rp(["ai.istifade", "segment.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const tesvir = String(input.get("tesvir") ?? "").trim();
   if (tesvir.length < 4) return { ok: false, error: "Təsvir çox qısadır" };
+  if (tesvir.length > 1000) return { ok: false, error: "Təsvir 1000 simvoldan uzun ola bilməz" };
+
+  // AI quota
+  const { checkAiCavabQuota } = await import("./quota");
+  const quota = await checkAiCavabQuota(1);
+  if (!quota.ok) return { ok: false, error: quota.error };
 
   return withTenant(async () => {
     try {
@@ -58,18 +68,21 @@ export async function aiBuildSegmentRule(input: FormData): Promise<ActionResult>
       });
       const txt = res.text.replace(/```json|```/g, "").trim();
       let rule: SegmentRule = {};
+      let usedHeuristic = false;
       try {
         const json = JSON.parse(txt);
         rule = sanitizeRule(json);
       } catch {
-        // Heuristic fallback for mock mode
+        // Heuristic fallback — AI cavabı JSON deyil
         rule = heuristicParse(tesvir);
+        usedHeuristic = true;
       }
       const count = await countByRule(rule);
-      return { ok: true, rule, count };
+      return { ok: true, rule, count, heuristic: usedHeuristic };
     } catch (e) {
       console.error("[aiBuildSegmentRule]", e);
-      return { ok: false, error: "AI qaydanı çıxara bilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `AI qaydanı çıxara bilmədi: ${msg}` };
     }
   });
 }
@@ -159,6 +172,9 @@ const SaveSegmentSchema = z.object({
 });
 
 export async function saveAiSegment(input: FormData): Promise<ActionResult> {
+  const { requireCrmActionPerm: rp, bustCrmCache: bc } = await import("./access-guard");
+  const permCheck = await rp("segment.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = SaveSegmentSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   return withTenant(async () => {
@@ -184,10 +200,17 @@ export async function saveAiSegment(input: FormData): Promise<ActionResult> {
         },
       });
       revalidatePath("/crm/segment");
+      bc();
+      const { audit } = await import("@/lib/audit/log");
+      await audit("yarat", "musteri_seqment", created.id, {
+        yeni_data: { kod, ad: parsed.data.ad, rule_keys: Object.keys(rule) },
+        sebeb: `Yeni AI seqment: ${parsed.data.ad}`,
+      });
       return { ok: true, id: created.id };
     } catch (e) {
       console.error("[saveAiSegment]", e);
-      return { ok: false, error: "Saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Saxlanmadı: ${msg}` };
     }
   });
 }
@@ -212,6 +235,9 @@ const DripSchema = z.object({
 });
 
 export async function startDripCampaign(input: FormData): Promise<ActionResult> {
+  const { requireCrmActionPerm: rp, bustCrmCache: bc } = await import("./access-guard");
+  const permCheck = await rp(["broadcast.idare", "segment.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = DripSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -270,10 +296,12 @@ export async function startDripCampaign(input: FormData): Promise<ActionResult> 
 
       revalidatePath("/crm/segment");
       revalidatePath("/crm/broadcast");
+      bc();
       return { ok: true, count: createdIds.length, messages };
     } catch (e) {
       console.error("[startDripCampaign]", e);
-      return { ok: false, error: "Drip başladıla bilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Drip başladıla bilmədi: ${msg}` };
     }
   });
 }

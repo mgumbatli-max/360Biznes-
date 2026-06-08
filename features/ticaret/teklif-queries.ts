@@ -3,6 +3,14 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getStealthState } from "@/lib/stealth/server";
 
+export type TeklifLineSummary = {
+  ad: string;
+  kod: string | null;
+  miqdar: number;
+  qiymet: number;
+  cemi: number;
+};
+
 export type TeklifListItem = {
   id: string;
   nomre: string;
@@ -26,6 +34,8 @@ export type TeklifListItem = {
   qeyd: string | null;
   shertler: string | null;
   satir_say: number;
+  /** İlk 5 məhsulun xülasəsi — siyahıda peek üçün. */
+  ilk_mehsullar: TeklifLineSummary[];
   yaradildi: Date | null;
   yenilendi: Date | null;
 };
@@ -35,6 +45,8 @@ export type TeklifFilter = {
   status?: string[];
   from?: Date;
   to?: Date;
+  /** Soft-delete filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export type TeklifStats = {
@@ -116,6 +128,9 @@ export async function getTeklifler(
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
     if (filter.status?.length) where.status = { in: filter.status };
     if (filter.from || filter.to) {
       where.tarix = {};
@@ -144,6 +159,18 @@ export async function getTeklifler(
           filiallar: { select: { ad: true } },
           satis_sifarisleri: { select: { nomre: true } },
           _count: { select: { teklif_satirlari: true } },
+          teklif_satirlari: {
+            take: 5,
+            orderBy: { id: "asc" },
+            select: {
+              sayi: true,
+              qiymet: true,
+              satir_meblegh: true,
+              mehsul_ad: true,
+              barkod: true,
+              mehsullar: { select: { ad: true, kod: true } },
+            },
+          },
         },
       }),
       prisma.teklifler.count({ where }),
@@ -173,6 +200,13 @@ export async function getTeklifler(
         qeyd: t.qeyd,
         shertler: t.shertler,
         satir_say: t._count.teklif_satirlari,
+        ilk_mehsullar: t.teklif_satirlari.map((line) => ({
+          ad: line.mehsullar?.ad ?? line.mehsul_ad ?? "—",
+          kod: line.mehsullar?.kod ?? line.barkod ?? null,
+          miqdar: Number(line.sayi),
+          qiymet: Number(line.qiymet ?? 0),
+          cemi: Number(line.satir_meblegh ?? 0),
+        })),
         yaradildi: t.yaradildi,
         yenilendi: t.yenilendi,
       })),

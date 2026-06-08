@@ -2,14 +2,14 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
-import { Boxes, AlertTriangle, History, Package, ArrowLeftRight, ClipboardCheck, ArrowDownToLine, ArrowUpFromLine, XCircle, Activity } from "lucide-react";
+import { Boxes, AlertTriangle, History, Package, ArrowLeftRight, ClipboardCheck, ArrowDownToLine, ArrowUpFromLine, XCircle, Activity, PackagePlus, PackageMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { StokFilters } from "@/features/anbar/components/stok-filters";
 import { StokTable } from "@/features/anbar/components/stok-table";
-import { QuickStockAction } from "@/features/anbar/components/quick-stock-action";
+import { StokDuzelisDialog } from "@/features/anbar/components/stok-duzelis-dialog";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -18,7 +18,7 @@ import { formatDate, formatMoney, formatNumber, formatCompactMoney, formatCompac
 
 export const metadata: Metadata = { title: "Stok vəziyyəti" };
 
-type SP = { q?: string; anbar?: string; status?: string };
+type SP = { q?: string; anbar?: string; status?: string; mehsul?: string };
 
 async function getAnbarOptions() {
   return withTenant(async () => {
@@ -75,9 +75,22 @@ async function HeaderActions({
   const [products, anbarlar] = await Promise.all([productsP, anbarlarP]);
   return (
     <>
-      <QuickStockAction nov="medaxil" products={products} anbarlar={anbarlar} />
-      <QuickStockAction nov="mexaric" products={products} anbarlar={anbarlar} />
-      <QuickStockAction nov="inventar" products={products} anbarlar={anbarlar} />
+      <Link href="/ticaret/alislar?new=1">
+        <Button size="sm" variant="outline">
+          <PackagePlus className="h-4 w-4" /> Alış (mədaxil)
+        </Button>
+      </Link>
+      <Link href="/ticaret/satis-yeni">
+        <Button size="sm" variant="outline">
+          <PackageMinus className="h-4 w-4" /> Satış (məxaric)
+        </Button>
+      </Link>
+      <StokDuzelisDialog
+        anbarlar={anbarlar}
+        mehsullar={products}
+        triggerLabel="Stok düzəliş"
+        triggerVariant="outline"
+      />
     </>
   );
 }
@@ -221,6 +234,7 @@ export default async function StokPage({ searchParams }: { searchParams: Promise
     search: sp.q,
     anbar_id: sp.anbar ? Number(sp.anbar) : undefined,
     status: sp.status === "az" || sp.status === "ok" ? sp.status : undefined,
+    mehsul_id: sp.mehsul || undefined,
   };
   // Promise-ləri başlat — paralel resolve, hər Suspense eyni promise-ə qoşulur
   const anbarlarP = getAnbarOptions();

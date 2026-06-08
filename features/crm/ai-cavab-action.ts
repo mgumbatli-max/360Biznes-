@@ -6,6 +6,8 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { chatCompletion } from "@/lib/ai/anthropic";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import { requireCrmActionPerm, bustCrmCache } from "./access-guard";
+import { checkAiCavabQuota } from "./quota";
 
 type AiResult =
   | { ok: true; text: string; model: string; is_mock: boolean }
@@ -31,12 +33,19 @@ const LANG_DESC: Record<string, string> = {
 };
 
 export async function suggestAiReply(input: FormData): Promise<AiResult> {
+  const permCheck = await requireCrmActionPerm("ai.istifade");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = SuggestSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+
+    // AI quota yoxla
+    const quota = await checkAiCavabQuota(1);
+    if (!quota.ok) return { ok: false, error: quota.error };
+
     try {
       const system = `Sən 360Biznes ERP sistemində müştəri xidməti AI köməkçisisən.
 Müştəri sualına ${TONE_DESC[d.uslub]} tonda, ${LANG_DESC[d.dil]} dilində cavab ver.
@@ -47,6 +56,11 @@ Cavabın 2-4 cümlə olsun. Hörmət göstər, məhsul/satış haqqında dəqiq 
         { system, max_tokens: 400 }
       );
 
+      // Token sayı niyyet sahəsində saxla (cost tracking)
+      const niyyet = res.input_tokens != null && res.output_tokens != null
+        ? `i:${res.input_tokens}/o:${res.output_tokens}`
+        : null;
+
       await prisma.ai_sohbet_loq.create({
         data: {
           sahibkar_id: sahibkarId,
@@ -55,13 +69,16 @@ Cavabın 2-4 cümlə olsun. Hörmət göstər, məhsul/satış haqqında dəqiq 
           prompt: d.sual,
           cavab: res.text,
           uslub: d.uslub,
+          kanal: "crm_cavab",
+          niyyet,
         },
       });
 
       return { ok: true, text: res.text, model: res.model, is_mock: res.is_mock };
     } catch (e) {
       console.error("[suggestAiReply]", e);
-      return { ok: false, error: "AI cavab alınmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `AI cavab alınmadı: ${msg}` };
     }
   });
 }
@@ -87,12 +104,20 @@ export async function suggestAiReplyVariants(input: FormData): Promise<
   | { ok: true; variants: { uslub: "qisa" | "resmi" | "dostluq"; text: string }[]; is_mock: boolean }
   | { ok: false; error: string }
 > {
+  const permCheck = await requireCrmActionPerm("ai.istifade");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const sual = String(input.get("sual") ?? "").trim();
   if (sual.length < 2) return { ok: false, error: "Sual boşdur" };
+  if (sual.length > 2000) return { ok: false, error: "Sual 2000 simvoldan uzun ola bilməz" };
   const dil = (String(input.get("dil") ?? "az") as "az" | "en" | "ru" | "tr") || "az";
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+
+    // 3 sorğu üçün quota
+    const quota = await checkAiCavabQuota(3);
+    if (!quota.ok) return { ok: false, error: quota.error };
+
     const styles: ("qisa" | "resmi" | "dostluq")[] = ["qisa", "resmi", "dostluq"];
     try {
       const variants: { uslub: "qisa" | "resmi" | "dostluq"; text: string }[] = [];
@@ -104,7 +129,9 @@ Maksimum 2-3 cümlə. Yalnız sadə mətn (JSON yox, HTML yox).`;
         const res = await chatCompletion([{ role: "user", content: sual }], { system, max_tokens: 250 });
         variants.push({ uslub: u, text: res.text });
         if (res.is_mock) isMock = true;
-        // log
+        const niyyet = res.input_tokens != null && res.output_tokens != null
+          ? `i:${res.input_tokens}/o:${res.output_tokens}`
+          : null;
         try {
           await prisma.ai_sohbet_loq.create({
             data: {
@@ -114,9 +141,11 @@ Maksimum 2-3 cümlə. Yalnız sadə mətn (JSON yox, HTML yox).`;
               prompt: sual,
               cavab: res.text,
               uslub: u,
+              kanal: "crm_cavab",
+              niyyet,
             },
           });
-        } catch {}
+        } catch { /* noop */ }
       }
       return { ok: true, variants, is_mock: isMock };
     } catch (e) {
@@ -136,6 +165,8 @@ const ToggleSchema = z.object({
 });
 
 export async function toggleAutoReply(input: FormData): Promise<{ ok: true; aktiv: boolean } | { ok: false; error: string }> {
+  const permCheck = await requireCrmActionPerm(["mesaj.idare", "ai.istifade"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = ToggleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -182,6 +213,8 @@ const AutoReplySchema = z.object({
 export async function sendAutoReply(input: FormData): Promise<
   { ok: true; escalated: boolean } | { ok: false; error: string }
 > {
+  const permCheck = await requireCrmActionPerm(["mesaj.cevab", "ai.istifade"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = AutoReplySchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -224,10 +257,12 @@ export async function sendAutoReply(input: FormData): Promise<
           yenilendi: new Date(),
         },
       });
+      bustCrmCache();
       return { ok: true, escalated: escalate };
     } catch (e) {
       console.error("[sendAutoReply]", e);
-      return { ok: false, error: "Avto cavab göndərilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Avto cavab göndərilmədi: ${msg}` };
     }
   });
 }

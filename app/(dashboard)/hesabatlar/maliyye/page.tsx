@@ -8,6 +8,7 @@ import { YoyStrip } from "@/features/hesabatlar/components/yoy-strip";
 import { getPlSummary, getMonthlyPl12, getYoyPl, getFixedVariableBreak } from "@/features/hesabatlar/maliyye-queries";
 import { getExpenseCategories } from "@/features/hesabatlar/pul-queries";
 import { parseDateRange, formatDateInput, rangeLabel, lastMonthRange, thisMonthRange } from "@/features/hesabatlar/shared";
+import { requireHesabatPagePerm } from "@/features/hesabatlar/access-guard";
 import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Maliyyə hesabatı (P&L)" };
@@ -15,6 +16,7 @@ export const metadata: Metadata = { title: "Maliyyə hesabatı (P&L)" };
 type SP = { from?: string; to?: string; preset?: string };
 
 export default async function MaliyyeReportPage({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireHesabatPagePerm("maliye.view");
   const sp = await searchParams;
   const range = parseDateRange(sp);
 

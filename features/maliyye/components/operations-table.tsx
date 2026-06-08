@@ -1,16 +1,40 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import {
+  Printer as PrinterIcon,
+  User,
+  Truck,
+  Building2,
+  Receipt,
+  ShoppingCart,
+  Wrench,
+  ExternalLink,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { formatDate, formatMoney } from "@/lib/utils";
 import type { OperationRow } from "../operations-queries";
-import { OperationDetailDrawer } from "./operation-detail-drawer";
+import { OperationRowActions } from "./operation-row-actions";
+import { RowIconButton, RowIconGroup } from "@/features/shared/row-icon-button";
+import { SaleStatusBadge } from "@/features/ticaret/components/sale-status-badge";
 
-type Props = { items: OperationRow[]; total: number };
+function kontragentRoute(id: string, nov: string | null): string {
+  // her_ikisi → defaultda müştəri profili (oradan təchizatçı tab açıla bilər)
+  if (nov === "techizatci") return `/elaqe/techizatcilar/${id}`;
+  return `/elaqe/musteriler/${id}`;
+}
+
+type Props = {
+  items: OperationRow[];
+  total: number;
+  canApprove?: boolean;
+  canCancel?: boolean;
+};
 
 const STORAGE_KEY = "maliyye-emeliyyat-cols-v1";
 
@@ -71,7 +95,7 @@ const DEFAULT_VISIBLE: Record<string, boolean> = {
 
 type SortKey = "tarix" | "mebleg" | "azn" | "yon" | "status";
 
-export function OperationsTable({ items, total }: Props) {
+export function OperationsTable({ items, total, canApprove = false, canCancel = false }: Props) {
   useEffect(() => {
     try {
       if (!window.localStorage.getItem(STORAGE_KEY)) {
@@ -194,16 +218,75 @@ export function OperationsTable({ items, total }: Props) {
                   <td key="yon" className={`px-3 py-2.5 text-xs font-semibold ${yonCls}`}>{o.yon}</td>
                 ),
                 hesab: (
-                  <td key="hesab" className="px-3 py-2.5 text-xs">{o.hesab_ad ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td key="hesab" className="px-3 py-2.5 text-xs">
+                    {o.hesab_ad ? (
+                      <Link
+                        href={`/maliyye/hesab/${o.hesab_id}`}
+                        className="group/link inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-primary/10 hover:text-primary"
+                        title="Hesab detalı"
+                      >
+                        <Building2 className="h-3 w-3 opacity-60 group-hover/link:opacity-100" />
+                        <span className="font-medium">{o.hesab_ad}</span>
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                 ),
                 hesab2: (
-                  <td key="hesab2" className="px-3 py-2.5 text-xs">{o.hesab2_ad ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td key="hesab2" className="px-3 py-2.5 text-xs">
+                    {o.hesab2_ad ? (
+                      <Link
+                        href={`/maliyye/hesab/${o.hesab2_id}`}
+                        className="group/link inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-primary/10 hover:text-primary"
+                        title="Hədəf hesab detalı"
+                      >
+                        <Building2 className="h-3 w-3 opacity-60 group-hover/link:opacity-100" />
+                        <span className="font-medium">{o.hesab2_ad}</span>
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                 ),
                 kontragent: (
-                  <td key="kontragent" className="px-3 py-2.5 text-xs">{o.kontragent_ad ?? o.qarsi_teref ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td key="kontragent" className="px-3 py-2.5 text-xs">
+                    {o.kontragent_id && o.kontragent_ad ? (
+                      <Link
+                        href={kontragentRoute(o.kontragent_id, o.kontragent_nov)}
+                        className="group/link inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-primary/10 hover:text-primary"
+                        title={o.kontragent_nov === "techizatci" ? "Təchizatçı profili" : "Müştəri profili"}
+                      >
+                        {o.kontragent_nov === "techizatci" ? (
+                          <Truck className="h-3 w-3 opacity-60 group-hover/link:opacity-100" />
+                        ) : (
+                          <User className="h-3 w-3 opacity-60 group-hover/link:opacity-100" />
+                        )}
+                        <span className="font-medium">{o.kontragent_ad}</span>
+                        <ExternalLink className="h-2.5 w-2.5 opacity-0 group-hover/link:opacity-60" />
+                      </Link>
+                    ) : o.qarsi_teref ? (
+                      <span className="text-muted-foreground italic">{o.qarsi_teref}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                 ),
                 isci: (
-                  <td key="isci" className="px-3 py-2.5 text-xs">{o.isci_ad ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td key="isci" className="px-3 py-2.5 text-xs">
+                    {o.isci_id && o.isci_ad ? (
+                      <Link
+                        href={`/iscilier/${o.isci_id}`}
+                        className="group/link inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-primary/10 hover:text-primary"
+                        title="İşçi profili"
+                      >
+                        <User className="h-3 w-3 opacity-60 group-hover/link:opacity-100" />
+                        <span className="font-medium">{o.isci_ad}</span>
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                 ),
                 mebleg: (
                   <td key="mebleg" className={`px-3 py-2.5 text-right tabular-nums font-semibold ${yonCls}`}>
@@ -230,17 +313,46 @@ export function OperationsTable({ items, total }: Props) {
                 ),
                 sened: (
                   <td key="sened" className="px-3 py-2.5 font-mono text-xs text-muted-foreground">
-                    {o.sened_nomresi ? (
+                    {o.satis_id && o.satis_nomre ? (
+                      <Link
+                        href={`/ticaret/satislar/${o.satis_id}`}
+                        className="inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium hover:bg-primary/10 hover:text-primary"
+                        title="Satış sənədi"
+                      >
+                        <Receipt className="h-3 w-3" />
+                        <span>{o.satis_nomre}</span>
+                      </Link>
+                    ) : o.alish_id && o.alish_nomre ? (
+                      <Link
+                        href={`/ticaret/alislar/${o.alish_id}`}
+                        className="inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium hover:bg-primary/10 hover:text-primary"
+                        title="Alış sənədi"
+                      >
+                        <ShoppingCart className="h-3 w-3" />
+                        <span>{o.alish_nomre}</span>
+                      </Link>
+                    ) : o.servis_id ? (
+                      <Link
+                        href={`/servis/${o.servis_id}`}
+                        className="inline-flex items-center gap-1 rounded px-1 py-0.5 font-medium hover:bg-primary/10 hover:text-primary"
+                        title="Servis qeydi"
+                      >
+                        <Wrench className="h-3 w-3" />
+                        <span>{o.sened_nomresi ?? "Servis"}</span>
+                      </Link>
+                    ) : o.sened_nomresi ? (
                       <span className="inline-flex items-center gap-0.5">
                         <span>{o.sened_nomresi}</span>
                         <CopyButton value={o.sened_nomresi} title="Kopya" size="xs" />
                       </span>
-                    ) : "—"}
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 ),
                 status: (
                   <td key="status" className="px-3 py-2.5">
-                    <Badge variant="outline" className={`text-[10px] ${status.cls}`}>{status.ad}</Badge>
+                    <SaleStatusBadge value={o.status} />
                   </td>
                 ),
                 qeyd: (
@@ -257,13 +369,35 @@ export function OperationsTable({ items, total }: Props) {
                   </td>
                 ),
                 actions: (
-                  <td key="actions" className="px-3 py-2.5 text-right">
-                    <OperationDetailDrawer op={o} />
+                  <td key="actions" className="px-3 py-2.5 text-right no-underline [text-decoration:none]">
+                    <div className="inline-flex items-center gap-1.5 no-underline [text-decoration:none]">
+                      <RowIconGroup>
+                        <RowIconButton
+                          as="a"
+                          tone="print"
+                          title="Print (qəbz)"
+                          href={`/maliyye/emeliyyat/${o.id}/print?auto=1`}
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          <PrinterIcon className="h-4 w-4" />
+                        </RowIconButton>
+                      </RowIconGroup>
+                      <OperationRowActions op={o} canApprove={canApprove} canCancel={canCancel} />
+                    </div>
                   </td>
                 ),
               };
+              const isCancelled = o.status === "legv" || o.status === "redd";
               return (
-                <tr key={o.id} className="border-b border-border/30 transition hover:bg-secondary/40">
+                <tr
+                  key={o.id}
+                  className={`border-b border-border/30 transition hover:bg-secondary/40 ${
+                    isCancelled
+                      ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                      : ""
+                  }`}
+                >
                   {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
                 </tr>
               );

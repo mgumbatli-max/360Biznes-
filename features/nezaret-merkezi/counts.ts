@@ -12,10 +12,12 @@ import type { TabBadge, NezaretTab } from "./components/tabs";
 export async function getNezaretBadges(): Promise<Partial<Record<NezaretTab, TabBadge>>> {
   return withTenant(async () => {
     try {
+      const { istifadeciId } = requireTenant();
       const [alertOpen, alertKritik, tesdiqGozleyen, autoErrors24h] = await Promise.all([
         prisma.alerts.count({ where: { status: { in: ["yeni", "baxilir"] } } }),
         prisma.alerts.count({ where: { status: { in: ["yeni", "baxilir"] }, seviyye: "kritik" } }),
-        prisma.tesdiq_telep.count({ where: { status: "gozleyir" } }),
+        // Sidebar ilə eyni: öz yaratdığını sayma
+        prisma.tesdiq_telep.count({ where: { status: "gozleyir", yaradan_id: { not: istifadeciId } } }),
         prisma.avto_log.count({
           where: {
             yaradildi: { gte: new Date(Date.now() - 24 * 3600 * 1000) },

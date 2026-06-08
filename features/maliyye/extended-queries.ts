@@ -129,6 +129,70 @@ export type RecurringRow = {
   growth_disabled: boolean;
 };
 
+// Yeni dedicated cədvəldən qaydaları qaytarır (F4)
+export type NewRecurringRuleRow = {
+  id: string;
+  ad: string;
+  type_kod: string;
+  y_n: string;
+  mebleg: number;
+  tezlik: string;
+  hesab_ad: string | null;
+  kontragent_ad: string | null;
+  isci_ad: string | null;
+  sonraki_icra: Date | null;
+  son_tarix: Date | null;
+  aktiv: boolean;
+  qeyd: string | null;
+  yaradildi: Date | null;
+};
+
+export async function getNewRecurringRules(): Promise<NewRecurringRuleRow[]> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const rows = await prisma.finance_recurring_rules.findMany({
+      where: { sahibkar_id: sahibkarId },
+      orderBy: [{ aktiv: "desc" }, { sonraki_icra: "asc" }],
+      take: 200,
+    });
+    if (rows.length === 0) return [];
+    // Lookup adları
+    const hesabIds = rows.map((r) => r.hesab_id).filter(Boolean) as string[];
+    const kontragentIds = rows.map((r) => r.kontragent_id).filter(Boolean) as string[];
+    const isciIds = rows.map((r) => r.isci_id).filter(Boolean) as string[];
+    const [hesablar, kontragentler, iscilier] = await Promise.all([
+      hesabIds.length
+        ? prisma.maliye_hesablari.findMany({ where: { id: { in: hesabIds } }, select: { id: true, ad: true } })
+        : Promise.resolve([] as { id: string; ad: string }[]),
+      kontragentIds.length
+        ? prisma.kontragentler.findMany({ where: { id: { in: kontragentIds } }, select: { id: true, ad: true } })
+        : Promise.resolve([] as { id: string; ad: string }[]),
+      isciIds.length
+        ? prisma.istifadeciler.findMany({ where: { id: { in: isciIds } }, select: { id: true, ad_soyad: true } })
+        : Promise.resolve([] as { id: string; ad_soyad: string }[]),
+    ]);
+    const hMap = new Map(hesablar.map((h) => [h.id, h.ad]));
+    const kMap = new Map(kontragentler.map((k) => [k.id, k.ad]));
+    const iMap = new Map(iscilier.map((i) => [i.id, i.ad_soyad]));
+    return rows.map((r) => ({
+      id: r.id,
+      ad: r.ad,
+      type_kod: r.type_kod,
+      y_n: r.y_n,
+      mebleg: Number(r.mebleg),
+      tezlik: r.tezlik,
+      hesab_ad: r.hesab_id ? hMap.get(r.hesab_id) ?? null : null,
+      kontragent_ad: r.kontragent_id ? kMap.get(r.kontragent_id) ?? null : null,
+      isci_ad: r.isci_id ? iMap.get(r.isci_id) ?? null : null,
+      sonraki_icra: r.sonraki_icra,
+      son_tarix: r.son_tarix,
+      aktiv: r.aktiv,
+      qeyd: r.qeyd,
+      yaradildi: r.yaradildi,
+    }));
+  });
+}
+
 export async function getRecurringRules(): Promise<RecurringRow[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();

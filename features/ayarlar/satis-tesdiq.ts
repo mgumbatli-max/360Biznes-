@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
 
 /**
  * Discount approval thresholds. Stored in `ayarlar` (qrup="ticaret").
@@ -60,6 +61,8 @@ export async function getDiscountThresholds(): Promise<DiscountThresholds> {
 export async function setDiscountThresholds(t: DiscountThresholds): Promise<void> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    // Köhnə dəyərləri al — audit üçün diff
+    const before = await getDiscountThresholds();
     for (const [k, key] of Object.entries(KEYS) as [keyof DiscountThresholds, string][]) {
       await prisma.ayarlar.upsert({
         where: {
@@ -76,5 +79,13 @@ export async function setDiscountThresholds(t: DiscountThresholds): Promise<void
         },
       });
     }
+    // 🔒 Təsdiq threshold-ları dəyişəndə kritik audit
+    try {
+      await audit("yenile", "discount_threshold", null, {
+        evvelki_data: before as unknown as Record<string, unknown>,
+        yeni_data: t as unknown as Record<string, unknown>,
+        sebeb: "Endirim təsdiq threshold-ları yeniləndi",
+      });
+    } catch { /* non-fatal */ }
   });
 }

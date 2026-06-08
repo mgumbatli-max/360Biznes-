@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   History, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
 } from "lucide-react";
@@ -7,6 +8,8 @@ import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { HereketFilters } from "@/features/anbar/components/hereket-filters";
 import { HereketTable, type HereketRow } from "@/features/anbar/components/hereket-table";
+import { Button } from "@/components/ui/button";
+import { PackageMinus, PackagePlus } from "lucide-react";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 
@@ -22,15 +25,18 @@ type SP = {
   q?: string;
   from?: string;
   to?: string;
+  new?: string;
+  mehsul?: string;
 };
 
-async function getMovements(page: number, filter: { nov?: string; ref_nov?: string; anbar?: number; search?: string; from?: Date; to?: Date }) {
+async function getMovements(page: number, filter: { nov?: string; ref_nov?: string; anbar?: number; search?: string; from?: Date; to?: Date; mehsul_id?: string }) {
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
     if (filter.nov) where.nov = filter.nov;
     if (filter.ref_nov) where.ref_nov = filter.ref_nov;
     if (filter.anbar) where.anbar_id = filter.anbar;
+    if (filter.mehsul_id) where.mehsul_id = filter.mehsul_id;
     if (filter.search?.trim()) {
       const q = filter.search.trim();
       where.mehsullar = {
@@ -162,6 +168,7 @@ export default async function HereketlerPage({ searchParams }: { searchParams: P
     search: sp.q || undefined,
     from: sp.from ? new Date(sp.from) : undefined,
     to: sp.to ? new Date(sp.to) : undefined,
+    mehsul_id: sp.mehsul || undefined,
   };
   const [{ items, total, stats }, anbarlar] = await Promise.all([
     getMovements(page, filter),
@@ -172,10 +179,32 @@ export default async function HereketlerPage({ searchParams }: { searchParams: P
     <div className="mx-auto max-w-7xl">
       <AnbarSubNav active="/anbar/hereketler" />
       <div className="space-y-5">
-        <header>
-          <h1 className="text-2xl font-bold tracking-tight">Anbar hərəkətləri</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Bütün stok mədaxil, məxaric və transferlərin loqu.</p>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Anbar hərəkətləri</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Bütün stok mədaxil, məxaric və transferlərin loqu.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href="/ticaret/satislar?yeni=1">
+              <Button size="sm" variant="outline">
+                <PackageMinus className="h-4 w-4" /> Satış (məxaric)
+              </Button>
+            </Link>
+            <Link href="/ticaret/alislar?yeni=1">
+              <Button size="sm" variant="outline">
+                <PackagePlus className="h-4 w-4" /> Alış (mədaxil)
+              </Button>
+            </Link>
+          </div>
         </header>
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-xs">
+          <p className="font-medium">📘 Bu səhifə yalnız <strong>oxu jurnalıdır</strong></p>
+          <p className="mt-0.5 text-muted-foreground">
+            Stok hərəkəti yaratmaq üçün <strong>Ticarət modulundan</strong> alış/satış/qaytarma sənədi
+            və ya Anbar &gt; Transfer/Defekt/Sayım vasitəsi ilə icra et.
+            Manual düzəliş üçün <strong>Anbar &gt; Stok &gt; Düzəliş aktı</strong>.
+          </p>
+        </div>
 
         {(() => {
           const medaxilTotal = stats.filter((s) => ["medaxil", "transfer_giris", "qaytarma_giris"].includes(s.nov)).reduce((a, b) => a + b.count, 0);

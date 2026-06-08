@@ -9,7 +9,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { formatNumber } from "@/lib/utils";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { ProductInline } from "@/features/anbar/components/product-inline";
-import { BarcodeFix, CostFix, SalePriceFix, ImageFix } from "@/features/anbar/components/quick-fix-cells";
+import { BarcodeFix, SalePriceFix, ImageFix } from "@/features/anbar/components/quick-fix-cells";
 
 export const metadata: Metadata = { title: "Anomaliyalar" };
 
@@ -156,8 +156,8 @@ export default async function AnomaliPage() {
           { key: "bk",    icon: ScanBarcode,   label: "Barkodsuz",    count: a.barkodsuz.count,  tone: "warning", desc: "Barkod yoxdur",                href: "/anbar/hesabat?mod=barkodsuz" },
           { key: "maya",  icon: Coins,         label: "Mayasız",      count: a.mayasiz.count,    tone: "warning", desc: "Alış qiyməti yox",             href: "/anbar/hesabat?mod=mayasiz" },
           { key: "qiy",   icon: Circle,        label: "Qiyməti yox",  count: a.qiymetsiz.count,  tone: "warning", desc: "Satış qiyməti 0",              href: "/anbar/hesabat?mod=qiymetsiz" },
-          { key: "kat",   icon: FolderOpen,    label: "Kateqoriyasız",count: a.kateqorisiz.count,tone: "warning", desc: "Kateqoriya təyin edilməyib" },
-          { key: "dup",   icon: Copy,          label: "Dublikat ad",  count: a.dublikat.length,  tone: "warning", desc: "Eyni adlı məhsullar" },
+          { key: "kat",   icon: FolderOpen,    label: "Kateqoriyasız",count: a.kateqorisiz.count,tone: "warning", desc: "Kateqoriya təyin edilməyib", href: "/anbar/hesabat?mod=kateqoriyasiz" },
+          { key: "dup",   icon: Copy,          label: "Dublikat ad",  count: a.dublikat.length,  tone: "warning", desc: "Eyni adlı məhsullar",        href: "/anbar/hesabat?mod=dublikat_ad" },
         ];
         const active = all.filter((p) => p.count > 0).sort((x, y) => y.count - x.count);
 
@@ -300,7 +300,11 @@ export default async function AnomaliPage() {
             id: p.id,
             ad: p.ad,
             kod: p.kod,
-            fix: <CostFix id={p.id} current={0} />,
+            fix: (
+              <Link href="/ticaret/alislar?yeni=1" className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20">
+                ↗ Alış yarat
+              </Link>
+            ),
           }))}
         />
       )}

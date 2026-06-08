@@ -20,6 +20,9 @@ const PROBLEM_LABELS: Record<ProblemKind, string> = {
   barkodsuz: "Barkodsuz məhsullar",
   mayasiz: "Mayasız məhsullar",
   qiymetsiz: "Qiymətsiz məhsullar",
+  kateqoriyasiz: "Kateqoriyasız məhsullar",
+  dublikat_ad: "Dublikat ad",
+  dublikat_barkod: "Dublikat barkod",
 };
 
 export async function GET(req: NextRequest) {

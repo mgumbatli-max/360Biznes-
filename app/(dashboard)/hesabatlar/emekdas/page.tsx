@@ -7,6 +7,7 @@ import { DateRangeFilter } from "@/features/hesabatlar/components/date-range-fil
 import { HorizontalBarChart } from "@/features/hesabatlar/components/charts";
 import { getStaffPerformance, getAttendanceStats } from "@/features/hesabatlar/emekdas-queries";
 import { parseDateRange, formatDateInput } from "@/features/hesabatlar/shared";
+import { requireHesabatPagePerm } from "@/features/hesabatlar/access-guard";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Əməkdaş hesabatı" };
@@ -14,6 +15,7 @@ export const metadata: Metadata = { title: "Əməkdaş hesabatı" };
 type SP = { from?: string; to?: string; preset?: string };
 
 export default async function EmekdasReportPage({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireHesabatPagePerm(["isci.view", "maas.view"]);
   const sp = await searchParams;
   const range = parseDateRange(sp);
 

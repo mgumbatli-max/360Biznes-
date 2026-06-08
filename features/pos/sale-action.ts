@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -10,8 +10,8 @@ import { checkCustomerCreditLimit } from "@/features/ticaret/customer-tier";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { emitStockChange } from "@/lib/stock-change-emitter";
-import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { audit } from "@/lib/audit/log";
+import { safeAuditLog } from "@/lib/audit/safe-log";
 
 const LineSchema = z.object({
   mehsul_id: z.string().uuid(),
@@ -25,6 +25,7 @@ const CreateSaleSchema = z.object({
   anbar_id: z.coerce.number().int().positive(),
   musteri_id: z.string().uuid().nullish(),
   satis_meneceri_id: z.string().uuid().nullish(),
+  // POS-da default Nağd (sürətli satış). Nisyə də qəbul olunur — standartdır.
   odenis_nov: z.enum(["negd", "kart", "kecirme", "nisye"]),
   endirim_mebleg: z.coerce.number().min(0).default(0),
   qeyd: z.string().max(2000).nullish(),
@@ -51,19 +52,9 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const data = parsed.data;
 
-  // Server-side icazə yoxlaması — kassir icazəsi yoxdursa satış rədd olunur.
-  // Sahibkar / admin rolları icazə yoxlanmadan keçir (eyni hesabkar fail-safe).
-  const { rolAd, perms } = await (async () => {
-    const { auth } = await import("@/auth");
-    const sess = await auth();
-    const ad = (sess?.user?.rol_ad ?? "").toLowerCase();
-    const p = await getRequestPermissions();
-    return { rolAd: ad, perms: p };
-  })();
-  const isOwnerOrAdmin = rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin");
-  if (!isOwnerOrAdmin && !perms.includes("pos.satis")) {
-    return { ok: false, error: "Bu əməliyyat üçün «pos.satis» icazəsi lazımdır" };
-  }
+  const { requireTicaretActionPerm } = await import("@/features/ticaret/access-guard");
+  const permCheck = await requireTicaretActionPerm(["pos.satis"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -81,7 +72,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
         preUmumi > 0 ? Math.round(((preUmumi - preSonMebleg) / preUmumi) * 1000) / 10 : 0;
       const effectiveMaxPct = Math.max(maxLineDiscount, overallDiscountPct);
 
-      // Credit-limit check for nisye sales.
+      // Credit-limit check for nisye sales (POS-da nisyə qəbul olunur).
       if (data.odenis_nov === "nisye" && data.musteri_id && !data.override_credit_limit) {
         const check = await checkCustomerCreditLimit(data.musteri_id, preSonMebleg);
         if (!check.ok) {
@@ -111,6 +102,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
         }
       }
 
+      let financeOpSkipped: string | null = null;
       const result = await prisma.$transaction(async (tx) => {
         // 1. Verify kassa is open
         const kassa = await tx.kassalar.findFirst({
@@ -246,7 +238,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
           });
         }
 
-        // 8. Cash register operation (skip for borc)
+        // 8. Cash register operation — nisye olarsa kassaya pul düşmür
         if (data.odenis_nov !== "nisye") {
           await tx.kassa_emeliyyatlari.create({
             data: {
@@ -277,6 +269,18 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
                 .catch(() => null);
             }
             if (type) {
+              // Kassanın bağlı olduğu maliye hesabını tap — finance_op-a yazmaq üçün.
+              // Bu hesab POS açılış zamanı seçilmişdir; əgər yoxdursa sahibkar-ın
+              // ilk aktiv nağd hesabına fallback.
+              let hesabIdForOp = kassa.maliye_hesab_id ?? null;
+              if (!hesabIdForOp) {
+                const def = await tx.maliye_hesablari.findFirst({
+                  where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
+                  orderBy: { yaradildi: "asc" },
+                  select: { id: true },
+                });
+                hesabIdForOp = def?.id ?? null;
+              }
               await tx.finance_operations.create({
                 data: {
                   sahibkar_id: sahibkarId,
@@ -288,6 +292,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
                   valyuta: "AZN",
                   mezenne: 1,
                   azn_meblegh: new Prisma.Decimal(sonMebleg),
+                  hesab_id: hesabIdForOp,
                   kontragent_id: data.musteri_id ?? null,
                   satis_id: sale.id,
                   sened_nomresi: posCekNomresi,
@@ -295,18 +300,23 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
                   yaradan_id: istifadeciId,
                 },
               });
+              // Source-of-truth-dan hesab qaliqını yenilə → real bank/nağd balansı sinxronlanır
+              if (hesabIdForOp) {
+                const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+                await recalculateAccountBalance(hesabIdForOp, tx);
+              }
             }
           } catch (e) {
             console.warn("[createSale] finance_operations skipped:", e);
+            // Audit — maliyyə hesabatı bu satışı görməyəcək, biri buna baxsın
+            financeOpSkipped = e instanceof Error ? e.message : String(e);
           }
         }
 
-        // 9. Customer debt
-        if (data.odenis_nov === "nisye" && data.musteri_id) {
-          await tx.kontragentler.update({
-            where: { id: data.musteri_id },
-            data: { borc: { increment: sonMebleg } },
-          });
+        // 9. Müştəri balansı — source-of-truth recalc
+        if (data.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(data.musteri_id, tx);
         }
 
         return { id: sale.id, nomre, sonMebleg, posCekNomresi };
@@ -314,6 +324,9 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
 
       revalidatePath("/pos");
       revalidatePath("/dashboard");
+      // Dashboard widget cache-i invalidate — KPI, top5, recent activity dərhal yenilənsin
+      revalidateTag(`dashboard:${sahibkarId}`, "max");
+      revalidateTag(`stok:${sahibkarId}`, "max");
 
       // Stoku dəyişən məhsulları kanal-larda avtomatik sync — arxa fonda
       emitStockChange(data.lines.map((l) => l.mehsul_id));
@@ -334,6 +347,21 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
         sebeb: data.odenis_nov === "nisye" ? "POS borca satış" : "POS satış",
       });
 
+      // Əgər finance_operations yaranmadısa — ayrıca xəta auditi ki, biri
+      // baxsın və əl ilə düzəltsin (yoxsa hesabatda görünməyəcək).
+      if (financeOpSkipped) {
+        await safeAuditLog({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          emeliyyat: "yarat",
+          resurs_nov: "finance_operation_skip",
+          resurs_id: result.id,
+          yeni_data: { error: financeOpSkipped, satis_id: result.id },
+          sebeb: "POS satışında finance_operations yaranmadı — hesabat sinxron deyil",
+          status: "xeta",
+        });
+      }
+
       return {
         ok: true as const,
         satis_id: result.id,
@@ -342,9 +370,8 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
         pos_cek_nomresi: result.posCekNomresi,
       };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Bilinməyən xəta";
-      console.error("[createSale]", e);
-      return { ok: false as const, error: msg };
+      const { logAndFriendly } = await import("@/lib/error/user-message");
+      return { ok: false as const, error: logAndFriendly("createSale (POS)", e, "Satış tamamlanmadı") };
     }
   });
 }

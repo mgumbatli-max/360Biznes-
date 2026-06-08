@@ -28,6 +28,11 @@ import {
   lookupBarcodeAction,
 } from "@/features/pos/search-actions";
 import { createMarketSatis } from "../market-satis-action";
+import {
+  getMarketplaceDefaults,
+  suggestPlatformFromOrderCode,
+} from "../marketplace-defaults";
+import type { MarketplaceDefaultsMap } from "../marketplace-platforms";
 import type { CustomerRow, ProductRow } from "@/features/pos/sale-queries";
 
 export type AnbarOpt = { id: number; ad: string };
@@ -83,6 +88,42 @@ export function MarketSatisClient({
   const [anbarId, setAnbarId] = useState<number>(defaultAnbarId);
   const [hesabId, setHesabId] = useState<string>(defaultHesabId);
 
+  // Platform defaultları — ilk yükləmədə bir dəfə oxunur, platforma seçildikcə tətbiq olunur
+  const [platformDefaults, setPlatformDefaults] = useState<MarketplaceDefaultsMap>({});
+  // İstifadəçinin manual dəyişdirdiyi sahələri overwrite etməmək üçün
+  const [komissiyaTouched, setKomissiyaTouched] = useState(false);
+  const [hesabTouched, setHesabTouched] = useState(false);
+  const [anbarTouched, setAnbarTouched] = useState(false);
+  // Platforma təklifi (sifariş kodundan)
+  const [suggestedPlatform, setSuggestedPlatform] = useState<PlatformValue | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getMarketplaceDefaults().then((m) => {
+      if (!alive) return;
+      setPlatformDefaults(m);
+      // İlk yükləmədə cari platforma üçün defaultları tətbiq et
+      const cur = m[platform];
+      if (cur) {
+        if (!komissiyaTouched && cur.komissiya_faiz > 0) setKomissiyaFaiz(cur.komissiya_faiz);
+        if (!hesabTouched && cur.hesab_id) setHesabId(cur.hesab_id);
+        if (!anbarTouched && cur.anbar_id) setAnbarId(cur.anbar_id);
+      }
+    }).catch(() => { /* non-fatal */ });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Platforma dəyişəndə → həmin platformanın defaultlarını tətbiq et (touched olmayanları)
+  useEffect(() => {
+    const cur = platformDefaults[platform];
+    if (!cur) return;
+    if (!komissiyaTouched && cur.komissiya_faiz > 0) setKomissiyaFaiz(cur.komissiya_faiz);
+    if (!hesabTouched && cur.hesab_id) setHesabId(cur.hesab_id);
+    if (!anbarTouched && cur.anbar_id) setAnbarId(cur.anbar_id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [platform, platformDefaults]);
+
   // Sifariş & müştəri
   const [sifarisNomresi, setSifarisNomresi] = useState("");
   const [qaimeNomresi, setQaimeNomresi] = useState("");
@@ -100,37 +141,28 @@ export function MarketSatisClient({
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<ProductRow[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [saving, startSave] = useTransition();
 
   /* ---------------- Müştəri search ---------------- */
   useEffect(() => {
-    if (musteriQ.trim().length < 2) {
-      setMusteriResults([]);
-      setShowCustResults(false);
-      return;
-    }
     const id = setTimeout(async () => {
       const r = await searchCustomersAction(musteriQ);
       setMusteriResults(r);
-      setShowCustResults(true);
-    }, 200);
+    }, musteriQ.trim().length === 0 ? 0 : 200);
     return () => clearTimeout(id);
   }, [musteriQ]);
 
   /* ---------------- Product search ---------------- */
   useEffect(() => {
-    if (searchQ.trim().length < 2) {
-      setSearchResults([]);
-      return;
-    }
     setSearching(true);
     const id = setTimeout(async () => {
       const r = await searchProductsAction(searchQ, anbarId);
       setSearchResults(r);
       setSearching(false);
-    }, 200);
+    }, searchQ.trim().length === 0 ? 0 : 200);
     return () => clearTimeout(id);
   }, [searchQ, anbarId]);
 
@@ -306,11 +338,35 @@ export function MarketSatisClient({
             <Label>Sifariş kodu *</Label>
             <Input
               value={sifarisNomresi}
-              onChange={(e) => setSifarisNomresi(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSifarisNomresi(v);
+                // Platforma təklifi — yalnız təklif et, məcburi dəyişmə
+                if (v.length >= 3) {
+                  suggestPlatformFromOrderCode(v).then((p) => {
+                    if (p && p !== platform) setSuggestedPlatform(p as PlatformValue);
+                    else setSuggestedPlatform(null);
+                  }).catch(() => {});
+                } else {
+                  setSuggestedPlatform(null);
+                }
+              }}
               placeholder="Məs. WLT-12345"
               className="h-9"
               required
             />
+            {suggestedPlatform && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPlatform(suggestedPlatform);
+                  setSuggestedPlatform(null);
+                }}
+                className="text-[10.5px] text-amber-700 hover:underline"
+              >
+                💡 Bu kod {suggestedPlatform.replace("_", " ")} kimi görünür — platformanı dəyiş?
+              </button>
+            )}
           </div>
           <div className="space-y-1">
             <Label>Qaimə nömrəsi</Label>
@@ -331,11 +387,12 @@ export function MarketSatisClient({
               max={100}
               step="0.1"
               value={komissiyaFaiz}
-              onChange={(e) =>
+              onChange={(e) => {
+                setKomissiyaTouched(true);
                 setKomissiyaFaiz(
                   Math.max(0, Math.min(100, Number(e.target.value) || 0)),
-                )
-              }
+                );
+              }}
               className="h-9 text-right"
             />
           </div>
@@ -347,7 +404,10 @@ export function MarketSatisClient({
                 label: a.ad,
               }))}
               value={String(anbarId)}
-              onChange={(v) => setAnbarId(Number(v))}
+              onChange={(v) => {
+                setAnbarTouched(true);
+                setAnbarId(Number(v));
+              }}
               placeholder="Anbar seç"
               searchPlaceholder="Axtar..."
               emptyText="Tapılmadı"
@@ -380,6 +440,8 @@ export function MarketSatisClient({
                 className="h-12 rounded-lg border-2 border-rose-300 bg-white pl-3 pr-10 text-sm font-medium"
                 onChange={(e) => setSearchQ(e.target.value)}
                 onKeyDown={handleSearchKey}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
               />
               {searching && (
                 <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-rose-400" />
@@ -398,24 +460,60 @@ export function MarketSatisClient({
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
-              {searchResults.length > 0 && (
-                <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[320px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
-                  {searchResults.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => addProduct(p)}
-                      className="flex w-full items-center justify-between gap-3 border-b border-border/40 p-2 text-left text-sm hover:bg-secondary"
-                    >
-                      <span className="min-w-0 flex-1 truncate">{p.ad}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {p.kod ?? "—"} · stok: {p.stok_miqdari}
-                      </span>
-                      <span className="font-semibold tabular-nums">
-                        {formatMoney(p.satis_qiymeti)}
-                      </span>
-                    </button>
-                  ))}
+              {searchFocused && searchResults.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[360px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
+                  {searchResults.map((p) => {
+                    const stok = Number(p.stok_miqdari ?? 0);
+                    const diger = p.diger_anbarlarda ?? [];
+                    const digerSum = diger.reduce((s, d) => s + d.miqdar, 0);
+                    const blocked = stok <= 0 && digerSum <= 0;
+                    const stokTone =
+                      stok <= 0
+                        ? digerSum > 0
+                          ? "text-amber-600 bg-amber-500/10 border-amber-500/30"
+                          : "text-rose-600 bg-rose-500/10 border-rose-500/30"
+                        : stok < 5
+                        ? "text-amber-600 bg-amber-500/10 border-amber-500/30"
+                        : "text-emerald-600 bg-emerald-500/10 border-emerald-500/30";
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => addProduct(p)}
+                        disabled={stok <= 0}
+                        title={
+                          stok <= 0 && digerSum > 0
+                            ? `Bu anbarda 0; digər anbarlarda: ${diger.map((d) => `${d.anbar_ad} (${d.miqdar})`).join(", ")}`
+                            : undefined
+                        }
+                        className="flex w-full items-start justify-between gap-3 border-b border-border/40 p-2 text-left text-sm hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">
+                            {p.ad}
+                            {p.kod && (
+                              <span className="ml-1 text-xs text-muted-foreground">· {p.kod}</span>
+                            )}
+                          </span>
+                          {diger.length > 0 && (
+                            <span className="mt-0.5 block truncate text-[10px] text-amber-700 dark:text-amber-400">
+                              📦 Digər anbar:{" "}
+                              {diger.slice(0, 2).map((d) => `${d.anbar_ad} ${d.miqdar}`).join(" · ")}
+                              {diger.length > 2 && ` +${diger.length - 2}`}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] tabular-nums ${stokTone}`}
+                        >
+                          {stok > 0 ? `${stok} əd.` : blocked ? "yoxdur" : "0 (bu anbar)"}
+                        </span>
+                        <span className="shrink-0 font-semibold tabular-nums">
+                          {formatMoney(p.satis_qiymeti)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -550,6 +648,15 @@ export function MarketSatisClient({
                       </div>
                     )}
                   </div>
+                  {musteri.borc > 0 && (
+                    <Badge
+                      variant="outline"
+                      className="border-amber-500/40 bg-amber-500/10 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-300"
+                      title={`Cari borc: ${formatMoney(musteri.borc)}`}
+                    >
+                      Borc: {formatMoney(musteri.borc)}
+                    </Badge>
+                  )}
                   <Badge variant="outline" className="text-[10px]">
                     market
                   </Badge>
@@ -566,11 +673,13 @@ export function MarketSatisClient({
                   <Input
                     value={musteriQ}
                     onChange={(e) => setMusteriQ(e.target.value)}
+                    onFocus={() => setShowCustResults(true)}
+                    onBlur={() => setTimeout(() => setShowCustResults(false), 150)}
                     placeholder="Müştəri axtar (marketplace üçün adətən boşdur)..."
                     className="h-9"
                   />
                   {showCustResults && (
-                    <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[240px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
+                    <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[280px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
                       {musteriResults.map((c) => (
                         <button
                           key={c.id}
@@ -580,12 +689,24 @@ export function MarketSatisClient({
                             setMusteriQ("");
                             setShowCustResults(false);
                           }}
-                          className="flex w-full items-center justify-between border-b border-border/40 p-2 text-left text-sm hover:bg-secondary"
+                          className="flex w-full items-center justify-between gap-2 border-b border-border/40 p-2 text-left text-sm hover:bg-secondary"
                         >
-                          <span className="truncate">{c.ad}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {c.telefon ?? ""}
+                          <span className="min-w-0 flex-1 truncate">
+                            <span className="font-medium">{c.ad}</span>
+                            {c.telefon && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                · {c.telefon}
+                              </span>
+                            )}
                           </span>
+                          {c.borc > 0 && (
+                            <span
+                              className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-amber-700 dark:text-amber-300"
+                              title={`Cari borc: ${formatMoney(c.borc)}`}
+                            >
+                              {formatMoney(c.borc)}
+                            </span>
+                          )}
                         </button>
                       ))}
                       {musteriResults.length === 0 && (
@@ -633,7 +754,10 @@ export function MarketSatisClient({
                   label: `${h.ad}${h.bank_adi ? ` · ${h.bank_adi}` : ""}${h.kart_son4 ? ` ****${h.kart_son4}` : ""}`,
                 }))}
                 value={hesabId}
-                onChange={setHesabId}
+                onChange={(v) => {
+                  setHesabTouched(true);
+                  setHesabId(v);
+                }}
                 placeholder={hesablar.length === 0 ? "Hesab yoxdur" : "Hesab seç"}
                 searchPlaceholder="Axtar..."
                 emptyText="Tapılmadı"

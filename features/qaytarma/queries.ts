@@ -12,6 +12,14 @@ export type ReturnFilter = {
   to?: Date;
 };
 
+export type ReturnLineSummary = {
+  ad: string;
+  kod: string | null;
+  miqdar: number;
+  qiymet: number;
+  cemi: number;
+};
+
 export type ReturnRow = {
   id: string;
   nomre: string;
@@ -26,6 +34,8 @@ export type ReturnRow = {
   anbar_id: number;
   anbar_ad: string | null;
   satir_say: number;
+  /** İlk 5 məhsulun xülasəsi — siyahıda peek üçün. */
+  ilk_mehsullar: ReturnLineSummary[];
 };
 
 export async function getReturns(filter: ReturnFilter = {}): Promise<ReturnRow[]> {
@@ -58,6 +68,16 @@ export async function getReturns(filter: ReturnFilter = {}): Promise<ReturnRow[]
         kontragentler: { select: { id: true, ad: true } },
         anbarlar: { select: { ad: true } },
         _count: { select: { qaytarma_satirlari: true } },
+        qaytarma_satirlari: {
+          take: 5,
+          orderBy: { id: "asc" },
+          select: {
+            miqdar: true,
+            vahid_qiymet: true,
+            cemi: true,
+            mehsullar: { select: { ad: true, kod: true } },
+          },
+        },
       },
     });
     return rows.map((r) => ({
@@ -74,6 +94,13 @@ export async function getReturns(filter: ReturnFilter = {}): Promise<ReturnRow[]
       anbar_id: r.anbar_id,
       anbar_ad: r.anbarlar?.ad ?? null,
       satir_say: r._count.qaytarma_satirlari,
+      ilk_mehsullar: r.qaytarma_satirlari.map((line) => ({
+        ad: line.mehsullar?.ad ?? "—",
+        kod: line.mehsullar?.kod ?? null,
+        miqdar: Number(line.miqdar),
+        qiymet: Number(line.vahid_qiymet ?? 0),
+        cemi: Number(line.cemi ?? 0),
+      })),
     }));
   });
 }

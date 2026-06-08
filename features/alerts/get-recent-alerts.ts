@@ -12,7 +12,11 @@ export type RecentAlert = {
   status: string;
   kateqoriya_ad: string;
   kateqoriya_emoji: string | null;
-  first_seen_at: Date | null;
+  /**
+   * ISO string formatında. `unstable_cache` JSON serializasiyası Date object-ləri
+   * string-ə çevirir, ona görə tipdə də string saxlayırıq.
+   */
+  first_seen_at: string | null;
 };
 
 export type RecentAlertsResult = {
@@ -40,7 +44,8 @@ async function fetchAlerts(sahibkarId: string, limit: number): Promise<RecentAle
       status: a.status,
       kateqoriya_ad: a.alert_categories.ad,
       kateqoriya_emoji: a.alert_categories.emoji,
-      first_seen_at: a.first_seen_at,
+      // ISO string — cache-safe
+      first_seen_at: a.first_seen_at ? a.first_seen_at.toISOString() : null,
     })),
     unreadCount,
   };

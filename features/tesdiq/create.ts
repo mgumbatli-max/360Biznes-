@@ -1,4 +1,5 @@
 import "server-only";
+import { revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -160,6 +161,11 @@ export async function createApprovalRequest(input: CreateApprovalInput): Promise
         });
       }
 
+      try {
+        revalidateTag(`nezaret:${sahibkarId}`, "max");
+      } catch {
+        /* tag refresh — non-fatal */
+      }
       return { ok: true, id: row.id, auto_approved: autoApprove };
     } catch (e) {
       console.error("[createApprovalRequest]", e);

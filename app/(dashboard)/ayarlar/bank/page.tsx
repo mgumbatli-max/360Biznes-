@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { cn, formatMoney } from "@/lib/utils";
+import { HesabDialog } from "@/features/ayarlar/components/hesab-dialog";
 
 export const metadata: Metadata = { title: "Maliyyə hesabları" };
 
@@ -27,6 +28,16 @@ async function getAccounts() {
   });
 }
 
+async function getFilialOptions() {
+  return withTenant(async () =>
+    prisma.filiallar.findMany({
+      where: { aktiv: true },
+      select: { id: true, ad: true },
+      orderBy: { ad: "asc" },
+    }),
+  );
+}
+
 const NOV_INFO: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; cls: string }> = {
   negd: { label: "Nağd", icon: Wallet, cls: "text-emerald-500 bg-emerald-500/10 border-emerald-500/40" },
   bank: { label: "Bank", icon: Landmark, cls: "text-primary bg-primary/10 border-primary/40" },
@@ -37,7 +48,7 @@ export default async function AyarBankPage({ searchParams }: { searchParams: Sea
   const sp = await searchParams;
   const view = getViewMode(sp as Record<string, string | undefined>, "view", "card");
 
-  const accounts = await getAccounts();
+  const [accounts, filiallar] = await Promise.all([getAccounts(), getFilialOptions()]);
   const aktivAccounts = accounts.filter((a) => a.aktiv);
   const byCurrency = new Map<string, number>();
   for (const a of aktivAccounts) {
@@ -66,10 +77,11 @@ export default async function AyarBankPage({ searchParams }: { searchParams: Sea
           <ViewToggle modes={["card", "list"]} />
           <Link
             href="/ayarlar/bank-inteqrasiya"
-            className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:bg-primary/90"
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-secondary"
           >
             <TrendingUp className="h-3.5 w-3.5" /> Bank inteqrasiya
           </Link>
+          <HesabDialog filiallar={filiallar} />
         </div>
       </header>
 
@@ -102,8 +114,11 @@ export default async function AyarBankPage({ searchParams }: { searchParams: Sea
             <Landmark className="mx-auto h-8 w-8 text-muted-foreground/50" />
             <p className="mt-2 text-sm text-muted-foreground">Maliyyə hesabı yoxdur.</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Filial səhifəsindən «+ Hesab» düyməsi ilə hesab yaradın.
+              Yuxarıdakı «Yeni hesab» düyməsi ilə nağd kassa, bank və ya kart hesabı yarat.
             </p>
+            <div className="mt-4 flex justify-center">
+              <HesabDialog filiallar={filiallar} />
+            </div>
           </CardContent>
         </Card>
       ) : view === "list" ? (
@@ -121,6 +136,7 @@ export default async function AyarBankPage({ searchParams }: { searchParams: Sea
                     <th className="px-3 py-2">Valyuta</th>
                     <th className="px-3 py-2 text-right">Balans</th>
                     <th className="px-3 py-2">Status</th>
+                    <th className="w-10 px-3 py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -155,6 +171,24 @@ export default async function AyarBankPage({ searchParams }: { searchParams: Sea
                             <Badge variant="outline" className="text-[10px]">passiv</Badge>
                           )}
                         </td>
+                        <td className="px-3 py-2">
+                          <HesabDialog
+                            filiallar={filiallar}
+                            hesab={{
+                              id: h.id,
+                              ad: h.ad,
+                              nov: h.nov,
+                              valyuta: h.valyuta,
+                              bank_adi: h.bank_adi,
+                              iban: h.iban,
+                              kart_son4: h.kart_son4,
+                              pos_kodu: h.pos_kodu,
+                              filial_id: h.filial_id,
+                              qeyd: h.qeyd,
+                              aktiv: h.aktiv,
+                            }}
+                          />
+                        </td>
                       </tr>
                     );
                   })}
@@ -186,6 +220,22 @@ export default async function AyarBankPage({ searchParams }: { searchParams: Sea
                         {h.filiallar?.ad && <span>· {h.filiallar.ad}</span>}
                       </div>
                     </div>
+                    <HesabDialog
+                      filiallar={filiallar}
+                      hesab={{
+                        id: h.id,
+                        ad: h.ad,
+                        nov: h.nov,
+                        valyuta: h.valyuta,
+                        bank_adi: h.bank_adi,
+                        iban: h.iban,
+                        kart_son4: h.kart_son4,
+                        pos_kodu: h.pos_kodu,
+                        filial_id: h.filial_id,
+                        qeyd: h.qeyd,
+                        aktiv: h.aktiv,
+                      }}
+                    />
                   </div>
 
                   {h.bank_adi && (

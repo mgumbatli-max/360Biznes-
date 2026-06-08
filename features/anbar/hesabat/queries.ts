@@ -86,7 +86,8 @@ export async function getAgingReport(): Promise<AgingReport> {
 export type ProblemKind =
   | "stokda" | "stoksuz" | "az_stok" | "kritik"
   | "satilmayan_60" | "olu_stok"
-  | "sekilsiz" | "barkodsuz" | "mayasiz" | "qiymetsiz";
+  | "sekilsiz" | "barkodsuz" | "mayasiz" | "qiymetsiz"
+  | "kateqoriyasiz" | "dublikat_ad" | "dublikat_barkod";
 
 export type ProblemRow = {
   id: string;
@@ -126,6 +127,11 @@ export async function getProblemReport(tip: ProblemKind, filter: ProblemFilter =
       case "barkodsuz":      typeFilter = "m.barkod IS NULL AND NOT EXISTS (SELECT 1 FROM mehsul_barkodlar WHERE mehsul_id = m.id)"; break;
       case "mayasiz":        typeFilter = "(m.alish_qiymeti IS NULL OR m.alish_qiymeti = 0)"; break;
       case "qiymetsiz":      typeFilter = "(m.satis_qiymeti IS NULL OR m.satis_qiymeti = 0)"; break;
+      case "kateqoriyasiz":  typeFilter = "m.kateqoriya_id IS NULL"; break;
+      // Dublikat ad: aynı sahibkar daxilində eyni ad olan məhsullar
+      case "dublikat_ad":    typeFilter = "EXISTS (SELECT 1 FROM mehsullar m2 WHERE m2.sahibkar_id = m.sahibkar_id AND m2.id <> m.id AND LOWER(m2.ad) = LOWER(m.ad))"; break;
+      // Dublikat barkod
+      case "dublikat_barkod":typeFilter = "m.barkod IS NOT NULL AND m.barkod <> '' AND EXISTS (SELECT 1 FROM mehsullar m2 WHERE m2.sahibkar_id = m.sahibkar_id AND m2.id <> m.id AND m2.barkod = m.barkod)"; break;
     }
 
     // Build extra WHERE pieces with parameter bindings

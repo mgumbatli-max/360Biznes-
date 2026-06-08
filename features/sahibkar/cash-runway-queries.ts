@@ -84,7 +84,7 @@ export async function getCashRunway(): Promise<CashRunway> {
       }),
       // Son 3 ay ümumi xərc
       prisma.xercl_r.aggregate({
-        where: { sahibkar_id: sahibkarId, tarix: { gte: threeMonthsAgo } },
+        where: { sahibkar_id: sahibkarId, tarix: { gte: threeMonthsAgo }, legv_de: null },
         _sum: { mebleg: true },
       }),
       // Kassa nağd çıxışları (alış və başqaları) — daha dəqiq olmaq üçün

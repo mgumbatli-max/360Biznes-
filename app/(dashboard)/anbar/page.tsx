@@ -62,7 +62,12 @@ function HeaderActionsFallback() {
 }
 
 async function OverviewSection() {
-  const [kpis, vals] = await Promise.all([getAnbarKpis(), getAnbarValueKpis()]);
+  const { canViewCost } = await import("@/lib/auth/finance-permissions");
+  const [kpis, vals, showCost] = await Promise.all([
+    getAnbarKpis(),
+    getAnbarValueKpis(),
+    canViewCost(),
+  ]);
 
   const problems = [
     { key: "sekilsiz",   label: "Şəkilsiz",   value: kpis.sekilsiz,   icon: ImageIcon,    href: "/anbar/hesabat?mod=sekilsiz" },
@@ -113,8 +118,12 @@ async function OverviewSection() {
             {formatCompactMoney(vals.satis_deyeri)}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
-            <SubStat label="Maya dəyəri" value={formatCompactMoney(vals.maya_deyeri)} fullValue={`${formatNumber(vals.maya_deyeri, 2)} ₼`} icon={Wallet} />
-            <SubStat label="Potensial mənfəət" value={"+" + formatCompactMoney(vals.potensial_menfeet)} fullValue={`${formatNumber(vals.potensial_menfeet, 2)} ₼`} icon={TrendingUp} tone="success" />
+            {showCost && (
+              <>
+                <SubStat label="Maya dəyəri" value={formatCompactMoney(vals.maya_deyeri)} fullValue={`${formatNumber(vals.maya_deyeri, 2)} ₼`} icon={Wallet} />
+                <SubStat label="Potensial mənfəət" value={"+" + formatCompactMoney(vals.potensial_menfeet)} fullValue={`${formatNumber(vals.potensial_menfeet, 2)} ₼`} icon={TrendingUp} tone="success" />
+              </>
+            )}
             <SubStat label="Cəmi məhsul" value={formatCompactNumber(kpis.toplam_mehsul)} fullValue={`${formatNumber(kpis.toplam_mehsul, 0)} ədəd`} icon={Package} />
           </div>
         </div>

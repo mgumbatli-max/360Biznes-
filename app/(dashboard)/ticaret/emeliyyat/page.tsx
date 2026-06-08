@@ -3,7 +3,6 @@ import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { RefreshButton } from "@/components/refresh-button";
 import { OperationsTable } from "@/features/ticaret/components/operations-table";
 import { OperationsFilters } from "@/features/ticaret/components/operations-filters";
-import { NewOperationButton } from "@/features/ticaret/components/new-operation-dialog";
 import {
   getTradeOperations,
   getOperationFilterOptions,
@@ -28,7 +27,11 @@ export default async function TicaretEmeliyyatPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
-  await requireTicaretPerm();
+  const { icazeler, isOwnerOrAdmin } = await requireTicaretPerm();
+  const canPaySale = isOwnerOrAdmin || icazeler.includes("satis.odenis") || icazeler.includes("satis.idare");
+  const canCancelSale = isOwnerOrAdmin || icazeler.includes("satis.legv") || icazeler.includes("satis.idare");
+  const canReceivePurchase = isOwnerOrAdmin || icazeler.includes("alis.qebul") || icazeler.includes("alis.idare");
+  const canCancelPurchase = isOwnerOrAdmin || icazeler.includes("alis.legv") || icazeler.includes("alis.idare");
 
   const sp = await searchParams;
   const novlar = (sp.nov ?? "")
@@ -59,7 +62,7 @@ export default async function TicaretEmeliyyatPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <NewOperationButton />
+          {/* «Yeni əməliyyat» düyməsi indi TicaretSubNav-da sabit görünür */}
           <RefreshButton />
         </div>
       </div>
@@ -72,7 +75,14 @@ export default async function TicaretEmeliyyatPage({
         techizatcilar={opts.techizatcilar}
       />
 
-      <OperationsTable items={items} total={items.length} />
+      <OperationsTable
+        items={items}
+        total={items.length}
+        canPaySale={canPaySale}
+        canCancelSale={canCancelSale}
+        canReceivePurchase={canReceivePurchase}
+        canCancelPurchase={canCancelPurchase}
+      />
     </div>
   );
 }

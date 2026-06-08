@@ -18,12 +18,12 @@ async function getEdvSummary() {
 
     const [bu_ay, bu_il] = await Promise.all([
       prisma.xercl_r.aggregate({
-        where: { tarix: { gte: monthStart }, qeyd: { contains: "[KAT:edv]" } },
+        where: { tarix: { gte: monthStart }, qeyd: { contains: "[KAT:edv]" }, legv_de: null },
         _sum: { mebleg: true },
         _count: { _all: true },
       }).catch(() => ({ _sum: { mebleg: 0 }, _count: { _all: 0 } })),
       prisma.xercl_r.aggregate({
-        where: { tarix: { gte: yearStart }, qeyd: { contains: "[KAT:edv]" } },
+        where: { tarix: { gte: yearStart }, qeyd: { contains: "[KAT:edv]" }, legv_de: null },
         _sum: { mebleg: true },
         _count: { _all: true },
       }).catch(() => ({ _sum: { mebleg: 0 }, _count: { _all: 0 } })),

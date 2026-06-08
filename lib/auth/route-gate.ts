@@ -51,7 +51,7 @@ export const ROUTE_RULES: RouteRule[] = [
   { prefix: "/avtomatlasdirma", anyOf: ["avto.view", "avto.idare"] },
   { prefix: "/tesdiq", anyOf: ["tesdiq.view", "tesdiq.tesdiq"] },
   { prefix: "/audit-log", anyOf: ["audit.view"] },
-  { prefix: "/nezaret-merkezi", anyOf: ["nezaret.view", "audit.view"] },
+  { prefix: "/nezaret-merkezi", anyOf: ["nezaret.oxu", "nezaret.dashboard", "audit.view"] },
   // — Ayarlar (yalnız admin / sahibkar; map-də sahibkar/admin bypass-ed olunduğu üçün burada dar saxlayırıq)
   { prefix: "/ayarlar", anyOf: ["ayar.view", "ayar.idare"] },
   // — Kampaniyalar

@@ -1,20 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ShoppingCart, ExternalLink } from "lucide-react";
+import { ShoppingCart, Eye, FileText, Printer, Wallet } from "lucide-react";
+import { OperationQuickView } from "./operation-quick-view";
+import { SaleRowPayDialog } from "./sale-row-pay-dialog";
+import { RowIconButton, RowPillButton, RowIconGroup } from "@/features/shared/row-icon-button";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { SaleStatusBadge, PaymentBadge } from "./sale-status-badge";
 import { SalesBulkBar } from "./sales-bulk-bar";
+import { SaleRowActions } from "./sale-row-actions";
 import { CustomerDrawer } from "@/features/elaqe/components/customer-drawer";
 import { formatDate, formatMoney } from "@/lib/utils";
 import type { SaleListItem } from "../satis-queries";
 
-type Props = { items: SaleListItem[]; total: number };
+type Props = {
+  items: SaleListItem[];
+  total: number;
+  canPay?: boolean;
+  canCancel?: boolean;
+};
 
 const STORAGE_KEY = "ticaret-satislar-cols-v1";
 
@@ -76,7 +85,7 @@ type SortKey =
   | "tarix" | "nomre" | "musteri" | "status" | "cemi" | "endirim"
   | "alinan" | "qalig_borc" | "satir_say" | "yaradildi";
 
-export function SalesTable({ items, total }: Props) {
+export function SalesTable({ items, total, canPay = false, canCancel = false }: Props) {
   useEffect(() => {
     try {
       if (!window.localStorage.getItem(STORAGE_KEY)) {
@@ -98,6 +107,11 @@ export function SalesTable({ items, total }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
   const allSelected = items.length > 0 && items.every((s) => selected.has(s.id));
+
+  /** Quick-view modal — Eye düyməsi ilə açılır */
+  const [quickViewId, setQuickViewId] = useState<string | null>(null);
+  /** Quick-pay dialog — Wallet düyməsi ilə */
+  const [payRow, setPayRow] = useState<{ saleId: string; nomre: string; qaliq: number } | null>(null);
   function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -261,6 +275,24 @@ export function SalesTable({ items, total }: Props) {
                     ) : (
                       <div className="text-sm">{s.musteri_ad ?? <span className="text-muted-foreground">—</span>}</div>
                     )}
+                    {/* Cərgədə məhsul xülasəsi — daxil olmadan görünür */}
+                    {s.ilk_mehsullar.length > 0 && (
+                      <div
+                        className="mt-0.5 line-clamp-1 text-[10.5px] text-muted-foreground"
+                        title={s.ilk_mehsullar.map((m) => `${m.ad} ×${m.miqdar}`).join(", ")}
+                      >
+                        {s.ilk_mehsullar.slice(0, 2).map((m, i) => (
+                          <span key={i}>
+                            {i > 0 && " · "}
+                            <span>{m.ad}</span>
+                            <span className="text-muted-foreground/70"> ×{m.miqdar}</span>
+                          </span>
+                        ))}
+                        {s.satir_say > 2 && (
+                          <span className="text-muted-foreground/70"> +{s.satir_say - 2}</span>
+                        )}
+                      </div>
+                    )}
                   </td>
                 ),
                 satici: (
@@ -360,28 +392,89 @@ export function SalesTable({ items, total }: Props) {
                   </td>
                 ),
               };
+              const isCancelled = s.status === "legv";
               return (
-                <tr key={s.id} className="border-b border-border/30 transition hover:bg-secondary/40">
-                  <td className="px-3 py-2.5 w-8">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(s.id)}
-                      onChange={() => toggleOne(s.id)}
-                      aria-label={`${s.nomre} seç`}
-                      className="h-3.5 w-3.5 cursor-pointer rounded border-border accent-primary"
-                    />
-                  </td>
-                  {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
-                  <td className="px-3 py-2.5 text-right">
-                    <Link
-                      href={`/ticaret/satislar/${s.id}`}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                      title="Detay"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                  </td>
-                </tr>
+                <Fragment key={s.id}>
+                  <tr
+                    className={`border-b border-border/30 transition hover:bg-secondary/40 ${
+                      isCancelled
+                        ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                        : ""
+                    }`}
+                  >
+                    <td className="px-3 py-2.5 w-8">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(s.id)}
+                        onChange={() => toggleOne(s.id)}
+                        aria-label={`${s.nomre} seç`}
+                        className="h-3.5 w-3.5 cursor-pointer rounded border-border accent-primary"
+                      />
+                    </td>
+                    {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
+                    <td className="px-3 py-2.5 text-right no-underline [text-decoration:none]">
+                      <div className="inline-flex items-center gap-1.5 no-underline [text-decoration:none]">
+                        <RowIconGroup>
+                          <RowIconButton
+                            tone="view"
+                            title="Sürətli baxış (modal)"
+                            onClick={() => setQuickViewId(s.id)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </RowIconButton>
+                          <RowIconButton
+                            as="a"
+                            tone="doc"
+                            title="Qaiməyə bax"
+                            href={`/ticaret/satislar/${s.id}`}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </RowIconButton>
+                          <RowIconButton
+                            as="a"
+                            tone="print"
+                            title="Print (faktura)"
+                            href={`/ticaret/satislar/${s.id}/print?auto=1`}
+                            target="_blank"
+                            rel="noopener"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </RowIconButton>
+                        </RowIconGroup>
+                        {(() => {
+                          const qaliq = Math.max(
+                            0,
+                            Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0),
+                          );
+                          return (
+                            canPay &&
+                            qaliq > 0 &&
+                            !isCancelled && (
+                              <RowPillButton
+                                tone="pay-in"
+                                title={`Müştəridən ödəniş qəbul et (${qaliq.toFixed(0)} ₼)`}
+                                onClick={() =>
+                                  setPayRow({ saleId: s.id, nomre: s.nomre, qaliq })
+                                }
+                              >
+                                <Wallet className="h-3 w-3" />
+                                Ödə
+                              </RowPillButton>
+                            )
+                          );
+                        })()}
+                        <SaleRowActions
+                          saleId={s.id}
+                          nomre={s.nomre}
+                          status={s.status ?? null}
+                          qaliq={Math.max(0, Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0))}
+                          canPay={canPay}
+                          canCancel={canCancel}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>
@@ -395,6 +488,27 @@ export function SalesTable({ items, total }: Props) {
         onSelectAll={toggleAll}
         allSelected={allSelected}
       />
+
+      {quickViewId && (
+        <OperationQuickView
+          open={true}
+          onOpenChange={(v) => !v && setQuickViewId(null)}
+          nov="satis"
+          id={quickViewId}
+          printHref={`/ticaret/satislar/${quickViewId}/print`}
+          detailHref={`/ticaret/satislar/${quickViewId}`}
+        />
+      )}
+      {payRow && (
+        <SaleRowPayDialog
+          open={true}
+          onOpenChange={(v) => !v && setPayRow(null)}
+          saleId={payRow.saleId}
+          nomre={payRow.nomre}
+          qaliq={payRow.qaliq}
+        />
+      )}
     </div>
   );
 }
+

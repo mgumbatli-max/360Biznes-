@@ -1,20 +1,35 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Activity, ExternalLink, ShoppingCart, Truck, Undo2, ArrowLeftRight } from "lucide-react";
+import { Activity, ShoppingCart, Truck, Undo2, ArrowLeftRight, Eye, Printer, Wallet, FileText } from "lucide-react";
+import { OperationRowActions } from "./operation-row-actions";
+import { OperationQuickView } from "./operation-quick-view";
+import { SaleRowPayDialog } from "./sale-row-pay-dialog";
+import { PurchaseRowPayDialog } from "./purchase-row-pay-dialog";
+import { RowIconButton, RowPillButton, RowIconGroup } from "@/features/shared/row-icon-button";
 import { Badge } from "@/components/ui/badge";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
+import { PaymentBadge, SaleStatusBadge } from "./sale-status-badge";
 import { formatDate, formatMoney } from "@/lib/utils";
 import type { OperationRow } from "../emeliyyat-queries";
 
-type Props = { items: OperationRow[]; total: number };
+type Props = {
+  items: OperationRow[];
+  total: number;
+  canPaySale?: boolean;
+  canCancelSale?: boolean;
+  canReceivePurchase?: boolean;
+  canCancelPurchase?: boolean;
+};
 
-const STORAGE_KEY = "ticaret-emeliyyat-cols-v1";
+// v3 — sol tərəfdə "Tez əməllər" sütunu Prospect-ə bənzər
+const STORAGE_KEY = "ticaret-emeliyyat-cols-v3";
 
 const COLUMN_DEFS: ColumnDef[] = [
+  { key: "quick",     label: "Tez", required: true },
   { key: "tarix",     label: "Tarix", required: true },
   { key: "nov",       label: "Növ" },
   { key: "nomre",     label: "Sənəd №" },
@@ -22,6 +37,7 @@ const COLUMN_DEFS: ColumnDef[] = [
   { key: "anbar",     label: "Anbar" },
   { key: "satir",     label: "Sətir" },
   { key: "status",    label: "Status" },
+  { key: "odenis",    label: "Ödəniş növü" },
   { key: "meb",       label: "Məbləğ" },
   { key: "odenilmis", label: "Ödənilmiş" },
   { key: "qaliq",     label: "Qalıq" },
@@ -35,6 +51,7 @@ const COLUMN_DEFS: ColumnDef[] = [
 const DEFAULT_ORDER = COLUMN_DEFS.map((c) => c.key);
 
 const DEFAULT_VISIBLE: Record<string, boolean> = {
+  quick: true,
   tarix: true,
   nov: true,
   nomre: true,
@@ -42,6 +59,7 @@ const DEFAULT_VISIBLE: Record<string, boolean> = {
   anbar: true,
   satir: true,
   status: true,
+  odenis: true,
   meb: true,
   odenilmis: false,
   qaliq: true,
@@ -61,7 +79,14 @@ const NOV_BADGE: Record<string, { label: string; cls: string; Icon: typeof Shopp
 
 type SortKey = "tarix" | "nomre" | "kontragent" | "status" | "meb" | "qaliq" | "satir" | "yaradildi";
 
-export function OperationsTable({ items, total }: Props) {
+export function OperationsTable({
+  items,
+  total,
+  canPaySale = false,
+  canCancelSale = false,
+  canReceivePurchase = false,
+  canCancelPurchase = false,
+}: Props) {
   useEffect(() => {
     try {
       if (!window.localStorage.getItem(STORAGE_KEY)) {
@@ -79,6 +104,13 @@ export function OperationsTable({ items, total }: Props) {
   const pathname = usePathname();
   const sortBy = (sp.get("sort") ?? "") as SortKey | "";
   const sortDir = (sp.get("dir") as SortDir) ?? "asc";
+
+  /** Quick-view modal vəziyyəti — Eye düyməsi ilə açılır */
+  const [quickViewRow, setQuickViewRow] = useState<{ nov: "satis" | "alis"; id: string; printHref: string | null; detailHref: string } | null>(null);
+  /** Quick-pay dialog (satış) — Wallet düyməsi ilə açılır */
+  const [payRow, setPayRow] = useState<{ saleId: string; nomre: string; qaliq: number } | null>(null);
+  /** Quick-pay dialog (alış — təchizatçıya ödəniş) */
+  const [payAlisRow, setPayAlisRow] = useState<{ purchaseId: string; nomre: string } | null>(null);
 
   function setSort(key: string) {
     const newDir: SortDir = sortBy === key && sortDir === "asc" ? "desc" : "asc";
@@ -137,6 +169,7 @@ export function OperationsTable({ items, total }: Props) {
               {cols.order.map((key) => {
                 if (!cols.isVisible(key)) return null;
                 switch (key) {
+                  case "quick": return <th key={key} className="px-2 py-2.5 text-center w-24">Tez</th>;
                   case "tarix": return <SortableTh key={key} label="Tarix" current={sortBy} sortKey="tarix" dir={sortDir} onClick={setSort} />;
                   case "nov":   return <th key={key} className="px-3 py-2.5">Növ</th>;
                   case "nomre": return <SortableTh key={key} label="Sənəd №" current={sortBy} sortKey="nomre" dir={sortDir} onClick={setSort} />;
@@ -144,6 +177,7 @@ export function OperationsTable({ items, total }: Props) {
                   case "anbar": return <th key={key} className="px-3 py-2.5">Anbar</th>;
                   case "satir": return <SortableTh key={key} label="Sətir" current={sortBy} sortKey="satir" dir={sortDir} onClick={setSort} align="center" />;
                   case "status": return <SortableTh key={key} label="Status" current={sortBy} sortKey="status" dir={sortDir} onClick={setSort} />;
+                  case "odenis": return <th key={key} className="px-3 py-2.5">Ödəniş</th>;
                   case "meb": return <SortableTh key={key} label="Məbləğ" current={sortBy} sortKey="meb" dir={sortDir} onClick={setSort} align="right" />;
                   case "odenilmis": return <th key={key} className="px-3 py-2.5 text-right">Ödənilmiş</th>;
                   case "qaliq": return <SortableTh key={key} label="Qalıq" current={sortBy} sortKey="qaliq" dir={sortDir} onClick={setSort} align="right" />;
@@ -162,6 +196,50 @@ export function OperationsTable({ items, total }: Props) {
             {sorted.map((r) => {
               const nb = NOV_BADGE[r.nov] ?? NOV_BADGE.satis;
               const cells: Record<string, React.ReactNode> = {
+                quick: (
+                  <td key="quick" className="px-2 py-1.5 no-underline [text-decoration:none]">
+                    <RowIconGroup>
+                      <RowIconButton
+                        tone="view"
+                        title="Sürətli baxış (modal)"
+                        onClick={() =>
+                          setQuickViewRow({
+                            nov: (r.nov === "satis" || r.nov === "alis" ? r.nov : "satis") as "satis" | "alis",
+                            id: r.id,
+                            printHref:
+                              r.nov === "satis"
+                                ? `/ticaret/satislar/${r.id}/print?auto=1`
+                                : r.nov === "alis"
+                                  ? `/ticaret/alislar/${r.id}/print?auto=1`
+                                  : null,
+                            detailHref: r.href,
+                          })
+                        }
+                      >
+                        <Eye className="h-4 w-4" />
+                      </RowIconButton>
+                      <RowIconButton as="a" tone="doc" title="Qaiməyə bax" href={r.href}>
+                        <FileText className="h-4 w-4" />
+                      </RowIconButton>
+                      {(r.nov === "satis" || r.nov === "alis") && (
+                        <RowIconButton
+                          as="a"
+                          tone="print"
+                          title="Print (faktura)"
+                          href={
+                            r.nov === "satis"
+                              ? `/ticaret/satislar/${r.id}/print?auto=1`
+                              : `/ticaret/alislar/${r.id}/print?auto=1`
+                          }
+                          target="_blank"
+                          rel="noopener"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </RowIconButton>
+                      )}
+                    </RowIconGroup>
+                  </td>
+                ),
                 tarix: (
                   <td key="tarix" className="px-3 py-2.5 text-xs text-muted-foreground">{formatDate(r.tarix)}</td>
                 ),
@@ -182,7 +260,24 @@ export function OperationsTable({ items, total }: Props) {
                 ),
                 kontragent: (
                   <td key="kontragent" className="px-3 py-2.5 text-sm">
-                    {r.kontragent_ad ?? <span className="text-muted-foreground">—</span>}
+                    <div className="font-medium">
+                      {r.kontragent_ad ?? <span className="text-muted-foreground">—</span>}
+                    </div>
+                    {/* Cərgədə məhsul xülasəsi — daxil olmadan görünməsi üçün */}
+                    {r.ilk_mehsullar.length > 0 && (
+                      <div className="mt-0.5 line-clamp-1 text-[10.5px] text-muted-foreground" title={r.ilk_mehsullar.map((m) => `${m.ad} ×${m.miqdar}`).join(", ")}>
+                        {r.ilk_mehsullar.slice(0, 2).map((m, i) => (
+                          <span key={i}>
+                            {i > 0 && " · "}
+                            <span>{m.ad}</span>
+                            <span className="text-muted-foreground/70"> ×{m.miqdar}</span>
+                          </span>
+                        ))}
+                        {r.satir_say > 2 && (
+                          <span className="text-muted-foreground/70"> +{r.satir_say - 2}</span>
+                        )}
+                      </div>
+                    )}
                   </td>
                 ),
                 anbar: (
@@ -193,7 +288,16 @@ export function OperationsTable({ items, total }: Props) {
                 ),
                 status: (
                   <td key="status" className="px-3 py-2.5">
-                    <Badge variant="outline" className="text-[10px]">{r.status}</Badge>
+                    <SaleStatusBadge value={r.status} />
+                  </td>
+                ),
+                odenis: (
+                  <td key="odenis" className="px-3 py-2.5">
+                    {r.odenis_nov ? (
+                      <PaymentBadge value={r.odenis_nov} />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                 ),
                 meb: (
@@ -235,24 +339,90 @@ export function OperationsTable({ items, total }: Props) {
                   </td>
                 ),
               };
+              const isCancelled = r.status === "legv";
               return (
-                <tr key={`${r.nov}-${r.id}`} className="border-b border-border/30 transition hover:bg-secondary/40">
-                  {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
-                  <td className="px-3 py-2.5 text-right">
-                    <Link
-                      href={r.href}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                      title="Detay"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                  </td>
-                </tr>
+                <Fragment key={`${r.nov}-${r.id}`}>
+                  <tr
+                    className={`border-b border-border/30 transition hover:bg-secondary/40 ${
+                      isCancelled
+                        ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                        : ""
+                    }`}
+                  >
+                    {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
+                    <td className="px-3 py-2.5 text-right no-underline [text-decoration:none]">
+                      <div className="inline-flex items-center gap-0.5 no-underline [text-decoration:none]">
+                        {r.nov === "satis" && canPaySale && r.qaliq > 0 && !isCancelled && (
+                          <RowPillButton
+                            tone="pay-in"
+                            title={`Müştəridən ödəniş qəbul et (${r.qaliq.toFixed(0)} ₼)`}
+                            onClick={() =>
+                              setPayRow({ saleId: r.id, nomre: r.nomre, qaliq: r.qaliq })
+                            }
+                          >
+                            <Wallet className="h-3 w-3" />
+                            Ödə
+                          </RowPillButton>
+                        )}
+                        {r.nov === "alis" && r.qaliq > 0 && !isCancelled && (
+                          <RowPillButton
+                            tone="pay-out"
+                            title={`Təchizatçıya ödəniş et (${r.qaliq.toFixed(0)} ₼)`}
+                            onClick={() => setPayAlisRow({ purchaseId: r.id, nomre: r.nomre })}
+                          >
+                            <Wallet className="h-3 w-3" />
+                            Ödə
+                          </RowPillButton>
+                        )}
+                        <OperationRowActions
+                          row={r}
+                          canPaySale={canPaySale}
+                          canCancelSale={canCancelSale}
+                          canReceivePurchase={canReceivePurchase}
+                          canCancelPurchase={canCancelPurchase}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {/* Quick view modal — Eye düyməsi ilə açılır, tablarla zəngin baxış */}
+      {quickViewRow && (
+        <OperationQuickView
+          open={true}
+          onOpenChange={(v) => !v && setQuickViewRow(null)}
+          nov={quickViewRow.nov}
+          id={quickViewRow.id}
+          printHref={quickViewRow.printHref}
+          detailHref={quickViewRow.detailHref}
+        />
+      )}
+
+      {/* Quick-pay dialog (satış) — Wallet düyməsi ilə açılır */}
+      {payRow && (
+        <SaleRowPayDialog
+          open={true}
+          onOpenChange={(v) => !v && setPayRow(null)}
+          saleId={payRow.saleId}
+          nomre={payRow.nomre}
+          qaliq={payRow.qaliq}
+        />
+      )}
+      {/* Quick-pay dialog (alış) — təchizatçıya ödəniş */}
+      {payAlisRow && (
+        <PurchaseRowPayDialog
+          open={true}
+          onOpenChange={(v) => !v && setPayAlisRow(null)}
+          purchaseId={payAlisRow.purchaseId}
+          nomre={payAlisRow.nomre}
+        />
+      )}
     </div>
   );
 }
+

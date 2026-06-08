@@ -28,7 +28,8 @@ export default async function KreditPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
-  await requireTicaretPerm("kredit.oxu");
+  const { icazeler, isOwnerOrAdmin } = await requireTicaretPerm("kredit.oxu");
+  const canCancel = isOwnerOrAdmin || icazeler.includes("satis.legv") || icazeler.includes("satis.idare");
 
   const sp = await searchParams;
   const [stats, items, musteriBorc, refs] = await Promise.all([
@@ -112,7 +113,7 @@ export default async function KreditPage({
         </div>
       </div>
 
-      <KreditTable items={items} total={items.length} hesablar={refs.hesablar} />
+      <KreditTable items={items} total={items.length} hesablar={refs.hesablar} canCancel={canCancel} />
     </div>
   );
 }

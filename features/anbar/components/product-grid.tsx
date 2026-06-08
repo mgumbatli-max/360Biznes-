@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Package, Edit, ExternalLink, ImageIcon as ImgIcon, Inspect, SlidersHorizontal } from "lucide-react";
+import { Package, Edit, ExternalLink, ImageIcon as ImgIcon, Inspect } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { QuickViewDialog } from "./quick-view-dialog";
 import { ProductDialog } from "./product-dialog";
-import { StockAdjustDialog } from "./stock-adjust-dialog";
+import { ProductRowActions } from "./product-row-actions";
 import { AnbarHoverBadge } from "./anbar-breakdown-cell";
 import { formatMoney, formatNumber } from "@/lib/utils";
 import type { ProductListRow } from "../queries";
@@ -19,9 +19,21 @@ type Props = {
   brands: Array<{ id: number; ad: string }>;
   units?: Array<{ id: number; ad: string; qisa_ad?: string | null }>;
   anbarlar?: Array<{ id: number; ad: string }>;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canAdjustStock?: boolean;
 };
 
-export function ProductGrid({ items, categories, brands, units = [], anbarlar = [] }: Props) {
+export function ProductGrid({
+  items,
+  categories,
+  brands,
+  units = [],
+  anbarlar = [],
+  canEdit = false,
+  canDelete = false,
+  canAdjustStock = false,
+}: Props) {
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
 
   if (items.length === 0) {
@@ -170,28 +182,44 @@ export function ProductGrid({ items, categories, brands, units = [], anbarlar = 
                 }}
                 trigger="edit"
               />
-              <StockAdjustDialog
-                mehsulId={p.id}
-                mehsulAd={p.ad}
-                anbarlar={anbarlar}
-                currentStock={p.stok_miqdari}
-                trigger={
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    title="Stok düzəlt (mədaxil / məxaric / inventar)"
-                    className="text-primary-light hover:bg-primary/10"
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
-                  </Button>
-                }
-              />
               <div className="flex-1" />
               <Button asChild size="sm" variant="ghost" className="h-7 text-[11px]">
                 <Link href={`/anbar/mehsullar/${p.id}`}>
                   <Edit className="h-3 w-3" /> Aç
                 </Link>
               </Button>
+              {/* Cross-modul keçidlər (satış, alış, hərəkət, bron, sil və s.) */}
+              <ProductRowActions
+                product={{
+                  id: p.id,
+                  ad: p.ad,
+                  kod: p.kod,
+                  barkod: p.barkod,
+                  kateqoriya_id: p.kateqoriya_id,
+                  kateqoriya_ad: p.kateqoriya_ad,
+                  marka_id: p.marka_id,
+                  marka_ad: p.marka_ad,
+                  olcu_id: p.olcu_id,
+                  sekil_url: p.sekil_url,
+                  aciqlamaq: p.aciqlamaq,
+                  alish_qiymeti: p.alish_qiymeti,
+                  satis_qiymeti: p.satis_qiymeti,
+                  min_satis_qiymeti: p.min_satis_qiymeti,
+                  topdan_qiymeti: p.topdan_qiymeti,
+                  partnyor_qiymeti: p.partnyor_qiymeti,
+                  vip_qiymeti: p.vip_qiymeti,
+                  kritik_stok: p.kritik_stok,
+                  aktiv: p.aktiv,
+                }}
+                categories={categories}
+                brands={brands}
+                units={units}
+                anbarlar={anbarlar}
+                currentStock={p.stok_miqdari}
+                canEdit={canEdit}
+                canDelete={canDelete}
+                canAdjustStock={canAdjustStock}
+              />
             </div>
           </div>
         );

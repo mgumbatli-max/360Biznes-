@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, X, SlidersHorizontal, ChevronDown } from "lucide-react";
+import { Search, X, SlidersHorizontal, ChevronDown, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
@@ -49,6 +49,7 @@ export function ProductFilters({ categories, brands, anbarlar = [] }: Props) {
   const sirala   = sp.get("sirala") ?? "ad";
   const anbar    = sp.get("anbar") ?? "";
   const servis   = sp.get("servis") === "1";
+  const rezerv   = sp.get("rezerv") === "1";
   // Single-select dropdown values (first URL value taken):
   const kateqVal = kateqIds[0] ? String(kateqIds[0]) : "";
   const markaVal = markaIds[0] ? String(markaIds[0]) : "";
@@ -105,7 +106,7 @@ export function ProductFilters({ categories, brands, anbarlar = [] }: Props) {
 
   const hasFilters = !!(
     search || stokStatus.length || kateqIds.length || markaIds.length ||
-    sekil || barkod || qmin || qmax || anbar || servis ||
+    sekil || barkod || qmin || qmax || anbar || servis || rezerv ||
     aktiv !== "aktiv" || sirala !== "ad"
   );
 
@@ -128,18 +129,13 @@ export function ProductFilters({ categories, brands, anbarlar = [] }: Props) {
       <form onSubmit={onApplyAll} className="space-y-2">
         {/* SÜRƏTLİ SIRA — həmişə görünür */}
         <div className="grid grid-cols-1 gap-2 md:grid-cols-12">
-          {/* Axtarış */}
+          {/* Axtarış — real-time (debounced 250ms) */}
           <div className="md:col-span-5">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                name="q"
-                defaultValue={search}
-                placeholder="🔍 Ad, kod, barkod, marka, kateqoriya..."
-                className="h-9 pl-8"
-                disabled={pending}
-              />
-            </div>
+            <LiveSearchInput
+              defaultValue={search}
+              onSearchChange={(v) => setParam("q", v)}
+              pending={pending}
+            />
           </div>
 
           {/* Kateqoriya */}
@@ -169,11 +165,8 @@ export function ProductFilters({ categories, brands, anbarlar = [] }: Props) {
             </select>
           </div>
 
-          {/* Tətbiq + Filtrlər toggle + Sıfırla */}
+          {/* Filtrlər toggle + Sıfırla — Tətbiq düyməsi YOXDUR (real-time işləyir) */}
           <div className="md:col-span-2 flex items-center gap-1">
-            <Button type="submit" size="sm" disabled={pending} className="h-9 flex-1 font-semibold">
-              Tətbiq
-            </Button>
             <Button
               type="button"
               size="sm"
@@ -312,6 +305,13 @@ export function ProductFilters({ categories, brands, anbarlar = [] }: Props) {
         >
           🔧 Servisdə olmuş
         </Pill>
+        <Pill
+          active={rezerv}
+          onClick={() => setParam("rezerv", rezerv ? "" : "1")}
+          disabled={pending}
+        >
+          🔖 Rezervdə
+        </Pill>
       </FilterRow>
     </div>
   );
@@ -343,13 +343,78 @@ function Pill({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-medium transition",
+        "inline-flex h-7 items-center rounded-full px-2.5 text-xs font-semibold transition-all duration-200 ease-out hover:-translate-y-px active:translate-y-0 active:scale-95",
         active
-          ? "border-primary/40 bg-primary/15 text-primary-light"
-          : "border-border bg-card text-muted-foreground hover:text-foreground"
+          ? "bg-gradient-to-b from-primary/25 to-primary/10 text-primary ring-1 ring-inset ring-primary/30 shadow-sm shadow-primary/15"
+          : "bg-card/60 backdrop-blur-sm text-muted-foreground ring-1 ring-inset ring-border/50 hover:bg-secondary/60 hover:text-foreground hover:ring-border"
       )}
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Real-time debounced search — istifadəçi yazdıqca avtomatik URL parametri yenilənir.
+ * 250ms debounce — sürətli yazışdan yarımsı sorğunu boğmur.
+ */
+function LiveSearchInput({
+  defaultValue,
+  onSearchChange,
+  pending,
+}: {
+  defaultValue: string;
+  onSearchChange: (v: string) => void;
+  pending: boolean;
+}) {
+  const [val, setVal] = useState(defaultValue);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    // URL-dən dəyişiklik gəldikdə (məs. "Sıfırla") yerli state-i sinxron et
+    setVal(defaultValue);
+  }, [defaultValue]);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      onSearchChange(val.trim());
+    }, 250);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [val]);
+
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        name="q"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        placeholder="🔍 Ad, kod, barkod, marka, kateqoriya..."
+        className="h-9 pl-8 pr-8"
+        autoComplete="off"
+      />
+      {pending && (
+        <Loader2 className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+      )}
+      {!pending && val && (
+        <button
+          type="button"
+          onClick={() => setVal("")}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          aria-label="Təmizlə"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
+    </div>
   );
 }

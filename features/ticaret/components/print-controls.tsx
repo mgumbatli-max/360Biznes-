@@ -1,9 +1,20 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Printer, ArrowLeft, ReceiptText, FileText } from "lucide-react";
 
 export function PrintControls({ saleId, isThermal }: { saleId: string; isThermal: boolean }) {
+  const sp = useSearchParams();
+  const auto = sp.get("auto") === "1";
+
+  useEffect(() => {
+    if (!auto) return;
+    const t = setTimeout(() => window.print(), 350);
+    return () => clearTimeout(t);
+  }, [auto]);
+
   return (
     <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-card/80 px-4 py-2 backdrop-blur print:hidden">
       <Link

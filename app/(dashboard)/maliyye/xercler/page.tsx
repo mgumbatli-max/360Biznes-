@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Receipt, AlertTriangle } from "lucide-react";
 import { MaliyyeSubNav } from "@/components/maliyye-subnav";
 import { XercQaimeLinkDialog } from "@/features/maliyye/components/xerc-qaime-link-dialog";
+import { ExpenseDialog } from "@/features/maliyye/components/expense-dialog";
 import { ExpensesTable } from "@/features/maliyye/components/expenses-table";
 import {
   getExpenses,
@@ -9,11 +10,13 @@ import {
   getExpenseCategoryUsage,
   getRecentPurchases,
 } from "@/features/maliyye/queries";
+import { getAccounts } from "@/features/maliyye/account-queries";
 import { formatMoney } from "@/lib/utils";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 
 export const metadata: Metadata = { title: "Xərclər" };
 
-type SearchParams = { link?: string };
+type SearchParams = { link?: string; silinmis?: string };
 
 export default async function XerclerPage({
   searchParams,
@@ -21,16 +24,28 @@ export default async function XerclerPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
-  await requireMaliyyePerm("xerc.oxu");
+  const { icazeler, isOwnerOrAdmin } = await requireMaliyyePerm("xerc.oxu");
+  const canDelete = isOwnerOrAdmin || icazeler.includes("xerc.idare");
 
   const sp = await searchParams;
   const link = sp.link ?? "";
-  const [{ items, total }, categories, usage, purchases] = await Promise.all([
-    getExpenses({}),
+  // SOFT-DELETE STANDARTI — status_filter (legacy "silinmis" param da dəstəklənir)
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: silinmisMode, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
+  const [{ items, total }, categories, usage, purchases, accounts] = await Promise.all([
+    getExpenses({ silinmis: silinmisMode }),
     getExpenseCategories(),
     getExpenseCategoryUsage(),
     getRecentPurchases(90, 200),
+    getAccounts(),
   ]);
+
+  // Yalnız aktiv hesablar (nağd/bank/kart) — xərc üçün
+  const hesabOptions = accounts
+    .filter((a) => a.aktiv)
+    .map((a) => ({ id: a.id, ad: a.ad, nov: a.nov }));
 
   // Filter for INVOICE-linked vs free expenses
   const isLinked = (qeyd: string | null) => !!qeyd && /\[INVOICE:[^\]]+\]/.test(qeyd);
@@ -54,15 +69,23 @@ export default async function XerclerPage({
             Bütün əməliyyat xərcləri kateqoriya üzrə.
           </p>
         </div>
-        <XercQaimeLinkDialog
-          categories={categories.map((c) => ({ id: c.id, ad: c.ad }))}
-          purchases={purchases}
-        />
+        <div className="flex items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
+          <ExpenseDialog
+            categories={categories.map((c) => ({ id: c.id, ad: c.ad }))}
+            hesablar={hesabOptions}
+          />
+          <XercQaimeLinkDialog
+            categories={categories.map((c) => ({ id: c.id, ad: c.ad }))}
+            purchases={purchases}
+            hesablar={hesabOptions}
+          />
+        </div>
       </header>
 
       <MaliyyeSubNav active="/maliyye/xercler" />
 
-      {/* Linked-invoice filter */}
+      {/* Linked-invoice + silinmiş filtri */}
       <form className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card/30 p-2">
         <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
           Qaimə bağı:
@@ -75,6 +98,18 @@ export default async function XerclerPage({
           <option value="">Hamısı</option>
           <option value="yes">Yalnız qaiməyə bağlı</option>
           <option value="no">Yalnız sərbəst xərclər</option>
+        </select>
+        <span className="ml-2 text-[10.5px] uppercase tracking-wider text-muted-foreground">
+          Vəziyyət:
+        </span>
+        <select
+          name="silinmis"
+          defaultValue={silinmisMode}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="aktiv">Yalnız aktiv</option>
+          <option value="silinmis">Yalnız silinmiş</option>
+          <option value="hamisi">Hamısı</option>
         </select>
         <button
           type="submit"
@@ -161,7 +196,11 @@ export default async function XerclerPage({
           </p>
         </div>
       ) : (
-        <ExpensesTable items={filtered} total={totalFiltered === total ? total : totalFiltered} />
+        <ExpensesTable
+          items={filtered}
+          total={totalFiltered === total ? total : totalFiltered}
+          canDelete={canDelete}
+        />
       )}
     </div>
   );

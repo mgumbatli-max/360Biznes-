@@ -33,13 +33,20 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ContactContextPanel } from "@/features/elaqe/components/contact-context-panel";
+import { QuickCreateCustomerDialog } from "@/features/elaqe/components/quick-create-customer-dialog";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatMoney } from "@/lib/utils";
-import { searchCustomersAction, searchProductsAction } from "@/features/pos/search-actions";
+import { searchCustomersAction, searchProductsAction, getCanViewCostAction } from "@/features/pos/search-actions";
 import type { CustomerRow, ProductRow, SalespersonOption } from "@/features/pos/sale-queries";
-import { createOrUpdateSatisYeni } from "../satis-yeni-actions";
+import {
+  createOrUpdateSatisYeni,
+  precheckDiscountApproval,
+  getCustomerCreditStatus,
+  type CustomerCreditStatus,
+} from "../satis-yeni-actions";
 import { OperationModalShell, Kbd } from "./operation-modal-shell";
 
 export type AnbarOpt = { id: number; ad: string };
@@ -50,6 +57,8 @@ type Line = {
   kod: string | null;
   miqdar: number;
   qiymet: number;
+  /** Maya — yalnız `qiymet.oxu` icazəsi olan istifadəçilərə real dəyər, digərlərinə 0. */
+  maya: number;
   endirim_faiz: number;
   anbar_id: number;
 };
@@ -65,12 +74,18 @@ const PLATFORM_OPTIONS = [
   { value: "diger", label: "Digər" },
 ] as const;
 
+// Ödəniş növləri:
+//   negd / kart / kecirme — dərhal ödəniş (Nəğd, Kart, Bank Köçürməsi)
+//   nisye               — borc kimi qalır (müştəri sonra ödəyəcək)
 const PAY_OPTIONS = [
-  { value: "negd", label: "Nəğd" },
-  { value: "kart", label: "Kart" },
-  { value: "kocurme", label: "Köçürmə" },
-  { value: "kredit", label: "Kreditə" },
+  { value: "negd",    label: "Nəğd" },
+  { value: "kart",    label: "Kart" },
+  { value: "kecirme", label: "Köçürmə (bank)" },
+  { value: "nisye",   label: "Nisyə (borc)" },
 ] as const;
+
+export type KassaOpt = { id: string; ad: string };
+export type HesabOpt = { id: string; ad: string; nov: string; bank_adi: string | null };
 
 export function YeniSatisModal({
   open,
@@ -78,12 +93,18 @@ export function YeniSatisModal({
   anbarlar,
   saticilar,
   defaultSalespersonId,
+  kassalar = [],
+  hesablar = [],
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   anbarlar: AnbarOpt[];
   saticilar: SalespersonOption[];
   defaultSalespersonId: string | null;
+  /** Nəğd ödəniş üçün kassa siyahısı. */
+  kassalar?: KassaOpt[];
+  /** Kart / bank köçürmə üçün hesab siyahısı. */
+  hesablar?: HesabOpt[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -92,13 +113,21 @@ export function YeniSatisModal({
   const [barcode, setBarcode] = useState("");
   const [musteri, setMusteri] = useState<CustomerRow | null>(null);
   const [musteriQ, setMusteriQ] = useState("");
+  const [musteriFocused, setMusteriFocused] = useState(false);
   const [musteriResults, setMusteriResults] = useState<CustomerRow[]>([]);
   const [saticiId, setSaticiId] = useState<string>(defaultSalespersonId ?? "");
   const [anbarId, setAnbarId] = useState<number>(anbarlar[0]?.id ?? 0);
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [tarix, setTarix] = useState<string>(today);
-  const [odenisNov, setOdenisNov] = useState<string>("negd");
+  // Default: NİSYƏ — adi satışda istifadəçi kassa seçməsə avtomatik borca düşür.
+  // POS-dan fərqli olaraq adi satış əməliyyatlarında nisyə standart davranışdır.
+  const [odenisNov, setOdenisNov] = useState<string>("nisye");
+  const [kassaId, setKassaId] = useState<string>("");
+  const [hesabId, setHesabId] = useState<string>("");
+  // Hybrid ödəniş: istifadəçi 100 AZN-lik satışa 30 AZN ödəniş edə bilər
+  // (rest borc qalır). Boş = ya tam ödəniş, ya tam borc.
+  const [odenilenManual, setOdenilenManual] = useState<string>("");
   const [sifarisKodu, setSifarisKodu] = useState<string>("");
 
   /* ── Marketplace block (visible when sifaris kodu or platform set) ── */
@@ -108,6 +137,35 @@ export function YeniSatisModal({
 
   /* ── Lines ───────────────────────────────────────── */
   const [lines, setLines] = useState<Line[]>([]);
+
+  // Maya görmə icazəsi — mount-da bir dəfə oxunur
+  const [canSeeMaya, setCanSeeMaya] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    getCanViewCostAction().then((v) => {
+      if (alive) setCanSeeMaya(v);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [open]);
+
+  // Müştəri kredit statusu — müştəri seçildikdə oxunur
+  const [creditStatus, setCreditStatus] = useState<CustomerCreditStatus | null>(null);
+  useEffect(() => {
+    if (!musteri?.id) {
+      setCreditStatus(null);
+      return;
+    }
+    let alive = true;
+    getCustomerCreditStatus(musteri.id)
+      .then((s) => {
+        if (alive) setCreditStatus(s);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [musteri?.id]);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<ProductRow[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -140,35 +198,31 @@ export function YeniSatisModal({
 
   /* ── Customer search ─────────────────────────────── */
   useEffect(() => {
-    if (musteriQ.trim().length < 2) {
-      setMusteriResults([]);
-      return;
-    }
     let alive = true;
-    searchCustomersAction(musteriQ).then((r) => {
-      if (alive) setMusteriResults(r);
-    });
+    const delay = musteriQ.trim().length === 0 ? 0 : 200;
+    const id = setTimeout(() => {
+      searchCustomersAction(musteriQ).then((r) => {
+        if (alive) setMusteriResults(r);
+      });
+    }, delay);
     return () => {
       alive = false;
+      clearTimeout(id);
     };
   }, [musteriQ]);
 
   /* ── Product search ──────────────────────────────── */
   useEffect(() => {
-    if (searchQ.trim().length < 2) {
-      setSearchResults([]);
-      setSearchOpen(false);
-      return;
-    }
     let alive = true;
-    searchProductsAction(searchQ, anbarId || undefined).then((r) => {
-      if (alive) {
-        setSearchResults(r);
-        setSearchOpen(true);
-      }
-    });
+    const delay = searchQ.trim().length === 0 ? 0 : 200;
+    const id = setTimeout(() => {
+      searchProductsAction(searchQ, anbarId || undefined).then((r) => {
+        if (alive) setSearchResults(r);
+      });
+    }, delay);
     return () => {
       alive = false;
+      clearTimeout(id);
     };
   }, [searchQ, anbarId]);
 
@@ -189,6 +243,62 @@ export function YeniSatisModal({
     return Math.max(0, endirimMebleg);
   }, [endirimMebleg, endirimMode, umumi]);
   const yekun = Math.max(0, umumi - endirimAzn);
+
+  // Effective endirim % (line endirimləri + ümumi endirim ilə)
+  const effectiveEndirimPct = useMemo(() => {
+    if (umumi <= 0) return 0;
+    return Math.min(100, Math.max(0, (endirimAzn / umumi) * 100));
+  }, [umumi, endirimAzn]);
+
+  // Maya altı sətirlər — yalnız maya icazəsi olanlar üçün hesablanır
+  const mayaAltiInfo = useMemo(() => {
+    if (!canSeeMaya) return { count: 0, totalLoss: 0, lines: [] as number[] };
+    let count = 0;
+    let totalLoss = 0;
+    const idxs: number[] = [];
+    lines.forEach((l, idx) => {
+      if (l.maya <= 0) return; // mayası məlum deyil
+      const netSatis = l.qiymet * (1 - (l.endirim_faiz || 0) / 100);
+      if (netSatis < l.maya) {
+        count++;
+        idxs.push(idx);
+        totalLoss += (l.maya - netSatis) * l.miqdar;
+      }
+    });
+    return { count, totalLoss, lines: idxs };
+  }, [canSeeMaya, lines]);
+
+  // Endirim limiti təsdiqi — debounced pre-check
+  const [discountCheck, setDiscountCheck] = useState<{
+    needs_approval: boolean;
+    limit_pct: number;
+    user_role: string | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!open || effectiveEndirimPct <= 0) {
+      setDiscountCheck(null);
+      return;
+    }
+    let alive = true;
+    const t = setTimeout(async () => {
+      try {
+        const r = await precheckDiscountApproval(effectiveEndirimPct);
+        if (alive) {
+          setDiscountCheck({
+            needs_approval: r.needs_approval,
+            limit_pct: r.limit_pct,
+            user_role: r.user_role,
+          });
+        }
+      } catch {
+        // non-fatal
+      }
+    }, 400);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [open, effectiveEndirimPct]);
   const qaytarilacaq = Math.max(0, musteriVerir - yekun);
 
   /* ── Handlers ────────────────────────────────────── */
@@ -212,6 +322,7 @@ export function YeniSatisModal({
           kod: p.kod,
           miqdar: 1,
           qiymet: p.satis_qiymeti,
+          maya: Number(p.alish_qiymeti ?? 0),
           endirim_faiz: 0,
           anbar_id: anbarId,
         },
@@ -244,6 +355,23 @@ export function YeniSatisModal({
       .join(" ");
     const daxili = [qeyd, checks].filter(Boolean).join("\n");
 
+    // Hybrid ödəniş məntiqi:
+    // - Hesab/kassa seçilməyibsə → nisyə (full debt)
+    // - Hesab/kassa seçilibsə, odenilenManual boşdursa → tam ödəniş
+    // - odenilenManual = 0 → tam borc (account ignore)
+    // - 0 < odenilenManual < yekun → hissəvi: ödənilən hissə hesaba, qalıq borc
+    const accountPicked = !!(kassaId || hesabId);
+    const odenilenInput = odenilenManual ? Number(odenilenManual) : null;
+    const effectiveOdenilen =
+      !accountPicked ? 0 // hesab yox → nisyə (full debt)
+      : odenilenInput === null ? yekun // boş → tam ödəniş
+      : Math.max(0, Math.min(yekun, odenilenInput));
+    const isPartial = accountPicked && effectiveOdenilen > 0 && effectiveOdenilen < yekun;
+    const isFullDebt = effectiveOdenilen === 0;
+    // Sale-in semantik tipi: əgər qaliq var → nisyə (FIFO ilə bağlana bilsin)
+    const effectiveOdenisNov: "negd" | "kart" | "kecirme" | "nisye" =
+      isFullDebt || isPartial ? "nisye" : (odenisNov as "negd" | "kart" | "kecirme" | "nisye");
+
     return {
       musteri_id: musteri?.id ?? null,
       tarix,
@@ -255,9 +383,10 @@ export function YeniSatisModal({
       qaralama,
       reserve_stock: false,
       satis_meneceri_id: saticiId || null,
-      odenis_nov: ((odenisNov === "kart" || odenisNov === "kecirme" || odenisNov === "nisye")
-        ? odenisNov
-        : "negd") as "negd" | "kart" | "kecirme" | "nisye",
+      odenis_nov: effectiveOdenisNov,
+      kassa_id: accountPicked ? (kassaId || hesabId) : null,
+      // Hissəvi ödəniş: server bu məbləği kassaya qəbul edir, qalıq borc olur
+      odenilen_mebleg: effectiveOdenilen,
       lines: lines.map((l) => ({
         mehsul_id: l.mehsul_id,
         anbar_id: l.anbar_id || anbarId,
@@ -271,7 +400,25 @@ export function YeniSatisModal({
   function validate(): string | null {
     if (lines.length === 0) return "Ən az 1 məhsul əlavə et";
     if (!anbarId) return "Anbar seç";
-    if (odenisNov === "kredit" && !musteri) return "Kreditə satış üçün müştəri seç";
+
+    // Adi satış default nisyədir — kassa/hesab seçilməsə borc gedir.
+    // Nisyə satışda müştəri tələb olunur.
+    if (odenisNov === "nisye" && !musteri) {
+      return "Nisyə satış üçün müştəri seçilməlidir";
+    }
+
+    // Hybrid ödəniş yoxlama — kassa seçilibsə, ödənilən məbləğ də doğru olmalı
+    const odenilen = Number(odenilenManual || 0);
+    if (odenilenManual && (isNaN(odenilen) || odenilen < 0)) {
+      return "Ödənilən məbləğ yanlışdır";
+    }
+    if (odenilen > yekun + 0.001) {
+      return `Ödənilən məbləğ ümumi məbləğdən çox ola bilməz (${yekun.toFixed(2)} AZN)`;
+    }
+    if (odenilen > 0 && odenilen < yekun && !musteri) {
+      // Hissəvi ödəniş = qalıq borc → müştəri seçilməlidir
+      return "Hissəvi ödənişdə qalan məbləğ borc olur — müştəri seçilməlidir";
+    }
     return null;
   }
 
@@ -291,8 +438,8 @@ export function YeniSatisModal({
       onOpenChange(false);
       router.refresh();
       if (printAfter) {
-        // Open print view in new tab
-        window.open(`/ticaret/satislar/${res.satis_id}?print=1`, "_blank");
+        // Open A4 invoice in new tab — termal qəbz üçün ?format=thermal əlavə et
+        window.open(`/ticaret/satislar/${res.satis_id}/print`, "_blank");
       }
     });
   }
@@ -322,7 +469,7 @@ export function YeniSatisModal({
       open={open}
       onOpenChange={onOpenChange}
       title="Yeni satış"
-      size="2xl"
+      size="4xl"
       footerHints={
         <>
           <span><Kbd>F2</Kbd> Müştəri</span>
@@ -399,18 +546,34 @@ export function YeniSatisModal({
       <div className="mb-3 grid grid-cols-3 gap-2">
         <div>
           <Label1>Müştəri</Label1>
-          <div className="relative">
+          <div className="relative flex gap-1">
             <Input
               value={musteri ? musteri.ad : musteriQ}
               onChange={(e) => {
                 setMusteri(null);
                 setMusteriQ(e.target.value);
               }}
+              onFocus={() => setMusteriFocused(true)}
+              onBlur={() => setTimeout(() => setMusteriFocused(false), 150)}
               placeholder="Ad, telefon… Boş = nağdı"
-              className="h-8 text-xs"
+              className="h-8 flex-1 text-xs"
             />
-            {musteriResults.length > 0 && !musteri && (
-              <ul className="absolute top-full left-0 right-0 z-10 mt-0.5 max-h-44 overflow-y-auto rounded-md border border-border bg-popover shadow">
+            <QuickCreateCustomerDialog
+              defaultName={musteriQ}
+              onCreated={(c) => {
+                setMusteri({
+                  id: c.id,
+                  ad: c.ad,
+                  telefon: c.telefon,
+                  email: null,
+                  borc: c.borc,
+                });
+                setMusteriQ("");
+                setMusteriResults([]);
+              }}
+            />
+            {musteriFocused && musteriResults.length > 0 && !musteri && (
+              <ul className="absolute top-full left-0 right-0 z-10 mt-0.5 max-h-52 overflow-y-auto rounded-md border border-border bg-popover shadow">
                 {musteriResults.map((c) => (
                   <li key={c.id}>
                     <button
@@ -420,11 +583,21 @@ export function YeniSatisModal({
                         setMusteriQ("");
                         setMusteriResults([]);
                       }}
-                      className="block w-full px-2 py-1.5 text-left text-xs hover:bg-secondary"
+                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-secondary"
                     >
-                      <span className="font-medium">{c.ad}</span>
-                      {c.telefon && (
-                        <span className="ml-1 text-muted-foreground">· {c.telefon}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        <span className="font-medium">{c.ad}</span>
+                        {c.telefon && (
+                          <span className="ml-1 text-muted-foreground">· {c.telefon}</span>
+                        )}
+                      </span>
+                      {c.borc > 0 && (
+                        <span
+                          className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-300"
+                          title={`Cari borc: ${formatMoney(c.borc)}`}
+                        >
+                          {formatMoney(c.borc)}
+                        </span>
                       )}
                     </button>
                   </li>
@@ -458,23 +631,80 @@ export function YeniSatisModal({
         </div>
       </div>
 
-      {/* Row 2: Tarix / Ödəniş / Sifariş kodu */}
-      <div className="mb-3 grid grid-cols-3 gap-2">
+      {/* Müştəri kontekst paneli (universal) — son satış, son ödəniş, açıq qaimə, risk */}
+      {musteri && (
+        <div className="mb-2">
+          <ContactContextPanel kontragentId={musteri.id} side="customer" compact />
+        </div>
+      )}
+
+      {/* Müştəri kredit xülasəsi — limit aşması yoxlaması */}
+      {musteri && creditStatus && (
+        <CreditSummaryPanel status={creditStatus} odenisNov={odenisNov} yekun={yekun} />
+      )}
+
+      {/* Row 2: Tarix / Ödəniş / Hesab-Kassa / Sifariş kodu */}
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div>
           <Label1>Tarix</Label1>
           <Input
             type="date"
             value={tarix}
+            max={today}
             onChange={(e) => setTarix(e.target.value)}
-            className="h-8 text-xs"
+            className={`h-8 text-xs ${tarix !== today ? "border-amber-500/60 ring-1 ring-amber-500/20" : ""}`}
           />
+          {tarix !== today && (
+            <p className="mt-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              ⚠ Köhnə tarix — «tarix.geri» icazəsi tələb olunur
+            </p>
+          )}
         </div>
-        <div>
-          <Label1>Ödəniş növü</Label1>
+        {/* UNIFIED: Pul hara daxil oldu — hesab seçimindən ödəniş növü avtomatik */}
+        <div className="col-span-2">
+          <Label1>Pul hara daxil oldu *</Label1>
           <Combobox
-            options={PAY_OPTIONS.map<ComboOption>((o) => ({ value: o.value, label: o.label }))}
-            value={odenisNov}
-            onChange={setOdenisNov}
+            options={[
+              ...kassalar.map<ComboOption>((k) => ({
+                value: `kassa:${k.id}`,
+                label: `💵 ${k.ad}`,
+                hint: "Nəğd kassa",
+              })),
+              ...hesablar.map<ComboOption>((h) => ({
+                value: `hesab:${h.id}`,
+                label: `${h.nov === "kart" ? "💳" : "🏦"} ${h.ad}${h.bank_adi ? ` · ${h.bank_adi}` : ""}`,
+                hint: h.nov === "kart" ? "Kart hesabı" : "Bank hesabı",
+              })),
+              { value: "nisye", label: "⚠ Müştəri borcuna yaz (nisyə)", hint: "Sonra ödənəcək" },
+            ]}
+            value={
+              odenisNov === "nisye"
+                ? "nisye"
+                : kassaId
+                ? `kassa:${kassaId}`
+                : hesabId
+                ? `hesab:${hesabId}`
+                : ""
+            }
+            onChange={(val) => {
+              if (val === "nisye") {
+                setOdenisNov("nisye");
+                setKassaId("");
+                setHesabId("");
+              } else if (val.startsWith("kassa:")) {
+                setOdenisNov("negd");
+                setKassaId(val.slice(6));
+                setHesabId("");
+              } else if (val.startsWith("hesab:")) {
+                const id = val.slice(6);
+                const h = hesablar.find((x) => x.id === id);
+                setOdenisNov(h?.nov === "kart" ? "kart" : "kecirme");
+                setHesabId(id);
+                setKassaId("");
+              }
+            }}
+            placeholder="— Hesab/Kassa seçin —"
+            searchPlaceholder="Hesab axtar..."
             className="h-8 text-xs"
           />
         </div>
@@ -483,11 +713,55 @@ export function YeniSatisModal({
           <Input
             value={sifarisKodu}
             onChange={(e) => setSifarisKodu(e.target.value)}
-            placeholder="Boş buraxsan avto verilir"
+            placeholder="Boş = avto"
             className="h-8 text-xs"
           />
         </div>
       </div>
+
+      {/* Hybrid (hissəvi) ödəniş — kassa/hesab seçilibsə görünür */}
+      {(kassaId || hesabId) && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/40 dark:bg-emerald-500/5 dark:border-emerald-500/30 p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+              Hissəvi ödəniş (opsional)
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              Boş = tam ödəniş ({yekun.toFixed(2)} AZN)
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label1>Ödənilən məbləğ</Label1>
+              <Input
+                type="number"
+                value={odenilenManual}
+                onChange={(e) => setOdenilenManual(e.target.value)}
+                min={0}
+                max={yekun}
+                step="0.01"
+                placeholder={`${yekun.toFixed(2)} (tam)`}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="flex flex-col justify-end">
+              {odenilenManual && Number(odenilenManual) > 0 && Number(odenilenManual) < yekun ? (
+                <div className="rounded-md border border-amber-400/50 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
+                  ⚠ Qalıq borc: <span className="font-bold">{(yekun - Number(odenilenManual)).toFixed(2)} AZN</span> — müştəri lazımdır
+                </div>
+              ) : odenilenManual && Number(odenilenManual) === 0 ? (
+                <div className="rounded-md border border-amber-400/50 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
+                  Tam borc ({yekun.toFixed(2)} AZN)
+                </div>
+              ) : (
+                <div className="rounded-md border border-emerald-400/50 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Tam ödəniş
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Marketplace section (conditional) */}
       {marketplaceVisible && (
@@ -538,31 +812,84 @@ export function YeniSatisModal({
             <input
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
               placeholder="Məhsul axtar (ad, kod, barkod)…"
               className="h-7 flex-1 bg-transparent text-xs outline-none"
             />
           </div>
           {searchOpen && searchResults.length > 0 && (
-            <ul className="absolute top-full left-0 right-0 z-20 mt-0.5 max-h-52 overflow-y-auto rounded-md border border-border bg-popover shadow">
-              {searchResults.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => addProduct(p)}
-                    className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-secondary"
-                  >
-                    <span>
-                      <span className="font-medium">{p.ad}</span>
-                      {p.kod && (
-                        <span className="ml-1 text-muted-foreground">({p.kod})</span>
-                      )}
-                    </span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {formatMoney(p.satis_qiymeti)}
-                    </span>
-                  </button>
-                </li>
-              ))}
+            <ul className="absolute top-full left-0 right-0 z-20 mt-0.5 max-h-72 overflow-y-auto rounded-md border border-border bg-popover shadow">
+              {searchResults.map((p) => {
+                const stok = Number(p.stok_miqdari ?? 0);
+                const diger = p.diger_anbarlarda ?? [];
+                const digerSum = diger.reduce((s, d) => s + d.miqdar, 0);
+                const blocked = stok <= 0 && digerSum <= 0; // heç yerdə yox
+                const stokTone =
+                  stok <= 0
+                    ? digerSum > 0
+                      ? "text-amber-600 bg-amber-500/10 border-amber-500/30"
+                      : "text-rose-500 bg-rose-500/10 border-rose-500/30"
+                    : stok < 5
+                    ? "text-amber-600 bg-amber-500/10 border-amber-500/30"
+                    : "text-emerald-600 bg-emerald-500/10 border-emerald-500/30";
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => addProduct(p)}
+                      disabled={stok <= 0}
+                      title={
+                        stok <= 0 && digerSum > 0
+                          ? `Bu anbarda 0; digər anbarlarda var: ${diger
+                              .map((d) => `${d.anbar_ad} (${d.miqdar})`)
+                              .join(", ")}`
+                          : stok > 0
+                          ? `${stok} ədəd mövcud${
+                              digerSum > 0
+                                ? ` · digər: ${diger
+                                    .map((d) => `${d.anbar_ad} (${d.miqdar})`)
+                                    .join(", ")}`
+                                : ""
+                            }`
+                          : "Stok yoxdur"
+                      }
+                      className={`flex w-full items-start gap-2 px-2 py-1.5 text-left text-xs hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">
+                          <span className="font-medium">{p.ad}</span>
+                          {p.kod && (
+                            <span className="ml-1 text-muted-foreground">· {p.kod}</span>
+                          )}
+                          {p.barkod && (
+                            <span className="ml-1 text-muted-foreground">· {p.barkod}</span>
+                          )}
+                        </span>
+                        {/* Digər anbarlarda var bildirişi */}
+                        {diger.length > 0 && (
+                          <span className="mt-0.5 block truncate text-[10px] text-amber-700 dark:text-amber-400">
+                            📦 Digər anbar:{" "}
+                            {diger
+                              .slice(0, 2)
+                              .map((d) => `${d.anbar_ad} ${d.miqdar}`)
+                              .join(" · ")}
+                            {diger.length > 2 && ` +${diger.length - 2}`}
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] tabular-nums ${stokTone}`}
+                      >
+                        {stok > 0 ? `${stok} əd.` : blocked ? "yoxdur" : "0 (bu anbar)"}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {formatMoney(p.satis_qiymeti)}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -576,20 +903,36 @@ export function YeniSatisModal({
                   <th className="px-2 py-1.5 text-right w-16">Miqdar</th>
                   <th className="px-2 py-1.5 text-right w-20">Qiymət</th>
                   <th className="px-2 py-1.5 text-right w-14">End. %</th>
+                  {canSeeMaya && <th className="px-2 py-1.5 text-right w-20">Maya</th>}
+                  {canSeeMaya && <th className="px-2 py-1.5 text-right w-20">Mənfəət</th>}
                   <th className="px-2 py-1.5 text-right w-24">Cəmi</th>
                   <th className="px-2 py-1.5 w-7"></th>
                 </tr>
               </thead>
               <tbody>
-                {lines.map((l, idx) => (
-                  <tr key={`${l.mehsul_id}-${idx}`} className="border-b border-border/30">
-                    <td className="px-2 py-1.5 truncate">{l.ad}</td>
+                {lines.map((l, idx) => {
+                  const satir = l.miqdar * l.qiymet * (1 - (l.endirim_faiz || 0) / 100);
+                  const mayaCemi = l.miqdar * l.maya;
+                  const menfeet = satir - mayaCemi;
+                  const menfeetTone = menfeet < 0 ? "text-rose-600" : menfeet === 0 ? "text-muted-foreground" : "text-emerald-700";
+                  const isMayaAlti = canSeeMaya && l.maya > 0 && satir < l.maya;
+                  return (
+                  <tr
+                    key={`${l.mehsul_id}-${idx}`}
+                    className={`border-b border-border/30 ${isMayaAlti ? "bg-rose-500/5" : ""}`}
+                    title={isMayaAlti ? "Maya altı — bu sətr mayadan aşağı satılır" : undefined}
+                  >
+                    <td className="px-2 py-1.5 truncate">
+                      {isMayaAlti && <span className="mr-1 text-rose-500" title="Maya altı">⚠️</span>}
+                      {l.ad}
+                    </td>
                     <td className="px-2 py-1.5 text-right">
                       <input
                         type="number"
                         min={0.001}
                         step="0.01"
-                        value={l.miqdar}
+                        value={l.miqdar > 0 ? l.miqdar : ""}
+                        placeholder="0"
                         onChange={(e) => updateLine(idx, { miqdar: Number(e.target.value) || 0 })}
                         className="h-6 w-14 rounded border border-border bg-background px-1 text-right text-xs tabular-nums"
                       />
@@ -599,7 +942,8 @@ export function YeniSatisModal({
                         type="number"
                         min={0}
                         step="0.01"
-                        value={l.qiymet}
+                        value={l.qiymet > 0 ? l.qiymet : ""}
+                        placeholder="0"
                         onChange={(e) => updateLine(idx, { qiymet: Number(e.target.value) || 0 })}
                         className="h-6 w-16 rounded border border-border bg-background px-1 text-right text-xs tabular-nums"
                       />
@@ -610,13 +954,24 @@ export function YeniSatisModal({
                         min={0}
                         max={100}
                         step="0.1"
-                        value={l.endirim_faiz}
+                        value={l.endirim_faiz > 0 ? l.endirim_faiz : ""}
+                        placeholder="0"
                         onChange={(e) => updateLine(idx, { endirim_faiz: Number(e.target.value) || 0 })}
                         className="h-6 w-12 rounded border border-border bg-background px-1 text-right text-xs tabular-nums"
                       />
                     </td>
+                    {canSeeMaya && (
+                      <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                        {l.maya > 0 ? formatMoney(l.maya) : "—"}
+                      </td>
+                    )}
+                    {canSeeMaya && (
+                      <td className={`px-2 py-1.5 text-right tabular-nums font-medium ${menfeetTone}`}>
+                        {l.maya > 0 ? formatMoney(menfeet) : "—"}
+                      </td>
+                    )}
                     <td className="px-2 py-1.5 text-right tabular-nums font-medium">
-                      {formatMoney(l.miqdar * l.qiymet * (1 - (l.endirim_faiz || 0) / 100))}
+                      {formatMoney(satir)}
                     </td>
                     <td className="px-2 py-1.5">
                       <button
@@ -628,7 +983,8 @@ export function YeniSatisModal({
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -660,7 +1016,8 @@ export function YeniSatisModal({
               type="number"
               min={0}
               step={endirimMode === "percent" ? "0.1" : "0.01"}
-              value={endirimMebleg}
+              value={endirimMebleg > 0 ? endirimMebleg : ""}
+              placeholder="0"
               onChange={(e) => setEndirimMebleg(Number(e.target.value) || 0)}
               className="h-7 w-16 rounded border border-border bg-background px-1 text-right text-xs tabular-nums"
             />
@@ -698,6 +1055,43 @@ export function YeniSatisModal({
         </div>
       </div>
 
+      {/* Endirim təsdiq xəbərdarlığı — limit aşılıbsa */}
+      {/* Maya altı xəbərdarlığı — yalnız maya icazəsi olan istifadəçilərə görünür */}
+      {canSeeMaya && mayaAltiInfo.count > 0 && (
+        <div className="mb-3 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-800 dark:text-rose-200">
+          <div className="flex items-start gap-2">
+            <span className="text-base">📉</span>
+            <div className="flex-1">
+              <div className="font-semibold">
+                Maya altı satış: {mayaAltiInfo.count} sətr maya qiymətindən aşağı
+              </div>
+              <div className="mt-0.5 opacity-90">
+                Bu sətirlər boyu mənfəət itkisi: <strong className="tabular-nums">{formatMoney(mayaAltiInfo.totalLoss)}</strong>.
+                Ayarlardan asılı olaraq satış üçün sahibkar/admin təsdiqi tələb oluna bilər.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {discountCheck?.needs_approval && (
+        <div className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+          <div className="flex items-start gap-2">
+            <span className="text-base">⚠️</span>
+            <div className="flex-1">
+              <div className="font-semibold">
+                Endirim limiti aşılır: {effectiveEndirimPct.toFixed(1)}% &gt; {discountCheck.limit_pct}%
+              </div>
+              <div className="mt-0.5 opacity-90">
+                Sizin rol üçün ({discountCheck.user_role ?? "naməlum"}) maksimum endirim limiti{" "}
+                <strong>{discountCheck.limit_pct}%</strong>. Bu satışın tamamlanması üçün üst rəhbər
+                təsdiqi tələb olunacaq — Tamamla basanda təsdiq sorğusu yaranır.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Customer pays / change */}
       <div className="mb-3 grid grid-cols-2 gap-2">
         <div>
@@ -706,7 +1100,8 @@ export function YeniSatisModal({
             type="number"
             min={0}
             step="0.01"
-            value={musteriVerir}
+            value={musteriVerir > 0 ? musteriVerir : ""}
+            placeholder="0"
             onChange={(e) => setMusteriVerir(Number(e.target.value) || 0)}
             className="h-8 text-xs tabular-nums"
           />
@@ -761,5 +1156,73 @@ function Label1({ children }: { children: React.ReactNode }) {
     <label className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
       {children}
     </label>
+  );
+}
+
+/**
+ * Seçilmiş müştərinin cari borc / limit / 90+ gün gecikmə xülasəsi.
+ * Borc limitə çatıbsa kassiri xəbərdar edir; "Borc" ödəniş üsulu seçildikdə
+ * və yekun limiti aşırsa qırmızı xəbərdarlıq göstərir.
+ */
+function CreditSummaryPanel({
+  status,
+  odenisNov,
+  yekun,
+}: {
+  status: CustomerCreditStatus;
+  odenisNov: string;
+  yekun: number;
+}) {
+  const borc = status.borc;
+  const limit = status.borc_limiti;
+  const available = status.available;
+  const overdue = status.overdue_90;
+  const overdueCount = status.overdue_count;
+
+  // Borc ödənişi seçilibsə və yekun ödənilməmiş borcla cəm limiti aşırsa
+  const willExceedLimit =
+    odenisNov === "borc" && limit != null && borc + yekun > limit + 0.001;
+
+  // Tonu təyin et
+  const tone =
+    willExceedLimit || overdue > 0
+      ? "border-rose-500/40 bg-rose-500/10 text-rose-800 dark:text-rose-200"
+      : limit != null && available != null && available < limit * 0.2
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+      : "border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200";
+
+  return (
+    <div className={`mb-3 rounded-md border px-3 py-2 text-xs ${tone}`}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="font-semibold">{status.musteri_ad}</span>
+        <span className="opacity-90">
+          Cari borc:{" "}
+          <strong className="tabular-nums">{borc.toFixed(2)} ₼</strong>
+        </span>
+        {limit != null && (
+          <span className="opacity-90">
+            Limit:{" "}
+            <strong className="tabular-nums">{limit.toFixed(2)} ₼</strong>
+            {available != null && (
+              <>
+                {" "}— qalıq:{" "}
+                <strong className="tabular-nums">{available.toFixed(2)} ₼</strong>
+              </>
+            )}
+          </span>
+        )}
+        {overdueCount > 0 && (
+          <span className="font-semibold">
+            ⚠️ 90+ gün gecikmiş: {overdueCount} sənəd ({overdue.toFixed(2)} ₼)
+          </span>
+        )}
+      </div>
+      {willExceedLimit && (
+        <div className="mt-1 font-semibold">
+          🛑 «Borc» seçilib və bu satış limiti aşır:{" "}
+          {(borc + yekun).toFixed(2)} ₼ &gt; {limit?.toFixed(2)} ₼
+        </div>
+      )}
+    </div>
   );
 }

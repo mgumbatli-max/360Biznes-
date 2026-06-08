@@ -6,6 +6,7 @@ import { KonsFilters } from "@/features/anbar/konsiqnasiya/components/kons-filte
 import { KonsTable } from "@/features/anbar/konsiqnasiya/components/kons-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getKonsList, getKonsOptions } from "@/features/anbar/konsiqnasiya/queries";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 
 export const metadata: Metadata = { title: "Konsiqnasiya" };
 
@@ -16,6 +17,10 @@ export default async function KonsiqnasiyaPage({ searchParams }: { searchParams:
   await requireAnbarPerm("konsiqnasiya.oxu");
 
   const sp = await searchParams;
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const [rows, options] = await Promise.all([
     getKonsList({ q: sp.q, istiqamet: sp.istiqamet, kontragentId: sp.kontragent, status: sp.status }),
     getKonsOptions(),
@@ -35,7 +40,10 @@ export default async function KonsiqnasiyaPage({ searchParams }: { searchParams:
               Satılana qədər mülkiyyəti tərəf-müqabildə qalan mallar.
             </p>
           </div>
-          <KonsDialog kontragents={options.kontragents} products={options.products} />
+          <div className="flex items-center gap-2">
+            <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
+            <KonsDialog kontragents={options.kontragents} products={options.products} />
+          </div>
         </header>
 
         {isEmpty ? (

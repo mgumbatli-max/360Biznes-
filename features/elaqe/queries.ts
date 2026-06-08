@@ -51,6 +51,8 @@ export type ContactFilter = {
   qara_siyahi?: boolean;
   /** Son 7 gündə yaradılmış kontragentlər */
   yeni?: boolean;
+  /** Soft-delete standart filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export async function getContacts(
@@ -68,6 +70,10 @@ export async function getContacts(
     if (filter.status === "passiv") where.aktiv = false;
     else if (filter.status === "any") { /* heç bir aktiv filtri tətbiq etmə */ }
     else where.aktiv = true; // default: aktiv
+    // SOFT-DELETE: standart filter
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
 
     if (filter.nov !== "any") {
       where.nov = filter.nov === "her_ikisi" ? "her_ikisi" : { in: [filter.nov, "her_ikisi"] };
@@ -224,6 +230,8 @@ export async function getContactDetail(id: string) {
         olke: true,
         valyuta: true,
         borc: true,
+        alacaq: true,
+        avans: true,
         borc_limiti: true,
         qiymet_tipi: true,
         menecer_id: true,

@@ -87,12 +87,9 @@ export function BarcodeFix({ id, current, compact, onSuccess }: {
   );
 }
 
-/**
- * Inline cost-price editor (alish_qiymeti) — for "mayasiz" problem rows.
- */
-export function CostFix({ id, current, onSuccess }: { id: string; current: number; onSuccess?: () => void }) {
-  return <NumberFix id={id} current={current} action="cost" placeholder="Maya ₼" onSuccess={onSuccess} />;
-}
+// ❌ DEPRECATED: CostFix silindi.
+// Maya yalnız alış qaiməsindən hesablanır — birbaşa redaktə yoxdur.
+// İstifadəçi "Mayasız məhsullar" hesabatından "Alış yarat" linkinə yönlədilir.
 
 /**
  * Inline sale-price editor (satis_qiymeti) — for "qiymetsiz" problem rows.

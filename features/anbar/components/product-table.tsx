@@ -1,19 +1,15 @@
 "use client";
 
-import { useTransition, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Package, Trash2, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink, SlidersHorizontal } from "lucide-react";
-import { toast } from "sonner";
+import { Package, ArrowUp, ArrowDown, ArrowUpDown, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ProductDialog } from "./product-dialog";
 import { QuickViewDialog } from "./quick-view-dialog";
-import { StockAdjustDialog } from "./stock-adjust-dialog";
 import { BulkActionsBar } from "./bulk-actions-bar";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
-import { deleteProduct } from "../actions";
+import { ProductRowActions } from "./product-row-actions";
 import { Inspect } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { MiniBarcode } from "@/components/ui/barcode";
@@ -31,6 +27,9 @@ type Props = {
   brands: Array<{ id: number; ad: string }>;
   units?: Array<{ id: number; ad: string; qisa_ad?: string | null }>;
   anbarlar?: Array<{ id: number; ad: string }>;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  canAdjustStock?: boolean;
 };
 
 type SortKey = "ad" | "kod" | "alish_qiymeti" | "satis_qiymeti" | "stok_miqdari" | "margin";
@@ -129,10 +128,26 @@ const DEFAULT_VISIBLE = [
   "anbar",
 ];
 
-export function ProductTable({ items, total, categories, brands, units = [], anbarlar = [] }: Props) {
+/**
+ * Yaxınlaşma səviyyələri — Excel-də Zoom slider kimi.
+ * 4 səviyyə: XS (ən sıxılmış, daha çox sütun) ↔ LG (ən geniş, daha rahat oxunur).
+ * CSS data-attribute pattern — table-ə data-zoom="xs|sm|md|lg" qoyulur,
+ * inline <style> blok hər səviyyəni paddings + font ilə tətbiq edir.
+ */
+
+export function ProductTable({
+  items,
+  total,
+  categories,
+  brands,
+  units = [],
+  anbarlar = [],
+  canEdit = false,
+  canDelete = false,
+  canAdjustStock = false,
+}: Props) {
   const router = useRouter();
   const sp = useSearchParams();
-  const [pending, startTransition] = useTransition();
   const cols = useColumnToggle("anbar-mehsullar-cols-v6", COLUMN_DEFS, DEFAULT_ORDER, DEFAULT_VISIBLE);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -172,17 +187,6 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
     params.set("dir", newDir);
     params.set("page", "1");
     router.push(`/anbar/mehsullar?${params.toString()}`);
-  }
-
-  function onDelete(id: string, ad: string) {
-    if (!confirm(`"${ad}" silinsin (deaktivləşdirilsin)?`)) return;
-    startTransition(async () => {
-      const res = await deleteProduct(id);
-      if (res.ok) {
-        toast.success("Silindi");
-        router.refresh();
-      } else toast.error(res.error);
-    });
   }
 
   if (items.length === 0) {
@@ -318,11 +322,8 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                   >
                     <ExternalLink className="h-3.5 w-3.5" /> Aç
                   </Link>
-                  <ProductDialog
-                    categories={categories}
-                    brands={brands}
-                    units={units}
-                    initial={{
+                  <ProductRowActions
+                    product={{
                       id: p.id,
                       ad: p.ad,
                       kod: p.kod,
@@ -343,34 +344,15 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                       kritik_stok: p.kritik_stok,
                       aktiv: p.aktiv,
                     }}
-                    trigger="edit"
-                  />
-                  <StockAdjustDialog
-                    mehsulId={p.id}
-                    mehsulAd={p.ad}
+                    categories={categories}
+                    brands={brands}
+                    units={units}
                     anbarlar={anbarlar}
                     currentStock={p.stok_miqdari}
-                    trigger={
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        title="Stok düzəlt (mədaxil / məxaric / inventar)"
-                        className="h-8 w-8 text-primary-light hover:bg-primary/10"
-                      >
-                        <SlidersHorizontal className="h-3.5 w-3.5" />
-                      </Button>
-                    }
+                    canEdit={canEdit}
+                    canDelete={canDelete}
+                    canAdjustStock={canAdjustStock}
                   />
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    title="Sil"
-                    disabled={pending}
-                    onClick={() => onDelete(p.id, p.ad)}
-                    className="h-8 w-8"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
                 </div>
               </div>
             </div>
@@ -381,7 +363,7 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
       {/* DESKTOP CƏDVƏL GÖRÜNÜŞÜ (md+) */}
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm" data-sticky-head>
-          <thead className="border-b border-border/60 bg-card/40 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
+          <thead className="border-b border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
             <tr>
               <th className="px-3 py-2.5 w-8">
                 <input
@@ -462,11 +444,14 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                   </td>
                 ),
                 mehsul: (
-                  <td key="mehsul" className="px-3 py-2.5 min-w-[220px]">
+                  <td key="mehsul" className="group/cell px-3 py-2.5 min-w-[220px] max-w-[320px]">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
                         <span className="truncate font-medium" title={p.ad}>{p.ad}</span>
-                        <CopyButton value={p.ad} title="Adı kopya et" size="xs" />
+                        {/* Copy ikonu yalnız hover zamanı görünür — qarışıqlıq azalır */}
+                        <span className="opacity-0 transition-opacity duration-150 group-hover/cell:opacity-100">
+                          <CopyButton value={p.ad} title="Adı kopya et" size="xs" />
+                        </span>
                         {/* Anbar üzrə tez baxış — Anbar sütunu görünməyəndə ad-ın yanında ikon */}
                         {!cols.isVisible("anbar") && p.anbar_breakdown.length > 0 && (
                           <AnbarHoverBadge items={p.anbar_breakdown} vahid={p.olcu_ad} />
@@ -474,7 +459,7 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                         <button
                           type="button"
                           onClick={() => setQuickViewId(p.id)}
-                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition hover:bg-primary/15 hover:text-primary-light"
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground transition opacity-0 hover:bg-primary/15 hover:text-primary-light group-hover/cell:opacity-100"
                           title="Sürətli baxış"
                           aria-label="Sürətli baxış"
                         >
@@ -730,8 +715,15 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                 ),
               };
               return (
-                <tr key={p.id} className="group border-b border-border/30 transition hover:bg-secondary/40">
-                  <td className="px-3 py-2.5 w-8">
+                <tr
+                  key={p.id}
+                  className={`group border-b border-border/30 transition hover:bg-secondary/40 ${
+                    p.aktiv === false
+                      ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                      : ""
+                  }`}
+                >
+                  <td className="px-3 py-2.5 w-8 no-underline [text-decoration:none]">
                     <input
                       type="checkbox"
                       checked={selected.has(p.id)}
@@ -741,20 +733,10 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                     />
                   </td>
                   {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <Link
-                        href={`/anbar/mehsullar/${p.id}`}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                        title="Tam karta keç"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
-                      <ProductDialog
-                        categories={categories}
-                        brands={brands}
-                        units={units}
-                        initial={{
+                  <td className="px-3 py-2.5 no-underline [text-decoration:none]">
+                    <div className="flex items-center justify-end gap-0.5 no-underline [text-decoration:none]">
+                      <ProductRowActions
+                        product={{
                           id: p.id,
                           ad: p.ad,
                           kod: p.kod,
@@ -775,27 +757,15 @@ export function ProductTable({ items, total, categories, brands, units = [], anb
                           kritik_stok: p.kritik_stok,
                           aktiv: p.aktiv,
                         }}
-                        trigger="edit"
-                      />
-                      <StockAdjustDialog
-                        mehsulId={p.id}
-                        mehsulAd={p.ad}
+                        categories={categories}
+                        brands={brands}
+                        units={units}
                         anbarlar={anbarlar}
                         currentStock={p.stok_miqdari}
-                        trigger={
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            title="Stok düzəlt (mədaxil / məxaric / inventar)"
-                            className="text-primary-light hover:bg-primary/10"
-                          >
-                            <SlidersHorizontal className="h-3.5 w-3.5" />
-                          </Button>
-                        }
+                        canEdit={canEdit}
+                        canDelete={canDelete}
+                        canAdjustStock={canAdjustStock}
                       />
-                      <Button size="icon-sm" variant="ghost" title="Sil" disabled={pending} onClick={() => onDelete(p.id, p.ad)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
                     </div>
                   </td>
                 </tr>

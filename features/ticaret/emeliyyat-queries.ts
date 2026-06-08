@@ -4,6 +4,14 @@ import { withTenant } from "@/lib/db/with-tenant";
 
 export type OperationKind = "satis" | "alis" | "qaytarma" | "transfer";
 
+export type OperationLineSummary = {
+  ad: string;
+  kod: string | null;
+  miqdar: number;
+  qiymet: number;
+  cemi: number;
+};
+
 export type OperationRow = {
   id: string;
   nov: OperationKind;
@@ -13,9 +21,13 @@ export type OperationRow = {
   kontragent_ad: string | null;
   anbar_ad: string | null;
   satir_say: number;
+  /** İlk 3 məhsulun xülasəsi — list cərgəsində inline göstərmək üçün. */
+  ilk_mehsullar: OperationLineSummary[];
   meb: number;
   odenilmis: number;
   qaliq: number;
+  /** Ödəniş növü: negd | kart | kecirme | nisye | borc | … */
+  odenis_nov: string | null;
   yaradan_ad: string | null;
   yaradildi: Date | null;
   qeyd: string | null;
@@ -71,6 +83,16 @@ export async function getTradeOperations(
           anbarlar: { select: { ad: true } },
           istifadeciler_satis_sifarisleri_yaradan_idToistifadeciler: { select: { ad_soyad: true } },
           _count: { select: { satis_sifaris_satirlari: true } },
+          satis_sifaris_satirlari: {
+            take: 5,
+            orderBy: { id: "asc" },
+            select: {
+              miqdar: true,
+              vahid_qiymet: true,
+              cemi: true,
+              mehsullar: { select: { ad: true, kod: true } },
+            },
+          },
         },
       });
       for (const s of rows) {
@@ -85,9 +107,17 @@ export async function getTradeOperations(
           kontragent_ad: s.kontragentler?.ad ?? null,
           anbar_ad: s.anbarlar?.ad ?? null,
           satir_say: s._count.satis_sifaris_satirlari,
+          ilk_mehsullar: s.satis_sifaris_satirlari.map((line) => ({
+            ad: line.mehsullar?.ad ?? "—",
+            kod: line.mehsullar?.kod ?? null,
+            miqdar: Number(line.miqdar),
+            qiymet: Number(line.vahid_qiymet ?? 0),
+            cemi: Number(line.cemi ?? 0),
+          })),
           meb,
           odenilmis,
           qaliq: meb - odenilmis,
+          odenis_nov: s.odenis_nov ?? null,
           yaradan_ad: s.istifadeciler_satis_sifarisleri_yaradan_idToistifadeciler?.ad_soyad ?? null,
           yaradildi: s.yaradildi ?? null,
           qeyd: s.qeyd ?? null,
@@ -118,11 +148,59 @@ export async function getTradeOperations(
           anbarlar: { select: { ad: true } },
           istifadeciler_alis_sifarisleri_yaradan_idToistifadeciler: { select: { ad_soyad: true } },
           _count: { select: { alis_sifaris_satirlari: true } },
+          alis_sifaris_satirlari: {
+            take: 5,
+            orderBy: { id: "asc" },
+            select: {
+              miqdar: true,
+              vahid_qiymet: true,
+              cemi: true,
+              mehsullar: { select: { ad: true, kod: true } },
+            },
+          },
         },
       });
+
+      // Batch-fetch bağlı maliye əməliyyatları — alışın ödəniş növünü
+      // (negd/kart/bank/nisye) müəyyən etmək üçün. Hesab.nov-a görə.
+      const purchaseIds = rows.map((r) => r.id);
+      const odenisMap = new Map<string, string>();
+      if (purchaseIds.length > 0) {
+        const finOps = await prisma.finance_operations.findMany({
+          where: {
+            alish_id: { in: purchaseIds },
+            status: "aktiv",
+            type_kod: "alis_odenis",
+          },
+          select: {
+            alish_id: true,
+            maliye_hesablari_finance_operations_hesab_idTomaliye_hesablari: {
+              select: { nov: true },
+            },
+          },
+        });
+        for (const op of finOps) {
+          if (op.alish_id && !odenisMap.has(op.alish_id)) {
+            const hesabNov =
+              op.maliye_hesablari_finance_operations_hesab_idTomaliye_hesablari?.nov ?? "negd";
+            odenisMap.set(op.alish_id, hesabNov);
+          }
+        }
+      }
+
       for (const s of rows) {
         const meb = Number(s.umumi_mebleg ?? 0);
         const odenilmis = Number(s.odenilmis ?? 0);
+        // Ödəniş növü inferensiyası:
+        //   1. Bağlı finance_operations varsa → hesab.nov
+        //   2. Yoxsa, odenilmis > 0 → "negd" (legacy kassa)
+        //   3. Tam ödənməyibsə → "nisye" (təchizatçıya borc)
+        const linkedMethod = odenisMap.get(s.id);
+        const odenis_nov = linkedMethod
+          ? linkedMethod
+          : odenilmis >= meb && meb > 0
+            ? "negd"
+            : "nisye";
         result.push({
           id: s.id,
           nov: "alis",
@@ -132,9 +210,17 @@ export async function getTradeOperations(
           kontragent_ad: s.kontragentler?.ad ?? null,
           anbar_ad: s.anbarlar?.ad ?? null,
           satir_say: s._count.alis_sifaris_satirlari,
+          ilk_mehsullar: s.alis_sifaris_satirlari.map((line) => ({
+            ad: line.mehsullar?.ad ?? "—",
+            kod: line.mehsullar?.kod ?? null,
+            miqdar: Number(line.miqdar),
+            qiymet: Number(line.vahid_qiymet ?? 0),
+            cemi: Number(line.cemi ?? 0),
+          })),
           meb,
           odenilmis,
           qaliq: meb - odenilmis,
+          odenis_nov,
           yaradan_ad: s.istifadeciler_alis_sifarisleri_yaradan_idToistifadeciler?.ad_soyad ?? null,
           yaradildi: s.yaradildi ?? null,
           qeyd: s.qeyd ?? null,
@@ -165,6 +251,16 @@ export async function getTradeOperations(
           anbarlar: { select: { ad: true } },
           istifadeciler: { select: { ad_soyad: true } },
           _count: { select: { qaytarma_satirlari: true } },
+          qaytarma_satirlari: {
+            take: 5,
+            orderBy: { id: "asc" },
+            select: {
+              miqdar: true,
+              vahid_qiymet: true,
+              cemi: true,
+              mehsullar: { select: { ad: true, kod: true } },
+            },
+          },
         },
       });
       for (const s of rows) {
@@ -178,9 +274,17 @@ export async function getTradeOperations(
           kontragent_ad: s.kontragentler?.ad ?? null,
           anbar_ad: s.anbarlar?.ad ?? null,
           satir_say: s._count.qaytarma_satirlari,
+          ilk_mehsullar: s.qaytarma_satirlari.map((line) => ({
+            ad: line.mehsullar?.ad ?? "—",
+            kod: line.mehsullar?.kod ?? null,
+            miqdar: Number(line.miqdar),
+            qiymet: Number(line.vahid_qiymet ?? 0),
+            cemi: Number(line.cemi ?? 0),
+          })),
           meb,
           odenilmis: 0,
           qaliq: 0,
+          odenis_nov: null,
           yaradan_ad: s.istifadeciler?.ad_soyad ?? null,
           yaradildi: s.yaradildi ?? null,
           qeyd: s.qeyd ?? null,
@@ -209,6 +313,15 @@ export async function getTradeOperations(
           anbarlar_anbar_transferleri_hedef_anbar_idToanbarlar: { select: { ad: true } },
           istifadeciler: { select: { ad_soyad: true } },
           _count: { select: { transfer_satirlari: true } },
+          transfer_satirlari: {
+            take: 5,
+            orderBy: { id: "asc" },
+            select: {
+              miqdar: true,
+              qiymet: true,
+              mehsullar: { select: { ad: true, kod: true } },
+            },
+          },
         },
       });
       for (const s of rows) {
@@ -223,9 +336,17 @@ export async function getTradeOperations(
           kontragent_ad: null,
           anbar_ad: `${kaynak} → ${hedef}`,
           satir_say: s._count.transfer_satirlari,
+          ilk_mehsullar: s.transfer_satirlari.map((line) => ({
+            ad: line.mehsullar?.ad ?? "—",
+            kod: line.mehsullar?.kod ?? null,
+            miqdar: Number(line.miqdar),
+            qiymet: Number(line.qiymet ?? 0),
+            cemi: Number(line.miqdar) * Number(line.qiymet ?? 0),
+          })),
           meb: 0,
           odenilmis: 0,
           qaliq: 0,
+          odenis_nov: null,
           yaradan_ad: s.istifadeciler?.ad_soyad ?? null,
           yaradildi: s.yaradildi ?? null,
           qeyd: s.qeyd ?? null,

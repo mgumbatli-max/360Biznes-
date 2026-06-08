@@ -7,6 +7,7 @@ import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NewInventarDialog } from "@/features/anbar/inventar/components/new-inventar-dialog";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { InventarFilters } from "@/features/anbar/inventar/components/inventar-filters";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -16,17 +17,38 @@ export const metadata: Metadata = { title: "İnventar / Fiziki sayım" };
 
 type SP = { status?: string; anbar?: string; from?: string; to?: string };
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  aktiv: { label: "Davam edir", cls: "border-warning/30 text-warning bg-warning/10" },
-  tamamlandi: { label: "Tamamlandı", cls: "border-success/30 text-success bg-success/10" },
-  legv: { label: "Ləğv", cls: "border-muted text-muted-foreground" },
+const STATUS: Record<string, { label: string; cls: string; dotCls: string }> = {
+  aktiv: {
+    label: "Davam edir",
+    cls: "bg-gradient-to-b from-amber-500/15 to-amber-500/[0.06] text-amber-800 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300",
+    dotCls: "bg-amber-500 animate-pulse",
+  },
+  tamamlandi: {
+    label: "Tamamlandı",
+    cls: "bg-gradient-to-b from-emerald-500/15 to-emerald-500/[0.06] text-emerald-700 ring-1 ring-inset ring-emerald-500/20 dark:text-emerald-300",
+    dotCls: "bg-emerald-500",
+  },
+  legv: {
+    label: "Ləğv",
+    cls: "bg-gradient-to-b from-rose-500/15 to-rose-500/[0.06] text-rose-700 ring-1 ring-inset ring-rose-500/20 line-through decoration-rose-500/40 dark:text-rose-300",
+    dotCls: "bg-rose-500",
+  },
 };
 
-type InvFilter = { status?: string; anbarId?: number; from?: string; to?: string };
+type InvFilter = {
+  status?: string;
+  anbarId?: number;
+  from?: string;
+  to?: string;
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
+};
 
 async function getInventories(filter: InvFilter = {}) {
   return withTenant(async () => {
     const where: Record<string, unknown> = {};
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
     if (filter.status) where.status = filter.status;
     if (filter.anbarId) where.anbar_id = filter.anbarId;
     if (filter.from || filter.to) {
@@ -95,12 +117,17 @@ export default async function InventarPage({ searchParams }: { searchParams: Pro
 
   const sp = await searchParams;
   const anbarId = sp.anbar ? Number(sp.anbar) : undefined;
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const [rows, stats, anbarlar, countFilters] = await Promise.all([
     getInventories({
       status: sp.status,
       anbarId: Number.isFinite(anbarId) ? anbarId : undefined,
       from: sp.from,
       to: sp.to,
+      recordStatus,
     }),
     getStats(),
     getAnbarOptions(),
@@ -116,12 +143,15 @@ export default async function InventarPage({ searchParams }: { searchParams: Pro
           <h1 className="text-2xl font-bold tracking-tight">İnventar / Fiziki sayım</h1>
           <p className="mt-1 text-sm text-muted-foreground">Anbar sayımı, sistem vs faktiki uyğunsuzluq.</p>
         </div>
-        <NewInventarDialog
-          anbarlar={anbarlar}
-          kateqoriyalar={countFilters.kateqoriyalar}
-          markalar={countFilters.markalar}
-          mehsullar={countFilters.mehsullar}
-        />
+        <div className="flex items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
+          <NewInventarDialog
+            anbarlar={anbarlar}
+            kateqoriyalar={countFilters.kateqoriyalar}
+            markalar={countFilters.markalar}
+            mehsullar={countFilters.mehsullar}
+          />
+        </div>
       </header>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -185,7 +215,10 @@ export default async function InventarPage({ searchParams }: { searchParams: Pro
                           {r.istifadeciler_inventarizasiyalar_tamamlanan_idToistifadeciler?.ad_soyad ?? "—"}
                         </td>
                         <td className="px-3 py-2.5">
-                          <Badge variant="outline" className={s.cls + " text-[10px]"}>{s.label}</Badge>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] font-semibold leading-none shadow-sm shadow-black/[0.02] dark:shadow-black/20 ${s.cls}`}>
+                            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dotCls}`} />
+                            {s.label}
+                          </span>
                         </td>
                       </tr>
                     );

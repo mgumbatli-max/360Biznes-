@@ -145,7 +145,7 @@ export async function getContactStats(id: string) {
       prisma.$queryRaw<{ count: bigint }[]>`
         SELECT count(*)::bigint AS count
           FROM musteri_qeydleri
-         WHERE sahibkar_id = ${sahibkarId}::uuid AND kontragent_id = ${id}::uuid
+         WHERE sahibkar_id = ${sahibkarId}::uuid AND musteri_id = ${id}::uuid
       `.catch(() => [{ count: 0n }]),
     ]);
 
@@ -280,6 +280,17 @@ export type JourneyEvent = {
   subtitle: string | null;
   amount: number | null;
   ref_id: string | null;
+  // ── Zəngin meta (UI üçün): qısa məhsul siyahısı, qalıq, allocations və s.
+  meta?: {
+    sened_nomresi?: string | null;
+    qalig?: number | null;        // satış üçün — qalıq borc
+    odenilmis?: number | null;    // satış üçün
+    odenis_nov?: string | null;   // satış üçün
+    products?: string[];          // satış üçün — ilk 3 məhsul adı
+    hesab_ad?: string | null;     // ödəniş üçün — kassa/bank adı
+    bound_invoices?: string[];    // ödəniş üçün — hansı satış sənədlərinə bağlandığı
+    href?: string | null;         // "Bax" üçün link
+  };
 };
 
 export async function getCustomerJourney(id: string, limit = 200): Promise<JourneyEvent[]> {
@@ -292,7 +303,14 @@ export async function getCustomerJourney(id: string, limit = 200): Promise<Journ
       }),
       prisma.satis_sifarisleri.findMany({
         where: { musteri_id: id, status: { not: "legv" } },
-        select: { id: true, nomre: true, tarix: true, son_mebleg: true, status: true },
+        select: {
+          id: true, nomre: true, tarix: true, son_mebleg: true, status: true,
+          odenilmis: true, odenis_nov: true,
+          satis_sifaris_satirlari: {
+            select: { mehsullar: { select: { ad: true } } },
+            take: 3,
+          },
+        },
         orderBy: { tarix: "desc" },
         take: limit,
       }),
@@ -322,7 +340,20 @@ export async function getCustomerJourney(id: string, limit = 200): Promise<Journ
         .catch(() => [] as { id: bigint | number; yaradildi: Date | null; kanal: string | null; m_vzu: string | null; metn: string | null }[]),
       prisma.finance_operations.findMany({
         where: { kontragent_id: id, status: "aktiv" },
-        select: { id: true, tarix: true, y_n: true, meblegh: true, type_kod: true, qeyd: true },
+        select: {
+          id: true, tarix: true, y_n: true, meblegh: true, type_kod: true, qeyd: true,
+          sened_nomresi: true, satis_id: true,
+          maliye_hesablari_finance_operations_hesab_idTomaliye_hesablari: {
+            select: { ad: true, nov: true },
+          },
+          finance_payment_allocations: {
+            select: {
+              mebleg: true,
+              satis_sifarisleri: { select: { nomre: true } },
+              alis_sifarisleri: { select: { nomre: true } },
+            },
+          },
+        },
         orderBy: { tarix: "desc" },
         take: limit,
       }),
@@ -340,13 +371,27 @@ export async function getCustomerJourney(id: string, limit = 200): Promise<Journ
       });
     }
     for (const s of sales) {
+      const sonMebleg = Number(s.son_mebleg ?? 0);
+      const odenilmis = Number(s.odenilmis ?? 0);
+      const qalig = +(sonMebleg - odenilmis).toFixed(2);
+      const products = (s.satis_sifaris_satirlari ?? [])
+        .map((l) => l.mehsullar?.ad)
+        .filter((a): a is string => !!a);
       items.push({
         ts: s.tarix ?? new Date(0),
         kind: "sale",
         title: `Satış ${s.nomre}`,
         subtitle: s.status ?? null,
-        amount: Number(s.son_mebleg ?? 0),
+        amount: sonMebleg,
         ref_id: s.id,
+        meta: {
+          sened_nomresi: s.nomre,
+          qalig,
+          odenilmis,
+          odenis_nov: s.odenis_nov ?? null,
+          products,
+          href: `/ticaret/satislar/${s.id}`,
+        },
       });
     }
     for (const r of returns) {
@@ -357,6 +402,10 @@ export async function getCustomerJourney(id: string, limit = 200): Promise<Journ
         subtitle: null,
         amount: Number(r.umumi_mebleg ?? 0),
         ref_id: r.id,
+        meta: {
+          sened_nomresi: r.nomre,
+          href: `/ticaret/qaytarma`,
+        },
       });
     }
     for (const sv of servis) {
@@ -367,6 +416,10 @@ export async function getCustomerJourney(id: string, limit = 200): Promise<Journ
         subtitle: [sv.mehsul_ad, sv.status].filter(Boolean).join(" · ") || null,
         amount: null,
         ref_id: sv.id,
+        meta: {
+          sened_nomresi: sv.nomre,
+          href: `/servis/${sv.id}`,
+        },
       });
     }
     for (const c of comms) {
@@ -381,12 +434,30 @@ export async function getCustomerJourney(id: string, limit = 200): Promise<Journ
     }
     for (const f of ops) {
       const isIn = f.y_n === "daxil";
+      const allocations = f.finance_payment_allocations ?? [];
+      const boundInvoices = allocations
+        .map((a) => a.satis_sifarisleri?.nomre ?? a.alis_sifarisleri?.nomre)
+        .filter((n): n is string => !!n);
+      const hesab = f.maliye_hesablari_finance_operations_hesab_idTomaliye_hesablari;
+      const subtitleParts: string[] = [];
+      if (boundInvoices.length > 0) {
+        subtitleParts.push(`Bağlandı: ${boundInvoices.slice(0, 2).join(", ")}${boundInvoices.length > 2 ? ` (+${boundInvoices.length - 2})` : ""}`);
+      }
+      if (hesab?.ad) subtitleParts.push(`Hesab: ${hesab.ad}`);
+      if (f.type_kod) subtitleParts.push(f.type_kod);
       items.push({
         ts: f.tarix ?? new Date(0),
         kind: isIn ? "payment_in" : "payment_out",
-        title: isIn ? "Bizə ödəniş" : "Bizdən ödəniş",
-        subtitle: [f.type_kod, f.qeyd].filter(Boolean).join(" · ") || null,
+        title: isIn ? "Ödəniş daxil oldu" : "Ödəniş çıxdı",
+        subtitle: subtitleParts.join(" · ") || (f.qeyd ?? null),
         amount: Number(f.meblegh ?? 0),
+        // ref_id satış sənədinə olduqda link `/ticaret/satislar/{satis_id}`
+        meta: {
+          sened_nomresi: f.sened_nomresi,
+          hesab_ad: hesab?.ad ?? null,
+          bound_invoices: boundInvoices,
+          href: f.satis_id ? `/ticaret/satislar/${f.satis_id}` : `/maliyye/emeliyyat`,
+        },
         ref_id: f.id,
       });
     }

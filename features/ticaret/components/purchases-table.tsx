@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ExternalLink, Package } from "lucide-react";
+import { Package, Eye, Printer, FileText, Wallet } from "lucide-react";
+import { AlisRowActions } from "./alis-row-actions";
+import { SaleStatusBadge } from "./sale-status-badge";
+import { OperationQuickView } from "./operation-quick-view";
+import { PurchaseRowPayDialog } from "./purchase-row-pay-dialog";
+import { RowIconButton, RowPillButton, RowIconGroup } from "@/features/shared/row-icon-button";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
@@ -11,7 +16,12 @@ import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { formatDate, formatMoney } from "@/lib/utils";
 import type { PurchaseListItem } from "../alis-queries";
 
-type Props = { items: PurchaseListItem[]; total: number };
+type Props = {
+  items: PurchaseListItem[];
+  total: number;
+  canReceive?: boolean;
+  canCancel?: boolean;
+};
 
 const STORAGE_KEY = "ticaret-alislar-cols-v1";
 
@@ -73,7 +83,7 @@ type SortKey =
   | "tarix" | "nomre" | "techizatci" | "anbar" | "status"
   | "cemi" | "satir_say" | "yaradildi";
 
-export function PurchasesTable({ items, total }: Props) {
+export function PurchasesTable({ items, total, canReceive = false, canCancel = false }: Props) {
   useEffect(() => {
     try {
       if (!window.localStorage.getItem(STORAGE_KEY)) {
@@ -91,6 +101,9 @@ export function PurchasesTable({ items, total }: Props) {
   const pathname = usePathname();
   const sortBy = (sp.get("sort") ?? "") as SortKey | "";
   const sortDir = (sp.get("dir") as SortDir) ?? "asc";
+
+  const [quickViewId, setQuickViewId] = useState<string | null>(null);
+  const [payRow, setPayRow] = useState<{ purchaseId: string; nomre: string } | null>(null);
 
   function setSort(key: string) {
     const newDir: SortDir = sortBy === key && sortDir === "asc" ? "desc" : "asc";
@@ -192,7 +205,27 @@ export function PurchasesTable({ items, total }: Props) {
                   </td>
                 ),
                 techizatci: (
-                  <td key="techizatci" className="px-3 py-2.5">{p.techizatci_ad ?? <span className="text-muted-foreground">—</span>}</td>
+                  <td key="techizatci" className="px-3 py-2.5">
+                    <div>{p.techizatci_ad ?? <span className="text-muted-foreground">—</span>}</div>
+                    {/* Cərgədə məhsul xülasəsi — daxil olmadan görünür */}
+                    {p.ilk_mehsullar.length > 0 && (
+                      <div
+                        className="mt-0.5 line-clamp-1 text-[10.5px] text-muted-foreground"
+                        title={p.ilk_mehsullar.map((m) => `${m.ad} ×${m.miqdar}`).join(", ")}
+                      >
+                        {p.ilk_mehsullar.slice(0, 2).map((m, i) => (
+                          <span key={i}>
+                            {i > 0 && " · "}
+                            <span>{m.ad}</span>
+                            <span className="text-muted-foreground/70"> ×{m.miqdar}</span>
+                          </span>
+                        ))}
+                        {p.satir_say > 2 && (
+                          <span className="text-muted-foreground/70"> +{p.satir_say - 2}</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                 ),
                 telefon: (
                   <td key="telefon" className="px-3 py-2.5 text-xs text-muted-foreground">{p.techizatci_telefon ?? "—"}</td>
@@ -223,7 +256,7 @@ export function PurchasesTable({ items, total }: Props) {
                 ),
                 status_col: (
                   <td key="status_col" className="px-3 py-2.5">
-                    <Badge variant="outline" className={s.cls}>{s.label}</Badge>
+                    <SaleStatusBadge value={p.status ?? "gozlemede"} />
                   </td>
                 ),
                 umumi: (
@@ -265,24 +298,98 @@ export function PurchasesTable({ items, total }: Props) {
                   <td key="filial" className="px-3 py-2.5 text-xs">{p.filial_ad ?? <span className="text-muted-foreground">—</span>}</td>
                 ),
               };
+              const isCancelled = p.status === "legv";
               return (
-                <tr key={p.id} className="border-b border-border/30 transition hover:bg-secondary/40">
-                  {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
-                  <td className="px-3 py-2.5 text-right">
-                    <Link
-                      href={`/ticaret/alislar/${p.id}`}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-                      title="Detay"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                  </td>
-                </tr>
+                <Fragment key={p.id}>
+                  <tr
+                    className={`border-b border-border/30 transition hover:bg-secondary/40 ${
+                      isCancelled
+                        ? "bg-destructive/[0.04] text-muted-foreground line-through decoration-destructive/40"
+                        : ""
+                    }`}
+                  >
+                    {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
+                    <td className="px-3 py-2.5 text-right no-underline [text-decoration:none]">
+                      <div className="inline-flex items-center gap-1.5 no-underline [text-decoration:none]">
+                        <RowIconGroup>
+                          <RowIconButton
+                            tone="view"
+                            title="Sürətli baxış (modal)"
+                            onClick={() => setQuickViewId(p.id)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </RowIconButton>
+                          <RowIconButton
+                            as="a"
+                            tone="doc"
+                            title="Qaiməyə bax"
+                            href={`/ticaret/alislar/${p.id}`}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </RowIconButton>
+                          <RowIconButton
+                            as="a"
+                            tone="print"
+                            title="Print (faktura)"
+                            href={`/ticaret/alislar/${p.id}/print?auto=1`}
+                            target="_blank"
+                            rel="noopener"
+                          >
+                            <Printer className="h-4 w-4" />
+                          </RowIconButton>
+                        </RowIconGroup>
+                        {(() => {
+                          const qaliq = Math.max(0, p.umumi_mebleg - p.odenilmis);
+                          return (
+                            !isCancelled &&
+                            qaliq > 0 && (
+                              <RowPillButton
+                                tone="pay-out"
+                                title={`Təchizatçıya ödəniş et (${qaliq.toFixed(0)} ₼)`}
+                                onClick={() => setPayRow({ purchaseId: p.id, nomre: p.nomre })}
+                              >
+                                <Wallet className="h-3 w-3" />
+                                Ödə
+                              </RowPillButton>
+                            )
+                          );
+                        })()}
+                        <AlisRowActions
+                          purchaseId={p.id}
+                          nomre={p.nomre}
+                          status={p.status ?? null}
+                          canReceive={canReceive}
+                          canCancel={canCancel}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {quickViewId && (
+        <OperationQuickView
+          open={true}
+          onOpenChange={(v) => !v && setQuickViewId(null)}
+          nov="alis"
+          id={quickViewId}
+          printHref={`/ticaret/alislar/${quickViewId}/print?auto=1`}
+          detailHref={`/ticaret/alislar/${quickViewId}`}
+        />
+      )}
+      {payRow && (
+        <PurchaseRowPayDialog
+          open={true}
+          onOpenChange={(v) => !v && setPayRow(null)}
+          purchaseId={payRow.purchaseId}
+          nomre={payRow.nomre}
+        />
+      )}
     </div>
   );
 }
+

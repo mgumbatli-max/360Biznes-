@@ -24,6 +24,7 @@ import { BusinessFeedSection } from "@/features/dashboard/sections/business-feed
 import { WebhookOrdersSection } from "@/features/dashboard/sections/webhook-orders-section";
 import { SyncHealthSection } from "@/features/dashboard/sections/sync-health-section";
 import { CriticalAlertsSection } from "@/features/dashboard/sections/critical-alerts-section";
+import { TopDebtorsSection } from "@/features/dashboard/sections/top-debtors-section";
 import { getDashboardKpis } from "@/features/dashboard/queries";
 
 // Has() helper — paylaşılan sintaksis hər bölmə üçün
@@ -130,7 +131,7 @@ export default async function DashboardPage() {
       />
 
       <DashboardHeader user={u} />
-      <DashboardQuickActions />
+      <DashboardQuickActions icazeler={icazeler} rolAd={u.rol_ad} />
 
       <div className="space-y-8 stagger-children">
         {showHero && (
@@ -162,6 +163,8 @@ export default async function DashboardPage() {
             <TopFiveSection />
           </Suspense>
         )}
+
+        {canCashflow && <TopDebtorsSection />}
 
         {canAktivlik && (
           <Suspense fallback={<ChartSkeleton h={300} />}>

@@ -6,6 +6,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { searchProductIdsSpaceInsensitive } from "@/lib/db/space-insensitive-search";
 import { getStealthState } from "@/lib/stealth/server";
+import { canViewCost } from "@/lib/auth/finance-permissions";
 
 export type AnbarKpis = {
   toplam_mehsul: number;
@@ -72,7 +73,16 @@ const fetchAnbarValueKpisRawCached = (sahibkarId: string) =>
              AND COALESCE(s.miqdar,0) > 0
              AND (m.son_satis_de IS NULL OR m.son_satis_de < NOW() - INTERVAL '90 days')
         `,
-        prismaUnscoped.stok_bron.count({ where: { sahibkar_id: sahibkarId, status: "aktiv" } }),
+        prismaUnscoped.stok_bron.count({
+          where: {
+            sahibkar_id: sahibkarId,
+            status: "aktiv",
+            OR: [
+              { bitme_tarixi: null },
+              { bitme_tarixi: { gte: new Date() } },
+            ],
+          },
+        }),
       ]);
       const v = vals[0] ?? { satis_deyeri: 0, maya_deyeri: 0 };
       return {
@@ -226,9 +236,14 @@ const fetchAnbarKpisCached = (sahibkarId: string) =>
               AND barkod IS NULL
               AND NOT EXISTS (SELECT 1 FROM mehsul_barkodlar b WHERE b.mehsul_id = mehsullar.id)
           ) AS barkodsuz,
-          (SELECT COUNT(*)::bigint FROM mehsullar
-            WHERE sahibkar_id = ${sahibkarId}::uuid AND aktiv = TRUE
-              AND (alish_qiymeti IS NULL OR alish_qiymeti = 0)
+          (SELECT COUNT(*)::bigint FROM mehsullar m
+            WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = TRUE
+              AND (m.alish_qiymeti IS NULL OR m.alish_qiymeti = 0)
+              -- Yalnız stoku olub mayası olmayan məhsullar problemdir
+              AND EXISTS (
+                SELECT 1 FROM stok st
+                 WHERE st.mehsul_id = m.id AND st.miqdar > 0
+              )
           ) AS mayasiz,
           (SELECT COUNT(*)::bigint FROM mehsullar
             WHERE sahibkar_id = ${sahibkarId}::uuid AND aktiv = TRUE
@@ -240,9 +255,16 @@ const fetchAnbarKpisCached = (sahibkarId: string) =>
           ) AS qiymetsiz
         FROM stok_per_mehsul spm
       `,
-        // stok_bron uses `sayi` for the reserved quantity (not `miqdar`)
+        // stok_bron — aktiv və müddəti keçməmiş bron-lar
         prismaUnscoped.stok_bron.aggregate({
-          where: { sahibkar_id: sahibkarId },
+          where: {
+            sahibkar_id: sahibkarId,
+            status: "aktiv",
+            OR: [
+              { bitme_tarixi: null },
+              { bitme_tarixi: { gte: new Date() } },
+            ],
+          },
           _sum: { sayi: true },
         }),
       ]);
@@ -301,6 +323,10 @@ export type ProductListRow = {
   min_stok: number | null;
   max_stok: number | null;
   stok_miqdari: number;
+  /** Bron olunmuş miqdar — satışa açıq stokdan çıxılır (aktiv broncalar). */
+  bron_miqdari: number;
+  /** Satışa açıq = stok_miqdari - bron_miqdari (mənfi olmaz). */
+  satis_acig_miqdari: number;
   anbar_sayi: number;
   /** Stoku olan anbarlar üzrə qısa breakdown (sıralı: çoxdan aza). */
   anbar_breakdown: Array<{ anbar_id: number; anbar_ad: string; miqdar: number }>;
@@ -341,6 +367,10 @@ export type ProductFilter = {
   anbar_id?: number;
   /** true = only products that have at least one servis_qeyd */
   servisde_olmus?: boolean;
+  /** true = only products that have at least one active stok_bron */
+  rezervde?: boolean;
+  /** Soft-delete standart filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export async function getProducts(
@@ -351,6 +381,9 @@ export async function getProducts(
   // Hard cap — pageSize=99999 ilə search/sort blocking DB sorğusunu önləyir.
   pageSize = Math.min(Math.max(1, pageSize), 100);
   page = Math.max(1, page);
+  // İcazə yoxlaması: maya/alış qiyməti bütün istifadəçilərə görünməməlidir.
+  // canViewCost false olarsa, alish_qiymeti hər sətrdə 0 ilə əvəz olunur.
+  const canSeeCost = await canViewCost();
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
@@ -358,6 +391,10 @@ export async function getProducts(
     if (durum === "aktiv") where.aktiv = true;
     else if (durum === "deaktiv") where.aktiv = false;
     // hamisi → no filter
+    // SOFT-DELETE: standart filter (recordStatus)
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
     if (filter.kateqoriya_id?.length) where.kateqoriya_id = { in: filter.kateqoriya_id };
     if (filter.marka_id?.length) where.marka_id = { in: filter.marka_id };
     if (filter.search?.trim()) {
@@ -386,20 +423,42 @@ export async function getProducts(
     if (filter.price_max != null) where.satis_qiymeti = { ...(where.satis_qiymeti ?? {}), lte: filter.price_max };
     if (filter.anbar_id) where.stok = { some: { anbar_id: filter.anbar_id, miqdar: { gt: 0 } } };
     if (filter.servisde_olmus === true) where.servis_qeydleri = { some: {} };
+    // Rezerv filtri — yalnız aktiv və müddəti keçməmiş bron-u olan məhsullar
+    if (filter.rezervde === true) {
+      where.stok_bron = {
+        some: {
+          status: "aktiv",
+          OR: [{ bitme_tarixi: null }, { bitme_tarixi: { gte: new Date() } }],
+        },
+      };
+    }
 
-    // Stok-əsaslı filter — mehsullar.stok_cemi denormalize sütunu (trigger ilə
-    // avtomatik təzələnir). SQL səviyyəsində filter olunur, paginasiya doğru.
+    // Stok-əsaslı filter — REAL TIME SUM(stok.miqdar) ilə yoxlanılır.
+    // Köhnə kod `mehsullar.stok_cemi` denormalize sütununa güvənirdi, lakin
+    // o cache drift edə bilərdi → "Stokda var" basanda "Bitib" məhsullar görünürdü.
+    // İndi `stok` cədvəlinə subquery ilə real fakt yoxlanır.
     if (filter.stok_status?.length) {
+      const realStokSubquery = (cmp: "gt0" | "lte0" | "az_kritik") => {
+        // Prisma raw: subquery for stok aggregation
+        if (cmp === "gt0") {
+          return { stok: { some: { miqdar: { gt: 0 } } } };
+        }
+        if (cmp === "lte0") {
+          // Heç bir stok satrı miqdar > 0 olmayan məhsul (stok bitib)
+          return { stok: { none: { miqdar: { gt: 0 } } } };
+        }
+        // az_kritik: stok > 0 amma <= kritik
+        return {
+          AND: [
+            { stok: { some: { miqdar: { gt: 0 } } } },
+            { kritik_stok: { not: null } },
+          ],
+        };
+      };
       const orClauses: Record<string, unknown>[] = [];
-      if (filter.stok_status.includes("yox")) orClauses.push({ stok_cemi: { lte: 0 } });
-      if (filter.stok_status.includes("az")) {
-        // kritik səviyyədən aşağı, amma >0 — Prisma cross-column compare etmir,
-        // ona görə raw filter ilə alt-pəncərə yığırıq.
-        // Eyni mantıq SQL-də: stok_cemi > 0 AND stok_cemi <= kritik_stok
-        // Burada yalnız stok_cemi > 0 filter qoyuruq, "az" detalı altdakı raw ilə.
-        orClauses.push({ AND: [{ stok_cemi: { gt: 0 } }, { kritik_stok: { not: null } }] });
-      }
-      if (filter.stok_status.includes("var")) orClauses.push({ stok_cemi: { gt: 0 } });
+      if (filter.stok_status.includes("yox")) orClauses.push(realStokSubquery("lte0"));
+      if (filter.stok_status.includes("az")) orClauses.push(realStokSubquery("az_kritik"));
+      if (filter.stok_status.includes("var")) orClauses.push(realStokSubquery("gt0"));
       if (orClauses.length > 0) {
         where.OR = [...(where.OR ?? []), ...orClauses];
       }
@@ -484,7 +543,7 @@ export async function getProducts(
             select: {
               miqdar: true,
               anbar_id: true,
-              anbarlar: { select: { ad: true } },
+              anbarlar: { select: { ad: true, nov: true } },
             },
           },
           _count: { select: { servis_qeydleri: true } },
@@ -493,8 +552,33 @@ export async function getProducts(
       prisma.mehsullar.count({ where }),
     ]);
 
+    // Aktiv bron miqdarları — bütün məhsul id-lər üzərində bir sorğu.
+    // Available stock = stok_miqdari - bron_miqdari (mənfi olmaz).
+    const itemIds = items.map((i) => i.id);
+    const bronRows = itemIds.length
+      ? await prisma.stok_bron.groupBy({
+          by: ["mehsul_id"],
+          where: {
+            mehsul_id: { in: itemIds },
+            status: "aktiv",
+          },
+          _sum: { sayi: true },
+        })
+      : [];
+    const bronMap = new Map<string, number>(
+      bronRows.map((r) => [r.mehsul_id, Number(r._sum.sayi ?? 0)]),
+    );
+
+    // Satılabilən anbar növləri — defekt, karantın və transit anbar SATIŞA AÇIQ DEYİL
+    const SATIS_ACIQ_ANBAR_NOV = new Set(["standart", "servis"]);
+
     const rows: ProductListRow[] = items.map((m) => {
       const stok_miqdari = m.stok.reduce((s, r) => s + Number(r.miqdar ?? 0), 0);
+      // Satışa açıq stok (anbar tipinə görə filter)
+      const satis_acig_anbar_stok = m.stok
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .filter((r: any) => SATIS_ACIQ_ANBAR_NOV.has(r.anbarlar?.nov ?? "standart"))
+        .reduce((s, r) => s + Number(r.miqdar ?? 0), 0);
       // Unique warehouses where this product has any stock row
       const anbar_sayi = new Set(m.stok.filter((s) => Number(s.miqdar ?? 0) > 0).map((s) => s.anbar_id)).size;
       // Anbar breakdown — yalnız >0 olan, çoxdan aza sıralı
@@ -526,7 +610,7 @@ export async function getProducts(
         marka_ad: m.markalar?.ad ?? null,
         olcu_id: m.olcu_id ?? null,
         olcu_ad: m.olcu_vahidleri?.ad ?? null,
-        alish_qiymeti: Number(m.alish_qiymeti ?? 0),
+        alish_qiymeti: canSeeCost ? Number(m.alish_qiymeti ?? 0) : 0,
         satis_qiymeti: Number(m.satis_qiymeti ?? 0),
         endirimli_qiymet: m.endirimli_qiymet != null ? Number(m.endirimli_qiymet) : null,
         min_satis_qiymeti: Number(m.min_satis_qiymeti ?? 0),
@@ -538,6 +622,10 @@ export async function getProducts(
         min_stok: m.min_stok != null ? Number(m.min_stok) : null,
         max_stok: m.max_stok != null ? Number(m.max_stok) : null,
         stok_miqdari,
+        bron_miqdari: bronMap.get(m.id) ?? 0,
+        // Satışa açıq = satılabilən anbarlardakı stok - bron (mənfi olmaz).
+        // Defekt/karantın/transit anbarlardakı mal bura daxil deyil.
+        satis_acig_miqdari: Math.max(0, satis_acig_anbar_stok - (bronMap.get(m.id) ?? 0)),
         anbar_sayi,
         anbar_breakdown,
         servis_sayi: m._count?.servis_qeydleri ?? 0,

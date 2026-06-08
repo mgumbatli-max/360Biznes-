@@ -72,6 +72,7 @@ const ANBAR_GROUPS: AnbarGroup[] = [
       { href: "/anbar/stok",       label: "Vəziyyət", Icon: Boxes },
       { href: "/anbar/hereketler", label: "Hərəkətlər", Icon: ArrowLeftRight },
       { href: "/anbar/anomali",    label: "Anomali", Icon: AlertTriangle },
+      { href: "/anbar/defekt",     label: "Defekt", Icon: AlertTriangle },
     ],
   },
   {
@@ -122,8 +123,8 @@ export function AnbarSubNav({ active }: { active: string }) {
             data-active={isDashboard ? "true" : undefined}
             className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               isDashboard
-                ? "bg-background text-primary shadow-sm"
-                : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                ? "bg-gradient-to-b from-background to-background/80 text-primary shadow-md shadow-primary/10 ring-1 ring-primary/15"
+                : "text-muted-foreground hover:bg-background/60 hover:text-foreground hover:-translate-y-px active:translate-y-0"
             }`}
           >
             <DASHBOARD_TAB.Icon className="h-3.5 w-3.5" />
@@ -141,8 +142,8 @@ export function AnbarSubNav({ active }: { active: string }) {
                 data-active={isOn ? "true" : undefined}
                 className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                   isOn
-                    ? "bg-background text-primary shadow-sm"
-                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                    ? "bg-gradient-to-b from-background to-background/80 text-primary shadow-md shadow-primary/10 ring-1 ring-primary/15"
+                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground hover:-translate-y-px active:translate-y-0"
                 }`}
               >
                 <g.Icon className="h-3.5 w-3.5" />
@@ -169,7 +170,7 @@ export function AnbarSubNav({ active }: { active: string }) {
                   data-active={isOn ? "true" : undefined}
                   className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
                     isOn
-                      ? "bg-primary/10 text-primary"
+                      ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 shadow-sm shadow-primary/10"
                       : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                   }`}
                 >

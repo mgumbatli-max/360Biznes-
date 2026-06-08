@@ -1,15 +1,16 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BackButton } from "@/components/ui/back-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { isHrPrivileged, canViewSalary } from "@/features/iscilier/access-guard";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { EmployeeDialog } from "@/features/iscilier/components/employee-dialog";
 import { EmployeeDetailTabs } from "@/features/iscilier/components/employee-detail-tabs";
-import { getRoleOptions, getFilialOptions } from "@/features/iscilier/queries";
+import { getRoleOptions, getFilialOptions, getVezifeOptions } from "@/features/iscilier/queries";
 import {
   getEmployeeFullDetail,
   getEmployeeSales,
@@ -42,10 +43,11 @@ export default async function EmployeeDetailPage({
   // Critical-path: header + edit dialog + icazə kontekstu.
   // 4 paralel sorğu — istifadəçi əsasları, rol siyahısı, filial siyahısı, auth.
   // Tab data (13 əlavə sorğu) ayrı Suspense-də paralel yüklənir.
-  const [e, roles, filiallar, session, icazeler] = await Promise.all([
+  const [e, roles, filiallar, vezifeler, session, icazeler] = await Promise.all([
     getEmployeeFullDetail(id),
     getRoleOptions(),
     getFilialOptions(),
+    getVezifeOptions(),
     auth(),
     getRequestPermissions(),
   ]);
@@ -53,12 +55,21 @@ export default async function EmployeeDetailPage({
 
   const currentUserId = session?.user?.id ?? "";
   const currentRol = session?.user?.rol_id ?? 0;
+  const rolAd = (session?.user?.rol_ad ?? "").toLowerCase();
+  const isViewingSelf = currentUserId === id;
+  const privileged = isHrPrivileged(rolAd);
+
+  // İcaze: özüdür, ya isci.view, ya da privileged
+  if (!isViewingSelf && !privileged && !icazeler.includes("isci.view") && !icazeler.includes("hr.view")) {
+    redirect("/icaze-yox?kod=isci.view&from=iscilier_detail");
+  }
+
+  // Maaş və bank field-lərini görə bilirmi?
+  const canSeeSalary = await canViewSalary(id);
   const canEditBonus =
     currentRol === 1 || currentRol === 9 ||
-    icazeler.includes("isci.bonus_idare") ||
-    icazeler.includes("istifadeci.idare") ||
-    icazeler.includes("sahibkar.access");
-  const isViewingSelf = currentUserId === id;
+    privileged ||
+    icazeler.includes("hr.bonus_idare");
 
   const initials = e.ad_soyad.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 
@@ -70,16 +81,17 @@ export default async function EmployeeDetailPage({
     rol_id: e.rol_id ?? 0,
     rol_ad: e.roles?.ad ?? "",
     vezife: e.vezife,
-    aylik_maas: Number(e.aylik_maas ?? 0),
+    // PII gizli: maaş + bank + FİN yalnız özünə və ya səlahiyyətliyə görsənir
+    aylik_maas: canSeeSalary ? Number(e.aylik_maas ?? 0) : 0,
     ise_baslama: e.ise_baslama,
     aktiv: e.aktiv ?? true,
     son_giris: e.son_giris,
     isden_cixdi: e.isden_cixdi,
-    fin_kod: e.fin_kod,
+    fin_kod: canSeeSalary ? e.fin_kod : null,
     dogum_tarixi: e.dogum_tarixi,
     unvan: e.unvan,
-    bank_hesab: e.bank_hesab,
-    bank_ad: e.bank_ad,
+    bank_hesab: canSeeSalary ? e.bank_hesab : null,
+    bank_ad: canSeeSalary ? e.bank_ad : null,
     default_filial_id: e.default_filial_id,
     default_filial_ad: e.filiallar_istifadeciler_default_filial_idTofiliallar?.ad ?? null,
     profil_sekil: e.profil_sekil,
@@ -135,7 +147,9 @@ export default async function EmployeeDetailPage({
             </div>
           </div>
         </div>
-        <EmployeeDialog roles={roles} filiallar={filiallar} initial={employeeRow} trigger="edit" />
+        {(privileged || icazeler.includes("isci.idare")) && (
+          <EmployeeDialog roles={roles} filiallar={filiallar} vezifeler={vezifeler} initial={employeeRow} trigger="edit" />
+        )}
       </header>
 
       <Suspense fallback={<EmployeeTabsSkeleton />}>

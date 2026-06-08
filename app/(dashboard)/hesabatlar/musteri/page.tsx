@@ -15,6 +15,7 @@ import {
   type CustomerSegment,
 } from "@/features/hesabatlar/musteri-queries";
 import { parseDateRange, formatDateInput } from "@/features/hesabatlar/shared";
+import { requireHesabatPagePerm } from "@/features/hesabatlar/access-guard";
 import { formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Müştəri hesabatı" };
@@ -32,6 +33,7 @@ const SEGMENTS: { value: CustomerSegment; label: string }[] = [
 ];
 
 export default async function MusteriReportPage({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireHesabatPagePerm("musteri.oxu");
   const sp = await searchParams;
   const range = parseDateRange(sp);
   const segment: CustomerSegment = (SEGMENTS.find((s) => s.value === sp.segment)?.value ?? "all") as CustomerSegment;

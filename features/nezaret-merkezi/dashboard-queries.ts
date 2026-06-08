@@ -157,11 +157,13 @@ const fetchRiskDashboardCached = (sahibkarId: string) =>
         : [];
       const ruleExMap = new Map(ruleExamples.map((r) => [r.rule_kod!, r.basliq]));
 
+      // Borclu müştərilərdən 30+ gündür hərəkət olmayanlar.
+      // `alacaq` field-i bizə borclu olanları göstərir (debtor_count ilə eyni semantika).
       const overdue_debt_count = await prismaUnscoped.$queryRaw<{ c: bigint }[]>`
         SELECT COUNT(*)::bigint AS c
           FROM kontragentler
          WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND COALESCE(borc, 0) > 0
+           AND COALESCE(alacaq, 0) > 0
            AND (CURRENT_DATE - GREATEST(yenilendi::date, yaradildi::date)) > 30
       `.catch(() => [{ c: 0n }]).then((r) => Number(r[0]?.c ?? 0));
 

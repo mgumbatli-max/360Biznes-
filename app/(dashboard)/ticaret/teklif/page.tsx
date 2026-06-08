@@ -3,6 +3,7 @@ import Link from "next/link";
 import { FileText, CheckCircle2, XCircle, TrendingUp, Clock4 } from "lucide-react";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { RefreshButton } from "@/components/refresh-button";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { TeklifTable } from "@/features/ticaret/components/teklif-table";
 import { TeklifExpireButton } from "@/features/ticaret/components/teklif-expire-button";
@@ -44,14 +45,22 @@ export default async function TeklifPage({
   searchParams: Promise<SearchParams>;
 }) {
   const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
-  await requireTicaretPerm("teklif.oxu");
+  const { icazeler, isOwnerOrAdmin } = await requireTicaretPerm("teklif.oxu");
+  const canConvert = isOwnerOrAdmin || icazeler.includes("teklif.cevir") || icazeler.includes("satis.yarat");
+  const canChangeStatus = isOwnerOrAdmin || icazeler.includes("teklif.yenile") || icazeler.includes("teklif.idare");
+  const canDeleteTeklif = isOwnerOrAdmin || icazeler.includes("teklif.sil") || icazeler.includes("teklif.idare");
 
   const sp = await searchParams;
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const filter: TeklifFilter = {
     search: sp.q,
     status: asArray(sp.status),
     from: sp.from ? new Date(sp.from) : undefined,
     to: sp.to ? new Date(sp.to + "T23:59:59") : undefined,
+    recordStatus,
   };
 
   const [stats, counts, list] = await Promise.all([
@@ -72,6 +81,7 @@ export default async function TeklifPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <TeklifExpireButton />
           <RefreshButton />
         </div>
@@ -132,7 +142,13 @@ export default async function TeklifPage({
         </form>
       </div>
 
-      <TeklifTable items={list.items} total={list.total} />
+      <TeklifTable
+        items={list.items}
+        total={list.total}
+        canConvert={canConvert}
+        canChangeStatus={canChangeStatus}
+        canDelete={canDeleteTeklif}
+      />
     </div>
   );
 }

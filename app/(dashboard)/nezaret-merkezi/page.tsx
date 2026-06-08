@@ -94,7 +94,7 @@ export default async function NezaretMerkeziPage() {
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <DetailRiskTile icon={ListTodo} label="Gecikmiş tapşırıq" value={data.task_overdue} tone={data.task_overdue > 5 ? "rose" : data.task_overdue > 0 ? "amber" : "emerald"} href="/tapshiriqlar?gecikmis=1" />
         <DetailRiskTile icon={Boxes} label="Stok riski" value={data.stock_zero + data.stock_low} sub={`${data.stock_zero} bitib · ${data.stock_low} az`} tone={data.stock_zero > 0 ? "rose" : data.stock_low > 0 ? "amber" : "emerald"} href="/anbar" />
-        <DetailRiskTile icon={CreditCard} label="Borclu müştəri" value={data.debtor_count} sub={`${formatMoney(data.debtor_amount)} cəmi`} tone={data.overdue_debt > 0 ? "rose" : data.debtor_count > 0 ? "amber" : "emerald"} href="/elaqe?borc=1" />
+        <DetailRiskTile icon={CreditCard} label="Borclu müştəri" value={data.debtor_count} sub={`${formatMoney(data.debtor_amount)} cəmi`} tone={data.overdue_debt > 0 || data.debtor_count > 10 ? "rose" : data.debtor_count > 0 ? "amber" : "emerald"} href="/elaqe?borc=1" />
         <DetailRiskTile icon={UserX} label="İşçi davamiyyət" value={data.late_employees_today} sub="Bu gün gec gələn" tone={data.late_employees_today > 0 ? "amber" : "emerald"} href="/iscilier" />
         <DetailRiskTile icon={Wrench} label="Servis gecikmə" value={data.service_stalled} sub="Status dəyişmir" tone={data.service_stalled > 0 ? "amber" : "emerald"} href="/servis" />
         <DetailRiskTile icon={Globe} label="Marketplace" value={data.mp_pending} sub="Gözləyən sifariş" tone={data.mp_pending > 0 ? "amber" : "emerald"} href="/marketplace" />

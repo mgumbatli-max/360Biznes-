@@ -191,10 +191,10 @@ function Pill({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-medium transition",
+        "inline-flex h-7 items-center rounded-full px-2.5 text-xs font-semibold transition-all duration-200 ease-out hover:-translate-y-px active:translate-y-0 active:scale-95",
         active
-          ? "border-primary/40 bg-primary/15 text-primary-light"
-          : "border-border bg-card text-muted-foreground hover:text-foreground",
+          ? "bg-gradient-to-b from-primary/25 to-primary/10 text-primary ring-1 ring-inset ring-primary/30 shadow-sm shadow-primary/15"
+          : "bg-card/60 backdrop-blur-sm text-muted-foreground ring-1 ring-inset ring-border/50 hover:bg-secondary/60 hover:text-foreground hover:ring-border",
       )}
     >
       {children}

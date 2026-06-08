@@ -9,6 +9,7 @@ import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesd
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { audit, diffObjects } from "@/lib/audit/log";
+import { safeUserMessage } from "@/lib/error/user-message";
 
 /** Anbar üçün ortaq icazə yoxlaması (sahibkar/admin/owner default keçir). */
 async function requireAnbarActionPerm(perm: string): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -32,12 +33,21 @@ const ProductSchema = z.object({
   kateqoriya_id: z.coerce.number().int().positive().optional(),
   marka_id: z.coerce.number().int().positive().optional(),
   olcu_id: z.coerce.number().int().positive().optional(),
-  // Şəkil və təsvir
-  sekil_url: z.string().url().optional().or(z.literal("")),
+  // Şəkil və təsvir — URL formatına məcburi deyil (boş, relative path,
+  // blob:, data: hamısı qəbul olunur ki, formdan gələn dəyər heç vaxt
+  // "Invalid URL" xətasına səbəb olmasın).
+  sekil_url: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim() : v ?? ""),
+    z.string().max(2000).optional().default(""),
+  ),
   qisaca_tesvir: z.string().max(500).optional().or(z.literal("")),
   aciqlamaq: z.string().max(5000).optional().or(z.literal("")),
   // Qiymətlər
-  alish_qiymeti: z.coerce.number().min(0).default(0),
+  // NOT: `alish_qiymeti` (maya) məhsul kartından əl ilə yazılmamalıdır.
+  // Maya YALNIZ alış qaiməsindən (`receivePurchase`) yenilənir.
+  // Bu sahə forma input-undan boş gələrsə 0 olur — köhnə qiymət dəyişməz
+  // çünki UPDATE zamanı 0 dəyər varsa, biz onu skip edirik (aşağıda yoxlanılır).
+  alish_qiymeti: z.coerce.number().min(0).optional().default(0),
   satis_qiymeti: z.coerce.number().min(0).default(0),
   endirimli_qiymet: z.coerce.number().min(0).optional().or(z.literal("")),
   min_satis_qiymeti: z.coerce.number().min(0).default(0),
@@ -80,7 +90,14 @@ const ProductSchema = z.object({
   aktiv: z.coerce.boolean().default(true),
 });
 
-type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
+type ActionResult<T = undefined> =
+  | { ok: true; data?: T }
+  | {
+      ok: false;
+      error: string;
+      blockers?: import("@/lib/blockers/types").Blocker[];
+      hint?: string;
+    };
 type SaveProductData = { id: string; pending_approval?: boolean; message?: string };
 
 export async function saveProduct(input: FormData | z.input<typeof ProductSchema>): Promise<ActionResult<SaveProductData>> {
@@ -106,6 +123,9 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
     const { sahibkarId } = requireTenant();
     try {
       const toNum = (v: unknown) => (v === "" || v == null ? null : Number(v));
+      // Maya (alish_qiymeti) məhsul kartından əl ilə yazılmamalıdır.
+      // Yarat zamanı 0 (default) → null (cache boşdur, ilk alışda yazılacaq).
+      // Redaktə zamanı 0 → mövcud dəyər saxlanılır (aşağıda yoxlanılır).
       const data = {
         ad: d.ad.trim(),
         kod: d.kod?.trim() || null,
@@ -116,7 +136,7 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
         sekil_url: d.sekil_url || null,
         qisaca_tesvir: d.qisaca_tesvir || null,
         aciqlamaq: d.aciqlamaq || null,
-        alish_qiymeti: d.alish_qiymeti,
+        alish_qiymeti: d.alish_qiymeti && d.alish_qiymeti > 0 ? d.alish_qiymeti : null,
         satis_qiymeti: d.satis_qiymeti,
         endirimli_qiymet: toNum(d.endirimli_qiymet),
         min_satis_qiymeti: d.min_satis_qiymeti,
@@ -211,7 +231,13 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
               kateqoriya_id: true, marka_id: true, model: true, aktiv: true,
             },
           });
-          const updated = await prisma.mehsullar.update({ where: { id: d.id }, data });
+          // Redaktədə alish_qiymeti null/0 gəlibsə → mövcud dəyəri qoru.
+          // Bu, məhsulu redaktə edən satıcının mayanı təsadüfən sıfırlamasının qarşısını alır.
+          const updateData = { ...data };
+          if (updateData.alish_qiymeti == null && beforeForAudit?.alish_qiymeti != null) {
+            updateData.alish_qiymeti = beforeForAudit.alish_qiymeti as unknown as number;
+          }
+          const updated = await prisma.mehsullar.update({ where: { id: d.id }, data: updateData });
           id = updated.id;
           const diff = diffObjects(
             serializeForJson(beforeForAudit),
@@ -222,6 +248,38 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
               evvelki_data: diff.before,
               yeni_data: diff.after,
             });
+          }
+
+          // 📊 QİYMƏT TARİXÇƏSİ — hər qiymət növü üçün ayrıca log
+          const priceFields: Array<{ key: keyof typeof data; nov: string }> = [
+            { key: "satis_qiymeti",     nov: "satis" },
+            { key: "topdan_qiymeti",    nov: "topdan" },
+            { key: "partnyor_qiymeti",  nov: "partnyor" },
+            { key: "vip_qiymeti",       nov: "vip" },
+            { key: "min_satis_qiymeti", nov: "min" },
+            { key: "alish_qiymeti",     nov: "alis" },
+            { key: "endirimli_qiymet",  nov: "endirimli" },
+          ];
+          const istifadeci_id = (await import("@/lib/db/tenant-context")).requireTenant().istifadeciId;
+          for (const pf of priceFields) {
+            const evvelki = Number((beforeForAudit as Record<string, unknown>)?.[pf.key as string] ?? 0);
+            const yeni = Number((data as Record<string, unknown>)[pf.key as string] ?? 0);
+            if (Math.abs(yeni - evvelki) > 0.001) {
+              try {
+                await prisma.qiymet_tarixce.create({
+                  data: {
+                    sahibkar_id: sahibkarId,
+                    mehsul_id: id,
+                    qiymet_novu: pf.nov,
+                    kohne_qiymet: evvelki || null,
+                    yeni_qiymet: yeni,
+                    istifadeci_id: istifadeci_id,
+                  },
+                });
+              } catch (e) {
+                console.warn("[qiymet_tarixce] skipped:", e);
+              }
+            }
           }
         }
       } else {
@@ -268,7 +326,7 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
       };
     } catch (e) {
       console.error("[saveProduct]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      return { ok: false, error: safeUserMessage(e, "Məhsul yadda saxlanmadı") };
     }
   });
 }
@@ -286,28 +344,100 @@ function serializeForJson<T extends Record<string, unknown>>(o: T | null | undef
   return out;
 }
 
-export async function deleteProduct(id: string): Promise<ActionResult> {
+export async function deleteProduct(id: string, force?: boolean): Promise<ActionResult> {
   const permCheck = await requireAnbarActionPerm("mehsul.sil");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   return withTenant(async () => {
     try {
-      const { sahibkarId } = requireTenant();
+      const { sahibkarId, istifadeciId } = requireTenant();
       const snapshot = await prisma.mehsullar.findUnique({
         where: { id },
         select: { ad: true, kod: true, barkod: true, satis_qiymeti: true, alish_qiymeti: true, aktiv: true },
       });
-      await prisma.mehsullar.update({ where: { id }, data: { aktiv: false } });
+      if (!snapshot) return { ok: false, error: "Məhsul tapılmadı" };
+
+      // 🛡️ Stok qalığı + açıq satış/alış yoxlaması — strukturlu blocker cavabı
+      const stockRows = await prisma.$queryRaw<Array<{ toplam: number }>>`
+        SELECT COALESCE(SUM(miqdar), 0)::float AS toplam
+        FROM stok
+        WHERE mehsul_id = ${id}::uuid AND sahibkar_id = ${sahibkarId}::uuid
+      `;
+      const toplamStok = Number(stockRows[0]?.toplam ?? 0);
+      if (toplamStok > 0 && !force) {
+        const { findProductBlockers } = await import("@/lib/blockers/find-product-blockers");
+        const blockers = await findProductBlockers(id, sahibkarId);
+        return {
+          ok: false,
+          error: `Bu məhsulun stok qalığı var (${toplamStok.toFixed(2)} ədəd) və ya açıq sənədləri var.`,
+          blockers,
+          hint: "Stoku boşaltmaq üçün aşağıdakı sənədləri açın və lazımi əməliyyatı edin. Force silmək üçün məsul şəxsdən icazə alın.",
+        };
+      }
+
+      // Soft delete — STANDART pattern (deleted_at + aktiv=false)
+      await prisma.mehsullar.update({
+        where: { id },
+        data: {
+          aktiv: false,
+          deleted_at: new Date(),
+          deleted_by: istifadeciId,
+          delete_reason: force ? "Stok qalıqlı silmə (force)" : "Standart silmə",
+        },
+      });
       await audit("sil", "mehsul", id, {
         evvelki_data: serializeForJson(snapshot),
-        sebeb: "soft delete (aktiv=false)",
+        yeni_data: { stok_qaligi: toplamStok, force: !!force },
+        sebeb: force ? "Force soft delete (stok qaliqi var idi)" : "Standart soft delete",
       });
       revalidateTag(`ref:${sahibkarId}:mehsullar`, "max");
       revalidateTag(`dashboard:${sahibkarId}`, "max");
       return { ok: true };
     } catch (e) {
       console.error("[deleteProduct]", e);
-      return { ok: false, error: "Silinmədi" };
+      return { ok: false, error: safeUserMessage(e, "Məhsul silinmədi") };
+    }
+  });
+}
+
+/**
+ * Silinmiş məhsulu bərpa et — icazə + stok təhlükəsizliyi.
+ */
+export async function restoreProduct(id: string): Promise<ActionResult> {
+  const { canRestoreRecords } = await import("@/lib/soft-delete/record-filter");
+  const can = await canRestoreRecords();
+  if (!can) return { ok: false, error: "Bərpa üçün icazə yoxdur (qeyd.berpa)" };
+
+  return withTenant(async () => {
+    try {
+      const { sahibkarId, istifadeciId } = requireTenant();
+      const m = await prisma.mehsullar.findUnique({
+        where: { id },
+        select: { ad: true, deleted_at: true },
+      });
+      if (!m) return { ok: false, error: "Məhsul tapılmadı" };
+      if (!m.deleted_at) return { ok: false, error: "Bu məhsul silinməyib" };
+
+      await prisma.mehsullar.update({
+        where: { id },
+        data: {
+          aktiv: true,
+          deleted_at: null,
+          restored_at: new Date(),
+          restored_by: istifadeciId,
+        },
+      });
+      try {
+        await audit("yenile", "mehsul", id, {
+          yeni_data: { restored: true, ad: m.ad },
+          sebeb: "Silinmiş məhsul bərpa olundu",
+        });
+      } catch { /* non-fatal */ }
+      revalidateTag(`ref:${sahibkarId}:mehsullar`, "max");
+      return { ok: true };
+    } catch (e) {
+      console.error("[restoreProduct]", e);
+      return { ok: false, error: safeUserMessage(e, "Bərpa alınmadı") };
     }
   });
 }
@@ -359,6 +489,13 @@ export async function bulkUpdateProducts(
   const parsed = BulkOpSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
+  // Bulk price/discount → qiymet.idare, digər → mehsul.idare
+  const isPriceOp = d.op === "qiymet_faiz" || d.op === "endirim_faiz";
+  const { requireAnbarActionPerm } = await import("./access-guard");
+  const permCheck = await requireAnbarActionPerm(isPriceOp ? ["qiymet.idare", "mehsul.idare"] : ["mehsul.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  // 1000 məhsul cap
+  if (d.ids.length > 1000) return { ok: false, error: "Bir dəfəyə 1000-dən çox məhsul ola bilməz" };
   return withTenant(async () => {
     try {
       let count = 0;
@@ -431,7 +568,7 @@ export async function bulkUpdateProducts(
       return { ok: true, data: { count } };
     } catch (e) {
       console.error("[bulkUpdateProducts]", e);
-      return { ok: false, error: "Yenilənmədi" };
+      return { ok: false, error: safeUserMessage(e, "Məhsullar yenilənmədi") };
     }
   });
 }
@@ -440,7 +577,10 @@ const BrandSchema = z.object({
   id: z.coerce.number().int().positive().optional(),
   ad: z.string().min(1).max(100),
   qeyd: z.string().max(2000).optional().or(z.literal("")),
-  logo_url: z.string().url().optional().or(z.literal("")),
+  logo_url: z.preprocess(
+    (v) => (typeof v === "string" ? v.trim() : v ?? ""),
+    z.string().max(2000).optional().default(""),
+  ),
   aktiv: z.coerce.boolean().default(true),
 });
 
@@ -477,23 +617,39 @@ export async function saveBrand(input: FormData): Promise<ActionResult<{ id: num
       return { ok: true, data: { id } };
     } catch (e) {
       console.error("[saveBrand]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      return { ok: false, error: safeUserMessage(e, "Marka yadda saxlanmadı") };
     }
   });
 }
 
-export async function deleteBrand(id: number): Promise<ActionResult> {
+export async function deleteBrand(id: number, force?: boolean): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
       const before = await prisma.markalar.findUnique({ where: { id }, select: { ad: true, aktiv: true } });
+      if (!before) return { ok: false, error: "Marka tapılmadı" };
+
+      // 🛑 Aktiv məhsulu varsa — blocker
+      if (!force) {
+        const { findBrandBlockers } = await import("@/lib/blockers/find-brand-blockers");
+        const blockers = await findBrandBlockers(id, sahibkarId);
+        if (blockers.length > 0) {
+          return {
+            ok: false,
+            error: `${before.ad} markasında aktiv məhsullar var.`,
+            blockers,
+            hint: "Məhsulları başqa markaya köçürün və ya əvvəlcə arxivləyin.",
+          };
+        }
+      }
+
       await prisma.markalar.update({ where: { id }, data: { aktiv: false } });
       await audit("sil", "marka", id, { evvelki_data: before as Record<string, unknown> | null, sebeb: "soft delete" });
       revalidateTag(`ref:${sahibkarId}:brands`, "max");
       return { ok: true };
     } catch (e) {
       console.error("[deleteBrand]", e);
-      return { ok: false, error: "Silinmədi" };
+      return { ok: false, error: safeUserMessage(e, "Marka silinmədi") };
     }
   });
 }

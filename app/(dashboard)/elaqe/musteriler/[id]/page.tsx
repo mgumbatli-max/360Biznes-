@@ -25,6 +25,16 @@ import {
   Package,
   Layers,
   FileText,
+  Copy,
+  MessageSquare,
+  Plus,
+  Sparkles,
+  Building2,
+  Globe,
+  CreditCard,
+  Banknote,
+  ReceiptText,
+  CalendarPlus,
 } from "lucide-react";
 import { getServisHistoryForCustomer } from "@/features/servis/queries";
 import { SERVIS_STATUS_LABELS } from "@/features/servis/types";
@@ -32,7 +42,10 @@ import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabsUrlSync } from "@/components/ui/tabs-url-sync";
+import { TimelinePeekButton } from "@/features/elaqe/components/timeline-peek-drawer";
+import { CustomerJourneyClient } from "@/features/elaqe/components/customer-journey-client";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { MenecerAssignInline } from "@/features/elaqe/components/menecer-assign-inline";
 import { PaymentDialog } from "@/features/elaqe/components/payment-dialog";
@@ -64,6 +77,7 @@ import {
   getContactDocuments,
 } from "@/features/elaqe/detail-queries";
 import { SenedTab } from "@/features/elaqe/components/sened-tab";
+import { CopyInlineBtn } from "@/features/elaqe/components/copy-inline-btn";
 import { ObjectTasksTab } from "@/features/tapshiriqlar/components/object-tasks-tab";
 import { formatMoney, formatDate } from "@/lib/utils";
 
@@ -104,45 +118,174 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
   const unpaid = stats.sales_total - stats.sales_paid;
   const supplierDebt = stats.purchase_total - stats.purchase_paid;
   const initials = c.ad.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
-  const borc = Number(c.borc ?? 0);
+  // SOURCE OF TRUTH: aktiv sənədlərdən hesablanmış real qaliq.
+  // `kontragentler.alacaq` / `borc` cache field-ləridir, yenidən hesablanır
+  // hər mutate-da. Burada birbaşa real datadan oxuyuruq ki, drift olmasın.
+  const customerBorc = isCustomer ? Math.max(0, unpaid) : 0;
+  const supplierBorcVal = isSupplier ? Math.max(0, supplierDebt) : 0;
+  const borc = isCustomer ? customerBorc : supplierBorcVal;
+  const avans = Number(c.avans ?? 0);
   const avgTicket = stats.sales_count > 0 ? stats.sales_total / stats.sales_count : 0;
+
+  // Hero gradient (müştəri vs təchizatçı vs hər ikisi)
+  const heroGradient = isCustomer && !isSupplier
+    ? "from-emerald-500/15 via-sky-500/10 to-violet-500/5"
+    : !isCustomer && isSupplier
+      ? "from-rose-500/15 via-orange-500/10 to-amber-500/5"
+      : "from-violet-500/15 via-fuchsia-500/10 to-rose-500/5";
+  const avatarGradient = isCustomer && !isSupplier
+    ? "from-emerald-500 to-sky-500"
+    : !isCustomer && isSupplier
+      ? "from-rose-500 to-orange-500"
+      : "from-violet-500 to-fuchsia-500";
+  const phoneDigits = (c.telefon ?? "").replace(/[^0-9+]/g, "");
+  const waDigits = phoneDigits.replace(/[^0-9]/g, "");
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <BackButton fallback={isCustomer ? "/elaqe/musteriler" : "/elaqe/techizatcilar"} className="mt-1" />
-          <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-secondary text-base font-semibold">
-              {initials}
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">{c.ad}</h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                <Badge variant="outline">
-                  {c.nov === "her_ikisi" ? "Hər ikisi" : c.nov === "musteri" ? "Müştəri" : "Təchizatçı"}
-                </Badge>
-                {c.qiymet_tipi && c.qiymet_tipi !== "adi" && (
-                  <Badge variant="outline" className="text-[10px] capitalize">{c.qiymet_tipi}</Badge>
-                )}
-                <MenecerAssignInline
-                  kontragentId={c.id}
-                  currentManagerId={c.menecer_id ?? null}
-                  currentManagerAd={c.istifadeciler?.ad_soyad ?? null}
-                  managers={managers}
-                />
-                {!c.aktiv && <Badge variant="outline" className="text-[10px]">passiv</Badge>}
-                {c.qara_siyahi && <Badge variant="outline" className="text-[10px] text-danger">qara siyahı</Badge>}
+      {/* === HERO HEADER === */}
+      <section className={`relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${heroGradient} p-5 shadow-sm`}>
+        {/* Background decoration */}
+        <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-white/5 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-white/5 blur-3xl" />
+
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <BackButton fallback={isCustomer ? "/elaqe/musteriler" : "/elaqe/techizatcilar"} className="mt-1" />
+            <div className="flex items-start gap-4">
+              {/* Avatar */}
+              <div className="relative">
+                <div className={`grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br ${avatarGradient} text-xl font-bold text-white shadow-lg`}>
+                  {initials}
+                </div>
                 {isCustomer && (
-                  <Suspense fallback={null}>
-                    <HealthRiskBadge id={id} />
-                  </Suspense>
+                  <div className="absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full border-2 border-background bg-background shadow-md">
+                    <Suspense fallback={<Heart className="h-3 w-3 text-muted-foreground" />}>
+                      <HealthScoreIcon id={id} />
+                    </Suspense>
+                  </div>
                 )}
+              </div>
+
+              <div className="space-y-1.5">
+                <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-2xl font-bold tracking-tight text-transparent md:text-3xl">
+                  {c.ad}
+                </h1>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <Badge variant="outline" className="border-foreground/20 bg-background/60 backdrop-blur-sm">
+                    {c.nov === "her_ikisi" ? "🤝 Hər ikisi" : c.nov === "musteri" ? "👤 Müştəri" : "🚛 Təchizatçı"}
+                  </Badge>
+                  {c.qiymet_tipi && c.qiymet_tipi !== "adi" && (
+                    <Badge variant="outline" className="border-violet-500/30 bg-violet-500/10 text-violet-600 capitalize dark:text-violet-300">
+                      <Star className="h-3 w-3" /> {c.qiymet_tipi}
+                    </Badge>
+                  )}
+                  <MenecerAssignInline
+                    kontragentId={c.id}
+                    currentManagerId={c.menecer_id ?? null}
+                    currentManagerAd={c.istifadeciler?.ad_soyad ?? null}
+                    managers={managers}
+                  />
+                  {!c.aktiv && (
+                    <Badge variant="outline" className="border-muted-foreground/30 bg-muted-foreground/10 text-muted-foreground">
+                      passiv
+                    </Badge>
+                  )}
+                  {c.qara_siyahi && (
+                    <Badge variant="outline" className="border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-300">
+                      <AlertTriangle className="h-3 w-3" /> qara siyahı
+                    </Badge>
+                  )}
+                  {isCustomer && (
+                    <Suspense fallback={null}>
+                      <HealthRiskBadge id={id} />
+                    </Suspense>
+                  )}
+                </div>
+
+                {/* Quick info row — modern compact */}
+                <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  {c.telefon && (
+                    <span className="inline-flex items-center gap-1">
+                      <Phone className="h-3 w-3" /> {c.telefon}
+                    </span>
+                  )}
+                  {c.email && (
+                    <span className="inline-flex items-center gap-1">
+                      <Mail className="h-3 w-3" /> {c.email}
+                    </span>
+                  )}
+                  {c.sheher && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="h-3 w-3" /> {[c.sheher, c.olke].filter(Boolean).join(", ")}
+                    </span>
+                  )}
+                  {c.voen && (
+                    <span className="inline-flex items-center gap-1 font-mono">
+                      <Building2 className="h-3 w-3" /> VÖEN: {c.voen}
+                    </span>
+                  )}
+                  {c.son_temas && (
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarClock className="h-3 w-3" /> Son əlaqə: {formatDate(c.son_temas)}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+
+        {/* === QUICK ACTION BAR === */}
+        <div className="relative mt-5 flex flex-wrap items-center gap-1.5">
+          {/* COMMUNICATION */}
+          {phoneDigits && (
+            <a
+              href={`tel:${phoneDigits}`}
+              title="Zəng et"
+              className="group inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-600 transition hover:scale-105 hover:bg-emerald-500/15 dark:text-emerald-300"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Zəng</span>
+            </a>
+          )}
+          {waDigits && (
+            <a
+              href={`https://wa.me/${waDigits}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="WhatsApp"
+              className="group inline-flex h-9 items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/10 px-3 text-xs font-medium text-green-600 transition hover:scale-105 hover:bg-green-500/15 dark:text-green-300"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">WhatsApp</span>
+            </a>
+          )}
+          {c.email && (
+            <a
+              href={`mailto:${c.email}`}
+              title="Email göndər"
+              className="group inline-flex h-9 items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 text-xs font-medium text-sky-600 transition hover:scale-105 hover:bg-sky-500/15 dark:text-sky-300"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Email</span>
+            </a>
+          )}
+          {phoneDigits && (
+            <a
+              href={`sms:${phoneDigits}`}
+              title="SMS"
+              className="group inline-flex h-9 items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 text-xs font-medium text-violet-600 transition hover:scale-105 hover:bg-violet-500/15 dark:text-violet-300"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">SMS</span>
+            </a>
+          )}
+
+          {/* Vertical divider */}
+          <div className="mx-1 hidden h-6 w-px bg-border md:block" />
+
+          {/* BUSINESS ACTIONS */}
           {borc > 0 && (
             <NisyePaymentQuick
               musteriId={c.id}
@@ -154,7 +297,30 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             />
           )}
           {borc > 0 && <PaymentDialog kontragentId={c.id} ad={c.ad} maxAmount={borc} variant="button" />}
+
+          {isCustomer && (
+            <Link
+              href={`/ticaret/satis-yeni?musteri=${c.id}`}
+              title="Yeni satış"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-semibold text-primary transition hover:scale-105 hover:bg-primary/15"
+            >
+              <ReceiptText className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Yeni satış</span>
+            </Link>
+          )}
+
           <FollowupDialog contacts={[]} defaultKontragentId={c.id} />
+
+          <Link
+            href={isSupplier && !isCustomer
+              ? `/elaqe/techizatcilar/${c.id}/hesab-cixaris`
+              : `/elaqe/musteriler/${c.id}/hesab-cixaris`}
+            title="Hesab çıxarışı"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background/80 px-3 text-xs font-medium backdrop-blur-sm transition hover:scale-105 hover:bg-secondary"
+          >
+            <FileText className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Hesab çıxarışı</span>
+          </Link>
+
           <ContactDialog
             defaultNov={c.nov === "techizatci" ? "techizatci" : "musteri"}
             initial={{
@@ -182,7 +348,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             managers={managers}
           />
         </div>
-      </header>
+      </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
@@ -252,7 +418,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         </Suspense>
       )}
 
-      <Tabs defaultValue="umumi">
+      <TabsUrlSync defaultValue="umumi">
         <TabsList className="w-full overflow-x-auto">
           <TabsTrigger value="umumi">Ümumi</TabsTrigger>
           {isCustomer && <TabsTrigger value="satislar">Satışlar ({stats.sales_count})</TabsTrigger>}
@@ -271,59 +437,128 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         </TabsList>
 
         <TabsContent value="umumi" className="pt-3">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Card className="glass">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Əlaqə</CardTitle>
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            {/* === ƏLAQƏ MƏLUMATLARI === */}
+            <Card className="glass overflow-hidden border-sky-500/20 lg:col-span-2">
+              <CardHeader className="pb-3 bg-gradient-to-r from-sky-500/5 to-transparent">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <div className="grid h-7 w-7 place-items-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-300">
+                    <Phone className="h-3.5 w-3.5" />
+                  </div>
+                  Əlaqə məlumatları
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
+              <CardContent className="grid gap-2 sm:grid-cols-2">
                 {c.telefon && (
-                  <Row icon={Phone} value={c.telefon}>
-                    <a href={`tel:${c.telefon}`} className="ml-2 text-xs text-primary-light hover:underline">Zəng</a>
-                    <a
-                      href={`https://wa.me/${c.telefon.replace(/\D+/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-2 text-xs text-success hover:underline"
-                    >
-                      <MessageCircle className="inline h-3 w-3" /> WhatsApp
-                    </a>
-                  </Row>
+                  <InfoRow
+                    icon={Phone}
+                    label="Telefon"
+                    value={c.telefon}
+                    actions={[
+                      { href: `tel:${phoneDigits}`, label: "Zəng", icon: Phone, tone: "emerald" },
+                      ...(waDigits ? [{ href: `https://wa.me/${waDigits}`, label: "WA", icon: MessageCircle, tone: "green" as const, target: "_blank" }] : []),
+                    ]}
+                    copyable
+                  />
                 )}
-                {c.telefon2 && <Row icon={Phone} value={c.telefon2} />}
+                {c.telefon2 && (
+                  <InfoRow
+                    icon={Phone}
+                    label="Telefon 2"
+                    value={c.telefon2}
+                    actions={[{ href: `tel:${c.telefon2.replace(/[^0-9+]/g, "")}`, label: "Zəng", icon: Phone, tone: "emerald" }]}
+                    copyable
+                  />
+                )}
                 {c.email && (
-                  <Row icon={Mail} value={c.email}>
-                    <a href={`mailto:${c.email}`} className="ml-2 text-xs text-primary-light hover:underline">Email yaz</a>
-                  </Row>
+                  <InfoRow
+                    icon={Mail}
+                    label="Email"
+                    value={c.email}
+                    actions={[{ href: `mailto:${c.email}`, label: "Yaz", icon: Mail, tone: "sky" }]}
+                    copyable
+                  />
                 )}
-                {c.voen && <Row label="VÖEN" value={c.voen} mono />}
-                {c.fin_kod && <Row label="FİN" value={c.fin_kod} mono />}
-                {c.sirket_adi && <Row label="Şirkət" value={c.sirket_adi} />}
-                {(c.sheher || c.olke) && <Row icon={MapPin} value={[c.sheher, c.olke].filter(Boolean).join(", ")} />}
-                {c.unvan && <Row icon={MapPin} value={c.unvan} />}
+                {c.voen && <InfoRow icon={Building2} label="VÖEN" value={c.voen} mono copyable />}
+                {c.fin_kod && <InfoRow icon={Building2} label="FİN" value={c.fin_kod} mono copyable />}
+                {c.sirket_adi && <InfoRow icon={Building2} label="Şirkət" value={c.sirket_adi} />}
+                {(c.sheher || c.olke) && (
+                  <InfoRow
+                    icon={MapPin}
+                    label={c.olke ?? "Şəhər"}
+                    value={[c.sheher, c.olke].filter(Boolean).join(", ")}
+                  />
+                )}
+                {c.unvan && <InfoRow icon={MapPin} label="Ünvan" value={c.unvan} copyable />}
                 {c.son_temas && (
-                  <Row icon={CalendarClock} value={`Son əlaqə: ${formatDate(c.son_temas)}`} />
+                  <InfoRow icon={CalendarClock} label="Son əlaqə" value={formatDate(c.son_temas)} />
                 )}
                 {c.yaradildi && (
-                  <div className="border-t border-border/40 pt-2 text-xs text-muted-foreground">
-                    <CalendarClock className="inline h-3 w-3" /> Yaradılıb: {formatDate(c.yaradildi)}
-                  </div>
+                  <InfoRow icon={Sparkles} label="Yaradılıb" value={formatDate(c.yaradildi)} />
                 )}
               </CardContent>
             </Card>
 
-            <Card className="glass">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Maliyyə</CardTitle>
+            {/* === MALİYYƏ MƏLUMATLARI === */}
+            <Card className={`glass overflow-hidden ${borc > 0 ? "border-amber-500/30" : "border-emerald-500/20"}`}>
+              <CardHeader className={`pb-3 ${borc > 0 ? "bg-gradient-to-r from-amber-500/5" : "bg-gradient-to-r from-emerald-500/5"} to-transparent`}>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <div className={`grid h-7 w-7 place-items-center rounded-lg ${borc > 0 ? "bg-amber-500/10 text-amber-600 dark:text-amber-300" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"}`}>
+                    <CircleDollarSign className="h-3.5 w-3.5" />
+                  </div>
+                  Maliyyə
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <Row label="Qiymət tipi" value={c.qiymet_tipi ?? "adi"} />
-                <Row label="Borc limiti" value={c.borc_limiti !== null ? formatMoney(Number(c.borc_limiti)) : "limitsiz"} />
-                <Row label="Borc balansı" value={formatMoney(borc)} />
-                {c.valyuta && <Row label="Valyuta" value={c.valyuta} />}
-                {c.funnel_status && <Row label="Funnel" value={c.funnel_status} />}
+              <CardContent className="space-y-3">
+                {/* Big balance display */}
+                <div className="text-center py-2">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {borc > 0
+                      ? isCustomer
+                        ? "Müştəri borcu"
+                        : "Bizim borcumuz"
+                      : "Borc balansı"}
+                  </div>
+                  <div className={`mt-1 text-3xl font-bold tabular-nums ${borc > 0 ? (isCustomer ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400") : "text-foreground"}`}>
+                    {formatMoney(borc)}
+                  </div>
+                  {avans > 0 && (
+                    <div className="mt-1 text-[11px] text-violet-600 dark:text-violet-400">
+                      Avans: {formatMoney(avans)}
+                    </div>
+                  )}
+                  {borc > 0 && (
+                    <div className="mt-2 flex justify-center gap-1.5">
+                      <NisyePaymentQuick
+                        musteriId={c.id}
+                        ad={c.ad}
+                        borc={borc}
+                        hesablar={quickRefs.hesablar}
+                        openSales={openSales}
+                        variant="gradient"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1.5 border-t border-border/40 pt-3">
+                  <InfoMiniRow label="Qiymət tipi" value={(c.qiymet_tipi ?? "adi").toUpperCase()} />
+                  <InfoMiniRow
+                    label="Kredit limiti"
+                    value={c.borc_limiti !== null ? formatMoney(Number(c.borc_limiti)) : "limitsiz"}
+                    badge={
+                      c.borc_limiti !== null && borc > Number(c.borc_limiti)
+                        ? { text: "AŞIB", tone: "rose" }
+                        : undefined
+                    }
+                  />
+                  {c.valyuta && <InfoMiniRow label="Valyuta" value={c.valyuta} />}
+                  {c.funnel_status && <InfoMiniRow label="Funnel" value={c.funnel_status} />}
+                </div>
+
                 {c.qeyd && (
-                  <div className="border-t border-border/40 pt-2 text-xs whitespace-pre-line text-muted-foreground">
+                  <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-2.5 text-[11px] whitespace-pre-line text-muted-foreground">
+                    <span className="font-semibold text-foreground">📝 Qeyd: </span>
                     {c.qeyd}
                   </div>
                 )}
@@ -365,7 +600,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
         {isCustomer && (
           <TabsContent value="sefer" className="pt-3">
             <Suspense fallback={<CardSkeleton h={400} />}>
-              <SeferTabSection id={id} />
+              <SeferTabSection id={id} customerName={c.ad} />
             </Suspense>
           </TabsContent>
         )}
@@ -403,7 +638,7 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
             <TagsTabSection id={c.id} />
           </Suspense>
         </TabsContent>
-      </Tabs>
+      </TabsUrlSync>
     </div>
   );
 }
@@ -416,6 +651,17 @@ async function HealthRiskBadge({ id }: { id: string }) {
       <AlertTriangle className="h-3 w-3" /> Risk müştəri
     </Badge>
   );
+}
+
+async function HealthScoreIcon({ id }: { id: string }) {
+  const health = await getCustomerHealthScore(id);
+  const cls =
+    health.is_risk
+      ? "text-rose-500"
+      : health.score >= 70
+        ? "text-emerald-500"
+        : "text-amber-500";
+  return <Heart className={`h-3.5 w-3.5 ${cls}`} fill="currentColor" />;
 }
 
 async function Customer360Section({ id }: { id: string }) {
@@ -715,13 +961,104 @@ async function ServisTabSection({ id }: { id: string }) {
 }
 
 async function MaliyyeTabSection({ id }: { id: string }) {
-  const [debtTimeline, finOps] = await Promise.all([
+  const [debtTimeline, finOps, openInvoices] = await Promise.all([
     getContactDebtTimeline(id, 150),
     getContactFinanceOps(id),
+    getOpenSalesForCustomer(id, 100),
   ]);
+
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  const openWithAge = openInvoices.map((s) => {
+    const tarix = s.tarix instanceof Date ? s.tarix : new Date(s.tarix);
+    return { ...s, tarix, gun: Math.max(0, Math.floor((now - tarix.getTime()) / DAY)) };
+  });
+  const totalOpen = openWithAge.reduce((sum, s) => sum + s.qalig, 0);
+  const overdueCount = openWithAge.filter((s) => s.gun >= 30).length;
+
   return (
     <>
+      {/* Açıq qaimələr */}
       <Card className="glass">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-base">Açıq qaimələr ({openWithAge.length})</CardTitle>
+          </div>
+          <div className="text-[10.5px] text-muted-foreground">
+            Cəmi borc: <span className="font-bold tabular-nums text-rose-600">{formatMoney(totalOpen)}</span>
+            {overdueCount > 0 && (
+              <span className="ml-2">· Gecikmiş: <span className="font-semibold text-amber-700">{overdueCount}</span></span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {openWithAge.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Açıq qaimə yoxdur — bütün borc bağlıdır 🎉</p>
+          ) : (
+            <div className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border/40 bg-secondary/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Qaimə №</th>
+                    <th className="px-3 py-2">Tarix</th>
+                    <th className="px-3 py-2 text-right">Cəmi</th>
+                    <th className="px-3 py-2 text-right">Ödənilib</th>
+                    <th className="px-3 py-2 text-right">Qalıq</th>
+                    <th className="px-3 py-2 text-right">Gün</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2 text-right">Əməl</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openWithAge.map((s) => {
+                    const ageTone =
+                      s.gun >= 90 ? "text-rose-600 font-bold" :
+                      s.gun >= 30 ? "text-amber-600 font-semibold" :
+                      "text-muted-foreground";
+                    const odenilmis = s.son_mebleg - s.qalig;
+                    const statusBadge = odenilmis > 0
+                      ? <Badge variant="outline" className="text-[10px] border-amber-500/40 bg-amber-500/10 text-amber-700">Qismən</Badge>
+                      : <Badge variant="outline" className="text-[10px] border-rose-500/40 bg-rose-500/10 text-rose-700">Açıq</Badge>;
+                    return (
+                      <tr key={s.id} className="border-b border-border/30 hover:bg-secondary/30">
+                        <td className="px-3 py-2 font-mono text-[11px]">
+                          <Link href={`/ticaret/satislar/${s.id}`} className="hover:text-primary">{s.nomre}</Link>
+                        </td>
+                        <td className="px-3 py-2 text-xs">{formatDate(s.tarix)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatMoney(s.son_mebleg)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-emerald-600">{formatMoney(odenilmis)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums font-bold text-rose-600">{formatMoney(s.qalig)}</td>
+                        <td className={`px-3 py-2 text-right text-xs tabular-nums ${ageTone}`}>{s.gun}</td>
+                        <td className="px-3 py-2">{statusBadge}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Link
+                              href={`/ticaret/satislar/${s.id}`}
+                              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-secondary"
+                            >
+                              Bax
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot className="border-t border-border/40 bg-secondary/30 text-xs">
+                  <tr>
+                    <td colSpan={4} className="px-3 py-2 font-semibold">Cəmi açıq ({openWithAge.length})</td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums text-rose-600">{formatMoney(totalOpen)}</td>
+                    <td colSpan={3}></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="glass mt-3">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Borc / Ödəniş xronologiyası</CardTitle>
         </CardHeader>
@@ -810,7 +1147,33 @@ async function MaliyyeTabSection({ id }: { id: string }) {
   );
 }
 
-async function SeferTabSection({ id }: { id: string }) {
+async function SeferTabSection({ id, customerName }: { id: string; customerName: string }) {
+  const journey = await getCustomerJourney(id, 500);
+  // Tarixləri ISO string-ə çevir client-ə ötür
+  const items = journey.map((j) => ({
+    ts: (j.ts instanceof Date ? j.ts : new Date(j.ts)).toISOString(),
+    kind: j.kind,
+    title: j.title,
+    subtitle: j.subtitle,
+    amount: j.amount,
+    ref_id: j.ref_id,
+    meta: j.meta,
+  }));
+  return (
+    <Card className="glass">
+      <CardHeader className="pb-2 flex flex-row items-center gap-2">
+        <RouteIcon className="h-4 w-4 text-muted-foreground" />
+        <CardTitle className="text-base">Müştəri səfəri</CardTitle>
+      </CardHeader>
+      <CardContent className="p-3">
+        <CustomerJourneyClient customerName={customerName} items={items} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// Köhnə dolu UI — istinad üçün, artıq client komponentə köçdü
+async function _OldSeferTabSection_unused({ id }: { id: string }) {
   const journey = await getCustomerJourney(id, 200);
   return (
     <Card className="glass">
@@ -828,31 +1191,89 @@ async function SeferTabSection({ id }: { id: string }) {
               {journey.map((e, i) => {
                 const meta = JOURNEY_META[e.kind];
                 const Icon = meta.icon;
+                const m = e.meta;
+                const href = m?.href ?? (e.kind === "sale" && e.ref_id ? `/ticaret/satislar/${e.ref_id}` : null);
+                const isPayment = e.kind === "payment_in" || e.kind === "payment_out";
+                const isSale = e.kind === "sale";
                 return (
                   <li key={`${e.kind}-${e.ref_id ?? i}-${i}`} className="relative flex items-start gap-3 pl-1">
                     <div className={`grid h-7 w-7 flex-shrink-0 place-items-center rounded-full border ${meta.cls}`}>
                       <Icon className="h-3.5 w-3.5" />
                     </div>
                     <div className="min-w-0 flex-1 pt-0.5">
-                      <div className="flex items-center gap-2 text-sm">
-                        {e.kind === "sale" && e.ref_id ? (
-                          <Link href={`/ticaret/satislar/${e.ref_id}`} className="font-medium hover:text-primary-light">
-                            {e.title}
-                          </Link>
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        {href ? (
+                          <Link href={href} className="font-medium hover:text-primary-light">{e.title}</Link>
                         ) : (
                           <span className="font-medium">{e.title}</span>
                         )}
                         <Badge variant="outline" className={`text-[10px] ${meta.cls}`}>{meta.label}</Badge>
+                        {/* Satış üçün status badge */}
+                        {isSale && m && m.qalig != null && m.qalig > 0.01 && (
+                          <Badge variant="outline" className="text-[10px] border-rose-500/40 bg-rose-500/10 text-rose-700">
+                            Qalıq: {formatMoney(m.qalig)}
+                          </Badge>
+                        )}
+                        {isSale && m && m.qalig != null && m.qalig <= 0.01 && Number(m.odenilmis ?? 0) > 0 && (
+                          <Badge variant="outline" className="text-[10px] border-emerald-500/40 bg-emerald-500/10 text-emerald-700">
+                            Tam ödənilib
+                          </Badge>
+                        )}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">
                         {formatDate(e.ts)}{e.subtitle ? ` · ${e.subtitle}` : ""}
                       </div>
+                      {/* Satış məhsulları */}
+                      {isSale && m?.products && m.products.length > 0 && (
+                        <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
+                          📦 {m.products.slice(0, 3).join(", ")}
+                        </div>
+                      )}
+                      {/* Ödəniş bağlandığı qaimələr */}
+                      {isPayment && m?.bound_invoices && m.bound_invoices.length > 0 && (
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px]">
+                          <span className="text-muted-foreground">Bağlandı:</span>
+                          {m.bound_invoices.slice(0, 3).map((nomre, j) => (
+                            <span key={j} className="rounded border border-emerald-300 bg-emerald-50 px-1 py-0.5 font-mono font-medium text-emerald-700">
+                              {nomre}
+                            </span>
+                          ))}
+                          {m.bound_invoices.length > 3 && (
+                            <span className="text-muted-foreground">+{m.bound_invoices.length - 3}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {e.amount !== null && (
-                      <div className="text-right text-sm font-semibold tabular-nums">
-                        {formatMoney(e.amount)}
-                      </div>
-                    )}
+                    <div className="flex flex-col items-end gap-1">
+                      {e.amount !== null && (
+                        <div className={`text-right text-sm font-semibold tabular-nums ${
+                          isPayment
+                            ? (e.kind === "payment_in" ? "text-emerald-600" : "text-rose-600")
+                            : isSale && m?.qalig != null && m.qalig > 0.01
+                              ? "text-rose-600"
+                              : "text-foreground"
+                        }`}>
+                          {isPayment && e.kind === "payment_in" ? "+" : ""}
+                          {isPayment && e.kind === "payment_out" ? "-" : ""}
+                          {formatMoney(e.amount)}
+                        </div>
+                      )}
+                      {/* Action — peek drawer (yeni səhifə yox, eyni səhifədə qısa baxış) */}
+                      {(e.kind === "sale" || e.kind === "payment_in" || e.kind === "payment_out" || e.kind === "return" || e.kind === "servis") && e.ref_id ? (
+                        <TimelinePeekButton
+                          kind={e.kind}
+                          refId={e.ref_id}
+                          fullPageHref={href ?? null}
+                        />
+                      ) : href ? (
+                        <Link
+                          href={href}
+                          className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-secondary"
+                        >
+                          Bax
+                        </Link>
+                      ) : null}
+                    </div>
                   </li>
                 );
               })}
@@ -983,6 +1404,97 @@ function Row({
       {children}
     </div>
   );
+}
+
+type ActionTone = "emerald" | "green" | "sky" | "violet";
+
+function InfoRow({
+  icon: Icon,
+  label,
+  value,
+  actions,
+  mono,
+  copyable,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  actions?: Array<{ href: string; label: string; icon: React.ComponentType<{ className?: string }>; tone: ActionTone; target?: string }>;
+  mono?: boolean;
+  copyable?: boolean;
+}) {
+  const toneCls: Record<ActionTone, string> = {
+    emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15 dark:text-emerald-300",
+    green: "border-green-500/30 bg-green-500/10 text-green-600 hover:bg-green-500/15 dark:text-green-300",
+    sky: "border-sky-500/30 bg-sky-500/10 text-sky-600 hover:bg-sky-500/15 dark:text-sky-300",
+    violet: "border-violet-500/30 bg-violet-500/10 text-violet-600 hover:bg-violet-500/15 dark:text-violet-300",
+  };
+  return (
+    <div className="group flex items-start gap-2.5 rounded-lg border border-border/40 bg-background/40 p-2 hover:border-border/80 hover:bg-background/80">
+      <div className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-md bg-secondary/60 text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className={`mt-0.5 truncate text-xs font-medium text-foreground ${mono ? "font-mono" : ""}`}>
+          {value}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+        {actions?.map((a) => {
+          const A = a.icon;
+          return (
+            <a
+              key={a.label}
+              href={a.href}
+              target={a.target}
+              rel={a.target === "_blank" ? "noopener noreferrer" : undefined}
+              title={a.label}
+              className={`inline-flex h-6 w-6 items-center justify-center rounded-md border ${toneCls[a.tone]} transition hover:scale-110`}
+            >
+              <A className="h-3 w-3" />
+            </a>
+          );
+        })}
+        {copyable && <CopyValueButton value={value} />}
+      </div>
+    </div>
+  );
+}
+
+function InfoMiniRow({
+  label,
+  value,
+  badge,
+}: {
+  label: string;
+  value: string;
+  badge?: { text: string; tone: "rose" | "amber" | "emerald" };
+}) {
+  const badgeCls = badge
+    ? {
+        rose: "border-rose-500/40 bg-rose-500/10 text-rose-600",
+        amber: "border-amber-500/40 bg-amber-500/10 text-amber-600",
+        emerald: "border-emerald-500/40 bg-emerald-500/10 text-emerald-600",
+      }[badge.tone]
+    : "";
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium tabular-nums text-foreground">{value}</span>
+        {badge && (
+          <Badge variant="outline" className={`px-1 py-0 text-[9px] ${badgeCls}`}>
+            {badge.text}
+          </Badge>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CopyValueButton({ value }: { value: string }) {
+  return <CopyInlineBtn value={value} />;
 }
 
 const KPI_TONE: Record<string, string> = {

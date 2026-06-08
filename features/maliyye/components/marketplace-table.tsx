@@ -7,8 +7,12 @@ import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { formatDate, formatMoney } from "@/lib/utils";
 import type { MarketplacePaymentRow } from "../marketplace-queries";
+import { PayoutAcceptDialog } from "./payout-accept-dialog";
 
-type Props = { items: MarketplacePaymentRow[] };
+type Props = {
+  items: MarketplacePaymentRow[];
+  accountOptions?: Array<{ id: string; ad: string; nov: string }>;
+};
 
 const STORAGE_KEY = "maliyye-marketplace-cols-v1";
 
@@ -52,7 +56,7 @@ const DEFAULT_VISIBLE: Record<string, boolean> = {
 
 type SortKey = "platforma" | "donem" | "gozlenen" | "banka" | "ferq" | "status";
 
-export function MarketplaceTable({ items }: Props) {
+export function MarketplaceTable({ items, accountOptions = [] }: Props) {
   useEffect(() => {
     try {
       if (!window.localStorage.getItem(STORAGE_KEY)) {
@@ -160,7 +164,18 @@ export function MarketplaceTable({ items }: Props) {
                 hesab: <td key="hesab" className="px-3 py-2.5 text-xs">{m.hesab_ad ?? <span className="text-muted-foreground">—</span>}</td>,
                 status: (
                   <td key="status" className="px-3 py-2.5">
-                    <Badge variant="outline" className={`text-[10px] ${status.cls}`}>{status.ad}</Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className={`text-[10px] ${status.cls}`}>{status.ad}</Badge>
+                      {m.status === "gozleyir" && accountOptions.length > 0 && (
+                        <PayoutAcceptDialog
+                          payoutId={m.id}
+                          platforma={m.platforma}
+                          gozlenen={Number(m.gozlenen)}
+                          defaultHesabId={m.hesab_id}
+                          accountOptions={accountOptions}
+                        />
+                      )}
+                    </div>
                   </td>
                 ),
                 qeyd: (

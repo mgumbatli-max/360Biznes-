@@ -81,7 +81,7 @@ export const WEBHOOK_EVENTS: WebhookEvent[] = [
     ad: "Alış yaradıldı",
     modul: "Alış",
     icon: Truck,
-    tesvir: "Yeni alış sifarişi yaradıldıqda",
+    tesvir: "Yeni alış qaiməsi yaradıldıqda",
     ne_vaxt: "Tədarükçüdən mal qəbulu yaradıldıqda",
     payload_misal: {
       event: "purchase.created",

@@ -34,7 +34,7 @@ import { getPlSummary, getMonthlyPl12 } from "@/features/hesabatlar/maliyye-quer
 import { getStockCounters } from "@/features/hesabatlar/stok-queries";
 import { getNewReturning, getDebtBuckets } from "@/features/hesabatlar/musteri-queries";
 import { getDailyCashFlow30, getCashFlowSummary30 } from "@/features/hesabatlar/pul-queries";
-import { buildAiInsights } from "@/features/hesabatlar/ai-insights";
+import { buildAiInsightsCached as buildAiInsights } from "@/features/hesabatlar/ai-insights";
 import { thisMonthRange, lastMonthRange } from "@/features/hesabatlar/shared";
 import { formatMoney, formatNumber, cn } from "@/lib/utils";
 

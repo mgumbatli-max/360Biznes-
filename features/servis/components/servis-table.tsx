@@ -37,6 +37,8 @@ import {
 } from "../types";
 import { formatMoney } from "@/lib/utils";
 import { RejectReasonDialog } from "./reject-reason-dialog";
+import { ServisStatusBadge, ServisPriorityBadge } from "./servis-status-badge";
+import { RowIconButton, RowIconGroup } from "@/features/shared/row-icon-button";
 
 const NEXT_STAGES: Record<string, string[]> = {
   qebul_edildi: ["diaqnostikada", "redd_edildi"],
@@ -458,7 +460,7 @@ function ServisRow({
       case "status":
         return (
           <td key={key} className="px-3 py-2.5 align-top">
-            <Badge variant="outline" className={status.cls}>{status.label}</Badge>
+            <ServisStatusBadge value={row.status} />
             {overdue && (
               <div className="mt-1 flex items-center gap-1 text-[10px] text-rose-400">
                 <AlertTriangle className="h-3 w-3" /> Gecikib
@@ -469,7 +471,7 @@ function ServisRow({
       case "prioritet":
         return (
           <td key={key} className="px-3 py-2.5 align-top">
-            <Badge variant="outline" className={prio.cls}>{prio.label}</Badge>
+            <ServisPriorityBadge value={row.prioritet} />
           </td>
         );
       case "texniki":
@@ -545,7 +547,8 @@ function ServisRow({
             className="px-3 py-2.5 align-top text-right"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-end gap-0.5">
+            <div className="flex items-center justify-end gap-1.5">
+              <RowIconGroup>
               <Button
                 size="icon-sm"
                 variant="ghost"
@@ -590,14 +593,17 @@ function ServisRow({
               <Button size="icon-sm" variant="ghost" onClick={sendSms} disabled={pending} title="SMS göndər">
                 <MessageSquare className="h-3.5 w-3.5" />
               </Button>
-              <Link
-                href={`/servis/${row.id}/print`}
-                target="_blank"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+              <RowIconButton
+                as="a"
+                tone="print"
                 title="Qəbz çap et"
+                href={`/servis/${row.id}/print?auto=1`}
+                target="_blank"
+                rel="noopener"
               >
-                <Printer className="h-3.5 w-3.5" />
-              </Link>
+                <Printer className="h-4 w-4" />
+              </RowIconButton>
+              </RowIconGroup>
               {row.status === "temir_edildi" && (
                 <Button
                   size="icon-sm"
@@ -605,8 +611,9 @@ function ServisRow({
                   onClick={() => changeStatus("musteriye_tehvil")}
                   disabled={pending}
                   title="Yekun et"
+                  className="text-emerald-500 hover:bg-emerald-500/10"
                 >
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  <CheckCircle2 className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>

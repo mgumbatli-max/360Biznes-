@@ -65,6 +65,25 @@ export function AnbarQuickCreate({ filialId }: { filialId: number }) {
             <Label htmlFor="anbar_unvan">Ünvan</Label>
             <Input id="anbar_unvan" name="unvan" maxLength={500} disabled={pending} placeholder="Anbar yeri (opsional)" />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="anbar_nov">Anbar növü</Label>
+            <select
+              id="anbar_nov"
+              name="nov"
+              defaultValue="standart"
+              disabled={pending}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="standart">Standart (satışa açıq)</option>
+              <option value="defekt">Defekt anbarı</option>
+              <option value="karantın">Karantın</option>
+              <option value="servis">Servis anbarı</option>
+              <option value="transit">Transit / yolda</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              Defekt / karantın / transit anbarlardakı mal satışa açıq stoka daxil olmur.
+            </p>
+          </div>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
               İmtina
@@ -83,7 +102,7 @@ export function AnbarQuickCreate({ filialId }: { filialId: number }) {
 export function AnbarEditDelete({
   anbar,
 }: {
-  anbar: { id: number; ad: string; unvan: string | null; aktiv: boolean | null };
+  anbar: { id: number; ad: string; unvan: string | null; aktiv: boolean | null; nov?: string | null };
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -156,6 +175,25 @@ export function AnbarEditDelete({
           <div className="space-y-1.5">
             <Label htmlFor="ae_unvan">Ünvan</Label>
             <Input id="ae_unvan" name="unvan" maxLength={500} defaultValue={anbar.unvan ?? ""} disabled={pending} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ae_nov">Anbar növü</Label>
+            <select
+              id="ae_nov"
+              name="nov"
+              defaultValue={anbar.nov ?? "standart"}
+              disabled={pending}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="standart">Standart (satışa açıq)</option>
+              <option value="defekt">Defekt anbarı</option>
+              <option value="karantın">Karantın</option>
+              <option value="servis">Servis anbarı</option>
+              <option value="transit">Transit / yolda</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground">
+              Defekt / karantın / transit növləri satışa açıq stoka daxil deyil.
+            </p>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input

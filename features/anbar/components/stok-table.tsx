@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
-import { StockAdjustDialog } from "@/features/anbar/components/stock-adjust-dialog";
 import { TransferDialog } from "@/features/anbar/components/transfer-dialog";
 import { formatMoney, formatNumber } from "@/lib/utils";
 import type { StokRow } from "@/features/anbar/stok-queries";
@@ -438,45 +437,27 @@ export function StokTable({ rows, anbarlar, exportHref }: Props) {
                   {cols.order.map((k) => (cols.isVisible(k) ? cells[k] : null))}
                   <td className="px-3 py-2 text-right">
                     <div className="inline-flex gap-0.5">
-                      <StockAdjustDialog
-                        mehsulId={r.mehsul_id}
-                        mehsulAd={r.ad}
-                        anbarlar={[{ id: r.anbar_id, ad: r.anbar_ad }, ...anbarlar.filter((a) => a.id !== r.anbar_id)]}
-                        currentStock={r.miqdar}
-                        initialAnbarId={r.anbar_id}
-                        initialNov="medaxil"
-                        trigger={
-                          <button title="Mədaxil" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-success hover:bg-success/10">
-                            <ArrowDown className="h-3.5 w-3.5" />
-                          </button>
-                        }
-                      />
-                      <StockAdjustDialog
-                        mehsulId={r.mehsul_id}
-                        mehsulAd={r.ad}
-                        anbarlar={[{ id: r.anbar_id, ad: r.anbar_ad }, ...anbarlar.filter((a) => a.id !== r.anbar_id)]}
-                        currentStock={r.miqdar}
-                        initialAnbarId={r.anbar_id}
-                        initialNov="mexaric"
-                        trigger={
-                          <button title="Məxaric" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-danger hover:bg-danger/10">
-                            <ArrowUp className="h-3.5 w-3.5" />
-                          </button>
-                        }
-                      />
-                      <StockAdjustDialog
-                        mehsulId={r.mehsul_id}
-                        mehsulAd={r.ad}
-                        anbarlar={[{ id: r.anbar_id, ad: r.anbar_ad }, ...anbarlar.filter((a) => a.id !== r.anbar_id)]}
-                        currentStock={r.miqdar}
-                        initialAnbarId={r.anbar_id}
-                        initialNov="inventar"
-                        trigger={
-                          <button title="Sayım / inventar düzəliş" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-warning hover:bg-warning/10">
-                            <ClipboardCheck className="h-3.5 w-3.5" />
-                          </button>
-                        }
-                      />
+                      <Link
+                        href="/ticaret/alislar?yeni=1"
+                        title="Yeni alış qaiməsi (mədaxil) — Ticarət"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-success hover:bg-success/10"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </Link>
+                      <Link
+                        href="/ticaret/satislar?yeni=1"
+                        title="Yeni satış (məxaric) — Ticarət"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-danger hover:bg-danger/10"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Link>
+                      <Link
+                        href="/anbar/inventar?new=1"
+                        title="Sayım / inventar — Anbar"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-warning hover:bg-warning/10"
+                      >
+                        <ClipboardCheck className="h-3.5 w-3.5" />
+                      </Link>
                       {anbarlar.length >= 2 && (
                         <TransferDialog
                           anbarlar={[{ id: r.anbar_id, ad: r.anbar_ad }, ...anbarlar.filter((a) => a.id !== r.anbar_id)]}

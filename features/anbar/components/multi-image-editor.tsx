@@ -2,7 +2,7 @@
 
 import { useState, useRef, useTransition } from "react";
 import Image from "next/image";
-import { Upload, X, Plus, Image as ImageIcon, Loader2, GripVertical } from "lucide-react";
+import { Upload, X, Plus, Image as ImageIcon, Loader2, GripVertical, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { parseSekilUrls, joinSekilUrls, MAX_SEKIL_URLS } from "@/lib/mehsul/sekil-urls";
@@ -18,13 +18,37 @@ import { parseSekilUrls, joinSekilUrls, MAX_SEKIL_URLS } from "@/lib/mehsul/seki
 export function MultiImageEditor({
   name = "sekil_url",
   defaultValue = "",
+  value,
+  onChange,
   label = "Şəkillər",
+  onAiGenerate,
+  aiGenerating = false,
+  aiDisabled = false,
 }: {
   name?: string;
   defaultValue?: string;
+  /** Controlled mode — `|` ilə birləşmiş string */
+  value?: string;
+  /** Controlled mode-da çağırılır — `|` ilə birləşmiş string ötürülür */
+  onChange?: (joined: string) => void;
   label?: string;
+  /** AI ilə şəkil generasiya callback-i (DALL-E vs.) — verildikdə düymə görünür */
+  onAiGenerate?: () => Promise<string | null>;
+  aiGenerating?: boolean;
+  aiDisabled?: boolean;
 }) {
-  const [urls, setUrls] = useState<string[]>(() => parseSekilUrls(defaultValue));
+  const controlled = value !== undefined;
+  const [internalUrls, setInternalUrls] = useState<string[]>(() => parseSekilUrls(defaultValue));
+  const urls = controlled ? parseSekilUrls(value) : internalUrls;
+  const setUrlsRaw = (next: string[] | ((prev: string[]) => string[])) => {
+    const resolved = typeof next === "function" ? next(urls) : next;
+    if (controlled) {
+      onChange?.(joinSekilUrls(resolved));
+    } else {
+      setInternalUrls(resolved);
+    }
+  };
+  const setUrls = setUrlsRaw as typeof setInternalUrls;
   const [uploading, startUpload] = useTransition();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -200,11 +224,34 @@ export function MultiImageEditor({
           {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
           Faylı yüklə
         </button>
+        {onAiGenerate && (
+          <button
+            type="button"
+            onClick={async () => {
+              if (urls.length >= MAX_SEKIL_URLS) {
+                toast.error(`Maksimum ${MAX_SEKIL_URLS} şəkil`);
+                return;
+              }
+              const url = await onAiGenerate();
+              if (url) {
+                setUrls((prev) =>
+                  prev.length >= MAX_SEKIL_URLS || prev.includes(url) ? prev : [...prev, url],
+                );
+              }
+            }}
+            disabled={aiGenerating || aiDisabled || urls.length >= MAX_SEKIL_URLS}
+            className="inline-flex h-8 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-40"
+            title={aiDisabled ? "Əvvəlcə məhsul adını yazın" : "AI ilə şəkil generasiya et"}
+          >
+            {aiGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            AI generasiya
+          </button>
+        )}
         <div className="flex items-center gap-1">
           <input
             ref={urlInputRef}
-            type="url"
-            placeholder="https://... və ya birbaşa URL yapışdır"
+            type="text"
+            placeholder="https://... URL yapışdır"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -213,7 +260,7 @@ export function MultiImageEditor({
                 (e.target as HTMLInputElement).value = "";
               }
             }}
-            className="h-8 w-[280px] rounded-md border border-input bg-background px-2 text-xs"
+            className="h-8 w-[240px] rounded-md border border-input bg-background px-2 text-xs"
             disabled={urls.length >= MAX_SEKIL_URLS}
           />
           <button

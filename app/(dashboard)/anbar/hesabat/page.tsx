@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BarChart3, FileSpreadsheet, Layers, Clock, AlertCircle } from "lucide-react";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { ProductInline } from "@/features/anbar/components/product-inline";
-import { BarcodeFix, CostFix, SalePriceFix, ImageFix } from "@/features/anbar/components/quick-fix-cells";
+import { BarcodeFix, SalePriceFix, ImageFix } from "@/features/anbar/components/quick-fix-cells";
 import {
   getCategoryReport,
   getAgingReport,
@@ -59,10 +59,13 @@ const CHIP_GROUPS: { key: string; label: string; icon: typeof Layers; chips: Mod
     label: "Data sağlamlığı",
     icon: AlertCircle,
     chips: [
-      { value: "sekilsiz",  label: "Şəkilsiz" },
-      { value: "barkodsuz", label: "Barkodsuz" },
-      { value: "mayasiz",   label: "Mayasız" },
-      { value: "qiymetsiz", label: "Qiymətsiz" },
+      { value: "sekilsiz",       label: "Şəkilsiz" },
+      { value: "barkodsuz",      label: "Barkodsuz" },
+      { value: "mayasiz",        label: "Mayasız" },
+      { value: "qiymetsiz",      label: "Qiymətsiz" },
+      { value: "kateqoriyasiz",  label: "Kateqoriyasız" },
+      { value: "dublikat_ad",    label: "Dublikat ad" },
+      { value: "dublikat_barkod",label: "Dublikat barkod" },
     ],
   },
 ];
@@ -292,7 +295,9 @@ async function ProblemView({ tip, filter }: { tip: ProblemKind; filter: ProblemF
                         <BarcodeFix id={m.id} current={m.barkod ?? null} compact />
                       )}
                       {tip === "mayasiz" && (
-                        <CostFix id={m.id} current={0} />
+                        <Link href="/ticaret/alislar?yeni=1" className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20">
+                          ↗ Alış yarat
+                        </Link>
                       )}
                       {tip === "qiymetsiz" && (
                         <SalePriceFix id={m.id} current={0} />

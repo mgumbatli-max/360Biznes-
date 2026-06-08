@@ -69,7 +69,8 @@ async function TopbarShell({ user }: { user: SessionUser }) {
     seviyye: a.seviyye,
     kateqoriya_ad: a.kateqoriya_ad,
     kateqoriya_emoji: a.kateqoriya_emoji,
-    first_seen_at: a.first_seen_at ? a.first_seen_at.toISOString() : null,
+    // `first_seen_at` artıq ISO string-dir (cache-safe)
+    first_seen_at: a.first_seen_at,
   }));
   // Şəxsi bildirişlər (tapşırıq, status dəyişiklikləri, xatırlatma)
   const personalItems = myNotifs.items.map((b) => ({
@@ -78,7 +79,8 @@ async function TopbarShell({ user }: { user: SessionUser }) {
     seviyye: b.oxundu ? "info" : "xeber",
     kateqoriya_ad: "Şəxsi bildiriş",
     kateqoriya_emoji: null,
-    first_seen_at: b.yaradildi ? b.yaradildi.toISOString() : null,
+    // `yaradildi` artıq ISO string-dir (cache-safe)
+    first_seen_at: b.yaradildi,
     is_personal: true,
     link: b.link,
     oxundu: b.oxundu,

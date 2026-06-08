@@ -13,7 +13,7 @@ async function getYolVergisiSummary() {
   return withTenant(async () => {
     const yearStart = new Date(new Date().getFullYear(), 0, 1);
     const agg = await prisma.xercl_r.aggregate({
-      where: { tarix: { gte: yearStart }, tesvir: { contains: "yol vergisi", mode: "insensitive" } },
+      where: { tarix: { gte: yearStart }, tesvir: { contains: "yol vergisi", mode: "insensitive" }, legv_de: null },
       _sum: { mebleg: true },
       _count: { _all: true },
     }).catch(() => ({ _sum: { mebleg: 0 }, _count: { _all: 0 } }));

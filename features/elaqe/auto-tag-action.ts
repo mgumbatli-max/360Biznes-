@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import { requireElaqeActionPerm } from "./access-guard";
 
 /**
  * Auto-tag generator (cron-əsaslı, manual triggerable).
@@ -35,6 +36,8 @@ export type AutoTagResult = {
 };
 
 export async function runAutoTagUpdate(): Promise<AutoTagResult | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -66,9 +69,9 @@ export async function runAutoTagUpdate(): Promise<AutoTagResult | { ok: false; e
       `.catch(() => []);
       const vipSet = new Set(vipRows.map((r) => r.musteri_id));
 
-      // Bütün aktiv müştəriləri çək
+      // Bütün aktiv müştəriləri çək — defense-in-depth: sahibkar_id explicit
       const contacts = await prisma.kontragentler.findMany({
-        where: { aktiv: true },
+        where: { aktiv: true, sahibkar_id: sahibkarId },
         select: { id: true, borc: true },
       });
 
@@ -165,6 +168,10 @@ export async function runAutoTagUpdate(): Promise<AutoTagResult | { ok: false; e
       revalidatePath("/elaqe");
       revalidatePath("/elaqe/musteriler");
       revalidatePath("/elaqe/hesabat");
+      try {
+        revalidateTag(`elaqe:${sahibkarId}`, "max");
+        revalidateTag(`dashboard:${sahibkarId}`, "max");
+      } catch { /* non-fatal */ }
 
       return {
         ok: true,

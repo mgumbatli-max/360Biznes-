@@ -264,8 +264,8 @@ export async function getQuickRefs() {
       prisma.maliye_hesablari.findMany({
         where: { aktiv: true },
         orderBy: { ad: "asc" },
-        select: { id: true, ad: true, valyuta: true },
-      }).catch(() => [] as { id: string; ad: string; valyuta: string | null }[]),
+        select: { id: true, ad: true, valyuta: true, qaliq: true, nov: true },
+      }).catch(() => [] as { id: string; ad: string; valyuta: string | null; qaliq: import("@prisma/client/runtime/library").Decimal | null; nov: string }[]),
       prisma.kontragentler.findMany({
         where: { aktiv: true },
         orderBy: { ad: "asc" },
@@ -280,7 +280,13 @@ export async function getQuickRefs() {
       }),
     ]);
     return {
-      hesablar: hesablar.map((h) => ({ id: h.id, ad: `${h.ad}${h.valyuta && h.valyuta !== "AZN" ? ` (${h.valyuta})` : ""}` })),
+      hesablar: hesablar.map((h) => ({
+        id: h.id,
+        ad: `${h.ad}${h.valyuta && h.valyuta !== "AZN" ? ` (${h.valyuta})` : ""}`,
+        balans: Number(h.qaliq ?? 0),
+        valyuta: h.valyuta ?? "AZN",
+        nov: h.nov,
+      })),
       kontragentler: kontragentler.map((k) => ({ id: k.id, ad: k.ad })),
       iscilier: iscilier.map((i) => ({ id: i.id, ad: i.ad_soyad })),
     };
@@ -332,6 +338,8 @@ export type ExpenseFilter = {
   kateqoriya_id?: number[];
   from?: Date;
   to?: Date;
+  /** "aktiv" (default) | "silinmis" | "hamisi" */
+  silinmis?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export type ExpenseRow = {
@@ -353,12 +361,18 @@ export type ExpenseRow = {
   yaradan_ad: string | null;
   yaradildi: Date | null;
   yenilendi: Date | null;
+  legv_de: Date | null;
+  legv_sebeb: string | null;
 };
 
 export async function getExpenses(filter: ExpenseFilter, page = 1, pageSize = 50): Promise<{ items: ExpenseRow[]; total: number }> {
   return withTenant(async () => {
+    const mode = filter.silinmis ?? "aktiv";
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
+    if (mode === "aktiv") where.legv_de = null;
+    else if (mode === "silinmis") where.legv_de = { not: null };
+    // "hamisi" — heç bir filtr
     if (filter.kateqoriya_id?.length) where.kateqoriya_id = { in: filter.kateqoriya_id };
     if (filter.from || filter.to) {
       where.tarix = {};
@@ -404,6 +418,8 @@ export async function getExpenses(filter: ExpenseFilter, page = 1, pageSize = 50
         yaradan_ad: e.istifadeciler?.ad_soyad ?? null,
         yaradildi: e.yaradildi ?? null,
         yenilendi: e.yenilendi ?? null,
+        legv_de: e.legv_de ?? null,
+        legv_sebeb: e.legv_sebeb ?? null,
       })),
       total,
     };
@@ -611,6 +627,13 @@ export type DebtorRow = {
   menecer_ad: string | null;
   kateqoriya: string | null;
   yenilendi: Date | null;
+  // Zəngin sətir məlumatı — UX1 (TX2)
+  son_odenis_tarix: Date | null;
+  son_odenis_mebleg: number | null;
+  son_satis_nomre: string | null;
+  son_satis_mebleg: number | null;
+  acig_sened_say: number;
+  avans: number;
 };
 
 export async function getDebtors(): Promise<DebtorRow[]> {
@@ -629,33 +652,79 @@ export async function getDebtors(): Promise<DebtorRow[]> {
       gun_kecdi: number;
       menecer_ad: string | null;
       yenilendi: Date | null;
+      son_odenis_tarix: Date | null;
+      son_odenis_mebleg: number | null;
+      son_satis_nomre: string | null;
+      son_satis_mebleg: number | null;
+      acig_sened_say: number;
+      avans: number;
     };
     const rows = await prisma.$queryRaw<Row[]>`
+      WITH open_sales AS (
+        SELECT s.musteri_id,
+               SUM(s.son_mebleg - COALESCE(s.odenilmis, 0)) AS open_total,
+               MAX(s.tarix) AS son_satis,
+               MIN(s.tarix) FILTER (
+                 WHERE s.son_mebleg - COALESCE(s.odenilmis, 0) > 0
+               ) AS en_kohne_acig,
+               COUNT(*) FILTER (
+                 WHERE s.son_mebleg - COALESCE(s.odenilmis, 0) > 0
+               ) AS acig_say
+          FROM satis_sifarisleri s
+         WHERE s.sahibkar_id = ${sahibkarId}::uuid
+           AND COALESCE(s.status, '') NOT IN ('legv', 'qaytarilib')
+           AND COALESCE(s.qaralama, false) = false
+           AND s.odenis_nov IN ('nisye', 'borc')
+         GROUP BY s.musteri_id
+      ),
+      son_satislar AS (
+        SELECT DISTINCT ON (s.musteri_id)
+               s.musteri_id, s.nomre, s.son_mebleg, s.tarix
+          FROM satis_sifarisleri s
+         WHERE s.sahibkar_id = ${sahibkarId}::uuid
+           AND COALESCE(s.status, '') NOT IN ('legv', 'qaytarilib')
+           AND COALESCE(s.qaralama, false) = false
+         ORDER BY s.musteri_id, s.tarix DESC
+      ),
+      son_odenisler AS (
+        SELECT DISTINCT ON (f.kontragent_id)
+               f.kontragent_id, f.tarix, f.meblegh
+          FROM finance_operations f
+         WHERE f.sahibkar_id = ${sahibkarId}::uuid
+           AND f.status = 'aktiv'
+           AND f."yön" = 'daxil'
+           AND f.type_kod IN ('qaime', 'borc_silinme')
+           AND f.kontragent_id IS NOT NULL
+         ORDER BY f.kontragent_id, f.tarix DESC
+      )
       SELECT k.id::text AS id,
              k.ad,
              k.telefon,
              k.whatsapp,
              k.email,
              k.voen,
-             COALESCE(k.borc, 0)::float AS borc,
+             COALESCE(os.open_total, 0)::float AS borc,
              k.borc_limiti::float AS borc_limiti,
-             (SELECT MAX(s.tarix) FROM satis_sifarisleri s
-                WHERE s.musteri_id = k.id AND s.sahibkar_id = ${sahibkarId}::uuid
-                  AND (s.status IS NULL OR s.status != 'legv')) AS son_alver,
-             COALESCE((CURRENT_DATE - (
-                SELECT MAX(s2.tarix)::date FROM satis_sifarisleri s2
-                  WHERE s2.musteri_id = k.id AND s2.sahibkar_id = ${sahibkarId}::uuid
-                    AND (s2.status IS NULL OR s2.status != 'legv')
-             ))::int, 0) AS gun_kecdi,
+             os.son_satis AS son_alver,
+             COALESCE((CURRENT_DATE - os.en_kohne_acig::date)::int, 0) AS gun_kecdi,
              u.ad_soyad AS menecer_ad,
-             k.yenilendi
+             k.yenilendi,
+             so.tarix AS son_odenis_tarix,
+             so.meblegh::float AS son_odenis_mebleg,
+             ss.nomre AS son_satis_nomre,
+             ss.son_mebleg::float AS son_satis_mebleg,
+             COALESCE(os.acig_say, 0)::int AS acig_sened_say,
+             COALESCE(k.avans, 0)::float AS avans
         FROM kontragentler k
+        LEFT JOIN open_sales os ON os.musteri_id = k.id
+        LEFT JOIN son_satislar ss ON ss.musteri_id = k.id
+        LEFT JOIN son_odenisler so ON so.kontragent_id = k.id
         LEFT JOIN istifadeciler u ON u.id = k.menecer_id
        WHERE k.sahibkar_id = ${sahibkarId}::uuid
          AND k.aktiv = TRUE
          AND k.nov IN ('musteri', 'her_ikisi')
-         AND COALESCE(k.borc, 0) > 0
-       ORDER BY k.borc DESC NULLS LAST
+         AND COALESCE(os.open_total, 0) > 0
+       ORDER BY borc DESC NULLS LAST
     `;
     return rows.map((r) => ({
       id: r.id,
@@ -672,6 +741,12 @@ export async function getDebtors(): Promise<DebtorRow[]> {
       menecer_ad: r.menecer_ad,
       kateqoriya: null,
       yenilendi: r.yenilendi ?? null,
+      son_odenis_tarix: r.son_odenis_tarix ?? null,
+      son_odenis_mebleg: r.son_odenis_mebleg != null ? Number(r.son_odenis_mebleg) : null,
+      son_satis_nomre: r.son_satis_nomre,
+      son_satis_mebleg: r.son_satis_mebleg != null ? Number(r.son_satis_mebleg) : null,
+      acig_sened_say: Number(r.acig_sened_say ?? 0),
+      avans: Number(r.avans ?? 0),
     }));
   });
 }
@@ -686,6 +761,11 @@ export type CreditorRow = {
   borc: number;
   son_alver: Date | null;
   gun_kecdi: number;
+  son_odenis_tarix: Date | null;
+  son_odenis_mebleg: number | null;
+  son_alis_nomre: string | null;
+  son_alis_mebleg: number | null;
+  acig_sened_say: number;
 };
 
 export async function getCreditors(): Promise<CreditorRow[]> {
@@ -701,27 +781,77 @@ export async function getCreditors(): Promise<CreditorRow[]> {
       borc: number;
       son_alver: Date | null;
       gun_kecdi: number;
+      son_odenis_tarix: Date | null;
+      son_odenis_mebleg: number | null;
+      son_alis_nomre: string | null;
+      son_alis_mebleg: number | null;
+      acig_sened_say: number;
     };
     const rows = await prisma.$queryRaw<Row[]>`
+      WITH open_purch AS (
+        SELECT a.techiazatci_id,
+               SUM(a.umumi_mebleg - COALESCE(a.odenilmis, 0)) AS open_total,
+               MAX(a.tarix) AS son_alis,
+               MIN(a.tarix) FILTER (
+                 WHERE a.umumi_mebleg - COALESCE(a.odenilmis, 0) > 0
+               ) AS en_kohne_acig,
+               COUNT(*) FILTER (
+                 WHERE a.umumi_mebleg - COALESCE(a.odenilmis, 0) > 0
+               ) AS acig_say
+          FROM alis_sifarisleri a
+         WHERE a.sahibkar_id = ${sahibkarId}::uuid
+           AND COALESCE(a.status, '') <> 'legv'
+         GROUP BY a.techiazatci_id
+      ),
+      son_alislar AS (
+        SELECT DISTINCT ON (a.techiazatci_id)
+               a.techiazatci_id, a.nomre, a.umumi_mebleg, a.tarix
+          FROM alis_sifarisleri a
+         WHERE a.sahibkar_id = ${sahibkarId}::uuid
+           AND COALESCE(a.status, '') <> 'legv'
+         ORDER BY a.techiazatci_id, a.tarix DESC
+      ),
+      son_odenisler AS (
+        SELECT DISTINCT ON (f.kontragent_id)
+               f.kontragent_id, f.tarix, f.meblegh
+          FROM finance_operations f
+         WHERE f.sahibkar_id = ${sahibkarId}::uuid
+           AND f.status = 'aktiv'
+           AND f."yön" = 'mexaric'
+           AND f.type_kod = 'alis_odenis'
+           AND f.kontragent_id IS NOT NULL
+         ORDER BY f.kontragent_id, f.tarix DESC
+      )
       SELECT k.id::text AS id,
              k.ad,
              k.telefon,
              k.whatsapp,
              k.email,
              k.voen,
-             ABS(COALESCE(k.borc, 0))::float AS borc,
-             (SELECT MAX(a.tarix) FROM alis_sifarisleri a
-                WHERE a.techiazatci_id = k.id AND a.sahibkar_id = ${sahibkarId}::uuid) AS son_alver,
-             COALESCE((CURRENT_DATE - (
-                SELECT MAX(a2.tarix)::date FROM alis_sifarisleri a2
-                  WHERE a2.techiazatci_id = k.id AND a2.sahibkar_id = ${sahibkarId}::uuid
-             ))::int, 0) AS gun_kecdi
+             GREATEST(
+               COALESCE(k.borc, 0),
+               ABS(LEAST(COALESCE(k.borc, 0), 0)),
+               COALESCE(op.open_total, 0)
+             )::float AS borc,
+             op.son_alis AS son_alver,
+             COALESCE((CURRENT_DATE - op.en_kohne_acig::date)::int, 0) AS gun_kecdi,
+             so.tarix AS son_odenis_tarix,
+             so.meblegh::float AS son_odenis_mebleg,
+             sa.nomre AS son_alis_nomre,
+             sa.umumi_mebleg::float AS son_alis_mebleg,
+             COALESCE(op.acig_say, 0)::int AS acig_sened_say
         FROM kontragentler k
+        LEFT JOIN open_purch op ON op.techiazatci_id = k.id
+        LEFT JOIN son_alislar sa ON sa.techiazatci_id = k.id
+        LEFT JOIN son_odenisler so ON so.kontragent_id = k.id
        WHERE k.sahibkar_id = ${sahibkarId}::uuid
          AND k.aktiv = TRUE
          AND k.nov IN ('techizatci', 'her_ikisi')
-         AND COALESCE(k.borc, 0) < 0
-       ORDER BY k.borc ASC NULLS LAST
+         AND (
+           COALESCE(k.borc, 0) <> 0
+           OR COALESCE(op.open_total, 0) > 0
+         )
+       ORDER BY borc DESC NULLS LAST
     `;
     return rows.map((r) => ({
       id: r.id,
@@ -733,6 +863,11 @@ export async function getCreditors(): Promise<CreditorRow[]> {
       borc: Number(r.borc ?? 0),
       son_alver: r.son_alver ?? null,
       gun_kecdi: Math.max(0, Number(r.gun_kecdi ?? 0)),
+      son_odenis_tarix: r.son_odenis_tarix ?? null,
+      son_odenis_mebleg: r.son_odenis_mebleg != null ? Number(r.son_odenis_mebleg) : null,
+      son_alis_nomre: r.son_alis_nomre,
+      son_alis_mebleg: r.son_alis_mebleg != null ? Number(r.son_alis_mebleg) : null,
+      acig_sened_say: Number(r.acig_sened_say ?? 0),
     }));
   });
 }
@@ -746,6 +881,11 @@ export type OpenSaleOpt = {
   tarix: Date;
   qalig: number;
   son_mebleg: number;
+  odenilmis: number;
+  gun_kecdi: number;
+  odenis_nov: string | null;
+  satir_sayi: number;
+  status: string | null;
 };
 
 export async function getOpenSalesForCustomer(musteri_id: string, limit = 50): Promise<OpenSaleOpt[]> {
@@ -753,19 +893,99 @@ export async function getOpenSalesForCustomer(musteri_id: string, limit = 50): P
     const rows = await prisma.satis_sifarisleri.findMany({
       where: {
         musteri_id,
-        status: { not: "legv" },
+        status: { notIn: ["legv", "qaytarilib"] },
         qaralama: { not: true },
+        deleted_at: null,
+        odenis_nov: { in: ["nisye", "borc"] },
       },
       orderBy: { tarix: "asc" },
       take: limit,
-      select: { id: true, nomre: true, tarix: true, son_mebleg: true, odenilmis: true },
+      select: {
+        id: true,
+        nomre: true,
+        tarix: true,
+        son_mebleg: true,
+        odenilmis: true,
+        odenis_nov: true,
+        status: true,
+        _count: { select: { satis_sifaris_satirlari: true } },
+      },
     });
+    const today = new Date();
     return rows
       .map((r) => {
         const son = Number(r.son_mebleg ?? 0);
         const od = Number(r.odenilmis ?? 0);
         const qalig = son - od;
-        return { id: r.id, nomre: r.nomre, tarix: r.tarix, qalig, son_mebleg: son };
+        const days = Math.floor((today.getTime() - new Date(r.tarix).getTime()) / 86400000);
+        return {
+          id: r.id,
+          nomre: r.nomre,
+          tarix: r.tarix,
+          qalig: Math.round(qalig * 100) / 100,
+          son_mebleg: Math.round(son * 100) / 100,
+          odenilmis: Math.round(od * 100) / 100,
+          gun_kecdi: Math.max(0, days),
+          odenis_nov: r.odenis_nov,
+          status: r.status,
+          satir_sayi: r._count?.satis_sifaris_satirlari ?? 0,
+        };
+      })
+      .filter((r) => r.qalig > 0.001);
+  });
+}
+
+// ─── Təchizatçı açıq alışlar (kreditor üçün analoq) ─────────
+export type OpenPurchaseOpt = {
+  id: string;
+  nomre: string;
+  tarix: Date;
+  qalig: number;
+  umumi_mebleg: number;
+  odenilmis: number;
+  gun_kecdi: number;
+  satir_sayi: number;
+  status: string | null;
+};
+
+export async function getOpenPurchasesForSupplier(techizatci_id: string, limit = 50): Promise<OpenPurchaseOpt[]> {
+  return withTenant(async () => {
+    const rows = await prisma.alis_sifarisleri.findMany({
+      where: {
+        techiazatci_id: techizatci_id,
+        status: { notIn: ["legv"] },
+        deleted_at: null,
+      },
+      orderBy: { tarix: "asc" },
+      take: limit,
+      select: {
+        id: true,
+        nomre: true,
+        tarix: true,
+        umumi_mebleg: true,
+        odenilmis: true,
+        status: true,
+        _count: { select: { alis_sifaris_satirlari: true } },
+      },
+    });
+    const today = new Date();
+    return rows
+      .map((r) => {
+        const umumi = Number(r.umumi_mebleg ?? 0);
+        const od = Number(r.odenilmis ?? 0);
+        const qalig = umumi - od;
+        const days = Math.floor((today.getTime() - new Date(r.tarix).getTime()) / 86400000);
+        return {
+          id: r.id,
+          nomre: r.nomre,
+          tarix: r.tarix,
+          qalig: Math.round(qalig * 100) / 100,
+          umumi_mebleg: Math.round(umumi * 100) / 100,
+          odenilmis: Math.round(od * 100) / 100,
+          gun_kecdi: Math.max(0, days),
+          status: r.status,
+          satir_sayi: r._count?.alis_sifaris_satirlari ?? 0,
+        };
       })
       .filter((r) => r.qalig > 0.001);
   });
@@ -911,7 +1131,7 @@ export async function getLinkedExpensesForPurchase(alis_id: string): Promise<Lin
   return withTenant(async () => {
     const tag = `[INVOICE:${alis_id}]`;
     const rows = await prisma.xercl_r.findMany({
-      where: { qeyd: { contains: tag } },
+      where: { qeyd: { contains: tag }, legv_de: null },
       orderBy: { tarix: "desc" },
       take: 100,
       include: { xerc_kateqoriyalari: { select: { ad: true } } },

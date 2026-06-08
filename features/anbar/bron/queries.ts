@@ -49,6 +49,7 @@ export type BronFilter = {
   q?: string;
   anbarId?: number;
   musteriId?: string;
+  mehsulId?: string;
   from?: string;
   to?: string;
 };
@@ -60,6 +61,7 @@ export async function getBronList(filter: BronFilter | BronStatus = {}): Promise
     if (f.status) where.status = f.status;
     if (f.anbarId) where.anbar_id = f.anbarId;
     if (f.musteriId) where.musteri_id = f.musteriId;
+    if (f.mehsulId) where.mehsul_id = f.mehsulId;
     if (f.from || f.to) {
       const r: Record<string, Date> = {};
       if (f.from) r.gte = new Date(f.from);

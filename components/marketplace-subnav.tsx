@@ -42,8 +42,8 @@ export function MarketplaceSubNav({ active }: { active: string }) {
                 data-active={isOn ? "true" : undefined}
                 className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                   isOn
-                    ? "bg-background text-primary shadow-sm"
-                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                    ? "bg-gradient-to-b from-background to-background/80 text-primary shadow-md shadow-primary/10 ring-1 ring-primary/15"
+                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground hover:-translate-y-px active:translate-y-0"
                 }`}
                 title={tab.desc}
               >

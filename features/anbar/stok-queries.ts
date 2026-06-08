@@ -47,6 +47,7 @@ export type StokFilter = {
   search?: string;
   anbar_id?: number;
   status?: "az" | "ok";
+  mehsul_id?: string;
 };
 
 export async function getStokKpis() {
@@ -147,7 +148,10 @@ export async function getStokRows(filter: StokFilter): Promise<StokRow[]> {
              COALESCE(s.miqdar, 0)::float AS miqdar,
              COALESCE((
                SELECT SUM(sb.sayi) FROM stok_bron sb
-                WHERE sb.mehsul_id = m.id AND sb.anbar_id = a.id AND sb.status = 'aktiv'
+                WHERE sb.mehsul_id = m.id AND sb.anbar_id = a.id
+                  AND sb.status = 'aktiv'
+                  -- Bitmə tarixi keçmiş bron-lar avtomatik exclude
+                  AND (sb.bitme_tarixi IS NULL OR sb.bitme_tarixi >= CURRENT_DATE)
              ), 0)::float AS rezerv,
              m.min_stok::float AS min_stok,
              m.kritik_stok::float AS kritik_stok,
@@ -194,6 +198,7 @@ export async function getStokRows(filter: StokFilter): Promise<StokRow[]> {
        WHERE s.sahibkar_id = ${sahibkarId}::uuid
          AND m.aktiv = TRUE
          AND (${anbarId ?? null}::int IS NULL OR s.anbar_id = ${anbarId ?? null}::int)
+         AND (${filter.mehsul_id ?? null}::text IS NULL OR m.id::text = ${filter.mehsul_id ?? null}::text)
          AND (${search ?? null}::text IS NULL
               OR m.ad ILIKE '%' || ${search ?? ""} || '%'
               OR m.kod ILIKE '%' || ${search ?? ""} || '%'

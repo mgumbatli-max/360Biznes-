@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit } from "@/lib/audit/log";
+import { safeUserMessage } from "@/lib/error/user-message";
 
 const CreateSchema = z.object({
   ad: z.string().trim().min(1, "Ad mütləqdir").max(100),
@@ -21,7 +22,14 @@ const UpdateSchema = CreateSchema.extend({
   id: z.coerce.number().int().positive(),
 });
 
-type ActionResult = { ok: true; id?: number } | { ok: false; error: string };
+type ActionResult =
+  | { ok: true; id?: number }
+  | {
+      ok: false;
+      error: string;
+      blockers?: import("@/lib/blockers/types").Blocker[];
+      hint?: string;
+    };
 
 /**
  * Kateqoriya yarat / yenilə / sil — yalnız sahibkar və admin tərəfindən edilə bilər.
@@ -57,7 +65,7 @@ export async function createKateqoriya(input: FormData): Promise<ActionResult> {
       return { ok: true, id: row.id };
     } catch (e) {
       console.error("[createKateqoriya]", e);
-      return { ok: false, error: "Yaradılmadı" };
+      return { ok: false, error: safeUserMessage(e, "Kateqoriya yaradılmadı") };
     }
   });
 }
@@ -87,7 +95,7 @@ export async function updateKateqoriya(input: FormData): Promise<ActionResult> {
       return { ok: true };
     } catch (e) {
       console.error("[updateKateqoriya]", e);
-      return { ok: false, error: "Yenilənmədi" };
+      return { ok: false, error: safeUserMessage(e, "Kateqoriya yenilənmədi") };
     }
   });
 }
@@ -121,7 +129,7 @@ export async function renameKateqoriya(id: number, ad: string): Promise<ActionRe
       return { ok: true };
     } catch (e) {
       console.error("[renameKateqoriya]", e);
-      return { ok: false, error: "Yenilənmədi" };
+      return { ok: false, error: safeUserMessage(e, "Ad dəyişdirilə bilmədi") };
     }
   });
 }
@@ -133,14 +141,21 @@ export async function deleteKateqoriya(id: number): Promise<ActionResult> {
       return { ok: false, error: "Yalnız sahibkar və admin kateqoriya silə bilər" };
     }
     try {
-      // Block deletion if products are still attached
-      const inUse = await prisma.mehsullar.count({ where: { kateqoriya_id: id } });
-      if (inUse > 0) {
-        return { ok: false, error: `${inUse} məhsul bu kateqoriyada var — əvvəl köçürün` };
-      }
-      const subs = await prisma.kateqoriyalar.count({ where: { ust_id: id } });
-      if (subs > 0) {
-        return { ok: false, error: `${subs} alt-kateqoriya var — əvvəl onları silin` };
+      const { sahibkarId } = requireTenant();
+      // 🛑 Bağlı məhsullar və ya alt-kateqoriyalar varsa — strukturlu blocker
+      const [inUse, subs] = await Promise.all([
+        prisma.mehsullar.count({ where: { kateqoriya_id: id } }),
+        prisma.kateqoriyalar.count({ where: { ust_id: id } }),
+      ]);
+      if (inUse > 0 || subs > 0) {
+        const { findCategoryBlockers } = await import("@/lib/blockers/find-category-blockers");
+        const blockers = await findCategoryBlockers(id, sahibkarId);
+        return {
+          ok: false,
+          error: `Bu kateqoriya silinmir: ${inUse} məhsul, ${subs} alt-kateqoriya var.`,
+          blockers,
+          hint: "Məhsulları başqa kateqoriyaya köçürün, alt-kateqoriyaları əvvəlcə silin.",
+        };
       }
       const before = await prisma.kateqoriyalar.findUnique({ where: { id }, select: { ad: true, ust_id: true } });
       await prisma.kateqoriyalar.delete({ where: { id } });
@@ -153,7 +168,7 @@ export async function deleteKateqoriya(id: number): Promise<ActionResult> {
       return { ok: true };
     } catch (e) {
       console.error("[deleteKateqoriya]", e);
-      return { ok: false, error: "Silinmədi" };
+      return { ok: false, error: safeUserMessage(e, "Kateqoriya silinmədi") };
     }
   });
 }

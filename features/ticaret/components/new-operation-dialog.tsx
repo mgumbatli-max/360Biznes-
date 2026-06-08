@@ -45,13 +45,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-// 765 + 528 LOC modal-lar — yalnız istifadəçi yeni satış/alış basanda yüklənir
+// 765 + 528 LOC modal-lar — yalnız istifadəçi yeni satış/alış/təklif basanda yüklənir
 const YeniSatisModal = dynamic(
   () => import("./yeni-satis-modal").then((m) => m.YeniSatisModal),
   { ssr: false }
 );
 const YeniAlisModal = dynamic(
   () => import("./yeni-alis-modal").then((m) => m.YeniAlisModal),
+  { ssr: false }
+);
+const YeniTeklifModal = dynamic(
+  () => import("./yeni-teklif-modal").then((m) => m.YeniTeklifModal),
+  { ssr: false }
+);
+const QuickCreateSupplierModal = dynamic(
+  () =>
+    import("@/features/elaqe/components/quick-create-supplier-modal").then(
+      (m) => m.QuickCreateSupplierModal,
+    ),
   { ssr: false }
 );
 import {
@@ -61,7 +72,7 @@ import {
   type AlisOptions,
 } from "../operation-options-actions";
 
-type ModalKey = "satis" | "alis";
+type ModalKey = "satis" | "alis" | "teklif" | "techizatci";
 
 type Tile = {
   label: string;
@@ -93,15 +104,15 @@ const GROUPS: { group: string; tiles: Tile[] }[] = [
       { label: "POS — İsti satış",   desc: "Sürətli kassa satışı (yeni pəncərə)", href: "/pos",                Icon: ScanBarcode,  tone: "rose",    external: true },
       { label: "Yeni satış",         desc: "Müştəri + müqavilə (modal)",          href: "/ticaret/satis-yeni", Icon: ShoppingCart, tone: "emerald", modal: "satis" },
       { label: "Marketdən satış",    desc: "Bolt / Wolt / Tap.az (yeni pəncərə)", href: "/market-pos",         Icon: Bike,         tone: "sky",     external: true },
-      { label: "Yeni təklif",        desc: "Müştəriyə təklif (qaralama)",         href: "/ticaret/teklif?new=1", Icon: FileText,   tone: "violet",  navigate: true },
+      { label: "Yeni təklif",        desc: "Müştəriyə təklif (qaralama)",         href: "/ticaret/teklif",      Icon: FileText,   tone: "violet",  modal: "teklif" },
       { label: "Kreditlə satış",     desc: "Bank kreditli satış, faiz hesabı",    href: "/ticaret/kredit-yeni", Icon: CreditCard,  tone: "amber",   navigate: true },
     ],
   },
   {
     group: "Alış",
     tiles: [
-      { label: "Yeni alış sifarişi", desc: "Təchizatçıdan mal qəbulu (modal)",    href: "/ticaret/alislar",         Icon: Truck, tone: "sky",   modal: "alis" },
-      { label: "Təchizatçılar",      desc: "Yeni təchizatçı əlavə et",            href: "/elaqe?nov=techizatci",    Icon: Truck, tone: "slate", navigate: true },
+      { label: "Yeni alış qaiməsi", desc: "Təchizatçıdan mal qəbulu (modal)",    href: "/ticaret/alislar",         Icon: Truck, tone: "sky",   modal: "alis" },
+      { label: "Yeni təchizatçı",    desc: "Sürətli təchizatçı yaratma (modal)",  href: "/elaqe?nov=techizatci",    Icon: Truck, tone: "slate", modal: "techizatci" },
     ],
   },
   {
@@ -114,9 +125,9 @@ const GROUPS: { group: string; tiles: Tile[] }[] = [
   {
     group: "Anbar əməliyyatları",
     tiles: [
-      { label: "Anbarlararası transfer", desc: "Mal bir anbardan digərinə",      href: "/anbar/transfer",                Icon: ArrowLeftRight, tone: "violet", navigate: true },
-      { label: "İnventar sayımı",         desc: "Stok sayım və düzəliş",          href: "/anbar/inventar",                Icon: ClipboardList,  tone: "amber",  navigate: true },
-      { label: "Mexaric / Zay",           desc: "Korrupsiya, daxili istifadə",    href: "/anbar/hereketler?nov=mexaric",  Icon: PackageMinus,   tone: "rose",   navigate: true },
+      { label: "Anbarlararası transfer", desc: "Mal bir anbardan digərinə (modal)", href: "/anbar/transfer?new=1",          Icon: ArrowLeftRight, tone: "violet", navigate: true },
+      { label: "İnventar sayımı",         desc: "Stok sayım və düzəliş",             href: "/anbar/inventar",                Icon: ClipboardList,  tone: "amber",  navigate: true },
+      { label: "Mexaric / Zay",           desc: "Korrupsiya, daxili istifadə (modal)", href: "/anbar/hereketler?nov=mexaric&new=1", Icon: PackageMinus, tone: "rose",   navigate: true },
       { label: "Stok hərəkətləri",        desc: "Bütün anbar əməliyyatları",       href: "/anbar/hereketler",              Icon: Boxes,          tone: "sky",    navigate: true },
     ],
   },
@@ -139,6 +150,12 @@ export function NewOperationButton() {
     } else if (t.modal === "alis") {
       if (!alisOpts) setAlisOpts(await getAlisOptions());
       setActiveModal("alis");
+    } else if (t.modal === "teklif") {
+      // Təklif satıcı seçimi üçün satış opsiyalarını istifadə edir
+      if (!satisOpts) setSatisOpts(await getSatisOptions());
+      setActiveModal("teklif");
+    } else if (t.modal === "techizatci") {
+      setActiveModal("techizatci");
     } else if (t.navigate) {
       router.push(t.href);
     }
@@ -231,6 +248,8 @@ export function NewOperationButton() {
           anbarlar={satisOpts.anbarlar}
           saticilar={satisOpts.saticilar}
           defaultSalespersonId={satisOpts.saticilar[0]?.id ?? null}
+          kassalar={satisOpts.kassalar}
+          hesablar={satisOpts.hesablar}
         />
       )}
       {alisOpts && activeModal === "alis" && (
@@ -240,7 +259,28 @@ export function NewOperationButton() {
           anbarlar={alisOpts.anbarlar}
           suppliers={alisOpts.suppliers}
           menecerler={alisOpts.menecerler}
+          kassalar={alisOpts.kassalar}
+          hesablar={alisOpts.hesablar}
           defaultManagerId={alisOpts.menecerler[0]?.id ?? null}
+        />
+      )}
+      {satisOpts && activeModal === "teklif" && (
+        <YeniTeklifModal
+          open={true}
+          onOpenChange={(v) => !v && setActiveModal(null)}
+          saticilar={satisOpts.saticilar}
+          defaultSalespersonId={satisOpts.saticilar[0]?.id ?? null}
+        />
+      )}
+      {activeModal === "techizatci" && (
+        <QuickCreateSupplierModal
+          open={true}
+          onOpenChange={(v) => !v && setActiveModal(null)}
+          onCreated={() => {
+            // Yaradıldıqdan sonra modal-ı bağla; data əlaqələrdə görünür
+            setActiveModal(null);
+            router.refresh();
+          }}
         />
       )}
     </>

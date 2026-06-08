@@ -12,7 +12,12 @@ export type MyBildiris = {
   nov: string;
   link: string | null;
   oxundu: boolean;
-  yaradildi: Date | null;
+  /**
+   * ISO string formatında. `unstable_cache` JSON serializasiyası Date object-ləri
+   * string-ə çevirir, ona görə tipdə də string saxlayırıq — istifadədə
+   * yenidən Date-ə convert edilməsin deyə.
+   */
+  yaradildi: string | null;
 };
 
 export type MyNotificationsResult = {
@@ -47,7 +52,8 @@ async function fetchMyBildirisler(
       nov: b.nov ?? "info",
       link: b.link,
       oxundu: b.oxundu ?? false,
-      yaradildi: b.yaradildi,
+      // ISO string — cache-safe (Date object cache-də serializasiya olunur)
+      yaradildi: b.yaradildi ? b.yaradildi.toISOString() : null,
     })),
     unreadCount,
   };

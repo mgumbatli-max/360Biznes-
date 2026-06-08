@@ -14,7 +14,8 @@ export function BonusForm({ istifadeciId }: { istifadeciId: string }) {
   const [nov, setNov] = useState<"bonus" | "cerime">("bonus");
   const [meblegh, setMeblegh] = useState("");
   const [sebeb, setSebeb] = useState("");
-  const [tarix, setTarix] = useState(new Date().toISOString().slice(0, 10));
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [tarix, setTarix] = useState(todayStr);
   const [pending, startTransition] = useTransition();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -83,9 +84,15 @@ export function BonusForm({ istifadeciId }: { istifadeciId: string }) {
           id="bonus-tarix"
           type="date"
           value={tarix}
+          max={todayStr}
           onChange={(e) => setTarix(e.target.value)}
-          className="mt-1 h-8"
+          className={`mt-1 h-8 ${tarix !== todayStr ? "border-amber-500/60 ring-1 ring-amber-500/20" : ""}`}
         />
+        {tarix !== todayStr && (
+          <p className="mt-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+            ⚠ Köhnə tarix — «tarix.geri» icazəsi tələb olunur
+          </p>
+        )}
       </div>
       <div className="md:col-span-2">
         <Label className="text-xs" htmlFor="bonus-sebeb">Səbəb</Label>

@@ -12,7 +12,8 @@
  */
 
 const SEPARATOR = "|";
-const MAX_URLS = 8; // POS / marketplace üçün məntiqli üst sərhəd
+// 3 əsas + 2 ehtiyat — POS, marketplace və detail view üçün məntiqli üst sərhəd.
+const MAX_URLS = 5;
 
 export function parseSekilUrls(raw: string | null | undefined): string[] {
   if (!raw) return [];

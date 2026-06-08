@@ -1,8 +1,19 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Printer } from "lucide-react";
 
 export function PrintTrigger() {
+  const sp = useSearchParams();
+  const auto = sp.get("auto") === "1";
+
+  useEffect(() => {
+    if (!auto) return;
+    const t = setTimeout(() => window.print(), 350);
+    return () => clearTimeout(t);
+  }, [auto]);
+
   return (
     <button
       type="button"

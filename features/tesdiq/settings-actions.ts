@@ -1,10 +1,42 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
+import { auth } from "@/auth";
+import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { saveTesdiqSettings, type TesdiqCfg, DEFAULT_TESDIQ_CFG } from "./settings";
 
 type Result = { ok: true } | { ok: false; error: string };
+
+async function guardSettingsAccess(): Promise<Result | null> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Sessiya yoxdur" };
+  const rol = (session.user.rol_ad ?? "").toLowerCase();
+  const privileged =
+    rol.includes("sahibkar") || rol.includes("admin") || rol.includes("owner");
+  if (privileged) return null;
+  const icaze = await getRequestPermissions();
+  if (!icaze.includes("nezaret.ayarlar")) {
+    return { ok: false, error: "İcazə yoxdur" };
+  }
+  return null;
+}
+
+function bustNezaretCache() {
+  try {
+    const { sahibkarId } = requireTenant();
+    revalidateTag(`nezaret:${sahibkarId}`, "max");
+    revalidateTag(`alerts:${sahibkarId}`, "max");
+  } catch {
+    // tenant context yox — sessəizcə ötür
+  }
+  revalidatePath("/nezaret-merkezi/ayarlar");
+  revalidatePath("/nezaret-merkezi");
+  revalidatePath("/tesdiq/ayarlar");
+  revalidatePath("/tesdiq");
+}
 
 const Schema = z.object({
   auto_approve_mebleg: z.coerce.number().min(0).max(1_000_000),
@@ -62,6 +94,8 @@ function readNum(fd: FormData, key: string, def = 0): number {
 }
 
 export async function updateTesdiqSettings(fd: FormData): Promise<Result> {
+  const denied = await guardSettingsAccess();
+  if (denied) return denied;
   const candidate: TesdiqCfg = {
     auto_approve_mebleg: readNum(fd, "auto_approve_mebleg"),
     endirim_aktiv: readBool(fd, "endirim_aktiv"),
@@ -108,9 +142,10 @@ export async function updateTesdiqSettings(fd: FormData): Promise<Result> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış" };
 
   try {
-    await saveTesdiqSettings(parsed.data);
-    revalidatePath("/tesdiq/ayarlar");
-    revalidatePath("/tesdiq");
+    await withTenant(async () => {
+      await saveTesdiqSettings(parsed.data);
+    });
+    bustNezaretCache();
     return { ok: true };
   } catch (e) {
     console.error("[updateTesdiqSettings]", e);
@@ -119,10 +154,13 @@ export async function updateTesdiqSettings(fd: FormData): Promise<Result> {
 }
 
 export async function resetTesdiqSettings(): Promise<Result> {
+  const denied = await guardSettingsAccess();
+  if (denied) return denied;
   try {
-    await saveTesdiqSettings(DEFAULT_TESDIQ_CFG);
-    revalidatePath("/tesdiq/ayarlar");
-    revalidatePath("/tesdiq");
+    await withTenant(async () => {
+      await saveTesdiqSettings(DEFAULT_TESDIQ_CFG);
+    });
+    bustNezaretCache();
     return { ok: true };
   } catch (e) {
     console.error("[resetTesdiqSettings]", e);

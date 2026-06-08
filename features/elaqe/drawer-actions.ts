@@ -110,7 +110,9 @@ export async function getCustomerDrawer(id: string): Promise<CustomerDrawerData>
           musteri_reyting: k.musteri_reyting,
           risk_seviyye: k.risk_seviyye,
           qara_siyahi: k.qara_siyahi,
-          borc: Number(k.borc ?? 0),
+          // Yeni model: müştərinin bizə borcu `alacaq`-da saxlanılır.
+          // Köhnə kayıtlarda `borc`-da idi — daha böyüyünü götür (legacy uyğunluq).
+          borc: Math.max(Number(k.alacaq ?? 0), Number(k.borc ?? 0)),
           borc_limiti: k.borc_limiti != null ? Number(k.borc_limiti) : null,
           aktiv: k.aktiv,
           son_temas: k.son_temas,

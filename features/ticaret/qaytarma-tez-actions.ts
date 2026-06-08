@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { findSaleByCode, type SaleByCodeResult } from "./sale-lookup";
-import { requireTicaretActionPerm } from "./access-guard";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 import { audit } from "@/lib/audit/log";
+import { stockIncrement } from "@/lib/db/stock-guards";
 
 export type ScanLookupResult =
   | {
@@ -176,10 +177,14 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           },
         });
 
-        // Increment stock for that anbar (medaxil)
-        await tx.stok.updateMany({
-          where: { sahibkar_id: sahibkarId, mehsul_id: input.mehsul_id, anbar_id: anbarId },
-          data: { miqdar: { increment: input.miqdar } },
+        // Increment stock — upsert pattern via stockIncrement
+        // (updateMany silent skip-i qarşısı alır)
+        await stockIncrement(tx, {
+          sahibkarId,
+          mehsulId: input.mehsul_id,
+          anbarId,
+          miqdar: input.miqdar,
+          sonQiymet: input.vahid_qiymet,
         });
 
         await tx.anbar_hereketleri.create({
@@ -197,12 +202,76 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           },
         });
 
+        // 💰 ORIJİNAL SATIŞA TƏSİR — qaytarma satışın açıq borcunu azaltmalıdır.
+        // Nisyə satış olarsa: satış.odenilmis artırılır → satışın qalığı azalır →
+        // müştəri balansı source-of-truth ilə avtomatik düzəlir.
+        // Nəğd satış olarsa: kassadan refund + müştəriyə avans və ya pul qaytarmaq.
+        if (input.original_sale_id) {
+          const origSale = await tx.satis_sifarisleri.findUnique({
+            where: { id: input.original_sale_id },
+            select: {
+              id: true,
+              son_mebleg: true,
+              odenilmis: true,
+              musteri_id: true,
+              odenis_nov: true,
+              status: true,
+              kassa_id: true,
+            },
+          });
+          if (origSale) {
+            const son = Number(origSale.son_mebleg ?? 0);
+            const odenilmis = Number(origSale.odenilmis ?? 0);
+            const qalig = son - odenilmis;
+            const isNisye = origSale.odenis_nov === "nisye" || origSale.odenis_nov === "borc";
+
+            if (isNisye && qalig > 0) {
+              // Nisyə: qaytarma açıq borcu azaldır (odenilmis tipində virtual payment)
+              const apply = Math.min(total, qalig);
+              await tx.satis_sifarisleri.update({
+                where: { id: origSale.id },
+                data: {
+                  odenilmis: { increment: apply },
+                  ...(odenilmis + apply >= son - 0.001 ? { status: "tamamlandi" } : {}),
+                  yenilendi: new Date(),
+                },
+              });
+            } else if (!isNisye && origSale.kassa_id) {
+              // Nəğd/kart: kassaya mənfi əməliyyat (refund)
+              await tx.kassa_emeliyyatlari.create({
+                data: {
+                  sahibkar_id: sahibkarId,
+                  kassa_id: origSale.kassa_id,
+                  emeliyyat_nov: "qaytarma",
+                  odenis_nov: origSale.odenis_nov ?? "negd",
+                  mebleg: new Prisma.Decimal(-total),
+                  ref_nov: "qaytarma_tez",
+                  ref_id: ret.id,
+                  istifadeci_id: istifadeciId,
+                  qeyd: `Tez qaytarma refund: ${input.sebeb}`,
+                },
+              });
+            }
+
+            // Müştəri balansını source-of-truth-dan recalc
+            if (origSale.musteri_id) {
+              const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+              await recalculateCustomerBalance(origSale.musteri_id, tx);
+            }
+          }
+        } else if (input.musteri_id) {
+          // Original satış bağlanmayıbsa, sadəcə müştəri balansını yenidən hesabla
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(input.musteri_id, tx);
+        }
+
         return { id: ret.id, nomre: ret.nomre };
       });
 
       revalidatePath("/ticaret/qaytarma");
       revalidatePath("/ticaret/qaytarma/tez");
       revalidatePath("/ticaret");
+      bustTicaretCache();
 
       // Sürətli qaytarma — stok artar, kanal-larına sync
       try {
@@ -227,7 +296,8 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
 
       return { ok: true, id: result.id, nomre: result.nomre };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta baş verdi" };
+      const { logAndFriendly } = await import("@/lib/error/user-message");
+      return { ok: false, error: logAndFriendly("fastReturn", e, "Qaytarma yaradılmadı") };
     }
   });
 }
@@ -384,10 +454,14 @@ export async function returnFullSale(
         }
 
         // Reverse marketplace payout (negative finance_operations row).
+        // Hissəvi qaytarmada da proporsional əks əməliyyat yaradılır —
+        // əvvəlcə yalnız tam qaytarmada işləyirdi, gross/net drift qalırdı.
         let reversedFinance = false;
         const komisyon = Number(sale.komisyon_meblegh ?? 0);
-        if (fullReturn && sale.marketplace_platform && komisyon > 0) {
+        if (sale.marketplace_platform && komisyon > 0) {
           try {
+            const saleTotal = Number(sale.son_mebleg ?? 0);
+            const ratio = fullReturn || saleTotal <= 0 ? 1 : Math.min(1, total / saleTotal);
             const origOp = await tx.finance_operations.findFirst({
               where: {
                 sahibkar_id: sahibkarId,
@@ -397,7 +471,9 @@ export async function returnFullSale(
               orderBy: { tarix: "desc" },
             });
             if (origOp) {
-              const netReverse = Number(origOp.azn_meblegh ?? origOp.meblegh ?? 0);
+              const netOrig = Number(origOp.azn_meblegh ?? origOp.meblegh ?? 0);
+              const netReverse = +(netOrig * ratio).toFixed(2);
+              const komisyonReverse = +(komisyon * ratio).toFixed(2);
               await tx.finance_operations.create({
                 data: {
                   sahibkar_id: sahibkarId,
@@ -409,12 +485,14 @@ export async function returnFullSale(
                   valyuta: origOp.valyuta,
                   mezenne: origOp.mezenne,
                   azn_meblegh: -Math.abs(netReverse),
-                  komissiya: -Math.abs(komisyon),
+                  komissiya: -Math.abs(komisyonReverse),
                   hesab_id: origOp.hesab_id,
                   satis_id: sale.id,
                   sened_nomresi: `${origOp.sened_nomresi ?? sale.nomre}-RET`,
                   qarsi_teref_ad: origOp.qarsi_teref_ad,
-                  qeyd: `Qaytarma əksinə əməliyyat — ${ret.nomre}`,
+                  qeyd: fullReturn
+                    ? `Qaytarma əksinə əməliyyat — ${ret.nomre}`
+                    : `Hissəvi qaytarma əksinə (${(ratio * 100).toFixed(1)}%) — ${ret.nomre}`,
                   yaradan_id: istifadeciId,
                 },
               });
@@ -430,6 +508,31 @@ export async function returnFullSale(
             where: { id: sale.id },
             data: { status: "qaytarilib" },
           });
+        } else {
+          // Hissəvi qaytarma — nisyə satış olubsa odenilmis-ə virtual payment əlavə et
+          const isNisye = sale.odenis_nov === "nisye" || sale.odenis_nov === "borc";
+          if (isNisye) {
+            const sonMebleg = Number(sale.son_mebleg ?? 0);
+            const odenilmis = Number(sale.odenilmis ?? 0);
+            const qalig = sonMebleg - odenilmis;
+            const apply = Math.min(total, qalig);
+            if (apply > 0) {
+              await tx.satis_sifarisleri.update({
+                where: { id: sale.id },
+                data: {
+                  odenilmis: { increment: apply },
+                  ...(odenilmis + apply >= sonMebleg - 0.001 ? { status: "tamamlandi" } : {}),
+                  yenilendi: new Date(),
+                },
+              });
+            }
+          }
+        }
+
+        // Müştəri balansı source-of-truth recalc
+        if (sale.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(sale.musteri_id, tx);
         }
 
         return { id: ret.id, nomre: ret.nomre, reversedFinance };
@@ -439,6 +542,7 @@ export async function returnFullSale(
       revalidatePath("/ticaret/qaytarma/tez");
       revalidatePath("/ticaret/satislar");
       revalidatePath("/ticaret");
+      bustTicaretCache();
       await audit("yarat", "qaytarma_sifarisi", result.id, {
         yeni_data: {
           nomre: result.nomre,
@@ -457,7 +561,8 @@ export async function returnFullSale(
         reversed_finance: result.reversedFinance,
       };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta baş verdi" };
+      const { logAndFriendly } = await import("@/lib/error/user-message");
+      return { ok: false, error: logAndFriendly("returnFullSale", e, "Qaytarma yaradılmadı") };
     }
   });
 }

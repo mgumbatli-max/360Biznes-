@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
-import { StockAdjustDialog } from "@/features/anbar/components/stock-adjust-dialog";
+import { StokDuzelisDialog } from "@/features/anbar/components/stok-duzelis-dialog";
 import { ProductDialog } from "@/features/anbar/components/product-dialog";
 import {
   getProductDetail,
@@ -110,12 +110,13 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         </div>
         <div className="flex items-center gap-2">
           {byWarehouse.length > 0 && (
-            <StockAdjustDialog
-              mehsulId={product.id}
-              mehsulAd={product.ad}
+            <StokDuzelisDialog
+              mehsullar={[{ id: product.id, ad: product.ad, kod: product.kod ?? null, barkod: product.barkod ?? null }]}
               anbarlar={byWarehouse.map((w) => ({ id: w.anbar_id, ad: w.anbar_ad }))}
-              currentStock={totalStock}
-              trigger={<Button size="sm" variant="outline"><Package className="h-3.5 w-3.5" /> Stok düzəliş</Button>}
+              prefillMehsulId={product.id}
+              prefillKoheneMiqdar={totalStock}
+              triggerLabel="Stok düzəliş aktı"
+              triggerVariant="outline"
             />
           )}
           <ProductDialog

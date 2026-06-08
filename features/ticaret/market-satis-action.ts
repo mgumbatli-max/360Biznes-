@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { audit } from "@/lib/audit/log";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
 /**
  * "Marketdən satış" — marketplace platforma satışları
@@ -70,6 +71,8 @@ const SALE_PREFIX = "MS";
 export async function createMarketSatis(
   input: CreateMarketSatisInput,
 ): Promise<CreateMarketSatisResult> {
+  const permCheck = await requireTicaretActionPerm(["satis.yarat", "marketplace.satis"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = CreateMarketSatisSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -100,6 +103,14 @@ export async function createMarketSatis(
         };
       }
 
+      // Default komissiya faizini owner ayarından çək — user manual yazmayıbsa.
+      // Bu sayəde hər platforma üçün gündə 200 sifarişdə vahid faizi təkrar yazmaq lazım deyil.
+      let effectiveKomissiyaFaiz = data.komissiya_faiz;
+      if (effectiveKomissiyaFaiz === 0) {
+        const { getDefaultCommission } = await import("@/features/maliyye/marketplace-commission");
+        effectiveKomissiyaFaiz = await getDefaultCommission(data.platform);
+      }
+
       const result = await prisma.$transaction(
         async (tx) => {
           // 1. Compute totals
@@ -109,7 +120,7 @@ export async function createMarketSatis(
           }
           const sonMebleg = Math.max(0, umumi - data.endirim_mebleg);
           const komissiyaMebleg =
-            Math.round(sonMebleg * (data.komissiya_faiz / 100) * 100) / 100;
+            Math.round(sonMebleg * (effectiveKomissiyaFaiz / 100) * 100) / 100;
           const netMebleg = Math.max(0, sonMebleg - komissiyaMebleg);
 
           // 2. Lock stok rows and verify availability
@@ -149,7 +160,7 @@ export async function createMarketSatis(
           const platformLabel = PLATFORM_LABELS[data.platform];
           const qeydParts: string[] = [];
           qeydParts.push(
-            `[ORDER:${data.platform}:${data.sifaris_nomresi}] platform=${platformLabel} sifaris_no=${data.sifaris_nomresi} komissiya=${data.komissiya_faiz}% net=${netMebleg.toFixed(2)} AZN`,
+            `[ORDER:${data.platform}:${data.sifaris_nomresi}] platform=${platformLabel} sifaris_no=${data.sifaris_nomresi} komissiya=${effectiveKomissiyaFaiz}% net=${netMebleg.toFixed(2)} AZN`,
           );
           if (data.qaime_nomresi) {
             qeydParts.push(`[QAIME:${data.qaime_nomresi}]`);
@@ -221,52 +232,35 @@ export async function createMarketSatis(
             });
           }
 
-          // 7. Finance operation: marketplace payout (net amount → seçilmiş hesab)
-          if (data.hesab_id && netMebleg > 0) {
-            try {
-              // Find or create the operation type "marketplace_payout"
-              let type = await tx.finance_operation_types
-                .findUnique({ where: { kod: "marketplace_payout" } })
-                .catch(() => null);
-              if (!type) {
-                type = await tx.finance_operation_types
-                  .create({
-                    data: {
-                      kod: "marketplace_payout",
-                      ad: "Marketplace ödənişi",
-                      qrup: "satis",
-                      y_n: "daxil",
-                      link_satish: true,
-                      link_marketplace: true,
-                    },
-                  })
-                  .catch(() => null);
-              }
-              if (type) {
-                await tx.finance_operations.create({
-                  data: {
-                    sahibkar_id: sahibkarId,
-                    type_id: type.id,
-                    type_kod: type.kod,
-                    y_n: type.y_n,
-                    tarix: new Date(),
-                    meblegh: netMebleg,
-                    valyuta: "AZN",
-                    mezenne: 1,
-                    azn_meblegh: netMebleg,
-                    komissiya: komissiyaMebleg,
-                    hesab_id: data.hesab_id,
-                    satis_id: sale.id,
-                    sened_nomresi: data.sifaris_nomresi,
-                    qarsi_teref_ad: platformLabel,
-                    qeyd: `${platformLabel} #${data.sifaris_nomresi} — net ${netMebleg.toFixed(2)} (komissiya ${komissiyaMebleg.toFixed(2)})`,
-                    yaradan_id: istifadeciId,
-                  },
-                });
-              }
-            } catch (err) {
-              console.error("[createMarketSatis] finance_operations skipped:", err);
-            }
+          // 7. Marketplace gözlənən payout — bank hesabı DƏRHAL artırılmır,
+          //    yalnız `finance_marketplace_payments` cədvəlində "gözlənir" statusu yaranır.
+          //    Pul real olaraq platforma payout etdikdə (`acceptMarketplacePayout`),
+          //    bank hesab artır + finance_operations qeydi yaranır.
+          try {
+            const today = new Date();
+            await tx.finance_marketplace_payments.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                platforma: platformLabel,
+                magaza: data.platform,
+                donem_baslama: today,
+                donem_bitme: today,
+                gozlenen_meblegh: netMebleg,
+                komissiya: komissiyaMebleg,
+                status: "gozlenir",
+                hesab_id: data.hesab_id ?? null,
+                qeyd: `[ORDER:${data.platform}:${data.sifaris_nomresi}] Satış #${sale.id}`,
+                yaradan_id: istifadeciId,
+              },
+            });
+          } catch (err) {
+            console.error("[createMarketSatis] marketplace payout pending skipped:", err);
+          }
+
+          // Müştəri seçilibsə (B2B marketplace) balansı recalc et — defensive
+          if (data.musteri_id) {
+            const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+            await recalculateCustomerBalance(data.musteri_id, tx);
           }
 
           return { id: sale.id, nomre, sonMebleg, netMebleg };
@@ -277,6 +271,7 @@ export async function createMarketSatis(
       revalidatePath("/ticaret/emeliyyat");
       revalidatePath("/ticaret/market-satis");
       revalidatePath("/ticaret/satislar");
+      bustTicaretCache();
 
       // Market satışı (Wolt/Bolt/və s. manual) — kanal-larına sync
       try {
@@ -306,9 +301,8 @@ export async function createMarketSatis(
         net_meblegh: result.netMebleg,
       };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Bilinməyən xəta";
-      console.error("[createMarketSatis]", e);
-      return { ok: false as const, error: msg };
+      const { logAndFriendly } = await import("@/lib/error/user-message");
+      return { ok: false as const, error: logAndFriendly("createMarketSatis", e, "Marketplace satışı yaradılmadı") };
     }
   });
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Loader2, Info, Wallet, Package2, ChevronDown, ChevronRight } from "lucide-react";
 import {
   Dialog,
@@ -41,9 +41,19 @@ export function ServisDialog({
   defektKateq?: DefektOpt[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // URL parametri `?yeni=1` varsa dialog avtomatik açılır — dashboard
+  // Quick Actions "Yeni servis" düyməsindən birbaşa formanı açır.
+  useEffect(() => {
+    if (searchParams.get("yeni") === "1" || searchParams.get("new") === "1") {
+      setOpen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Product mode: "bizim" (catalog) vs "xarici" (free-form, e.g. iPhone screen, not from our stock)
   const [mode, setMode] = useState<"bizim" | "xarici">("bizim");

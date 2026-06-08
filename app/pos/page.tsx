@@ -36,14 +36,26 @@ export default async function PosPage() {
     redirect("/tapshiriqlar");
   }
 
-  const [active, filiallar, anbar, saticilar] = await Promise.all([
+  // Əvvəlcə kassa sessiyasını oxu, sonra onun filialına bağlı anbarı tap.
+  // POS-da stok düzgün görünməsi üçün kassa-anbar uyğunluğu vacibdir.
+  const [active, filiallar, saticilar] = await Promise.all([
     getActiveKassa(),
     getFilialOptions(),
-    getDefaultAnbar(),
     getSalespersonOptions(),
+  ]);
+  const { getPosAnbarOptions } = await import("@/features/pos/sale-queries");
+  const [anbar, anbarOptions] = await Promise.all([
+    getDefaultAnbar(active?.filial_id ?? null),
+    getPosAnbarOptions(active?.filial_id ?? null),
   ]);
 
   if (!active) {
+    // POS sessiya açmaq üçün hesablar — pul hansı maliye hesabına düşəcəyini seçmək üçün
+    const { getAccounts } = await import("@/features/maliyye/account-queries");
+    const accounts = await getAccounts();
+    const posHesablar = accounts
+      .filter((a) => a.aktiv && ["negd", "kart", "bank", "pos"].includes(a.nov))
+      .map((a) => ({ id: a.id, ad: a.ad, nov: a.nov }));
     return (
       <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
         <header className="text-center">
@@ -57,7 +69,7 @@ export default async function PosPage() {
             Satışa başlamaq üçün kassa sessiyasını açın.
           </p>
         </header>
-        <OpenSessionCard filiallar={filiallar} />
+        <OpenSessionCard filiallar={filiallar} hesablar={posHesablar} />
       </div>
     );
   }
@@ -101,6 +113,7 @@ export default async function PosPage() {
       kassaId={active.id}
       anbarId={anbar.id}
       anbarAd={anbar.ad}
+      anbarOptions={anbarOptions}
       saticilar={saticilar}
       defaultSalespersonId={session.user.id}
       initialQuickProducts={initialQuickProducts}

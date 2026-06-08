@@ -6,7 +6,9 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils";
+import { audit } from "@/lib/audit/log";
 import { encodeMeta, SHIFTS, type ShiftKey } from "./davamiyyet-queries";
+import { requireHrActionPerm, bustHrCache } from "./access-guard";
 
 type Result = { ok: true; count?: number } | { ok: false; error: string };
 
@@ -38,6 +40,8 @@ function expectedStartForShift(date: string, shift?: ShiftKey | null): Date {
 }
 
 export async function saveAttendance(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("davamiyyet.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = ManualSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
@@ -97,10 +101,16 @@ export async function saveAttendance(input: FormData): Promise<Result> {
       await maybeAutoWarn(d.istifadeci_id);
 
       revalidatePath("/iscilier/davamiyyet");
+      bustHrCache();
+      await audit("yenile", "davamiyyet", null, {
+        yeni_data: { istifadeci_id: d.istifadeci_id, tarix: d.tarix, status: d.status, gec_dq, ish_saatlari },
+        sebeb: "Davamiyyət manual yeniləndi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[saveAttendance]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
@@ -122,6 +132,11 @@ export async function quickMarkAttendance(input: FormData): Promise<Result> {
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    // Self-service: yalnız özünü işarələyə bilər. Başqası üçün davamiyyet.idare lazımdır.
+    if (d.istifadeci_id !== istifadeciId) {
+      const permCheck = await requireHrActionPerm("davamiyyet.idare");
+      if (!permCheck.ok) return { ok: false, error: permCheck.error };
+    }
     try {
       const tarix = parseLocalDate(d.tarix);
       if (!tarix) return { ok: false, error: "Tarix yanlışdır" };
@@ -157,15 +172,23 @@ export async function quickMarkAttendance(input: FormData): Promise<Result> {
         },
       });
       revalidatePath("/iscilier/davamiyyet");
+      bustHrCache();
+      await audit("yenile", "davamiyyet", null, {
+        yeni_data: { istifadeci_id: d.istifadeci_id, tarix: d.tarix, status: d.status, gec_dq, self: d.istifadeci_id === istifadeciId },
+        sebeb: "Sürətli davamiyyət dəyişdirildi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[quickMarkAttendance]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
 
 export async function markAllPresentToday(): Promise<Result> {
+  const permCheck = await requireHrActionPerm("davamiyyet.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -196,10 +219,16 @@ export async function markAllPresentToday(): Promise<Result> {
         count++;
       }
       revalidatePath("/iscilier/davamiyyet");
+      bustHrCache();
+      await audit("toplu_yenile", "davamiyyet", null, {
+        yeni_data: { tarix: today.toISOString().slice(0, 10), say: count },
+        sebeb: "Bu gün hamı qaydasında işarələndi",
+      });
       return { ok: true, count };
     } catch (e) {
       console.error("[markAllPresentToday]", e);
-      return { ok: false, error: "Alınmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Alınmadı: ${msg}` };
     }
   });
 }
@@ -271,6 +300,8 @@ const WarnSchema = z.object({
 });
 
 export async function addWarning(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("isci.discipline");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = WarnSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   return withTenant(async () => {
@@ -301,10 +332,16 @@ export async function addWarning(input: FormData): Promise<Result> {
         },
       });
       revalidatePath(`/iscilier/${parsed.data.istifadeci_id}`);
+      bustHrCache();
+      await audit("xebardarliq", "iscilier", parsed.data.istifadeci_id, {
+        yeni_data: { nov: parsed.data.nov, sebeb: parsed.data.sebeb },
+        sebeb: `Xəbərdarlıq: ${parsed.data.sebeb}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[addWarning]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }

@@ -11,6 +11,8 @@ export type EmployeeFilter = {
   vezife?: string[];
   status?: EmployeeStatus[];
   aktiv?: boolean;
+  /** Soft-delete standart filter */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 function dayStart(d = new Date()) {
@@ -36,6 +38,9 @@ export async function getEmployees(filter: EmployeeFilter): Promise<EmployeeRow[
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
+    const rs = filter.recordStatus ?? "aktiv";
+    if (rs === "aktiv") where.deleted_at = null;
+    else if (rs === "silinmis") where.deleted_at = { not: null };
     if (filter.aktiv !== undefined) where.aktiv = filter.aktiv;
     if (filter.rol_id?.length) where.rol_id = { in: filter.rol_id };
     if (filter.vezife?.length) where.vezife = { in: filter.vezife };
@@ -206,13 +211,40 @@ export async function getFilialOptions(): Promise<FilialOpt[]> {
 
 export async function getVezifeOptions(): Promise<string[]> {
   return withTenant(async () => {
-    const rows = await prisma.istifadeciler.findMany({
-      where: { vezife: { not: null } },
-      distinct: ["vezife"],
-      orderBy: { vezife: "asc" },
-      select: { vezife: true },
+    const rows = await prisma.vezifeler.findMany({
+      where: { aktiv: true },
+      orderBy: { ad: "asc" },
+      select: { ad: true },
     });
-    return rows.map((r) => r.vezife!).filter(Boolean);
+    return rows.map((r) => r.ad);
+  });
+}
+
+export type VezifeRow = { id: number; ad: string; aktiv: boolean; istifade_sayi: number };
+
+export async function getAllVezifeler(): Promise<VezifeRow[]> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const rows = await prisma.$queryRaw<
+      Array<{ id: number; ad: string; aktiv: boolean; istifade_sayi: bigint }>
+    >`
+      SELECT v.id, v.ad, v.aktiv,
+             COUNT(u.id)::bigint AS istifade_sayi
+        FROM vezifeler v
+        LEFT JOIN istifadeciler u
+          ON u.sahibkar_id = v.sahibkar_id
+         AND LOWER(u.vezife) = LOWER(v.ad)
+         AND u.aktiv = TRUE
+       WHERE v.sahibkar_id = ${sahibkarId}::uuid
+       GROUP BY v.id, v.ad, v.aktiv
+       ORDER BY v.aktiv DESC, v.ad ASC
+    `;
+    return rows.map((r) => ({
+      id: r.id,
+      ad: r.ad,
+      aktiv: r.aktiv,
+      istifade_sayi: Number(r.istifade_sayi),
+    }));
   });
 }
 

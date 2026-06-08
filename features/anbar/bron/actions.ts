@@ -25,6 +25,9 @@ function nz<T>(v: T | "" | null | undefined): T | null {
 }
 
 export async function createBron(formData: FormData): Promise<ActionResult> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  const permCheck = await requireAnbarActionPerm(["bron.idare", "stok.idare", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const raw = Object.fromEntries(formData.entries());
   const parsed = CreateSchema.safeParse(raw);
   if (!parsed.success) {
@@ -60,9 +63,33 @@ export async function createBron(formData: FormData): Promise<ActionResult> {
   });
 }
 
-export async function cancelBron(id: number): Promise<ActionResult> {
+export async function cancelBron(id: number, force?: boolean): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      blockers?: import("@/lib/blockers/types").Blocker[];
+      hint?: string;
+    }
+> {
+  const { requireAnbarActionPerm } = await import("../access-guard");
+  const permCheck = await requireAnbarActionPerm(["bron.idare", "stok.idare", "anbar.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
+      // 🛑 Bron satışa bağlıdırsa — blocker pattern
+      if (!force) {
+        const { findBronBlockers } = await import("@/lib/blockers/find-bron-blockers");
+        const blockers = await findBronBlockers(id);
+        if (blockers.length > 0) {
+          return {
+            ok: false,
+            error: "Bu bron aktiv satışa bağlıdır — sərbəst ləğv edilmir.",
+            blockers,
+            hint: "Əvvəlcə satışı ləğv edin və ya onu uyğun şəkildə bağlayın.",
+          };
+        }
+      }
       await prisma.stok_bron.update({
         where: { id },
         data: { status: "legv" },

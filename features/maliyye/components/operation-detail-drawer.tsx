@@ -29,9 +29,23 @@ const STATUS_LABEL: Record<string, { ad: string; cls: string }> = {
   redd: { ad: "Rədd", cls: "border-danger/30 bg-danger/10 text-danger" },
 };
 
-export function OperationDetailDrawer({ op }: { op: OperationRow }) {
+export function OperationDetailDrawer({
+  op,
+  defaultOpen = false,
+  onOpenChange,
+  hideTrigger = false,
+}: {
+  op: OperationRow;
+  defaultOpen?: boolean;
+  onOpenChange?: (v: boolean) => void;
+  hideTrigger?: boolean;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(defaultOpen);
+  function setOpen(v: boolean) {
+    setOpenState(v);
+    onOpenChange?.(v);
+  }
   const [pending, startTransition] = useTransition();
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
@@ -139,16 +153,18 @@ export function OperationDetailDrawer({ op }: { op: OperationRow }) {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10.5px] font-semibold hover:bg-secondary"
-          data-op-detail-trigger="1"
-          title="Detallara bax"
-        >
-          <Eye className="h-3 w-3" /> Bax
-        </button>
-      </SheetTrigger>
+      {!hideTrigger && (
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10.5px] font-semibold hover:bg-secondary"
+            data-op-detail-trigger="1"
+            title="Detallara bax"
+          >
+            <Eye className="h-3 w-3" /> Bax
+          </button>
+        </SheetTrigger>
+      )}
       <SheetContent side="right" className="w-full sm:max-w-md md:max-w-lg overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">

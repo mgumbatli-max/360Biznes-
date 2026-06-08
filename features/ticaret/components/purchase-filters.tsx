@@ -33,6 +33,7 @@ export function PurchaseFilters({ suppliers, anbarlar }: { suppliers: Supplier[]
   const anbar = sp.get("anbar") ?? "";
   const from = sp.get("from") ?? "";
   const to = sp.get("to") ?? "";
+  const borc = sp.get("borc") ?? "";
 
   const update = useCallback(
     (mutate: (p: URLSearchParams) => void) => {
@@ -61,7 +62,7 @@ export function PurchaseFilters({ suppliers, anbarlar }: { suppliers: Supplier[]
     });
   }
 
-  const hasFilters = !!(search || status.length || techizatci || anbar || from || to);
+  const hasFilters = !!(search || status.length || techizatci || anbar || from || to || borc);
 
   function set(name: string, value: string) {
     update((p) => {
@@ -116,6 +117,23 @@ export function PurchaseFilters({ suppliers, anbarlar }: { suppliers: Supplier[]
         ))}
       </Row>
 
+      <Row label="Borc">
+        {[
+          { v: "", l: "Hamısı" },
+          { v: "var", l: "Bizim borc var" },
+          { v: "yox", l: "Bağlı" },
+        ].map((o) => (
+          <Pill
+            key={o.v || "any"}
+            active={(borc || "") === o.v}
+            onClick={() => set("borc", o.v)}
+            disabled={pending}
+          >
+            {o.l}
+          </Pill>
+        ))}
+      </Row>
+
       <Row label="Tarix">
         <input
           type="date"
@@ -163,8 +181,10 @@ function Pill({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "inline-flex h-7 items-center rounded-full border px-2.5 text-xs font-medium transition",
-        active ? "border-primary/40 bg-primary/15 text-primary-light" : "border-border bg-card text-muted-foreground hover:text-foreground",
+        "inline-flex h-7 items-center rounded-full px-2.5 text-xs font-semibold transition-all duration-200 ease-out hover:-translate-y-px active:translate-y-0 active:scale-95",
+        active
+          ? "bg-gradient-to-b from-primary/25 to-primary/10 text-primary ring-1 ring-inset ring-primary/30 shadow-sm shadow-primary/15"
+          : "bg-card/60 backdrop-blur-sm text-muted-foreground ring-1 ring-inset ring-border/50 hover:bg-secondary/60 hover:text-foreground hover:ring-border",
       )}
     >
       {children}

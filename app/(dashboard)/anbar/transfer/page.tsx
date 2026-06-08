@@ -3,6 +3,7 @@ import { ArrowLeftRight, Truck, Package, MapPin, RotateCw } from "lucide-react";
 import { AnbarSubNav } from "@/components/anbar-subnav";
 import { EmptyState } from "@/components/ui/empty-state";
 import { TransferDialog } from "@/features/anbar/transfer/components/transfer-dialog";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { AcceptTransferButton } from "@/features/anbar/transfer/components/transfer-accept";
 import { TransferFilters } from "@/features/anbar/transfer/components/transfer-filters";
 import { getTransfers, getTransferOptions } from "@/features/anbar/transfer/queries";
@@ -10,7 +11,7 @@ import { formatDate, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Anbar transferi" };
 
-type SP = { status?: string; kaynak?: string; hedef?: string; from?: string; to?: string };
+type SP = { status?: string; kaynak?: string; hedef?: string; from?: string; to?: string; new?: string };
 
 const STATUS_CLS: Record<string, string> = {
   tesdiqlenmemis: "bg-warning/15 text-warning border-warning/30",
@@ -32,6 +33,10 @@ export default async function TransferPage({ searchParams }: { searchParams: Pro
   const kaynakId = sp.kaynak ? Number(sp.kaynak) : undefined;
   const hedefId = sp.hedef ? Number(sp.hedef) : undefined;
   const hasFilters = !!(sp.status || sp.kaynak || sp.hedef || sp.from || sp.to);
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
   const [rows, options] = await Promise.all([
     getTransfers({
       status: sp.status,
@@ -39,6 +44,7 @@ export default async function TransferPage({ searchParams }: { searchParams: Pro
       hedefId: Number.isFinite(hedefId) ? hedefId : undefined,
       from: sp.from,
       to: sp.to,
+      recordStatus,
     }),
     getTransferOptions(),
   ]);
@@ -56,7 +62,10 @@ export default async function TransferPage({ searchParams }: { searchParams: Pro
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">Bir anbardan digərinə məhsulun köçürülməsi.</p>
           </div>
-          <TransferDialog anbarlar={options.anbarlar} products={options.products} />
+          <div className="flex items-center gap-2">
+            <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
+            <TransferDialog anbarlar={options.anbarlar} products={options.products} autoOpen={sp.new === "1"} />
+          </div>
         </header>
 
         {isEmptyAtAll ? (

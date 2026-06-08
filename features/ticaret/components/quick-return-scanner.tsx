@@ -95,6 +95,10 @@ export function QuickReturnScanner({ anbarlar }: { anbarlar: AnbarOption[] }) {
   const [qeyd, setQeyd] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
+  // Kütləvi skan sessiyası — neçə qaytarma icra olunub
+  const [sessionCount, setSessionCount] = useState(0);
+  const [sessionAmount, setSessionAmount] = useState(0);
+
   const [, startTransition] = useTransition();
 
   /* Auto-focus the input on mount & whenever mode flips. */
@@ -172,7 +176,7 @@ export function QuickReturnScanner({ anbarlar }: { anbarlar: AnbarOption[] }) {
   }
 
   /* ── Submit (QAYTAR) ─────────────────────────────────────────────── */
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (continueAfter: boolean = true) => {
     setMsg(null);
     if (mode === "musteri") {
       if (!lineResult?.ok) {
@@ -201,9 +205,18 @@ export function QuickReturnScanner({ anbarlar }: { anbarlar: AnbarOption[] }) {
       if (!r.ok) {
         setMsg({ kind: "err", text: r.error });
       } else {
-        setMsg({ kind: "ok", text: `Qaytarma yaradıldı: ${r.nomre}` });
+        setMsg({ kind: "ok", text: `Qaytarma yaradıldı: ${r.nomre}${continueAfter ? " — növbəti skana hazır" : ""}` });
+        setSessionCount((c) => c + 1);
+        setSessionAmount((s) => s + m * q);
         startTransition(() => router.refresh());
-        window.setTimeout(reset, 1200);
+        if (continueAfter) {
+          window.setTimeout(() => {
+            reset();
+            inputRef.current?.focus();
+          }, 800);
+        } else {
+          window.setTimeout(closeAndReturn, 1200);
+        }
       }
     } else {
       if (!saleResult) {
@@ -223,12 +236,21 @@ export function QuickReturnScanner({ anbarlar }: { anbarlar: AnbarOption[] }) {
       } else {
         setMsg({
           kind: "ok",
-          text: `Qaytarma: ${r.nomre}${r.reversed_finance ? " (komissiya geri)" : ""}`,
+          text: `Qaytarma: ${r.nomre}${r.reversed_finance ? " (komissiya geri)" : ""}${continueAfter ? " — növbəti üçün hazır" : ""}`,
         });
+        setSessionCount((c) => c + 1);
         startTransition(() => router.refresh());
-        window.setTimeout(reset, 1500);
+        if (continueAfter) {
+          window.setTimeout(() => {
+            reset();
+            inputRef.current?.focus();
+          }, 1000);
+        } else {
+          window.setTimeout(closeAndReturn, 1500);
+        }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, lineResult, saleResult, miqdar, vahidQiymet, anbarId, sebeb, qeyd, returnType, router]);
 
   /* ── Keyboard shortcuts ─────────────────────────────────────────── */
@@ -242,7 +264,10 @@ export function QuickReturnScanner({ anbarlar }: { anbarlar: AnbarOption[] }) {
         inputRef.current?.focus();
       } else if (e.key === "F9") {
         e.preventDefault();
-        submit();
+        submit(true); // Qaytar və davam et — pəncərə açıq qalsın
+      } else if (e.key === "F10") {
+        e.preventDefault();
+        submit(false); // Qaytar və bağla
       } else if (e.key === "Escape") {
         // Esc clears the scan input first; second Esc closes.
         if (scan) setScan("");
@@ -457,21 +482,54 @@ export function QuickReturnScanner({ anbarlar }: { anbarlar: AnbarOption[] }) {
               Bağla
             </Button>
           </div>
-          <Button
-            type="button"
-            onClick={submit}
-            disabled={
-              busy ||
-              (mode === "musteri" ? !lineResult?.ok : !saleResult)
-            }
-            className="mt-2 h-10 w-full bg-rose-600 text-sm font-semibold text-white hover:bg-rose-700"
-          >
-            {busy ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              "QAYTAR (F9)"
-            )}
-          </Button>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <Button
+              type="button"
+              onClick={() => submit(true)}
+              disabled={
+                busy ||
+                (mode === "musteri" ? !lineResult?.ok : !saleResult)
+              }
+              className="h-10 bg-rose-600 text-sm font-semibold text-white hover:bg-rose-700"
+              title="F9 — qaytarmadan sonra pəncərə açıq qalsın"
+            >
+              {busy ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <span className="flex flex-col leading-tight">
+                  <span>QAYTAR + DAVAM</span>
+                  <span className="text-[10px] opacity-80">F9</span>
+                </span>
+              )}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => submit(false)}
+              disabled={
+                busy ||
+                (mode === "musteri" ? !lineResult?.ok : !saleResult)
+              }
+              variant="outline"
+              className="h-10 border-rose-500/40 text-sm font-semibold text-rose-700 hover:bg-rose-500/10"
+              title="F10 — qaytar və bağla"
+            >
+              <span className="flex flex-col leading-tight">
+                <span>QAYTAR + BAĞLA</span>
+                <span className="text-[10px] opacity-80">F10</span>
+              </span>
+            </Button>
+          </div>
+          {sessionCount > 0 && (
+            <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10.5px] text-emerald-700">
+              📦 Bu sessiyada: <strong>{sessionCount}</strong> qaytarma
+              {sessionAmount > 0 && (
+                <>
+                  {" · "}
+                  <strong className="tabular-nums">{sessionAmount.toFixed(2)} ₼</strong>
+                </>
+              )}
+            </div>
+          )}
         </aside>
       </div>
 
@@ -480,7 +538,8 @@ export function QuickReturnScanner({ anbarlar }: { anbarlar: AnbarOption[] }) {
         <span className="mr-3"><K>F2</K> Mod dəyiş</span>
         <span className="mr-3"><K>F3</K> Kod sahə</span>
         <span className="mr-3"><K>Enter</K> Tap</span>
-        <span className="mr-3"><K>F9</K> Qaytar</span>
+        <span className="mr-3"><K>F9</K> Qaytar + davam</span>
+        <span className="mr-3"><K>F10</K> Qaytar + bağla</span>
         <span className="mr-3"><K>Esc</K> Bağla</span>
       </div>
     </div>

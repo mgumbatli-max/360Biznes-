@@ -54,8 +54,35 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
   const [cancelling, startCancelling] = useTransition();
   const [scan, setScan] = useState("");
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  const [viewFilter, setViewFilter] = useState<"all" | "variance" | "uncounted">("all");
 
   const aktiv = status === "aktiv";
+
+  const counts = useMemo(() => {
+    let counted = 0;
+    let variance = 0;
+    rows.forEach((r) => {
+      const v = values[r.id];
+      const fakti = v === "" ? r.fakti_miqdar : Number(v);
+      if (fakti != null && !Number.isNaN(fakti)) counted++;
+      if (fakti != null && !Number.isNaN(fakti) && fakti !== r.sistemde_olan) variance++;
+    });
+    return { counted, variance, total: rows.length, uncounted: rows.length - counted };
+  }, [rows, values]);
+
+  const visibleRows = useMemo(() => {
+    if (viewFilter === "all") return rows;
+    return rows.filter((r) => {
+      const v = values[r.id];
+      const fakti = v === "" ? r.fakti_miqdar : Number(v);
+      if (viewFilter === "uncounted") return fakti == null || Number.isNaN(fakti);
+      if (viewFilter === "variance") {
+        if (fakti == null || Number.isNaN(fakti)) return false;
+        return fakti !== r.sistemde_olan;
+      }
+      return true;
+    });
+  }, [rows, values, viewFilter]);
 
   /**
    * Barkod scan: barkod skaner adətən Enter ilə bitirir.
@@ -234,6 +261,45 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
         </>
       )}
 
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card/40 px-3 py-2">
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="font-semibold tabular-nums">{counts.counted}</span>
+          <span className="text-muted-foreground">/ {counts.total} sayıldı</span>
+        </div>
+        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-secondary">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${counts.total ? (counts.counted / counts.total) * 100 : 0}%` }}
+          />
+        </div>
+        {counts.variance > 0 && (
+          <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700">
+            {counts.variance} fərq
+          </Badge>
+        )}
+        <div className="ml-auto flex items-center gap-1">
+          {[
+            { v: "all" as const, l: `Hamısı (${counts.total})` },
+            { v: "variance" as const, l: `Fərqlər (${counts.variance})` },
+            { v: "uncounted" as const, l: `Sayılmayan (${counts.uncounted})` },
+          ].map((o) => (
+            <button
+              key={o.v}
+              type="button"
+              onClick={() => setViewFilter(o.v)}
+              className={cn(
+                "inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-medium transition",
+                viewFilter === o.v
+                  ? "border-primary/40 bg-primary/15 text-primary-light"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {o.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
         <div className="max-h-[60vh] overflow-auto">
           <table className="w-full text-sm" data-sticky-head>
@@ -247,10 +313,12 @@ export function InventarEditor({ inventarId, rows, status }: { inventarId: strin
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={5} className="py-12 text-center text-sm text-muted-foreground">Sətir yoxdur</td></tr>
+              {visibleRows.length === 0 && (
+                <tr><td colSpan={5} className="py-12 text-center text-sm text-muted-foreground">
+                  {rows.length === 0 ? "Sətir yoxdur" : "Bu filterə uyğun sətir yoxdur"}
+                </td></tr>
               )}
-              {rows.map((r) => {
+              {visibleRows.map((r) => {
                 const v = values[r.id];
                 const fakti = v === "" ? null : Number(v);
                 const ferq = fakti != null ? fakti - r.sistemde_olan : null;

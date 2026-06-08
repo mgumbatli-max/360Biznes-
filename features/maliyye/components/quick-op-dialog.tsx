@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileText, Calendar, Wallet, Layers } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,12 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { toast } from "sonner";
-import { saveQuickOperation } from "../actions";
+import { saveQuickOperation, payAllOpenInvoices, applyAdvanceToInvoice } from "../actions";
+import { getCustomerOpenInvoicesAction, type OpenInvoice } from "../customer-invoices-action";
+import { formatMoney } from "@/lib/utils";
+import { ContactContextPanel } from "@/features/elaqe/components/contact-context-panel";
 
 type EntityOpt = { id: string; ad: string };
+type HesabOpt = EntityOpt & { balans?: number; valyuta?: string; nov?: string };
 
 type Props = {
-  hesablar: EntityOpt[];
+  hesablar: HesabOpt[];
   iscilier: EntityOpt[];
   kontragentler: EntityOpt[];
 };
@@ -48,6 +52,7 @@ export type KindMetaEntry = {
 // (Köhnə 41 növ → tek növlərə birləşdirildi. Kredit_faiz tamamilə silindi.)
 export const KIND_META: Record<string, KindMetaEntry> = {
   qaime:           { ad: "Qaimə",                qrup: "qaime",      tip: "medaxil",  ihtiyac: { hesab: true, kontragent: true, sened: true } },
+  alis_odenis:     { ad: "Alış ödənişi",         qrup: "qaime",      tip: "mexaric",  ihtiyac: { hesab: true, kontragent: true, sened: true } },
   xercler:         { ad: "Xərclər",              qrup: "xercler",    tip: "mexaric",  ihtiyac: { hesab: true, kateqoriya: true } },
   maas:            { ad: "Əməkhaqqı ödənişi",    qrup: "maas_isci",  tip: "mexaric",  ihtiyac: { hesab: true, isci: true } },
   avans:           { ad: "Avans",                qrup: "maas_isci",  tip: "mexaric",  ihtiyac: { hesab: true, isci: true } },
@@ -99,6 +104,47 @@ function QuickOpDialogInner({ hesablar, iscilier, kontragentler }: Props) {
   const [isciId, setIsciId] = useState<string>("");
   const [kontragentId, setKontragentId] = useState<string>(preKontragent);
 
+  // Açıq sənədlər (yalnız "qaime" tipinə görə)
+  const [customerInvoices, setCustomerInvoices] = useState<OpenInvoice[]>([]);
+  const [customerAvans, setCustomerAvans] = useState<number>(0);
+  const [customerTotalOpen, setCustomerTotalOpen] = useState<number>(0);
+  const [selectedQaimeId, setSelectedQaimeId] = useState<string>("");
+  // Mode: "specific" (tək sənədə) | "fifo" (ardıcıl bağla) | "advance" (avansdan)
+  const [payMode, setPayMode] = useState<"specific" | "fifo" | "advance">("fifo");
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+
+  // Kontragent dəyişdikdə qaime tipi üçün açıq sənədləri yüklə
+  useEffect(() => {
+    if (kind !== "qaime" || !kontragentId) {
+      setCustomerInvoices([]);
+      setCustomerAvans(0);
+      setCustomerTotalOpen(0);
+      setSelectedQaimeId("");
+      return;
+    }
+    let cancelled = false;
+    setLoadingInvoices(true);
+    getCustomerOpenInvoicesAction(kontragentId)
+      .then((data) => {
+        if (cancelled) return;
+        setCustomerInvoices(data.invoices);
+        setCustomerAvans(data.avans);
+        setCustomerTotalOpen(data.cemi_qaliq);
+        // Default: ən köhnə sənədi seç
+        if (data.invoices.length > 0) {
+          setSelectedQaimeId(data.invoices[0].id);
+        } else {
+          setSelectedQaimeId("");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingInvoices(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, kontragentId]);
+
   function close() {
     const params = new URLSearchParams(sp.toString());
     params.delete("new");
@@ -111,6 +157,59 @@ function QuickOpDialogInner({ hesablar, iscilier, kontragentler }: Props) {
     setError(null);
     const fd = new FormData(e.currentTarget);
     if (!fd.get("type_kod") && kind) fd.set("type_kod", kind);
+
+    // Qaimə tipində xüsusi rejimlər
+    if (kind === "qaime" && kontragentId) {
+      startTransition(async () => {
+        if (payMode === "advance") {
+          // Avansdan tətbiq
+          if (!selectedQaimeId) {
+            setError("Sənəd seçilməyib");
+            return;
+          }
+          const advFd = new FormData();
+          advFd.set("musteri_id", kontragentId);
+          advFd.set("qaime_id", selectedQaimeId);
+          advFd.set("mebleg", String(fd.get("mebleg") ?? "0"));
+          const res = await applyAdvanceToInvoice(advFd);
+          if (!res.ok) { setError(res.error); return; }
+          toast.success(res.message ?? "Avans tətbiq edildi");
+          close();
+          router.refresh();
+          return;
+        }
+        if (payMode === "fifo") {
+          // Bütün açıq sənədləri ardıcıl bağla
+          const allFd = new FormData();
+          allFd.set("musteri_id", kontragentId);
+          allFd.set("mebleg", String(fd.get("mebleg") ?? "0"));
+          if (hesabId) allFd.set("hesab_id", hesabId);
+          const q = fd.get("qeyd");
+          if (q) allFd.set("qeyd", String(q));
+          const res = await payAllOpenInvoices(allFd);
+          if (!res.ok) { setError(res.error); return; }
+          toast.success(
+            `${res.closed} sənəd tam, ${res.partial} qismən bağlandı` +
+            (res.toAdvance > 0 ? ` · ${res.toAdvance.toFixed(2)} ₼ avans` : "")
+          );
+          close();
+          router.refresh();
+          return;
+        }
+        // payMode === "specific"
+        if (selectedQaimeId) {
+          fd.set("satis_id", selectedQaimeId);
+        }
+        const res = await saveQuickOperation(fd);
+        if (!res.ok) { setError(res.error); return; }
+        toast.success(res.message ?? "Əməliyyat qeydə alındı");
+        close();
+        router.refresh();
+      });
+      return;
+    }
+
+    // Digər tiplər — köhnə davranış
     startTransition(async () => {
       const res = await saveQuickOperation(fd);
       if (!res.ok) {
@@ -193,7 +292,10 @@ function QuickOpDialogInner({ hesablar, iscilier, kontragentler }: Props) {
             <div className="space-y-2">
               <Label>Hesab / kassa {isTransfer ? "(mənbə)" : ""} *</Label>
               <Combobox
-                options={hesablar.map<ComboOption>((h) => ({ value: h.id, label: h.ad }))}
+                options={hesablar.map<ComboOption>((h) => ({
+                  value: h.id,
+                  label: h.balans != null ? `${h.ad}  ·  ${formatMoney(h.balans)} ${h.valyuta ?? "AZN"}` : h.ad,
+                }))}
                 value={hesabId}
                 onChange={setHesabId}
                 placeholder="— Seçin —"
@@ -202,6 +304,15 @@ function QuickOpDialogInner({ hesablar, iscilier, kontragentler }: Props) {
                 disabled={pending}
               />
               <input type="hidden" name="hesab_id" value={hesabId} />
+              {hesabId && (() => {
+                const sel = hesablar.find((h) => h.id === hesabId);
+                if (!sel || sel.balans == null) return null;
+                return (
+                  <div className={`text-[10.5px] ${sel.balans < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    Cari balans: <span className="font-bold tabular-nums">{formatMoney(sel.balans)}</span> {sel.valyuta ?? "AZN"}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -258,6 +369,140 @@ function QuickOpDialogInner({ hesablar, iscilier, kontragentler }: Props) {
                 disabled={pending}
               />
               <input type="hidden" name="kontragent_id" value={kontragentId} />
+              {kontragentId && (
+                <ContactContextPanel
+                  kontragentId={kontragentId}
+                  side="customer"
+                  compact
+                />
+              )}
+            </div>
+          )}
+
+          {/* Qaimə tipi + müştəri seçilibsə — açıq sənədlər və ödəniş üsulu */}
+          {kind === "qaime" && kontragentId && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-700">
+                  <FileText className="h-3.5 w-3.5" />
+                  Açıq sənədlər
+                </div>
+                <div className="text-[10.5px] text-sky-700">
+                  Cəmi qalıq: <span className="font-bold tabular-nums">{formatMoney(customerTotalOpen)}</span>
+                  {customerAvans > 0 && (
+                    <span className="ml-2">· Avans: <span className="font-bold tabular-nums">{formatMoney(customerAvans)}</span></span>
+                  )}
+                </div>
+              </div>
+
+              {loadingInvoices ? (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                </div>
+              ) : customerInvoices.length === 0 ? (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  {customerAvans > 0 ? "Açıq sənəd yox. Avansı qaiməyə tətbiq edə bilərsiniz." : "Açıq nisyə sənədi yoxdur"}
+                </div>
+              ) : (
+                <>
+                  {/* Mode pills */}
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPayMode("fifo")}
+                      className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                        payMode === "fifo"
+                          ? "border-emerald-500 bg-emerald-100 text-emerald-700"
+                          : "border-border bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <Layers className="h-3 w-3" />
+                      Ardıcıl bağla (FIFO)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPayMode("specific")}
+                      className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                        payMode === "specific"
+                          ? "border-primary bg-primary/15 text-primary-light"
+                          : "border-border bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <FileText className="h-3 w-3" />
+                      Konkret sənəd
+                    </button>
+                    {customerAvans > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setPayMode("advance")}
+                        className={`inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition ${
+                          payMode === "advance"
+                            ? "border-amber-500 bg-amber-100 text-amber-700"
+                            : "border-border bg-card text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Wallet className="h-3 w-3" />
+                        Avansdan
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Sənəd siyahısı */}
+                  <div className="max-h-48 space-y-1 overflow-auto">
+                    {customerInvoices.map((inv) => {
+                      const isSelected = selectedQaimeId === inv.id;
+                      const isFifo = payMode === "fifo";
+                      const tone = inv.gun >= 90 ? "border-rose-400 bg-rose-50" : inv.gun >= 30 ? "border-amber-400 bg-amber-50" : "border-border bg-background";
+                      return (
+                        <label
+                          key={inv.id}
+                          className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-xs transition ${
+                            isFifo
+                              ? "border-emerald-200 bg-emerald-50/50 cursor-default"
+                              : isSelected
+                                ? "border-primary bg-primary/10"
+                                : tone + " hover:border-primary"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {!isFifo && (
+                              <input
+                                type="radio"
+                                checked={isSelected}
+                                onChange={() => setSelectedQaimeId(inv.id)}
+                                disabled={isFifo}
+                                className="accent-primary"
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-mono font-medium truncate">#{inv.nomre}</div>
+                              <div className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
+                                <Calendar className="h-2.5 w-2.5" />
+                                {new Date(inv.tarix).toLocaleDateString("az-AZ")}
+                                {inv.gun > 0 && ` · ${inv.gun} gün`}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="font-semibold tabular-nums text-rose-600">{formatMoney(inv.qalig)}</div>
+                            {inv.odenilmis > 0 && (
+                              <div className="text-[10px] text-muted-foreground">{formatMoney(inv.odenilmis)} / {formatMoney(inv.son_mebleg)}</div>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <p className="text-[10px] text-sky-700/80">
+                    ⓘ {payMode === "fifo"
+                      ? "Ödəniş ən köhnə sənəddən başlayaraq sırayla tətbiq olunur. Artıq məbləğ avansa keçir."
+                      : payMode === "advance"
+                        ? "Avansdan seçilmiş sənədə tətbiq olunur. Kassa hərəkəti yoxdur."
+                        : "Yalnız seçilmiş sənədə tətbiq olunur. Artıq məbləğ avansa keçir."}
+                  </p>
+                </>
+              )}
             </div>
           )}
 

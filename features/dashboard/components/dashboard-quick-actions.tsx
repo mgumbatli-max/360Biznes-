@@ -22,6 +22,8 @@ type Action = {
   external?: boolean;
   /** Hero card — span 2 columns on lg */
   hero?: boolean;
+  /** Bu düymə üçün lazımi icazələrdən ən az biri */
+  anyPermission?: string[];
 };
 
 const ACTIONS: Action[] = [
@@ -34,6 +36,7 @@ const ACTIONS: Action[] = [
     iconBg: "bg-gradient-to-br from-emerald-500 to-teal-600 text-white",
     external: true,
     hero: true,
+    anyPermission: ["pos.satis", "pos.istifade", "satis.yarat", "trade.create_sale"],
   },
   {
     href: "/ticaret/satis-yeni",
@@ -42,40 +45,65 @@ const ACTIONS: Action[] = [
     icon: PlusCircle,
     gradient: "from-sky-500/15 via-sky-500/8 to-blue-500/5",
     iconBg: "bg-gradient-to-br from-sky-500 to-blue-600 text-white",
+    anyPermission: ["satis.yarat", "trade.create_sale", "satis.formal"],
   },
   {
     href: "/anbar/satinalma",
-    label: "Yeni alış",
-    desc: "Təchizatçı sifarişi",
+    label: "Yeni alış qaiməsi",
+    desc: "Təchizatçıdan mal qəbulu",
     icon: Receipt,
     gradient: "from-violet-500/15 via-violet-500/8 to-purple-500/5",
     iconBg: "bg-gradient-to-br from-violet-500 to-purple-600 text-white",
+    anyPermission: ["alis.yarat", "trade.create_purchase", "satinalma.yarat"],
   },
   {
-    href: "/servis",
+    // Birbaşa dialog avtomatik açan parametrlə servis siyahısına gedir
+    href: "/servis?yeni=1",
     label: "Yeni servis",
     desc: "Təmir qəbulu",
     icon: Wrench,
     gradient: "from-amber-500/15 via-amber-500/8 to-orange-500/5",
     iconBg: "bg-gradient-to-br from-amber-500 to-orange-600 text-white",
+    anyPermission: ["servis.yarat", "servis.idare"],
   },
   {
-    href: "/elaqe",
+    // Birbaşa dialog avtomatik açan parametrlə əlaqələrə gedir
+    href: "/elaqe?yeni=1",
     label: "Yeni müştəri",
     desc: "Kontragent əlavə et",
     icon: UserPlus,
     gradient: "from-pink-500/15 via-pink-500/8 to-rose-500/5",
     iconBg: "bg-gradient-to-br from-pink-500 to-rose-600 text-white",
+    anyPermission: ["musteri.yarat", "musteri.create", "musteri.idare", "elaqe.yarat"],
   },
 ];
 
-export function DashboardQuickActions() {
+export function DashboardQuickActions({
+  icazeler,
+  rolAd,
+}: {
+  icazeler?: string[];
+  rolAd?: string;
+} = {}) {
+  // Sahibkar / admin / owner heç bir icazə yoxlamasına ehtiyac yoxdur
+  const r = (rolAd ?? "").toLowerCase();
+  const isPrivileged = r.includes("sahibkar") || r.includes("admin") || r.includes("owner");
+
+  const visible = ACTIONS.filter((a) => {
+    if (isPrivileged) return true;
+    if (!a.anyPermission || a.anyPermission.length === 0) return true;
+    if (!icazeler || icazeler.length === 0) return false;
+    return a.anyPermission.some((p) => icazeler.includes(p));
+  });
+
+  if (visible.length === 0) return null;
+
   return (
     <section
       aria-label="Sürətli əməliyyatlar"
       className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5"
     >
-      {ACTIONS.map((a) => {
+      {visible.map((a) => {
         const Icon = a.icon;
         return (
           <Link

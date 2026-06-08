@@ -5,6 +5,8 @@ import { z } from "zod";
 import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
+import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
 const SplitSchema = z.object({
   odenis_nov: z.enum(["negd", "kart", "kecirme", "nisye"]),
@@ -27,6 +29,8 @@ type ActionResult<T = void> = { ok: true; data?: T } | { ok: false; error: strin
  * their tab — all in one transaction.
  */
 export async function applySplitPayment(input: z.infer<typeof InputSchema>): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm(["satis.odenis", "satis.idare", "kassa.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = InputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const data = parsed.data;
@@ -91,18 +95,23 @@ export async function applySplitPayment(input: z.infer<typeof InputSchema>): Pro
           },
         });
 
-        if (nisyeSum > 0 && sale.musteri_id) {
-          // Qismən nisyə → müştəri bizə borclu (alacaq artır)
-          await tx.kontragentler.update({
-            where: { id: sale.musteri_id },
-            data: { alacaq: { increment: new Prisma.Decimal(nisyeSum) } },
-          });
+        // Müştəri balansı — source-of-truth recalc
+        if (sale.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(sale.musteri_id, tx);
         }
       });
 
       revalidatePath(`/ticaret/satislar/${data.satis_id}`);
       revalidatePath("/ticaret/satislar");
       revalidatePath("/ticaret/kredit");
+      bustTicaretCache();
+      try {
+        await audit("odenis", "satis_split", data.satis_id, {
+          yeni_data: { splits: data.splits, count: data.splits.length },
+          sebeb: "Bölünmüş ödəniş tətbiq edildi",
+        });
+      } catch { /* non-fatal */ }
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };

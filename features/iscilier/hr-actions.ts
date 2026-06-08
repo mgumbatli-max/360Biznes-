@@ -7,7 +7,9 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword } from "@/lib/auth/password";
 import { parseLocalDate } from "@/lib/utils";
+import { audit } from "@/lib/audit/log";
 import { appendTag, parseQeydTags, replaceTags } from "./hr-tags";
+import { requireHrActionPerm, bustHrCache } from "./access-guard";
 import type {
   CertRow,
   DisciplineEvent,
@@ -66,6 +68,12 @@ export async function saveEmployeeExtras(payload: unknown): Promise<Result> {
   }
   const d = parsed.data;
   return withTenant(async () => {
+    const { istifadeciId } = requireTenant();
+    // Self ya da isci.idare
+    if (d.istifadeci_id !== istifadeciId) {
+      const permCheck = await requireHrActionPerm("isci.idare");
+      if (!permCheck.ok) return { ok: false, error: permCheck.error };
+    }
     try {
       const cur = await prisma.istifadeciler.findUnique({
         where: { id: d.istifadeci_id },
@@ -83,10 +91,16 @@ export async function saveEmployeeExtras(payload: unknown): Promise<Result> {
         data: { qeyd },
       });
       revalidatePath(`/iscilier/${d.istifadeci_id}`);
+      bustHrCache();
+      await audit("yenile", "iscilier_extras", d.istifadeci_id, {
+        yeni_data: { edu_say: d.education.length, lang_say: d.languages.length, skill_say: d.skills.length, cert_say: d.certs.length, exp_say: d.experience.length },
+        sebeb: "İşçi əlavə məlumatları yeniləndi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[saveEmployeeExtras]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
@@ -113,6 +127,8 @@ const OnboardingSchema = z.object({
 });
 
 export async function completeOnboarding(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("isci.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = OnboardingSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
@@ -174,13 +190,19 @@ export async function completeOnboarding(input: FormData): Promise<Result> {
       }
 
       revalidatePath("/iscilier");
+      bustHrCache();
+      await audit("yarat", "iscilier", created.id, {
+        yeni_data: { ad_soyad: d.ad_soyad, email: d.email, rol_id: d.rol_id, kod: isciKod },
+        sebeb: "Yeni işçi onboarding tamamlandı",
+      });
       return { ok: true, id: created.id };
     } catch (e) {
       console.error("[completeOnboarding]", e);
       if (e instanceof Error && e.message.includes("Unique")) {
         return { ok: false, error: "Bu email artıq istifadədədir" };
       }
-      return { ok: false, error: "Onboarding tamamlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Onboarding tamamlanmadı: ${msg}` };
     }
   });
 }
@@ -202,6 +224,8 @@ const PerfSchema = z.object({
 });
 
 export async function savePerformanceReview(payload: unknown): Promise<Result> {
+  const permCheck = await requireHrActionPerm(["isci.idare", "isci.discipline"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = PerfSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -252,10 +276,16 @@ export async function savePerformanceReview(payload: unknown): Promise<Result> {
       }
 
       revalidatePath(`/iscilier/${d.istifadeci_id}`);
+      bustHrCache();
+      await audit("perf_review", "iscilier", d.istifadeci_id, {
+        yeni_data: { scores: d.scores, goals_say: d.goals.length, next_review: d.next_review || null },
+        sebeb: "Performans qiymətləndirməsi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[savePerformanceReview]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
@@ -265,6 +295,8 @@ const OneOnOneSchema = z.object({
   qeyd: z.string().trim().min(2).max(2000),
 });
 export async function saveOneOnOne(payload: unknown): Promise<Result> {
+  const permCheck = await requireHrActionPerm(["isci.idare", "isci.discipline"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = OneOnOneSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -287,10 +319,16 @@ export async function saveOneOnOne(payload: unknown): Promise<Result> {
         data: { qeyd: next },
       });
       revalidatePath(`/iscilier/${d.istifadeci_id}`);
+      bustHrCache();
+      await audit("yarat", "iscilier_one_on_one", d.istifadeci_id, {
+        yeni_data: { qeyd_uzunluq: d.qeyd.length },
+        sebeb: "1-on-1 görüş qeydi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[saveOneOnOne]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
@@ -311,6 +349,8 @@ const DiscSchema = z.object({
 });
 
 export async function addDisciplinaryAction(payload: unknown): Promise<Result> {
+  const permCheck = await requireHrActionPerm("isci.discipline");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = DiscSchema.safeParse(payload);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -392,10 +432,17 @@ export async function addDisciplinaryAction(payload: unknown): Promise<Result> {
       }
 
       revalidatePath(`/iscilier/${d.istifadeci_id}`);
+      revalidatePath("/iscilier/maas");
+      bustHrCache();
+      await audit("intizam", "iscilier", d.istifadeci_id, {
+        yeni_data: { nov: d.nov, sebeb: d.sebeb, meblegh: d.meblegh ?? 0 },
+        sebeb: `İntizam tədbiri: ${d.nov}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[addDisciplinaryAction]", e);
-      return { ok: false, error: "Yadda saxlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Yadda saxlanmadı: ${msg}` };
     }
   });
 }
@@ -415,6 +462,8 @@ const TermSchema = z.object({
 });
 
 export async function terminateEmployee(input: FormData): Promise<Result> {
+  const permCheck = await requireHrActionPerm("isci.discipline");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = TermSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     const first = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
@@ -458,10 +507,16 @@ export async function terminateEmployee(input: FormData): Promise<Result> {
       });
       revalidatePath("/iscilier");
       revalidatePath(`/iscilier/${d.istifadeci_id}`);
+      bustHrCache();
+      await audit("isden_cixar", "iscilier", d.istifadeci_id, {
+        yeni_data: { sebeb: d.sebeb, son_is_gunu: d.son_is_gunu || null, avadanliq_qaytarildi: d.avadanliq_qaytarildi },
+        sebeb: `İşdən çıxarma: ${d.sebeb}`,
+      });
       return { ok: true };
     } catch (e) {
       console.error("[terminateEmployee]", e);
-      return { ok: false, error: "Tamamlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tamamlanmadı: ${msg}` };
     }
   });
 }
@@ -496,6 +551,11 @@ export async function updateMyProfile(input: FormData): Promise<Result> {
         },
       });
       revalidatePath("/iscilier/menim-profilim");
+      bustHrCache();
+      await audit("yenile", "iscilier_self", istifadeciId, {
+        yeni_data: { sahalar: Object.keys(d).filter((k) => (d as Record<string, string | undefined>)[k]) },
+        sebeb: "Şəxsi profil yeniləndi",
+      });
       return { ok: true };
     } catch (e) {
       console.error("[updateMyProfile]", e);

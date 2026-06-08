@@ -85,7 +85,11 @@ export function ChatClient({
   function onClear() {
     if (!confirm("Söhbət tarixçəsi silinsin?")) return;
     startTransition(async () => {
-      await clearHistory(mode);
+      const res = await clearHistory(mode);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
       setMessages([]);
       toast.success("Tarixçə təmizləndi");
       router.refresh();

@@ -2,11 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { auth } from "@/auth";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { audit } from "@/lib/audit/log";
 import { chatCompletion, type ChatMessage } from "@/lib/ai/anthropic";
-import { getBusinessContext } from "./queries";
+import { getBusinessContext, canUseOwnerMode } from "./queries";
+import { checkAiRateLimit } from "./rate-limit";
 
 const SendSchema = z.object({
   message: z.string().min(1).max(4000),
@@ -17,21 +20,35 @@ export type SendResult =
   | { ok: true; reply: string; is_mock: boolean }
   | { ok: false; error: string };
 
+const HISTORY_CONTEXT_LIMIT = 20; // AI prompt-una qoşulan son mesaj sayı
+
 export async function sendMessage(message: string, mode: "owner" | "employee" = "employee"): Promise<SendResult> {
+  // 1) Auth — sessiya olmadan ümumiyyətlə AI çağırışı yox
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Giriş tələb olunur" };
+
   const parsed = SendSchema.safeParse({ message, mode });
-  if (!parsed.success) return { ok: false, error: "Mesaj boş ola bilməz" };
+  if (!parsed.success) {
+    return { ok: false, error: "Mesaj boş və ya çox uzundur (max 4000 simvol)" };
+  }
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId, rolAd } = requireTenant();
-    // owner mode yalnız "sahibkar" rolu üçün — başqa hər kəs employee-ə düşür
-    const effectiveMode: "owner" | "employee" = parsed.data.mode === "owner" && rolAd === "sahibkar" ? "owner" : "employee";
+    // owner mode sahibkar/admin/direktor üçün; başqa hər kəs avtomatik employee düşür
+    const effectiveMode: "owner" | "employee" = parsed.data.mode === "owner" && canUseOwnerMode(rolAd) ? "owner" : "employee";
 
-    // Mode-a görə ayrı söhbət tarixçəsi (kanal: "panel" = employee, "sahibkar" = owner)
+    // 2) Rate limit — saatlıq + gündəlik quota
+    const rate = await checkAiRateLimit();
+    if (!rate.ok) {
+      return { ok: false, error: rate.error };
+    }
+
+    // 3) Mode-a görə ayrı söhbət tarixçəsi (kanal: "panel" = employee, "sahibkar" = owner)
     const kanal = effectiveMode === "owner" ? "sahibkar" : "panel";
     const recent = await prisma.ai_sohbet_loq.findMany({
       where: { istifadeci_id: istifadeciId, kanal },
       orderBy: { yaradildi: "desc" },
-      take: 10,
+      take: HISTORY_CONTEXT_LIMIT,
     });
     recent.reverse();
 
@@ -42,7 +59,7 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
     }
     history.push({ role: "user", content: parsed.data.message });
 
-    // Mode-a görə kontekst — owner mode tam KPI, employee yalnız şəxsi performans
+    // 4) Biznes kontekst — cache-li, eyni istifadəçi üçün 60sn-yə yenidən istifadə edilir
     const businessCtx = await getBusinessContext(effectiveMode).catch(() => "");
     const baseRole = effectiveMode === "owner"
       ? "biznes sahibinə kömək edən sahibkar-rejimində AI köməkçisən. Tam giriş icazən var: gəlir, mənfəət, maya, kassa, maaş, məxfi qeydlər."
@@ -51,31 +68,79 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
       ? `Sən 360Biznes ERP sistemində ${baseRole}\n\nCavabını Azərbaycan dilində ver. Aşağıdakı real data-dan istifadə edib konkret rəqəmlərlə cavab ver. Heç vaxt "məlumatım yoxdur" demə.\n\n${businessCtx}\n\nQısa ol (3-4 abzas). Markdown bullet işlət. JSON/HTML/kod blok QAYTARMA.`
       : `Sən 360Biznes ERP sistemində ${baseRole} Cavabını Azərbaycan dilində ver. Qısa və faydalı ol.`;
 
-    const result = await chatCompletion(history, { system });
+    let result;
+    try {
+      result = await chatCompletion(history, { system });
+    } catch (e) {
+      console.error("[sendMessage] chatCompletion threw", e);
+      return { ok: false, error: "AI servisi cavab vermir, bir az sonra cəhd edin" };
+    }
 
-    await prisma.ai_sohbet_loq.create({
-      data: {
-        sahibkar_id: sahibkarId,
-        istifadeci_id: istifadeciId,
-        prompt: parsed.data.message,
-        cavab: result.text,
-        model: result.model,
-        kanal,
-      },
-    });
+    // 5) DB-yə yaz (model + token istifadəsi sayğacı `niyyet`-də saxlanır)
+    const niyyet = result.input_tokens != null && result.output_tokens != null
+      ? `i:${result.input_tokens}/o:${result.output_tokens}`
+      : null;
+    try {
+      await prisma.ai_sohbet_loq.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          prompt: parsed.data.message,
+          cavab: result.text,
+          model: result.model,
+          kanal,
+          niyyet,
+        },
+      });
+    } catch (e) {
+      console.warn("[sendMessage] log write failed", e);
+    }
 
-    revalidatePath(effectiveMode === "owner" ? "/sahibkar/ai" : "/ai");
+    // 6) Audit log — token + model + mode görsənsin
+    try {
+      await audit("ai_chat", "ai_sohbet", null, {
+        yeni_data: {
+          mode: effectiveMode,
+          model: result.model,
+          is_mock: result.is_mock,
+          input_tokens: result.input_tokens ?? null,
+          output_tokens: result.output_tokens ?? null,
+          message_length: parsed.data.message.length,
+          reply_length: result.text.length,
+        },
+      });
+    } catch { /* audit failure non-fatal */ }
+
+    revalidatePath("/komekci");
+    revalidatePath("/sahibkar/ai");
     return { ok: true, reply: result.text, is_mock: result.is_mock };
   });
 }
 
-export async function clearHistory(mode: "owner" | "employee" = "employee"): Promise<{ ok: true }> {
+export async function clearHistory(mode: "owner" | "employee" = "employee"): Promise<{ ok: true } | { ok: false; error: string }> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Giriş tələb olunur" };
+
   return withTenant(async () => {
     const { istifadeciId, rolAd } = requireTenant();
-    const effective = mode === "owner" && rolAd === "sahibkar" ? "owner" : "employee";
+    const effective = mode === "owner" && canUseOwnerMode(rolAd) ? "owner" : "employee";
     const kanal = effective === "owner" ? "sahibkar" : "panel";
-    await prisma.ai_sohbet_loq.deleteMany({ where: { istifadeci_id: istifadeciId, kanal } });
-    revalidatePath(effective === "owner" ? "/sahibkar/ai" : "/ai");
-    return { ok: true };
+    try {
+      const result = await prisma.ai_sohbet_loq.deleteMany({
+        where: { istifadeci_id: istifadeciId, kanal },
+      });
+      revalidatePath("/komekci");
+      revalidatePath("/sahibkar/ai");
+      try {
+        await audit("ai_chat_sil", "ai_sohbet", null, {
+          yeni_data: { kanal, silinen_mesaj: result.count },
+        });
+      } catch { /* non-fatal */ }
+      return { ok: true };
+    } catch (e) {
+      console.error("[clearHistory]", e);
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tarixçə silinmədi: ${msg}` };
+    }
   });
 }

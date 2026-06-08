@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Loader2, Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -24,9 +24,20 @@ type Props = {
 
 export function ContactDialog({ defaultNov, initial, trigger = "new", managers = [] }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // URL parametri `?yeni=1` varsa dialog avtomatik açılır — dashboard
+  // Quick Actions "Yeni müştəri" düyməsindən birbaşa formanı açır.
+  useEffect(() => {
+    if (trigger !== "new") return;
+    if (searchParams.get("yeni") === "1" || searchParams.get("new") === "1") {
+      setOpen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -76,7 +87,7 @@ export function ContactDialog({ defaultNov, initial, trigger = "new", managers =
               <TabsTrigger value="qeyd">Qeyd</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="esas" className="space-y-3 pt-2">
+            <TabsContent value="esas" forceMount className="space-y-3 pt-2 data-[state=inactive]:hidden">
               <div className="space-y-1.5">
                 <Label htmlFor="ad">Ad / Şirkət *</Label>
                 <Input id="ad" name="ad" required minLength={2} maxLength={200} defaultValue={initial?.ad} autoFocus disabled={pending} />
@@ -120,7 +131,7 @@ export function ContactDialog({ defaultNov, initial, trigger = "new", managers =
               </label>
             </TabsContent>
 
-            <TabsContent value="elaqe" className="space-y-3 pt-2">
+            <TabsContent value="elaqe" forceMount className="space-y-3 pt-2 data-[state=inactive]:hidden">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="telefon">Telefon</Label>
@@ -160,7 +171,7 @@ export function ContactDialog({ defaultNov, initial, trigger = "new", managers =
               </div>
             </TabsContent>
 
-            <TabsContent value="maliyye" className="space-y-3 pt-2">
+            <TabsContent value="maliyye" forceMount className="space-y-3 pt-2 data-[state=inactive]:hidden">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="qiymet_tipi">Qiymət tipi</Label>
@@ -214,7 +225,7 @@ export function ContactDialog({ defaultNov, initial, trigger = "new", managers =
               </div>
             </TabsContent>
 
-            <TabsContent value="qeyd" className="space-y-3 pt-2">
+            <TabsContent value="qeyd" forceMount className="space-y-3 pt-2 data-[state=inactive]:hidden">
               <div className="space-y-1.5">
                 <Label htmlFor="qeyd">Qeyd</Label>
                 <textarea

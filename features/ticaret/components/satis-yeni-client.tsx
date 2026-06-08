@@ -82,18 +82,29 @@ const VALYUTALAR = [
   { kod: "TRY", kurs: 0.05 },
 ];
 
+type HesabOpt = { id: string; ad: string; nov: string };
+
 export function SatisYeniClient({
   anbarlar,
   saticilar,
   defaultSalespersonId,
   sablonlar,
   qaralamalar,
+  prefillMehsulId,
+  prefillProduct,
+  hesablar = [],
 }: {
   anbarlar: AnbarOpt[];
   saticilar: SalespersonOption[];
   defaultSalespersonId: string;
   sablonlar: SablonRow[];
   qaralamalar: QaralamaRow[];
+  /** URL-dən gələn ?mehsul=X — ilk açılışda avtomatik satış sətrinə əlavə et. */
+  prefillMehsulId?: string;
+  /** Server-side hazırlanmış ProductRow — useEffect-də əl ilə fetch etmədən. */
+  prefillProduct?: ProductRow;
+  /** Ödəniş gediləcək maliyə hesabları (nağd, kart, bank) */
+  hesablar?: HesabOpt[];
 }) {
   const router = useRouter();
   const defaultAnbarId = anbarlar[0]?.id ?? 0;
@@ -110,6 +121,21 @@ export function SatisYeniClient({
   const [salespersonId, setSalespersonId] = useState(defaultSalespersonId);
   // ERP-2: payment type (cash by default; "nisye" = borc triggers credit guard)
   const [odenisNov, setOdenisNov] = useState<"negd" | "kart" | "kecirme" | "nisye">("negd");
+
+  // Ödəniş hesabı — istifadəçi seçir, ya da ödəniş növünə görə avto-seçilir.
+  // nisye olarsa hesab gərək deyil (borca yazılır).
+  const defaultHesabForNov = (nov: typeof odenisNov): string => {
+    if (nov === "nisye") return "";
+    const targetNov = nov === "kart" ? "kart" : nov === "kecirme" ? "bank" : "negd";
+    const match = hesablar.find((h) => h.nov === targetNov);
+    return match?.id ?? hesablar[0]?.id ?? "";
+  };
+  const [hesabId, setHesabId] = useState<string>(defaultHesabForNov("negd"));
+  // Ödəniş növü dəyişəndə hesabı avto-uyğunlaşdır
+  useEffect(() => {
+    setHesabId(defaultHesabForNov(odenisNov));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [odenisNov, hesablar.length]);
 
   // Lines
   const [lines, setLines] = useState<Line[]>([]);
@@ -160,6 +186,7 @@ export function SatisYeniClient({
   const [productResults, setProductResults] = useState<ProductRow[]>([]);
   const [productSearching, setProductSearching] = useState(false);
   const [productAnbarId, setProductAnbarId] = useState<number>(defaultAnbarId);
+  const [productFocused, setProductFocused] = useState(false);
 
   // Loading state
   const [saving, startSave] = useTransition();
@@ -169,31 +196,21 @@ export function SatisYeniClient({
 
   /* ---------------- Customer search ---------------- */
   useEffect(() => {
-    if (musteriQ.trim().length < 2) {
-      setMusteriResults([]);
-      setShowCustResults(false);
-      return;
-    }
     const id = setTimeout(async () => {
       const r = await searchCustomersAction(musteriQ);
       setMusteriResults(r);
-      setShowCustResults(true);
-    }, 200);
+    }, musteriQ.trim().length === 0 ? 0 : 200);
     return () => clearTimeout(id);
   }, [musteriQ]);
 
   /* ---------------- Product search ---------------- */
   useEffect(() => {
-    if (productQ.trim().length < 2) {
-      setProductResults([]);
-      return;
-    }
     setProductSearching(true);
     const id = setTimeout(async () => {
       const r = await searchProductsAction(productQ, productAnbarId);
       setProductResults(r);
       setProductSearching(false);
-    }, 200);
+    }, productQ.trim().length === 0 ? 0 : 200);
     return () => clearTimeout(id);
   }, [productQ, productAnbarId]);
 
@@ -215,6 +232,35 @@ export function SatisYeniClient({
     setProductQ("");
     setProductResults([]);
   }
+
+  /* ---- URL prefill: ?mehsul=UUID → ilk açılışda 1 dəfə satış sətri yarat ---- */
+  const [prefillDone, setPrefillDone] = useState(false);
+  useEffect(() => {
+    if (prefillDone || !prefillMehsulId) return;
+    // Server-side hazır obyekt varsa onu istifadə et — anlıq əlavə.
+    if (prefillProduct) {
+      addLine(prefillProduct);
+      setPrefillDone(true);
+      return;
+    }
+    // Fallback: ad/kod/barkod axtarışı (UUID-ni tap)
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await searchProductsAction(prefillMehsulId, productAnbarId);
+        if (cancelled) return;
+        const match = results.find((p) => p.id === prefillMehsulId);
+        if (match) addLine(match);
+      } catch {
+        /* non-fatal */
+      } finally {
+        if (!cancelled) setPrefillDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prefillMehsulId, prefillProduct, productAnbarId, prefillDone]);
 
   /* ----------------- ERP-1: Real-time stock validation ----------------- */
   useEffect(() => {
@@ -505,6 +551,7 @@ export function SatisYeniClient({
         satis_meneceri_id: salespersonId,
         odenis_cedveli: planAktiv ? odenisCedveli : null,
         odenis_nov: odenisNov,
+        hesab_id: odenisNov === "nisye" ? null : hesabId || null,
         valyuta,
         valyuta_kurs: valyutaKurs,
         lines: lines.map((l) => ({
@@ -562,7 +609,9 @@ export function SatisYeniClient({
                   <Input
                     value={musteriQ}
                     onChange={(e) => setMusteriQ(e.target.value)}
-                    placeholder="Müştəri axtar (istəyə bağlı)..."
+                    onFocus={() => setShowCustResults(true)}
+                    onBlur={() => setTimeout(() => setShowCustResults(false), 150)}
+                    placeholder="Müştəri axtar və ya seçin..."
                     className="h-9"
                   />
                   {showCustResults && (
@@ -631,6 +680,24 @@ export function SatisYeniClient({
                 <option value="nisye">Borc (nisyə)</option>
               </select>
             </div>
+            {/* Maliyə hesabı seçimi — ödəniş növünə görə avto-uyğunlaşır,
+                istifadəçi başqa hesab seçə bilər. Nisyə-də gizlədilir. */}
+            {odenisNov !== "nisye" && hesablar.length > 0 && (
+              <div className="space-y-1">
+                <Label>Hansı kassa / hesab?</Label>
+                <select
+                  value={hesabId}
+                  onChange={(e) => setHesabId(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  {hesablar.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.ad} ({h.nov})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -755,13 +822,15 @@ export function SatisYeniClient({
               <Input
                 value={productQ}
                 onChange={(e) => setProductQ(e.target.value)}
+                onFocus={() => setProductFocused(true)}
+                onBlur={() => setTimeout(() => setProductFocused(false), 150)}
                 placeholder="Məhsul axtar (ad, kod, barkod)..."
                 className="h-9"
               />
               {productSearching && (
                 <Loader2 className="absolute right-2 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
               )}
-              {productResults.length > 0 && (
+              {productFocused && productResults.length > 0 && (
                 <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-[320px] overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
                   {productResults.map((p) => (
                     <button

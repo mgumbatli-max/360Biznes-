@@ -1,12 +1,30 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { requireElaqeActionPerm } from "./access-guard";
 import { audit, diffObjects } from "@/lib/audit/log";
+import { normalizePhone } from "@/lib/utils/normalize-phone";
+import { checkSmsRateLimit } from "./sms-limit";
+
+/** Maximum bulk emeliyyat say. */
+const BULK_MAX = 1000;
+
+/** Dashboard, nezaret və elaqe cache tag-larını birgə təzələ. */
+function bustElaqeCache() {
+  try {
+    const { sahibkarId } = requireTenant();
+    revalidateTag(`dashboard:${sahibkarId}`, "max");
+    revalidateTag(`nezaret:${sahibkarId}`, "max");
+    revalidateTag(`elaqe:${sahibkarId}`, "max");
+    revalidateTag(`ref:${sahibkarId}:musteriler`, "max");
+  } catch {
+    // tenant context yoxdur — TTL tutacaq
+  }
+}
 
 const ContactSchema = z.object({
   id: z.string().uuid().optional(),
@@ -49,8 +67,22 @@ export async function saveContact(input: FormData): Promise<ActionResult> {
   }
   const parsed = ContactSchema.safeParse(raw);
   if (!parsed.success) {
-    const msg = Object.values(parsed.error.flatten().fieldErrors).flat()[0];
-    return { ok: false, error: msg ?? "Forma yanlışdır" };
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    const firstField = Object.keys(fieldErrors)[0] ?? null;
+    const firstMsg = Object.values(fieldErrors).flat()[0] ?? null;
+    console.error("[saveContact] validation failed:", {
+      raw_summary: {
+        nov: raw.nov, qiymet_tipi: raw.qiymet_tipi, ad: raw.ad,
+        borc_limiti: raw.borc_limiti, menecer_id: raw.menecer_id,
+      },
+      fieldErrors,
+    });
+    return {
+      ok: false,
+      error: firstField && firstMsg
+        ? `Sahə "${firstField}": ${firstMsg}`
+        : firstMsg ?? "Forma yanlışdır",
+    };
   }
   const d = parsed.data;
 
@@ -143,15 +175,40 @@ export async function saveContact(input: FormData): Promise<ActionResult> {
   });
 }
 
-export async function deactivateContact(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function deactivateContact(id: string, force?: boolean): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      error: string;
+      blockers?: import("@/lib/blockers/types").Blocker[];
+      hint?: string;
+    }
+> {
   const permCheck = await requireElaqeActionPerm("musteri.sil");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   return withTenant(async () => {
     try {
+      const { sahibkarId } = requireTenant();
       const before = await prisma.kontragentler.findUnique({ where: { id }, select: { ad: true, nov: true, aktiv: true } });
+      if (!before) return { ok: false, error: "Kontragent tapılmadı" };
+
+      // 🛑 Strukturlu blocker yoxlaması
+      if (!force) {
+        const { findContactBlockers } = await import("@/lib/blockers/find-contact-blockers");
+        const blockers = await findContactBlockers(id, sahibkarId);
+        if (blockers.length > 0) {
+          return {
+            ok: false,
+            error: `${before.ad} aktiv borc və ya açıq sənədləri olduğu üçün deaktivləşdirilə bilməz.`,
+            blockers,
+            hint: "Aşağıdakı sənədləri əvvəlcə bağlayın (ödənişlər, satışlar, alışlar, servis). Sonra yenidən cəhd edin.",
+          };
+        }
+      }
+
       await prisma.kontragentler.update({ where: { id }, data: { aktiv: false } });
-      await audit("sil", "kontragent", id, { evvelki_data: before as Record<string, unknown> | null, sebeb: "deactivate (soft delete)" });
+      await audit("sil", "kontragent", id, { evvelki_data: before as Record<string, unknown> | null, sebeb: force ? "force deactivate" : "deactivate (soft delete)" });
       revalidatePath("/elaqe");
       revalidatePath("/elaqe/musteriler");
       revalidatePath("/elaqe/techizatcilar");
@@ -173,8 +230,10 @@ const NoteSchema = z.object({
 });
 
 export async function addContactNote(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = NoteSchema.safeParse(Object.fromEntries(input.entries()));
-  if (!parsed.success) return { ok: false, error: "Qeyd boşdur" };
+  if (!parsed.success) return { ok: false, error: "Qeyd düzgün deyil və ya boşdur" };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -188,10 +247,15 @@ export async function addContactNote(input: FormData): Promise<ActionResult> {
       });
       revalidatePath(`/elaqe/musteriler/${parsed.data.kontragent_id}`);
       revalidatePath(`/elaqe/techizatcilar/${parsed.data.kontragent_id}`);
+      bustElaqeCache();
+      await audit("yarat", "musteri_qeyd", String(created.id), {
+        yeni_data: { kontragent_id: parsed.data.kontragent_id, uzunluq: parsed.data.matn.length },
+      });
       return { ok: true, id: String(created.id) };
     } catch (e) {
       console.error("[addContactNote]", e);
-      return { ok: false, error: "Qeyd əlavə edilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Qeyd əlavə edilmədi: ${msg}` };
     }
   });
 }
@@ -211,6 +275,8 @@ const FollowupSchema = z.object({
 });
 
 export async function addFollowup(input: FormData): Promise<ActionResult> {
+  const permCheck = await requireElaqeActionPerm("elaqe.followup");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = FollowupSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -234,26 +300,53 @@ export async function addFollowup(input: FormData): Promise<ActionResult> {
       revalidatePath("/elaqe/followup");
       revalidatePath(`/elaqe/musteriler/${d.kontragent_id}`);
       revalidatePath(`/elaqe/techizatcilar/${d.kontragent_id}`);
+      bustElaqeCache();
+      await audit("yarat", "contact_followup", String(created.id), {
+        yeni_data: {
+          kontragent_id: d.kontragent_id,
+          basliq: d.basliq,
+          vaxt: new Date(d.vaxt).toISOString(),
+          prioritet: d.prioritet ?? "normal",
+        },
+      });
       return { ok: true, id: String(created.id) };
     } catch (e) {
       console.error("[addFollowup]", e);
-      return { ok: false, error: "Follow-up yaradılmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Follow-up yaradılmadı: ${msg}` };
     }
   });
 }
 
 export async function completeFollowup(id: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("elaqe.followup");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
+      const before = await prisma.contact_followups.findUnique({
+        where: { id },
+        select: { kontragent_id: true, basliq: true, status: true },
+      });
+      if (!before) return { ok: false, error: "Follow-up tapılmadı" };
       await prisma.contact_followups.update({
         where: { id },
         data: { status: "tamamlandi", edildi_de: new Date() },
       });
       revalidatePath("/elaqe/followup");
+      if (before.kontragent_id) {
+        revalidatePath(`/elaqe/musteriler/${before.kontragent_id}`);
+        revalidatePath(`/elaqe/techizatcilar/${before.kontragent_id}`);
+      }
+      bustElaqeCache();
+      await audit("tamamla", "contact_followup", String(id), {
+        evvelki_data: { status: before.status },
+        yeni_data: { status: "tamamlandi", basliq: before.basliq },
+      });
       return { ok: true };
     } catch (e) {
       console.error("[completeFollowup]", e);
-      return { ok: false, error: "Tamamlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tamamlanmadı: ${msg}` };
     }
   });
 }
@@ -280,80 +373,203 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const k = await prisma.kontragentler.findUnique({ where: { id: d.kontragent_id } });
+      const k = await prisma.kontragentler.findUnique({
+        where: { id: d.kontragent_id },
+        select: { id: true, ad: true, nov: true },
+      });
       if (!k) return { ok: false, error: "Kontragent tapılmadı" };
 
-      // Try finance_operations with kod "musteri_odenis"
-      const typeKod = "musteri_odenis";
-      let type = await prisma.finance_operation_types
-        .findUnique({ where: { kod: typeKod } })
-        .catch(() => null);
-      if (!type) {
-        type = await prisma.finance_operation_types
-          .create({
-            data: { kod: typeKod, ad: "Müştəri ödənişi", qrup: "borc", y_n: "daxil" },
-          })
-          .catch(() => null);
-      }
-      if (type) {
-        await prisma.finance_operations.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            type_id: type.id,
-            type_kod: type.kod,
-            y_n: type.y_n,
-            tarix: d.tarix ? new Date(d.tarix) : new Date(),
-            meblegh: d.mebleg,
-            azn_meblegh: d.mebleg,
-            kontragent_id: d.kontragent_id,
-            qeyd: d.qeyd || "Borc ödənişi",
-            yaradan_id: istifadeciId,
-          },
-        });
-      }
-
-      const borcBefore = await prisma.kontragentler.findUnique({ where: { id: d.kontragent_id }, select: { borc: true } });
-      await prisma.kontragentler.update({
-        where: { id: d.kontragent_id },
-        data: {
-          borc: { decrement: d.mebleg },
-          son_temas: new Date(),
+      // FIFO ALLOCATION — bütün açıq qaimələrə ardıcıl tətbiq et
+      const openSales = await prisma.satis_sifarisleri.findMany({
+        where: {
+          sahibkar_id: sahibkarId,
+          musteri_id: d.kontragent_id,
+          status: { not: "legv" },
+          qaralama: { not: true },
+          odenis_nov: { in: ["nisye", "borc"] },
         },
+        select: { id: true, son_mebleg: true, odenilmis: true, nomre: true, tarix: true },
+        orderBy: { tarix: "asc" },
       });
-      await audit("yenile", "kontragent_borc", d.kontragent_id, {
-        evvelki_data: { borc: borcBefore?.borc ?? null },
-        yeni_data: { odenis: d.mebleg, type: "musteri_odenis" },
-        sebeb: d.qeyd || "Borc ödənişi",
+      const openWithQalig = openSales
+        .map((s) => ({
+          id: s.id,
+          nomre: s.nomre,
+          son_mebleg: Number(s.son_mebleg ?? 0),
+          odenilmis: Number(s.odenilmis ?? 0),
+          qalig: +(Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0)).toFixed(2),
+        }))
+        .filter((s) => s.qalig > 0.01);
+
+      // Paylama: hər qaiməyə qalıq qədər ödəniş yazılır, artıq məbləğ növbətiyə.
+      // Bütün qaimələr bağlandıqdan sonra qalan məbləğ avansa düşür.
+      let remain = d.mebleg;
+      const distribution: Array<{
+        sale_id: string; nomre: string; applied: number; closed: boolean;
+      }> = [];
+      for (const inv of openWithQalig) {
+        if (remain <= 0.001) break;
+        const apply = Math.min(remain, inv.qalig);
+        distribution.push({
+          sale_id: inv.id,
+          nomre: inv.nomre,
+          applied: +apply.toFixed(2),
+          closed: apply >= inv.qalig - 0.001,
+        });
+        remain -= apply;
+      }
+      const toAdvance = +Math.max(0, remain).toFixed(2);
+
+      // Atomic update — bütün qaimələr + müştəri balansı + finance_op
+      await prisma.$transaction(async (tx) => {
+        // 1. Hər seçilmiş qaiməyə ödəniş tətbiq et
+        for (const dist of distribution) {
+          await tx.satis_sifarisleri.update({
+            where: { id: dist.sale_id },
+            data: {
+              odenilmis: { increment: dist.applied },
+              ...(dist.closed ? { status: "tamamlandi" } : {}),
+              yenilendi: new Date(),
+            },
+          });
+        }
+
+        // 2. Müştəri avans (qalan məbləğ varsa)
+        if (toAdvance > 0) {
+          await tx.kontragentler.update({
+            where: { id: d.kontragent_id },
+            data: {
+              avans: { increment: toAdvance },
+              son_temas: new Date(),
+              yenilendi: new Date(),
+            },
+          });
+        } else {
+          await tx.kontragentler.update({
+            where: { id: d.kontragent_id },
+            data: { son_temas: new Date(), yenilendi: new Date() },
+          });
+        }
+
+        // 3. Source-of-truth recalc
+        const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+        await recalculateCustomerBalance(d.kontragent_id, tx);
+
+        // 4. Finance operation log
+        const typeKod = "musteri_odenis";
+        let type = await tx.finance_operation_types
+          .findUnique({ where: { kod: typeKod } })
+          .catch(() => null);
+        if (!type) {
+          type = await tx.finance_operation_types
+            .create({
+              data: { kod: typeKod, ad: "Müştəri ödənişi", qrup: "borc", y_n: "daxil" },
+            })
+            .catch(() => null);
+        }
+        if (type) {
+          const primarySaleId = distribution[0]?.sale_id ?? null;
+          await tx.finance_operations.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              type_id: type.id,
+              type_kod: type.kod,
+              y_n: type.y_n,
+              tarix: d.tarix ? new Date(d.tarix) : new Date(),
+              meblegh: d.mebleg,
+              azn_meblegh: d.mebleg,
+              kontragent_id: d.kontragent_id,
+              satis_id: primarySaleId,
+              qeyd:
+                distribution.length > 1
+                  ? `Ödəniş ${distribution.length} qaiməyə bölündü${toAdvance > 0 ? `, ${toAdvance.toFixed(2)} ₼ avans` : ""}`
+                  : distribution.length === 1
+                  ? `Qaimə #${distribution[0].nomre} ödənişi${toAdvance > 0 ? `, ${toAdvance.toFixed(2)} ₼ avans` : ""}`
+                  : `Avans ödənişi (${toAdvance.toFixed(2)} ₼)`,
+              yaradan_id: istifadeciId,
+            },
+          });
+        }
       });
+
+      try {
+        await audit("yenile", "kontragent_borc", d.kontragent_id, {
+          yeni_data: {
+            odenis: d.mebleg,
+            type: "musteri_odenis",
+            distribution: distribution.map((x) => ({ qaime: x.nomre, applied: x.applied, closed: x.closed })),
+            avans: toAdvance,
+          },
+          sebeb:
+            distribution.length === 0
+              ? `Avans ödənişi ${d.mebleg.toFixed(2)} ₼ — ${k.ad}`
+              : `${distribution.length} qaiməyə FIFO ödəniş — ${k.ad}`,
+        });
+      } catch { /* non-fatal */ }
 
       revalidatePath("/elaqe/borclar");
       revalidatePath("/elaqe");
       revalidatePath(`/elaqe/musteriler/${d.kontragent_id}`);
       revalidatePath(`/elaqe/techizatcilar/${d.kontragent_id}`);
+      revalidatePath("/ticaret/satislar");
+      revalidatePath("/maliyye");
       return { ok: true, id: d.kontragent_id };
     } catch (e) {
       console.error("[recordContactPayment]", e);
-      return { ok: false, error: "Ödəniş qeyd edilmədi" };
+      return { ok: false, error: e instanceof Error ? e.message : "Ödəniş qeyd edilmədi" };
     }
   });
 }
 
 export async function resetContactDebt(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("elaqe.borc");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
-      const before = await prisma.kontragentler.findUnique({ where: { id }, select: { borc: true, ad: true } });
-      await prisma.kontragentler.update({ where: { id }, data: { borc: 0 } });
+      const before = await prisma.kontragentler.findUnique({ where: { id }, select: { borc: true, alacaq: true, ad: true } });
+      if (!before) return { ok: false, error: "Kontragent tapılmadı" };
+
+      // Source-of-truth-da borc/alacaq real cədvəllərdən hesablanır.
+      // Manual "sıfırlama" mənasız — yalnız cache yenilənərsə, recalc onu geri qaytarır.
+      // Faktiki borcu sıfırlamaq üçün açıq sənədlər (alış/satış/servis) bağlanmalıdır.
+      const { calculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+      const { calculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+      const [musteriBal, techizatciBal] = await Promise.all([
+        calculateCustomerBalance(id),
+        calculateSupplierBalance(id),
+      ]);
+
+      if (musteriBal.acik_qaime_sayi > 0 || techizatciBal.acik_alis_sayi > 0) {
+        const detay = [
+          musteriBal.acik_qaime_sayi > 0 ? `${musteriBal.acik_qaime_sayi} açıq satış/servis` : "",
+          techizatciBal.acik_alis_sayi > 0 ? `${techizatciBal.acik_alis_sayi} açıq alış` : "",
+        ].filter(Boolean).join(", ");
+        return {
+          ok: false,
+          error: `Borc sıfırlanmaz: ${detay} mövcuddur. Əvvəlcə həmin sənədləri ödəyin və ya ləğv edin.`,
+        };
+      }
+
+      // Aktiv sənəd yoxdursa — yalnız cache-i source-of-truth ilə uyğunlaşdır.
+      const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+      const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+      await recalculateCustomerBalance(id);
+      await recalculateSupplierBalance(id);
+
       await audit("yenile", "kontragent_borc", id, {
-        evvelki_data: { borc: before?.borc ?? null, ad: before?.ad ?? null },
-        yeni_data: { borc: 0 },
-        sebeb: "Borc sıfırlandı (manual reset)",
+        evvelki_data: { borc: before.borc ?? null, alacaq: before.alacaq ?? null, ad: before.ad ?? null },
+        yeni_data: { borc: 0, alacaq: 0 },
+        sebeb: "Borc cache source-of-truth ilə yeniləndi",
       });
       revalidatePath("/elaqe/borclar");
       revalidatePath("/elaqe");
+      revalidatePath(`/elaqe/musteriler/${id}`);
+      bustElaqeCache();
       return { ok: true };
     } catch (e) {
       console.error("[resetContactDebt]", e);
-      return { ok: false, error: "Sıfırlanmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Sıfırlanmadı: ${msg}` };
     }
   });
 }
@@ -365,13 +581,19 @@ export async function resetContactDebt(id: string): Promise<{ ok: true } | { ok:
 export async function mergeContacts(
   primaryId: string,
   mergeIds: string[]
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; merged: number } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!primaryId || mergeIds.length === 0) {
     return { ok: false, error: "Birləşdiriləcək kontragent seçilməyib" };
+  }
+  if (mergeIds.length > 50) {
+    return { ok: false, error: "Bir dəfəyə 50-dən çox kontragent birləşdirilə bilməz" };
   }
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      let mergedCount = 0;
       // Use a transaction
       await prisma.$transaction(async (tx) => {
         for (const otherId of mergeIds) {
@@ -384,6 +606,7 @@ export async function mergeContacts(
           const reassign: Array<{ model: any; field: string }> = [
             { model: tx.satis_sifarisleri, field: "musteri_id" },
             { model: tx.alis_sifarisleri, field: "techiazatci_id" },
+            { model: tx.servis_qeydleri, field: "musteri_id" },
             { model: tx.finance_operations, field: "kontragent_id" },
             { model: tx.musteri_qeydleri, field: "musteri_id" },
             { model: tx.contact_communications, field: "kontragent_id" },
@@ -402,12 +625,11 @@ export async function mergeContacts(
             }
           }
 
-          // Sum debts
-          const otherBorc = Number(other.borc ?? 0);
-          await tx.kontragentler.update({
-            where: { id: primaryId },
-            data: { borc: { increment: otherBorc } },
-          });
+          // Borc/alacaq source-of-truth recalc — manual cəm YOX, real cədvəllərdən hesab olunur.
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+          await recalculateCustomerBalance(primaryId, tx);
+          await recalculateSupplierBalance(primaryId, tx);
 
           // Log merge
           await tx.contact_merge_logs.create({
@@ -427,14 +649,24 @@ export async function mergeContacts(
             where: { id: otherId },
             data: { aktiv: false, qeyd: `MERGED INTO ${primaryId}` },
           });
+          mergedCount += 1;
         }
       });
       revalidatePath("/elaqe/dublikat");
       revalidatePath("/elaqe");
-      return { ok: true };
+      revalidatePath(`/elaqe/musteriler/${primaryId}`);
+      bustElaqeCache();
+      if (mergedCount > 0) {
+        await audit("birlesdir", "kontragent", primaryId, {
+          yeni_data: { silinen_idler: mergeIds, sayi: mergedCount },
+          sebeb: "Dublikat birləşdirmə",
+        });
+      }
+      return { ok: true, merged: mergedCount };
     } catch (e) {
       console.error("[mergeContacts]", e);
-      return { ok: false, error: "Birləşdirmə uğursuz oldu" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Birləşdirmə uğursuz oldu: ${msg}` };
     }
   });
 }
@@ -458,7 +690,12 @@ export type ImportRow = {
 export async function importContacts(
   rows: ImportRow[],
   defaultNov: "musteri" | "techizatci" = "musteri"
-): Promise<{ ok: true; created: number; skipped: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; created: number; skipped: number; dublikat: number } | { ok: false; error: string }> {
+  // İcazə — yeni kontragent yaradılır
+  const requiredPerm = defaultNov === "techizatci" ? "techizatci.yarat" : "musteri.yarat";
+  const permCheck = await requireElaqeActionPerm(requiredPerm);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   if (!Array.isArray(rows) || rows.length === 0) {
     return { ok: false, error: "Sətr yoxdur" };
   }
@@ -469,29 +706,55 @@ export async function importContacts(
     const { sahibkarId, istifadeciId } = requireTenant();
     let created = 0;
     let skipped = 0;
+    let dublikat = 0;
     try {
+      // Batch daxili dedup üçün set-lər (eyni batch-də təkrarları sılmaq üçün)
+      const seenPhones = new Set<string>();
+      const seenEmails = new Set<string>();
+      const seenVoens = new Set<string>();
+
       for (const r of rows) {
         const ad = (r.ad ?? "").trim();
         if (!ad || ad.length < 2) {
           skipped++;
           continue;
         }
-        const telefon = (r.telefon ?? "").trim() || null;
-        const email = (r.email ?? "").trim() || null;
+        const telefonRaw = (r.telefon ?? "").trim() || null;
+        const telefonNorm = normalizePhone(telefonRaw);
+        const email = ((r.email ?? "").trim() || null)?.toLowerCase() ?? null;
         const voen = (r.voen ?? "").trim() || null;
         const fin_kod = (r.fin_kod ?? "").trim() || null;
 
-        // Skip if exact match telefon/email/voen exists
-        if (telefon || email || voen) {
+        // 1) Eyni batch-də artıq görünübmü?
+        if ((telefonNorm && seenPhones.has(telefonNorm))
+          || (email && seenEmails.has(email))
+          || (voen && seenVoens.has(voen))) {
+          dublikat++;
+          continue;
+        }
+
+        // 2) DB-də mövcuddur — normallaşdırılmış telefon ilə müqayisə üçün
+        // raw SQL: kontragentler-də normallaşdırma olmadığı üçün hər iki yöndə yoxlayırıq
+        if (telefonNorm || email || voen) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const where: any = { OR: [] };
-          if (telefon) where.OR.push({ telefon });
-          if (email) where.OR.push({ email });
-          if (voen) where.OR.push({ voen });
-          const exists = await prisma.kontragentler.findFirst({ where });
-          if (exists) {
-            skipped++;
-            continue;
+          const orList: any[] = [];
+          if (email) orList.push({ email });
+          if (voen) orList.push({ voen });
+          if (telefonNorm) {
+            // Bir az daha geniş yoxlama — son 9 rəqəm uyğun gəlirsə dublikat
+            const last9 = telefonNorm.slice(-9);
+            if (last9.length >= 7) {
+              orList.push({ telefon: { endsWith: last9 } });
+            } else if (telefonRaw) {
+              orList.push({ telefon: telefonRaw });
+            }
+          }
+          if (orList.length > 0) {
+            const exists = await prisma.kontragentler.findFirst({ where: { OR: orList } });
+            if (exists) {
+              dublikat++;
+              continue;
+            }
           }
         }
 
@@ -506,7 +769,7 @@ export async function importContacts(
             getirdi_id: istifadeciId,
             nov,
             ad,
-            telefon,
+            telefon: telefonRaw,
             email,
             voen,
             fin_kod,
@@ -517,15 +780,23 @@ export async function importContacts(
             qiymet_tipi: "adi",
           },
         });
+        if (telefonNorm) seenPhones.add(telefonNorm);
+        if (email) seenEmails.add(email);
+        if (voen) seenVoens.add(voen);
         created++;
       }
       revalidatePath("/elaqe");
       revalidatePath("/elaqe/musteriler");
       revalidatePath("/elaqe/techizatcilar");
-      return { ok: true, created, skipped };
+      bustElaqeCache();
+      await audit("idxal", "kontragent", null, {
+        yeni_data: { defaultNov, ümumi: rows.length, yaradilan: created, atilan: skipped, dublikat },
+      });
+      return { ok: true, created, skipped, dublikat };
     } catch (e) {
       console.error("[importContacts]", e);
-      return { ok: false, error: "Idxal alınmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `İdxal alınmadı: ${msg}` };
     }
   });
 }
@@ -538,9 +809,12 @@ export async function bulkAddTag(
   ids: string[],
   tagName: string
 ): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const name = tagName.trim();
   if (!name) return { ok: false, error: "Tag adı boşdur" };
   if (!ids.length) return { ok: false, error: "Seçim yoxdur" };
+  if (ids.length > BULK_MAX) return { ok: false, error: `Bir dəfəyə ${BULK_MAX}-dən çox kontragent ola bilməz` };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
@@ -561,10 +835,15 @@ export async function bulkAddTag(
         } catch { /* skip */ }
       }
       revalidatePath("/elaqe");
+      bustElaqeCache();
+      await audit("bulk_yenile", "kontragent", null, {
+        yeni_data: { emeliyyat: "tag_elave", tag: name, kontragent_say: count, secilen_say: ids.length },
+      });
       return { ok: true, count };
     } catch (e) {
       console.error("[bulkAddTag]", e);
-      return { ok: false, error: "Tag əlavə olunmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tag əlavə olunmadı: ${msg}` };
     }
   });
 }
@@ -573,7 +852,10 @@ export async function bulkAssignManager(
   ids: string[],
   menecerId: string | null
 ): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!ids.length) return { ok: false, error: "Seçim yoxdur" };
+  if (ids.length > BULK_MAX) return { ok: false, error: `Bir dəfəyə ${BULK_MAX}-dən çox kontragent ola bilməz` };
   return withTenant(async () => {
     try {
       const res = await prisma.kontragentler.updateMany({
@@ -581,10 +863,15 @@ export async function bulkAssignManager(
         data: { menecer_id: menecerId || null },
       });
       revalidatePath("/elaqe");
+      bustElaqeCache();
+      await audit("bulk_yenile", "kontragent", null, {
+        yeni_data: { emeliyyat: "menecer_teyin", menecer_id: menecerId, kontragent_say: res.count },
+      });
       return { ok: true, count: res.count };
     } catch (e) {
       console.error("[bulkAssignManager]", e);
-      return { ok: false, error: "Menecer təyin olunmadı" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Menecer təyin olunmadı: ${msg}` };
     }
   });
 }
@@ -593,7 +880,11 @@ export async function bulkSetStatus(
   ids: string[],
   aktiv: boolean
 ): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const requiredPerm = aktiv ? "musteri.duzelt" : "musteri.sil";
+  const permCheck = await requireElaqeActionPerm(requiredPerm);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!ids.length) return { ok: false, error: "Seçim yoxdur" };
+  if (ids.length > BULK_MAX) return { ok: false, error: `Bir dəfəyə ${BULK_MAX}-dən çox kontragent ola bilməz` };
   return withTenant(async () => {
     try {
       const res = await prisma.kontragentler.updateMany({
@@ -601,10 +892,15 @@ export async function bulkSetStatus(
         data: { aktiv },
       });
       revalidatePath("/elaqe");
+      bustElaqeCache();
+      await audit(aktiv ? "bulk_aktivlesh" : "bulk_deaktivlesh", "kontragent", null, {
+        yeni_data: { kontragent_say: res.count, secilen_say: ids.length },
+      });
       return { ok: true, count: res.count };
     } catch (e) {
       console.error("[bulkSetStatus]", e);
-      return { ok: false, error: "Status dəyişmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Status dəyişmədi: ${msg}` };
     }
   });
 }
@@ -622,7 +918,10 @@ export async function bulkDeactivate(
 export async function autoMergeSuggested(
   pairs: { primaryId: string; mergeIds: string[] }[]
 ): Promise<{ ok: true; merged: number } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!pairs.length) return { ok: false, error: "Birləşdirmək üçün qrup yoxdur" };
+  if (pairs.length > 50) return { ok: false, error: "Bir dəfəyə 50-dən çox qrup mümkün deyil" };
   let merged = 0;
   for (const p of pairs) {
     if (!p.primaryId || !p.mergeIds?.length) continue;
@@ -640,15 +939,22 @@ export async function sendContactSms(
   kontragentId: string,
   template: string
 ): Promise<{ ok: true; provider: string; is_mock: boolean } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("elaqe.bulk_mesaj");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   if (!template?.trim()) return { ok: false, error: "Mətn boşdur" };
+  if (template.length > 1600) return { ok: false, error: "SMS mətni 1600 simvoldan uzun ola bilməz" };
+
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const k = await prisma.kontragentler.findUnique({ where: { id: kontragentId } });
-      if (!k?.telefon) return { ok: false, error: "Telefon yoxdur" };
+      // Rate limit yoxla
+      const rate = await checkSmsRateLimit(1);
+      if (!rate.ok) return { ok: false, error: rate.error };
 
-      // Real göndərmə (env-də provider varsa) ya da mock log.
-      // SMS adapter avtomatik provider seçir (Twilio/MSG91/AzerCell/mock).
+      const k = await prisma.kontragentler.findUnique({ where: { id: kontragentId } });
+      if (!k) return { ok: false, error: "Kontragent tapılmadı" };
+      if (!k.telefon) return { ok: false, error: "Telefon nömrəsi yoxdur" };
+
       const { sendSms } = await import("@/lib/sms/adapter");
       const smsResult = await sendSms({ to: k.telefon, body: template.trim() });
       if (!smsResult.ok) {
@@ -672,11 +978,119 @@ export async function sendContactSms(
       });
       revalidatePath(`/elaqe/musteriler/${kontragentId}`);
       revalidatePath("/elaqe/followup");
+      bustElaqeCache();
+      await audit("gonder", "sms", kontragentId, {
+        yeni_data: {
+          provider: smsResult.provider,
+          is_mock: smsResult.is_mock,
+          metn_uzunluq: template.length,
+          telefon: k.telefon,
+        },
+      });
       return { ok: true as const, provider: smsResult.provider, is_mock: smsResult.is_mock };
     } catch (e) {
       console.error("[sendContactSms]", e);
-      return { ok: false, error: "SMS göndərilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `SMS göndərilmədi: ${msg}` };
     }
+  });
+}
+
+/**
+ * YENI: Bulk SMS — bir mətn şablonu çoxlu kontragentə göndərir.
+ * Hər kontaktın adı `{{ad}}`, borcu `{{borc}}` ilə əvəz olunur.
+ */
+export async function sendBulkContactSms(
+  kontragentIds: string[],
+  template: string,
+): Promise<
+  | { ok: true; sent: number; failed: number; skipped: number; details: { id: string; ok: boolean; error?: string }[] }
+  | { ok: false; error: string }
+> {
+  const permCheck = await requireElaqeActionPerm("elaqe.bulk_mesaj");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  if (!template?.trim()) return { ok: false, error: "Mətn boşdur" };
+  if (template.length > 1600) return { ok: false, error: "SMS mətni 1600 simvoldan uzun ola bilməz" };
+  if (!kontragentIds.length) return { ok: false, error: "Seçim yoxdur" };
+  if (kontragentIds.length > 500) return { ok: false, error: "Bir dəfəyə 500-dən çox SMS göndərilə bilməz" };
+
+  return withTenant(async () => {
+    const { sahibkarId, istifadeciId } = requireTenant();
+
+    // Toplu rate limit yoxla — gərək olan say
+    const rate = await checkSmsRateLimit(kontragentIds.length);
+    if (!rate.ok) return { ok: false, error: rate.error };
+
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
+    const details: { id: string; ok: boolean; error?: string }[] = [];
+
+    const { sendSms } = await import("@/lib/sms/adapter");
+    const contacts = await prisma.kontragentler.findMany({
+      where: { id: { in: kontragentIds } },
+      select: { id: true, ad: true, telefon: true, borc: true },
+    });
+    const contactMap = new Map(contacts.map((c) => [c.id, c]));
+
+    for (const id of kontragentIds) {
+      const k = contactMap.get(id);
+      if (!k) {
+        skipped++;
+        details.push({ id, ok: false, error: "Tapılmadı" });
+        continue;
+      }
+      if (!k.telefon) {
+        skipped++;
+        details.push({ id, ok: false, error: "Telefon yoxdur" });
+        continue;
+      }
+      // Template-də placeholder-ləri əvəz et
+      const text = template
+        .replace(/\{\{\s*ad\s*\}\}/g, k.ad ?? "")
+        .replace(/\{\{\s*borc\s*\}\}/g, String(k.borc ?? 0))
+        .slice(0, 1600);
+
+      try {
+        const r = await sendSms({ to: k.telefon, body: text });
+        if (!r.ok) {
+          failed++;
+          details.push({ id, ok: false, error: r.error });
+          continue;
+        }
+        await prisma.contact_communications.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            kontragent_id: id,
+            istifadeci_id: istifadeciId,
+            kanal: "sms",
+            istiqamet: "cixan",
+            metn: text,
+            m_vzu: r.is_mock ? "Bulk SMS (mock)" : `Bulk SMS (${r.provider})`,
+          },
+        });
+        await prisma.kontragentler.update({
+          where: { id },
+          data: { son_temas: new Date() },
+        }).catch(() => null);
+        sent++;
+        details.push({ id, ok: true });
+      } catch (e) {
+        failed++;
+        const msg = e instanceof Error ? e.message : "naməlum";
+        details.push({ id, ok: false, error: msg });
+      }
+    }
+
+    revalidatePath("/elaqe");
+    revalidatePath("/elaqe/followup");
+    revalidatePath("/elaqe/borclar");
+    bustElaqeCache();
+    await audit("bulk_gonder", "sms", null, {
+      yeni_data: { sent, failed, skipped, hedef_say: kontragentIds.length, sablon_uzunluq: template.length },
+    });
+
+    return { ok: true, sent, failed, skipped, details };
   });
 }
 
@@ -688,8 +1102,11 @@ export async function addContactTag(
   kontragentId: string,
   tagName: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const name = tagName.trim();
   if (!name) return { ok: false, error: "Tag adı boşdur" };
+  if (name.length > 50) return { ok: false, error: "Tag adı 50 simvoldan uzun ola bilməz" };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
@@ -705,10 +1122,15 @@ export async function addContactTag(
       });
       revalidatePath(`/elaqe/musteriler/${kontragentId}`);
       revalidatePath(`/elaqe/techizatcilar/${kontragentId}`);
+      bustElaqeCache();
+      await audit("tag_elave", "kontragent", kontragentId, {
+        yeni_data: { tag: name },
+      });
       return { ok: true };
     } catch (e) {
       console.error("[addContactTag]", e);
-      return { ok: false, error: "Tag əlavə edilmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tag əlavə edilmədi: ${msg}` };
     }
   });
 }
@@ -717,17 +1139,25 @@ export async function removeContactTag(
   kontragentId: string,
   tagId: number
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
+      const tag = await prisma.contact_tags.findUnique({ where: { id: tagId }, select: { ad: true } });
       await prisma.contact_tag_links.deleteMany({
         where: { kontragent_id: kontragentId, tag_id: tagId },
       });
       revalidatePath(`/elaqe/musteriler/${kontragentId}`);
       revalidatePath(`/elaqe/techizatcilar/${kontragentId}`);
+      bustElaqeCache();
+      await audit("tag_sil", "kontragent", kontragentId, {
+        yeni_data: { tag: tag?.ad ?? String(tagId) },
+      });
       return { ok: true };
     } catch (e) {
       console.error("[removeContactTag]", e);
-      return { ok: false, error: "Tag silinmədi" };
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Tag silinmədi: ${msg}` };
     }
   });
 }

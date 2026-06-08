@@ -65,6 +65,8 @@ export const TENANT_MODELS = new Set<string>([
   "finance_internal_balances",
   "finance_marketplace_payments",
   "finance_operations",
+  "finance_payment_allocations",
+  "finance_recurring_rules",
   "gun_sonu",
   "hesab_emeliyyatlari",
   "import_partiyalari",
