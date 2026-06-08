@@ -21,7 +21,7 @@ type Result = { ok: true } | { ok: false; error: string };
 export async function setStealthMode(formData: FormData): Promise<Result> {
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Sessiya yoxdur" };
-  if (session.user.rol_id !== 9) return { ok: false, error: "Yalnız sahibkar" };
+  if (session.user.rol_ad !== "sahibkar") return { ok: false, error: "Yalnız sahibkar" };
 
   const action = String(formData.get("action") ?? "");
   const scale = Number(formData.get("scale") ?? "0.2");

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getCustomersForExport, type CustomerSegment } from "@/features/hesabatlar/musteri-queries";
+import { requireHesabatActionPerm } from "@/features/hesabatlar/access-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ function csvEscape(s: unknown): string {
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  const perm = await requireHesabatActionPerm("musteri.oxu");
+  if (!perm.ok) return new NextResponse(perm.error, { status: 403 });
 
   const segParam = req.nextUrl.searchParams.get("segment") ?? "all";
   const segment = (VALID_SEGMENTS as string[]).includes(segParam) ? (segParam as CustomerSegment) : "all";

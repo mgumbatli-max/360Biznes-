@@ -4,6 +4,14 @@
 // and `sahibkar_id` value on create, via the Prisma extension in `prisma.ts`.
 
 export const TENANT_MODELS = new Set<string>([
+  // Marketinq/loyallıq modelləri — cross-tenant sızma düzəlişi (audit #22/#23):
+  // tenant filtri tətbiq olunmalı (hamısı sahibkar_id daşıyır).
+  "campaigns",
+  "coupons",
+  "gift_cards",
+  "loyalty_cards",
+  "loyalty_tx",
+  "campaign_usage",
   "abuneler",
   "ai_insiqht",
   "ai_sohbet_loq",

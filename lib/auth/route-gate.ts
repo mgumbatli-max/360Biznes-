@@ -40,7 +40,7 @@ export const ROUTE_RULES: RouteRule[] = [
   { prefix: "/pos", anyOf: ["pos.view", "pos.istifade", "trade.view"] },
   { prefix: "/market-pos", anyOf: ["pos.view", "pos.istifade", "trade.view"] },
   // — CRM / Mesaj mərkəzi
-  { prefix: "/crm", anyOf: ["crm.view", "crm.idare", "mesaj.gor"] },
+  { prefix: "/crm", anyOf: ["crm.oxu", "crm.idare", "mesaj.cevab", "mesaj.idare", "lead.idare"] },
   // — Servis
   { prefix: "/servis", anyOf: ["servis.view", "servis.idare"] },
   // — Marketplace

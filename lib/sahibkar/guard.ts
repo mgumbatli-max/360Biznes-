@@ -16,7 +16,7 @@ export type SahibkarSetupState = "no-user" | "wrong-role" | "needs-setup" | "nee
 export async function getSahibkarState(): Promise<SahibkarSetupState> {
   const session = await auth();
   if (!session?.user) return "no-user";
-  if (session.user.rol_id !== 9) return "wrong-role";
+  if (session.user.rol_ad !== "sahibkar") return "wrong-role";
 
   const hasPin = await withTenant(async () => {
     const cfg = await prisma.sahibkar_ayar.findFirst();

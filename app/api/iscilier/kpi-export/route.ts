@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getKpiDashboard } from "@/features/iscilier/kpi-dashboard-queries";
+import { requireHrActionPerm } from "@/features/iscilier/access-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
  *  - sort: SortKey, dir: asc/desc
  */
 export async function GET(req: NextRequest) {
+  // Maaş/KPI ixracı = həssas məlumat — backend icazə tələb olunur (audit #8/#21).
+  const g = await requireHrActionPerm(["maas.view", "maas.idare"]);
+  if (!g.ok) return NextResponse.json({ ok: false, error: g.error }, { status: 403 });
   const sp = req.nextUrl.searchParams;
   try {
     const { rows, month } = await getKpiDashboard({

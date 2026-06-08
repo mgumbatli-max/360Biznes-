@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldApproveRefund } from "@/features/tesdiq/create";
 import { audit } from "@/lib/audit/log";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { requireTicaretActionPerm } from "@/features/ticaret/access-guard";
 
 type ActionResult<T = void> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -52,6 +53,9 @@ export async function createReturn(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   }
   const data = parsed.data;
+
+  const permCheck = await requireTicaretActionPerm("qaytarma.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
@@ -141,6 +145,8 @@ export async function createReturn(
  * for supplier returns (alis_qaytarma) stock is decremented.
  */
 export async function acceptReturn(returnId: string): Promise<ActionResult> {
+  const permCheck = await requireTicaretActionPerm("qaytarma.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -276,6 +282,8 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
  */
 export async function cancelReturn(returnId: string, reason: string): Promise<ActionResult> {
   if (!reason.trim()) return { ok: false, error: "Səbəb tələb olunur" };
+  const permCheck = await requireTicaretActionPerm("qaytarma.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const ret = await prisma.qaytarma_sifarisleri.findUnique({

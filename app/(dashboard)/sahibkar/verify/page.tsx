@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Sahibkar — Giriş" };
 export default async function PinVerifyPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.rol_id !== 9) redirect("/dashboard");
+  if (session.user.rol_ad !== "sahibkar") redirect("/dashboard");
 
   const cfg = await withTenant(async () => prisma.sahibkar_ayar.findFirst());
   if (!cfg?.sifre_hash) redirect("/sahibkar/setup");

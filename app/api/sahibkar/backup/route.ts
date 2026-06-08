@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (session.user.rol_id !== 9) {
+  if (session.user.rol_ad !== "sahibkar") {
     return NextResponse.json({ error: "Yalnız sahibkar" }, { status: 403 });
   }
   const pinSession = await touchPinSession();

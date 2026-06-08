@@ -5,12 +5,15 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { getPlSummary, getMonthlyPl12 } from "@/features/hesabatlar/maliyye-queries";
 import { getExpenseCategories } from "@/features/hesabatlar/pul-queries";
 import { parseDateRange } from "@/features/hesabatlar/shared";
+import { requireHesabatActionPerm } from "@/features/hesabatlar/access-guard";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  const perm = await requireHesabatActionPerm("maliye.view");
+  if (!perm.ok) return new NextResponse(perm.error, { status: 403 });
 
   const sp = req.nextUrl.searchParams;
   const range = parseDateRange({ from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined, preset: sp.get("preset") ?? undefined });

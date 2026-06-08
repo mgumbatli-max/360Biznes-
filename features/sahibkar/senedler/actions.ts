@@ -13,7 +13,7 @@ type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string
 async function requireSahibkar(): Promise<{ ok: true } | { ok: false; error: string }> {
   const s = await auth();
   if (!s?.user) return { ok: false, error: "Sessiya yoxdur" };
-  if (s.user.rol_id !== 9) return { ok: false, error: "Yalnız sahibkar" };
+  if (s.user.rol_ad !== "sahibkar") return { ok: false, error: "Yalnız sahibkar" };
   return { ok: true };
 }
 

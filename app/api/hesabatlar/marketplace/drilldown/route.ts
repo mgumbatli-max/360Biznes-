@@ -3,12 +3,15 @@ import { auth } from "@/auth";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getPlatformDrilldown } from "@/features/hesabatlar/marketplace-queries";
 import { parseDateRange } from "@/features/hesabatlar/shared";
+import { requireHesabatActionPerm } from "@/features/hesabatlar/access-guard";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const perm = await requireHesabatActionPerm("marketplace.oxu");
+  if (!perm.ok) return NextResponse.json({ error: perm.error }, { status: 403 });
 
   const sp = req.nextUrl.searchParams;
   const platform = sp.get("platform") ?? "";

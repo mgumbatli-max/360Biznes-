@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getReorderList } from "@/features/hesabatlar/mehsul-queries";
+import { requireHesabatActionPerm } from "@/features/hesabatlar/access-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  const perm = await requireHesabatActionPerm("hesabat.view");
+  if (!perm.ok) return new NextResponse(perm.error, { status: 403 });
 
   const sp = req.nextUrl.searchParams;
   const q = (sp.get("q") ?? "").toLowerCase();

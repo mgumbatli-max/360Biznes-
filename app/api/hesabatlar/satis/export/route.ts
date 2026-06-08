@@ -13,12 +13,15 @@ import {
   type GroupKey,
 } from "@/features/hesabatlar/satis-queries";
 import { parseDateRange } from "@/features/hesabatlar/shared";
+import { requireHesabatActionPerm } from "@/features/hesabatlar/access-guard";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  const perm = await requireHesabatActionPerm("hesabat.view");
+  if (!perm.ok) return new NextResponse(perm.error, { status: 403 });
 
   const sp = req.nextUrl.searchParams;
   const range = parseDateRange({ from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined, preset: sp.get("preset") ?? undefined });

@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Sahibkar — İlk qurum" };
 export default async function PinSetupPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.rol_id !== 9) redirect("/dashboard");
+  if (session.user.rol_ad !== "sahibkar") redirect("/dashboard");
 
   // If already set, send to verify instead
   const hasPin = await withTenant(async () => {

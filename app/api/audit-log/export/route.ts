@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getAuditLog, type AuditFilter } from "@/features/audit-log/queries";
 import { withTenant } from "@/lib/db/with-tenant";
 import { audit } from "@/lib/audit/log";
+import { auth } from "@/auth";
+import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { gateRoute } from "@/lib/auth/route-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +15,13 @@ function csvEscape(v: unknown): string {
 }
 
 export async function GET(req: NextRequest) {
+  // Backend icazə (audit #20): audit log ixracı yalnız audit.view + auth ilə.
+  const session = await auth();
+  if (!session?.user) return new NextResponse("Giriş tələb olunur", { status: 401 });
+  const perms = await getRequestPermissions();
+  if (!gateRoute("/audit-log", session.user.rol_ad, perms).allowed) {
+    return new NextResponse("İcazə yoxdur", { status: 403 });
+  }
   const sp = req.nextUrl.searchParams;
   const filter: AuditFilter = {
     q: sp.get("q") ?? undefined,

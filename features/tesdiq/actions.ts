@@ -447,7 +447,7 @@ export async function bulkReject(ids: number[], reason: string): Promise<BulkRes
         return { ok: false, error: "Heç bir sənəd üçün rədd icazəniz yoxdur" };
       }
       const result = await prisma.tesdiq_telep.updateMany({
-        where: { id: { in: ids }, status: "gozleyir" },
+        where: { id: { in: validRejectIds }, status: "gozleyir" },
         data: {
           status: "red",
           baxan_id: istifadeciId,
@@ -456,7 +456,7 @@ export async function bulkReject(ids: number[], reason: string): Promise<BulkRes
         },
       });
       await Promise.all(
-        ids.map((id) => logTransition(id, istifadeciId, "gozleyir", "red", "bulk_red", reason.trim()))
+        validRejectIds.map((id) => logTransition(id, istifadeciId, "gozleyir", "red", "bulk_red", reason.trim()))
       );
       await audit("redd", "tesdiq_telep_bulk", null, {
         yeni_data: { ids: validRejectIds, affected: result.count, status: "red" },

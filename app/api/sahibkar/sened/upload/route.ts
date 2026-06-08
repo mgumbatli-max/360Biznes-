@@ -23,7 +23,7 @@ const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.user.rol_id !== 9) return NextResponse.json({ error: "Yalnız sahibkar" }, { status: 403 });
+  if (session.user.rol_ad !== "sahibkar") return NextResponse.json({ error: "Yalnız sahibkar" }, { status: 403 });
 
   const form = await req.formData();
   const file = form.get("file");

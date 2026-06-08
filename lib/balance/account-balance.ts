@@ -9,7 +9,7 @@ import { Prisma, prisma } from "@/lib/db/prisma";
  *
  * MƏNTİQ:
  *   qaliq = SUM(yön='daxil' azn_meblegh)
- *         - SUM(yön='mexaric' azn_meblegh)
+ *         - SUM(yön IN ('mexaric','xaric') azn_meblegh)
  *         + SUM(transfer hədəfi olarsa: meblegh2)
  *         - SUM(transfer mənbəyidirsa: meblegh)
  *
@@ -68,7 +68,7 @@ export async function calculateAccountBalance(
         WHEN hesab_id = ${hesabId}::uuid
           AND deleted_at IS NULL
           AND status = 'aktiv'
-          AND yön = 'mexaric'
+          AND yön IN ('mexaric', 'xaric')
         THEN azn_meblegh ELSE 0
       END), 0)::float AS mexaric_cemi,
 
