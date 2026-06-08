@@ -94,9 +94,10 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
-          {/* Mobile: gizlət — yer az, command palette sidebar-da; tema dropdown-da */}
+          {/* Axtarış həmişə görünür — mobildə kompakt ikon, md+-də enli qutu (komponentin öz daxili variantı) */}
+          <CommandPaletteTrigger />
+          {/* Tema mobildə gizli — user dropdown-da var */}
           <div className="hidden md:contents">
-            <CommandPaletteTrigger />
             <ThemeToggle />
           </div>
           <MyWork data={myWork} />
