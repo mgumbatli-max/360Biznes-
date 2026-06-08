@@ -4,6 +4,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { withTenant } from "@/lib/db/with-tenant";
 import { ParsedRow } from "./excel-parser";
 import { audit } from "@/lib/audit/log";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 
 export type ImportResult = {
   partiyaId: string;
@@ -246,7 +247,6 @@ async function importMusteri(rows: ParsedRow[]): Promise<ImportResult> {
         email: r.values.email ? String(r.values.email) : null,
         unvan: r.values.unvan ? String(r.values.unvan) : null,
         qiymet_tipi: r.values.qiymet_tipi ? String(r.values.qiymet_tipi) : "adi",
-        borc: (r.values.borc as number) ?? 0,
         qeyd: r.values.qeyd ? String(r.values.qeyd) : null,
         aktiv: r.values.aktiv === 0 ? false : true,
       };
@@ -256,7 +256,29 @@ async function importMusteri(rows: ParsedRow[]): Promise<ImportResult> {
         yenile++;
         log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `Müştəri yeniləndi: ${ad}` });
       } else {
-        await prisma.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
+        const created = await prisma.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
+        // İlkin borc → açıq nisyə satışı (audit #18: əvvəl kontragentler.borc-a
+        // yazılırdı, customer-balance bunu görmürdü). "Açıq qaimə" kimi görünür.
+        const openingBorc = (r.values.borc as number) ?? 0;
+        if (openingBorc > 0) {
+          const nomre = await nextDocNumber(prisma, sahibkarId, "satis");
+          await prisma.satis_sifarisleri.create({
+            data: {
+              nomre,
+              sahibkar_id: sahibkarId,
+              musteri_id: created.id,
+              tarix: new Date(),
+              umumi_mebleg: openingBorc,
+              son_mebleg: openingBorc,
+              odenilmis: 0,
+              odenis_nov: "nisye",
+              status: "tesdiq",
+              qeyd: "İlkin borc (idxal açılış qalığı)",
+            },
+          });
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(created.id);
+        }
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `Yeni müştəri: ${ad}` });
       }
@@ -297,7 +319,6 @@ async function importTechizatci(rows: ParsedRow[]): Promise<ImportResult> {
         unvan: r.values.unvan ? String(r.values.unvan) : null,
         bank_adi: r.values.bank_adi ? String(r.values.bank_adi) : null,
         iban: r.values.iban ? String(r.values.iban) : null,
-        borc: (r.values.borc as number) ?? 0,
         aktiv: r.values.aktiv === 0 ? false : true,
       };
 
@@ -306,7 +327,27 @@ async function importTechizatci(rows: ParsedRow[]): Promise<ImportResult> {
         yenile++;
         log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `Təchizatçı yeniləndi: ${ad}` });
       } else {
-        await prisma.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
+        const created = await prisma.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
+        // İlkin borc → açıq alış sifarişi (audit #18: əvvəl kontragentler.borc-a
+        // yazılırdı, supplier-balance bunu görmürdü).
+        const openingBorc = (r.values.borc as number) ?? 0;
+        if (openingBorc > 0) {
+          const nomre = await nextDocNumber(prisma, sahibkarId, "alis");
+          await prisma.alis_sifarisleri.create({
+            data: {
+              nomre,
+              sahibkar_id: sahibkarId,
+              techiazatci_id: created.id,
+              tarix: new Date(),
+              umumi_mebleg: openingBorc,
+              odenilmis: 0,
+              status: "qebul",
+              qeyd: "İlkin borc (idxal açılış qalığı)",
+            },
+          });
+          const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+          await recalculateSupplierBalance(created.id);
+        }
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `Yeni təchizatçı: ${ad}` });
       }
@@ -321,7 +362,7 @@ async function importTechizatci(rows: ParsedRow[]): Promise<ImportResult> {
 
 // === HESAB ===
 async function importHesab(rows: ParsedRow[]): Promise<ImportResult> {
-  const { sahibkarId } = requireTenant();
+  const { sahibkarId, istifadeciId } = requireTenant();
   let yarat = 0,
     yenile = 0,
     xeta = 0;
@@ -343,7 +384,6 @@ async function importHesab(rows: ParsedRow[]): Promise<ImportResult> {
         iban: r.values.iban ? String(r.values.iban) : null,
         kart_son4: r.values.kart_son4 ? String(r.values.kart_son4) : null,
         valyuta: r.values.valyuta ? String(r.values.valyuta) : "AZN",
-        qaliq: (r.values.qaliq as number) ?? 0,
         qeyd: r.values.qeyd ? String(r.values.qeyd) : null,
         aktiv: true,
       };
@@ -353,7 +393,36 @@ async function importHesab(rows: ParsedRow[]): Promise<ImportResult> {
         yenile++;
         log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `Hesab yeniləndi: ${ad}` });
       } else {
-        await prisma.maliye_hesablari.create({ data: { ...data, sahibkar_id: sahibkarId } });
+        const created = await prisma.maliye_hesablari.create({ data: { ...data, sahibkar_id: sahibkarId } });
+        // İlkin qalıq → finance_operations açılış sətri (audit #18: əvvəl
+        // maliye_hesablari.qaliq-a yazılırdı, account-balance bunu görmürdü).
+        const openingQaliq = (r.values.qaliq as number) ?? 0;
+        if (openingQaliq !== 0) {
+          let opType = await prisma.finance_operation_types.findUnique({ where: { kod: "acilis_balans" } }).catch(() => null);
+          if (!opType) {
+            opType = await prisma.finance_operation_types.create({
+              data: { kod: "acilis_balans", ad: "Açılış qalığı", qrup: "acilis", y_n: "daxil" },
+            });
+          }
+          await prisma.finance_operations.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              type_id: opType.id,
+              type_kod: opType.kod,
+              y_n: openingQaliq >= 0 ? "daxil" : "mexaric",
+              tarix: new Date(),
+              meblegh: Math.abs(openingQaliq),
+              valyuta: "AZN",
+              mezenne: 1,
+              azn_meblegh: Math.abs(openingQaliq),
+              hesab_id: created.id,
+              qeyd: "İlkin qalıq (idxal açılış balansı)",
+              yaradan_id: istifadeciId,
+            },
+          });
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          await recalculateAccountBalance(created.id);
+        }
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `Yeni hesab: ${ad}` });
       }
