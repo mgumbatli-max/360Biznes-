@@ -5168,6 +5168,8 @@ model satis_sifaris_satirlari {
 model satis_sifarisleri {
   id                                                               String                        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   nomre                                                            String                        @unique @db.VarChar(50)
+  client_op_id                                                     String?                       @db.VarChar(80)
+  external_id                                                      String?                       @db.VarChar(120)
   musteri_id                                                       String?                       @db.Uuid
   anbar_id                                                         Int?
   tarix                                                            DateTime                      @default(dbgenerated("CURRENT_DATE")) @db.Date

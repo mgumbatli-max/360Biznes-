@@ -897,6 +897,9 @@ export function PosClient({
       const payloadBuilder = () => ({
         kassa_id: kassaId,
         anbar_id: anbarId,
+        // Idempotentlik açarı (audit #3): offline növbə eyni payload-u təkrar
+        // göndərəndə server dublikat satış yaratmır (sale-action-da yoxlanılır).
+        client_op_id: crypto.randomUUID(),
         musteri_id: customer?.id ?? null,
         satis_meneceri_id: salespersonId,
         odenis_nov: serverOdenis,
@@ -904,6 +907,8 @@ export function PosClient({
         // göstərilən məbləğə bərabər olsun və kassa/maliyyə uyğunsuzluğu olmasın
         // (audit #11/#12). Bonus kartdan ayrıca düşür (applyBonusToSale) — nağd yazılmır.
         endirim_mebleg: endirimEffectiveMebleg + couponEndirim + bonusAfterDiscount,
+        // Tətbiq olunan kupon/kampaniya (audit #10) — istifadə qeydə alınsın
+        applied_campaigns: couponApplied ? [couponApplied] : undefined,
         qeyd:
           qeyd ||
           (paymentMethod === "kreditle"

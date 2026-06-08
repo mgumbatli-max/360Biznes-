@@ -32,6 +32,25 @@ const CreateSaleSchema = z.object({
   lines: z.array(LineSchema).min(1, "Ən az 1 məhsul olmalıdır"),
   override_credit_limit: z.coerce.boolean().optional(),
   override_discount_limit: z.coerce.boolean().optional(),
+  // Offline növbə / double-submit idempotentliyi (audit #3) — klient tərəfdə
+  // bir dəfə generasiya olunan açar; eyni açarla təkrar göndəriş dublikat yaratmır.
+  client_op_id: z.string().max(80).optional(),
+  // Tətbiq olunan kampaniya/kupon (audit #10) — satışdan sonra campaign_usage-ə
+  // yazılır və kupon/kampaniya istifadə sayğacı artırılır.
+  applied_campaigns: z
+    .array(
+      z.object({
+        campaign_id: z.string(),
+        ad: z.string(),
+        tip: z.string(),
+        endirim_mebleg: z.coerce.number(),
+        endirim_faiz: z.coerce.number(),
+        bonus_qazanildi: z.coerce.number(),
+        free_shipping: z.coerce.boolean(),
+        qeyd: z.string(),
+      }),
+    )
+    .optional(),
 });
 
 export type CreateSaleInput = z.input<typeof CreateSaleSchema>;
@@ -110,6 +129,24 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
         });
         if (!kassa) throw new Error("Kassa sessiyası açıq deyil");
 
+        // Idempotentlik (audit #3): eyni client_op_id ilə satış artıq varsa,
+        // dublikat yaratma — mövcudu qaytar (offline növbə təkrar göndərişi /
+        // double-click). DB-də partial-unique index race-ləri də bağlayır.
+        if (data.client_op_id) {
+          const dup = await tx.satis_sifarisleri.findFirst({
+            where: { sahibkar_id: sahibkarId, client_op_id: data.client_op_id },
+            select: { id: true, nomre: true, son_mebleg: true, qaime_nomresi: true },
+          });
+          if (dup) {
+            return {
+              id: dup.id,
+              nomre: dup.nomre,
+              sonMebleg: Number(dup.son_mebleg ?? 0),
+              posCekNomresi: dup.qaime_nomresi ?? "",
+            };
+          }
+        }
+
         // 2. Compute totals + load product costs
         let umumi = 0;
         for (const line of data.lines) {
@@ -181,6 +218,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
           data: {
             sahibkar_id: sahibkarId,
             nomre,
+            client_op_id: data.client_op_id ?? null,
             musteri_id: data.musteri_id ?? null,
             anbar_id: data.anbar_id,
             kassa_id: data.kassa_id,
@@ -330,6 +368,17 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
 
       // Stoku dəyişən məhsulları kanal-larda avtomatik sync — arxa fonda
       emitStockChange(data.lines.map((l) => l.mehsul_id));
+
+      // Kampaniya/kupon istifadəsini qeydə al (audit #10: əvvəl commit olunmurdu —
+      // campaign_usage yazılmırdı, kupon/kampaniya sayğacı artmırdı, dead code idi).
+      if (data.applied_campaigns && data.applied_campaigns.length > 0) {
+        try {
+          const { commitCampaignApplications } = await import("@/features/kampaniyalar/matcher");
+          await commitCampaignApplications(result.id, data.musteri_id ?? null, data.applied_campaigns);
+        } catch (e) {
+          console.warn("[createSale] commitCampaignApplications skipped:", e);
+        }
+      }
 
       // Audit: POS satışı — kanal, kassa, ödəniş, məbləğ
       await audit("yarat", "pos_satis", result.id, {
