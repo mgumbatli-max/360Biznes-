@@ -58,3 +58,20 @@ export async function loadPermissionsForRole(rolId: number): Promise<string[]> {
   );
   return cached();
 }
+
+/**
+ * Qlobal icazə kataloqundakı BÜTÜN kodlar — sahibkar/admin tam-giriş üçün.
+ * (Owner rolu klonlandığı üçün rol_id etibarsızdır — audit #14; ona görə
+ * tam giriş ad ilə müəyyən olunub icazələr buradan verilir, data seed-dən asılı yox.)
+ */
+export async function loadAllPermissionCodes(): Promise<string[]> {
+  const cached = unstable_cache(
+    async () => {
+      const rows = await prismaUnscoped.icazeler.findMany({ select: { kod: true } });
+      return rows.map((r) => r.kod).filter((k): k is string => Boolean(k));
+    },
+    ["all-perm-codes"],
+    { revalidate: 300, tags: ["all-perm-codes"] },
+  );
+  return cached();
+}
