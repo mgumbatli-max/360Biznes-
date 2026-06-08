@@ -124,6 +124,61 @@ export async function recordSalePayment(
           const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
           await recalculateCustomerBalance(sale.musteri_id, tx);
         }
+
+        // finance_operations — sonradan ödəniş hesab balansına və maliyyə/kassa
+        // hesabatına düşsün (audit #5: əvvəl yalnız kassa_emeliyyatlari yazılırdı,
+        // account-balance bunu görmürdü). satis-yeni-actions pattern-i mirror edilir.
+        try {
+          let opType = await tx.finance_operation_types.findUnique({ where: { kod: "qaime" } }).catch(() => null);
+          if (!opType) {
+            opType = await tx.finance_operation_types.create({
+              data: { kod: "qaime", ad: "Qaimə", qrup: "qaime", y_n: "daxil", link_satish: true },
+            });
+          }
+          if (opType) {
+            let opHesabId: string | null = null;
+            if (resolvedKassaId) {
+              const kassaRow = await tx.kassalar.findFirst({
+                where: { id: resolvedKassaId, sahibkar_id: sahibkarId },
+                select: { maliye_hesab_id: true },
+              });
+              opHesabId = kassaRow?.maliye_hesab_id ?? null;
+            }
+            if (!opHesabId) {
+              const fallbackNov = odenis_nov === "kart" ? "kart" : odenis_nov === "kecirme" ? "bank" : "negd";
+              const def = await tx.maliye_hesablari.findFirst({
+                where: { sahibkar_id: sahibkarId, aktiv: true, nov: fallbackNov },
+                orderBy: { yaradildi: "asc" },
+                select: { id: true },
+              });
+              opHesabId = def?.id ?? null;
+            }
+            await tx.finance_operations.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                type_id: opType.id,
+                type_kod: opType.kod,
+                y_n: "daxil",
+                tarix: new Date(),
+                meblegh: new Prisma.Decimal(mebleg),
+                valyuta: "AZN",
+                mezenne: 1,
+                azn_meblegh: new Prisma.Decimal(mebleg),
+                hesab_id: opHesabId,
+                kontragent_id: sale.musteri_id ?? null,
+                satis_id: sale.id,
+                qeyd: qeyd ?? `Satış sonradan ödəniş — ${odenis_nov}`,
+                yaradan_id: istifadeciId,
+              },
+            });
+            if (opHesabId) {
+              const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+              await recalculateAccountBalance(opHesabId, tx);
+            }
+          }
+        } catch (e) {
+          console.warn("[recordSalePayment] finance_operations skipped:", e);
+        }
       });
 
       await safeAuditLog({
@@ -303,6 +358,28 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
           const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
           await recalculateCustomerBalance(sale.musteri_id, tx);
         }
+
+        // 4b. Bağlı maliye əməliyyatlarını ləğv et — hesab/bank balansı
+        //     source-of-truth-dan avtomatik düzələcək (audit #4: əvvəl satışın
+        //     finance_operations sətri ləğv olunmurdu, balans o mədaxili saxlayırdı).
+        const saleFinOps = await tx.finance_operations.findMany({
+          where: { sahibkar_id: sahibkarId, satis_id: sale.id, status: "aktiv" },
+          select: { id: true, hesab_id: true },
+        });
+        const touchedHesabIds = new Set<string>();
+        for (const op of saleFinOps) {
+          if (op.hesab_id) touchedHesabIds.add(op.hesab_id);
+          await tx.finance_operations.update({
+            where: { id: op.id },
+            data: { status: "legv", qeyd: `Satış ləğv: ${reason}` },
+          });
+        }
+        if (touchedHesabIds.size > 0) {
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          for (const hid of touchedHesabIds) {
+            await recalculateAccountBalance(hid, tx);
+          }
+        }
       });
 
       // Auto-clear stock alerts if stock back to safe levels
@@ -323,6 +400,7 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
 
       revalidatePath("/ticaret/satislar");
       revalidatePath("/dashboard");
+      revalidatePath("/maliyye");
       revalidatePath("/anbar");
       revalidatePath("/xeberdarliqlar");
       bustTicaretCache();

@@ -900,7 +900,10 @@ export function PosClient({
         musteri_id: customer?.id ?? null,
         satis_meneceri_id: salespersonId,
         odenis_nov: serverOdenis,
-        endirim_mebleg: endirimEffectiveMebleg,
+        // Kupon + loyallıq bonusu da serverə gedən endirimə daxildir ki, son_mebleg
+        // göstərilən məbləğə bərabər olsun və kassa/maliyyə uyğunsuzluğu olmasın
+        // (audit #11/#12). Bonus kartdan ayrıca düşür (applyBonusToSale) — nağd yazılmır.
+        endirim_mebleg: endirimEffectiveMebleg + couponEndirim + bonusAfterDiscount,
         qeyd:
           qeyd ||
           (paymentMethod === "kreditle"

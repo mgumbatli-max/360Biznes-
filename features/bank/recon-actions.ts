@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/db/prisma";
+import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseBankExcel, type BankRow } from "./excel";
@@ -59,6 +59,20 @@ export async function processBankStatement(
       },
     });
 
+    // Daxil olan ödənişin düşəcəyi hesab — default aktiv bank hesabı (audit #19:
+    // əvvəl yalnız odenilmis artırılırdı, kassa/bank hərəkəti yox idi).
+    const bankHesab = await prisma.maliye_hesablari.findFirst({
+      where: { sahibkar_id: sahibkarId, aktiv: true, nov: "bank" },
+      orderBy: { yaradildi: "asc" },
+      select: { id: true },
+    });
+    let qaimeType = await prisma.finance_operation_types.findUnique({ where: { kod: "qaime" } }).catch(() => null);
+    if (!qaimeType) {
+      qaimeType = await prisma.finance_operation_types.create({
+        data: { kod: "qaime", ad: "Qaimə", qrup: "qaime", y_n: "daxil", link_satish: true },
+      });
+    }
+
     let eslesdi = 0;
     let eslesmedi = 0;
     let bagliBorc = 0;
@@ -96,6 +110,7 @@ export async function processBankStatement(
           son_mebleg: true,
           odenilmis: true,
           status: true,
+          musteri_id: true,
         },
       });
 
@@ -117,9 +132,13 @@ export async function processBankStatement(
       });
 
       if (sifaris) {
-        // Update payment on sales order
-        const yeni_odenilmis = Number(sifaris.odenilmis ?? 0) + (r.mebleg ?? 0);
         const son = Number(sifaris.son_mebleg ?? 0);
+        const already = Number(sifaris.odenilmis ?? 0);
+        const qaliq = Math.max(0, son - already);
+        // Cap — qalıq borcdan çox tətbiq olunmasın (audit #19: əvvəl bütün məbləğ
+        // birbaşa odenilmis-ə əlavə olunurdu → over-payment / avans qarışıqlığı).
+        const applied = Math.min(Math.max(0, r.mebleg ?? 0), qaliq);
+        const yeni_odenilmis = already + applied;
         const tamOdenildi = yeni_odenilmis >= son - 0.01;
 
         // Only mark as "tesdiq" when fully paid AND currently in pre-confirmed states.
@@ -133,6 +152,34 @@ export async function processBankStatement(
             ...(canMarkPaid ? { status: "tesdiq" } : {}),
           },
         });
+
+        // Bank hesabına mədaxil + balanslar source-of-truth-dan yenilənir (audit #19).
+        if (applied > 0 && bankHesab && qaimeType) {
+          await prisma.finance_operations.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              type_id: qaimeType.id,
+              type_kod: qaimeType.kod,
+              y_n: "daxil",
+              tarix: new Date(),
+              meblegh: new Prisma.Decimal(applied),
+              valyuta: "AZN",
+              mezenne: 1,
+              azn_meblegh: new Prisma.Decimal(applied),
+              hesab_id: bankHesab.id,
+              kontragent_id: sifaris.musteri_id ?? null,
+              satis_id: sifaris.id,
+              qeyd: `Bank rekonsiliasiya — ${sifaris.qaime_nomresi ?? sifaris.nomre}`,
+              yaradan_id: istifadeciId,
+            },
+          });
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          await recalculateAccountBalance(bankHesab.id);
+        }
+        if (sifaris.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          await recalculateCustomerBalance(sifaris.musteri_id);
+        }
 
         eslesdi++;
         if (tamOdenildi) bagliBorc++;
