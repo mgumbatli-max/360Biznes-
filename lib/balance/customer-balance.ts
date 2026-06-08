@@ -39,7 +39,7 @@ export type CustomerBalanceBreakdown = {
   acik_qaime_sayi: number;
 };
 
-type TxClient = Prisma.TransactionClient | typeof prisma;
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
  * Müştəri borc balansını HESABLA — satış cədvəlindən real-time aggregate.

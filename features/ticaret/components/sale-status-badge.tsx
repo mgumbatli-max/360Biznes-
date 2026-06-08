@@ -121,8 +121,8 @@ export function SaleStatusBadge({ value }: { value: string }) {
   );
 }
 
-export function PaymentBadge({ value }: { value: string }) {
-  const o = ODENIS[value] ?? ODENIS.negd;
+export function PaymentBadge({ value }: { value: string | null }) {
+  const o = ODENIS[value ?? "negd"] ?? ODENIS.negd;
   return (
     <span className={cn(PILL_BASE, o.cls)}>
       <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", o.dotCls)} />

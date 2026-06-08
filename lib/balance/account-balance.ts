@@ -35,7 +35,7 @@ export type AccountBalanceBreakdown = {
   emeliyyat_sayi: number;
 };
 
-type TxClient = Prisma.TransactionClient | typeof prisma;
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
  * Hesab balansını real-time finance_operations cədvəlindən hesabla.

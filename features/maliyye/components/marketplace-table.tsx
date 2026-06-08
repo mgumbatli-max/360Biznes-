@@ -168,7 +168,7 @@ export function MarketplaceTable({ items, accountOptions = [] }: Props) {
                       <Badge variant="outline" className={`text-[10px] ${status.cls}`}>{status.ad}</Badge>
                       {m.status === "gozleyir" && accountOptions.length > 0 && (
                         <PayoutAcceptDialog
-                          payoutId={m.id}
+                          payoutId={String(m.id)}
                           platforma={m.platforma}
                           gozlenen={Number(m.gozlenen)}
                           defaultHesabId={m.hesab_id}

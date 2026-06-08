@@ -10,7 +10,7 @@ import { Prisma, prisma } from "@/lib/db/prisma";
  * Drift detection və admin reconcile üçün istifadə.
  */
 
-type TxClient = Prisma.TransactionClient | typeof prisma;
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 export type ProductStockBreakdown = {
   /** stok cədvəlində mövcud (cache) */

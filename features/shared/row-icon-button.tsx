@@ -28,7 +28,7 @@ type CommonProps = {
  * Subtle scale on hover, press effect on active, focus ring for keyboard nav.
  */
 export function RowIconButton({
-  tone = "default",
+  tone,
   title,
   children,
   className,

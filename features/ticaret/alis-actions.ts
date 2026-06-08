@@ -283,7 +283,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
       emitStockChange(d.lines.map((l) => l.mehsul_id));
 
       // Nağd seçilmişdi amma kassada pul kifayət etmədi → istifadəçiyə xəbər ver
-      const fallbackToDebt = d.pay_now && umumi > 0 && !result.paidNow;
+      const fallbackToDebt = d.pay_now && Number(result.umumi) > 0 && !result.paidNow;
       return {
         ok: true,
         id: result.id,

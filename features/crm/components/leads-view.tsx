@@ -288,7 +288,7 @@ function ListView({
         </thead>
         <tbody className="divide-y divide-border/40">
           {rows.map((r) => {
-            const isCancelled = r.status === "silinib" || r.status === "itirildi";
+            const isCancelled = r.status === "itirdi";
             return (
             <tr
               key={r.id}

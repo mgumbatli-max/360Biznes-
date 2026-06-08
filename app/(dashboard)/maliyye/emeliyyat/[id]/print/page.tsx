@@ -123,7 +123,7 @@ export default async function FinanceOpReceiptPage({
             <div className="space-y-1 text-right">
               <div className="text-[10px] uppercase tracking-wider text-black/50">Qarşı tərəf</div>
               <div className="text-base font-semibold">
-                {op.kontragentler?.ad ?? op.qarsi_teref ?? "—"}
+                {op.kontragentler?.ad ?? op.qarsi_teref_ad ?? "—"}
               </div>
               {op.kontragentler?.voen && (
                 <div className="text-black/60">VÖEN: {op.kontragentler.voen}</div>

@@ -165,7 +165,9 @@ type PaymentMethod =
   | "kecirme"
   | "nisye"
   | "bonus"
-  | "qarisiq";
+  | "qarisiq"
+  | "kreditle"
+  | "taksit";
 
 const PAYMENT_OPTIONS: {
   value: PaymentMethod;

@@ -60,7 +60,6 @@ export async function cancelFinanceOperation(
             isci_id: true,
             satis_id: true,
             alish_id: true,
-            yön: true,
             deleted_at: true,
           },
         });

@@ -1,8 +1,8 @@
 import "server-only";
-import { Prisma, prisma } from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
 import type { Blocker } from "./types";
 
-type TxClient = Prisma.TransactionClient | typeof prisma;
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
  * Marka (brand) deaktivləşdirmə cəhdində bloklayan amilləri qaytarır:

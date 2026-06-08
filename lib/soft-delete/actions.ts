@@ -42,7 +42,7 @@ export async function softDeleteRecord({
   istifadeciId: string;
   tx?: Prisma.TransactionClient;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const client = tx ?? prisma;
+  const client = tx ?? (prisma as unknown as Prisma.TransactionClient);
   try {
     // Raw — table name dynamic (Prisma generic update istifadə etmir).
     const sql = Prisma.sql`

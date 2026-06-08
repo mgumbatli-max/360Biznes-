@@ -12,6 +12,7 @@ export type MarketplacePaymentFilter = {
 
 export type MarketplacePaymentRow = {
   id: number;
+  hesab_id: string | null;
   platforma: string;
   magaza: string | null;
   donem_baslama: Date;
@@ -49,6 +50,7 @@ export async function getMarketplacePayments(
       });
       return rows.map((r) => ({
         id: r.id,
+        hesab_id: r.hesab_id ?? null,
         platforma: r.platforma,
         magaza: r.magaza ?? null,
         donem_baslama: r.donem_baslama,

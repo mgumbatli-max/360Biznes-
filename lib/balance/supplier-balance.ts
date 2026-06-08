@@ -28,7 +28,7 @@ export type SupplierBalanceBreakdown = {
   acik_alis_sayi: number;
 };
 
-type TxClient = Prisma.TransactionClient | typeof prisma;
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 export async function calculateSupplierBalance(
   supplierId: string,
