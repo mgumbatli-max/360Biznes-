@@ -512,10 +512,17 @@ export function PosClient({
 
   /* -------------------------- Debounced customer search ------------------ */
   useEffect(() => {
+    // Mobil donma fix: boş/qısa sorğuda DB-yə getmə (əvvəl mount-da boş sorğu
+    // ilə 2 DB round-trip gedirdi — gizli sheet arxasında belə).
+    const q = customerQ.trim();
+    if (q.length < 2) {
+      setCustomerResults([]);
+      return;
+    }
     const id = setTimeout(async () => {
       const rows = await searchCustomersAction(customerQ);
       setCustomerResults(rows);
-    }, customerQ.trim().length === 0 ? 0 : 200);
+    }, 200);
     return () => clearTimeout(id);
   }, [customerQ]);
 
@@ -1060,8 +1067,13 @@ export function PosClient({
   }
 
   /* ----------------------------- Keyboard ----------------------------- */
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
+  // Latest-ref pattern (audit/mobil donma fix): əvvəl bu effektdə dependency
+  // array YOX idi → window listener HƏR render-də söküb-bağlanırdı (hər hərf/say
+  // dəyişikliyində 2600 sətirlik komponentdə) → mobildə "donur". İndi listener
+  // bir dəfə bağlanır; handler ref-i hər render ucuz şəkildə təzələnir.
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyHandlerRef.current = (e: KeyboardEvent) => {
+    {
       const tgt = e.target;
       const inField =
         tgt instanceof HTMLInputElement ||
@@ -1114,9 +1126,12 @@ export function PosClient({
         if (cart.length > 0 && confirm("Səbəti boşaldım?")) clearCart();
       }
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+  };
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => keyHandlerRef.current(e);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
 
   /* ------------------------------- Render ------------------------------- */
   const tierColumns: { key: TierName; label: string }[] = [
