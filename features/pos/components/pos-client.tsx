@@ -322,6 +322,8 @@ export function PosClient({
   const [keepCustomer, setKeepCustomer] = useState(false);
   const [salespersonId, setSalespersonId] = useState(defaultSalespersonId);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("negd");
+  // Mobil ödəniş sheet-i — alt sabit zolaqdakı ÖDƏNİŞ açır (desktop-da istifadə olunmur)
+  const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
 
   // Mixed payment splits (Qarışıq)
   const [splitNegd, setSplitNegd] = useState<string>("");
@@ -636,6 +638,7 @@ export function PosClient({
   );
 
   function clearCart() {
+    setPaymentSheetOpen(false);
     setCart([]);
     if (!keepCustomer) {
       setCustomer(null);
@@ -1125,7 +1128,7 @@ export function PosClient({
   ].filter(Boolean) as { key: TierName; label: string }[];
 
   return (
-    <div className="grid h-full grid-cols-1 gap-2 overflow-y-auto p-2 sm:p-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-3 lg:overflow-hidden">
+    <div className="grid h-full grid-cols-1 gap-2 overflow-y-auto p-2 pb-24 sm:p-3 sm:pb-24 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-3 lg:overflow-hidden lg:pb-3">
       {/* ====================== LEFT COLUMN ====================== */}
       <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-full">
         {/* Top bar: active session strip + UNIFIED search input */}
@@ -1549,8 +1552,29 @@ export function PosClient({
       </section>
 
       {/* ====================== RIGHT COLUMN ====================== */}
-      <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:h-full">
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
+      <aside
+        className={cn(
+          "flex min-h-0 flex-col overflow-hidden border border-slate-200 bg-white shadow-sm",
+          // Desktop: normal sağ sütun
+          "lg:static lg:z-auto lg:h-full lg:max-h-none lg:translate-y-0 lg:rounded-xl lg:shadow-sm",
+          // Mobil: aşağıdan açılan ödəniş sheet-i
+          "fixed inset-x-0 bottom-0 z-50 max-h-[88vh] rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out",
+          paymentSheetOpen ? "translate-y-0" : "translate-y-full lg:translate-y-0",
+        )}
+      >
+        {/* Mobil sheet başlığı — drag handle + bağla (desktop-da gizli) */}
+        <div className="relative flex shrink-0 items-center justify-center border-b border-slate-100 px-4 py-2.5 lg:hidden">
+          <div className="h-1 w-10 rounded-full bg-slate-300" aria-hidden />
+          <button
+            type="button"
+            onClick={() => setPaymentSheetOpen(false)}
+            className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-lg leading-none text-slate-500 hover:bg-slate-100"
+            aria-label="Bağla"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 lg:overflow-hidden">
           {/* Customer */}
           <div>
             <Label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
@@ -1993,6 +2017,32 @@ export function PosClient({
         </div>
       </aside>
 
+      {/* Mobil: backdrop (ödəniş sheet açıq olanda) */}
+      {paymentSheetOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={() => setPaymentSheetOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* Mobil: sabit alt zolaq — CƏMİ + ÖDƏNİŞ (desktop-da gizli) */}
+      {!paymentSheetOpen && cart.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-slate-200 bg-white px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-2px_12px_rgba(0,0,0,0.07)] lg:hidden">
+          <div className="flex flex-col leading-tight">
+            <span className="text-[11px] text-slate-500">{cart.length} məhsul</span>
+            <span className="text-lg font-bold text-slate-900">{formatMoney(sonMebleg)}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPaymentSheetOpen(true)}
+            className="ml-auto flex h-12 min-w-[55%] items-center justify-center gap-2 rounded-xl bg-rose-600 text-base font-bold text-white shadow-sm transition active:scale-[0.98]"
+          >
+            ÖDƏNİŞ
+          </button>
+        </div>
+      )}
+
       {/* Quick view dialog */}
       {quickViewId && (
         <QuickViewDialog
@@ -2100,7 +2150,7 @@ export function PosClient({
       <button
         type="button"
         onClick={() => setHelpOpen(true)}
-        className="fixed bottom-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-lg transition hover:text-rose-700"
+        className="fixed bottom-4 right-4 z-30 hidden h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-lg transition hover:text-rose-700 lg:flex"
         title="Klaviatura qısayolları (F1)"
         aria-label="Klaviatura qısayolları"
       >
