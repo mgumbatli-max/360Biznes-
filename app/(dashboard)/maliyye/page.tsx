@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { liteGate } from "@/lib/lite/config";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   TrendingUp,
@@ -39,6 +41,14 @@ export const metadata: Metadata = { title: "Maliyyə" };
 type SP = { forecast?: string };
 
 export default async function MaliyyePage({ searchParams }: { searchParams?: Promise<SP> }) {
+  // QA (istifadəçi istəyi): "ümumi 1 dashboard olur" — Lite-da modulun öz
+  // icmal/KPI səhifəsi DEFAULT bağlıdır → birbaşa iş siyahısına yönlənir.
+  // Ayarlar → Görünüş-də "Modulun öz dashboardu" bloku ilə açıla bilər.
+  {
+    const __lite = await liteGate("maliyye");
+    if (!__lite("dashboard")) redirect("/maliyye/emeliyyat");
+  }
+
   const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
   await requireMaliyyePerm();
 

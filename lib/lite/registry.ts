@@ -41,6 +41,7 @@ export const LITE_MODULES: LiteModuleDef[] = [
     kod: "ticaret",
     ad: "Ticarət (satışlar)",
     bloklar: [
+      { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
       { kod: "ozet", ad: "Xülasə kartları (bugün / həftə / ay / borc)", liteDefault: true },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər", liteDefault: false },
     ],
@@ -49,6 +50,7 @@ export const LITE_MODULES: LiteModuleDef[] = [
     kod: "anbar",
     ad: "Anbar (məhsullar)",
     bloklar: [
+      { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
       { kod: "ozet", ad: "Xülasə kartları (dəyər, say, az stok…)", liteDefault: true },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər", liteDefault: false },
     ],
@@ -66,6 +68,7 @@ export const LITE_MODULES: LiteModuleDef[] = [
     kod: "maliyye",
     ad: "Maliyyə (əməliyyatlar)",
     bloklar: [
+      { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
       { kod: "ozet", ad: "Xülasə kartları (mədaxil, məxaric, net…)", liteDefault: true },
     ],
   },
@@ -82,6 +85,7 @@ export const LITE_MODULES: LiteModuleDef[] = [
     kod: "elaqe",
     ad: "Əlaqə (müştərilər)",
     bloklar: [
+      { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
       { kod: "ozet", ad: "Xülasə kartları (aktiv, borclu, cəmi borc…)", liteDefault: true },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər (menecer, ölkə/şəhər…)", liteDefault: false },
     ],

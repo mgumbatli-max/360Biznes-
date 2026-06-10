@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { liteGate } from "@/lib/lite/config";
+import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -285,6 +287,14 @@ function BreakdownFallback() {
 }
 
 export default async function AnbarDashboardPage() {
+  // QA (istifadəçi istəyi): "ümumi 1 dashboard olur" — Lite-da modulun öz
+  // icmal/KPI səhifəsi DEFAULT bağlıdır → birbaşa iş siyahısına yönlənir.
+  // Ayarlar → Görünüş-də "Modulun öz dashboardu" bloku ilə açıla bilər.
+  {
+    const __lite = await liteGate("anbar");
+    if (!__lite("dashboard")) redirect("/anbar/mehsullar");
+  }
+
   await requireAnbarPerm();
   // Shell instant render olunur — hər data bloku öz Suspense-ində paralel stream olur.
   return (

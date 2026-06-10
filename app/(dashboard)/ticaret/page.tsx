@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { liteGate } from "@/lib/lite/config";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
   ShoppingCart,
@@ -260,6 +262,14 @@ async function TopProductsAndFunnelSection() {
 }
 
 export default async function TicaretHubPage() {
+  // QA (istifadəçi istəyi): "ümumi 1 dashboard olur" — Lite-da modulun öz
+  // icmal/KPI səhifəsi DEFAULT bağlıdır → birbaşa iş siyahısına yönlənir.
+  // Ayarlar → Görünüş-də "Modulun öz dashboardu" bloku ilə açıla bilər.
+  {
+    const __lite = await liteGate("ticaret");
+    if (!__lite("dashboard")) redirect("/ticaret/satislar");
+  }
+
   const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
   await requireTicaretPerm();
 
