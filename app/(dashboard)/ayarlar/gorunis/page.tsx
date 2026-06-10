@@ -15,7 +15,8 @@ export default async function GorunisAyarPage() {
           Lite-in necə görünəcəyini təyin edin: dizayn forması (sıxlıq, şrift, aksent,
           mobil layout) və hər modulda görünən bloklar. Pro rejimi tam funksionaldır.
           Rejimi yuxarıdakı <span className="font-semibold">Lite / Pro</span> keçidi ilə
-          dəyişin — bu ayarlar bütün işçilərə tətbiq olunur.
+          dəyişin — bu ayarlar bütün işçilərə tətbiq olunur. (POS-un öz sadə satış
+          rejimi var, dizayn forması ora tətbiq olunmur.)
         </p>
       </div>
       <LiteSettings initialConfig={config} />

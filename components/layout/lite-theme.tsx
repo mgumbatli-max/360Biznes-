@@ -1,36 +1,29 @@
-"use client";
-
-import { useEffect } from "react";
 import type { LiteDesign } from "@/lib/lite/config";
 
 /**
- * Lite dizayn formasını `<html>` data-atributları kimi tətbiq edir.
- * globals.css bu atributlara görə şrift/sıxlıq/aksent/mobil-layout dəyişir.
- * Yalnız Lite rejimində aktiv (active=false → atributlar silinir, Pro normal).
+ * Lite dizayn formasını SSR zamanı `<html>`-ə baked inline script ilə qoyur —
+ * ilk paint-dən əvvəl işləyir, ona görə FOUC/flash YOXDUR (əvvəlki client-only
+ * useEffect variantı flash verirdi). Dəyərlər registry enum-undan (sanitize
+ * olunmuş) gəlir, ona görə inline JSON təhlükəsizdir.
+ *
+ * `active=false` (Pro) → atributlar silinir. Server Component-dir.
  */
-export function LiteThemeApplier({
+export function LiteThemeScript({
   design,
   active,
 }: {
   design: LiteDesign | null;
   active: boolean;
 }) {
-  useEffect(() => {
-    const el = document.documentElement;
-    if (active && design) {
-      el.dataset.lite = "1";
-      el.dataset.density = design.density;
-      el.dataset.font = design.fontScale;
-      el.dataset.accent = design.accent;
-      el.dataset.mlayout = design.mobileLayout;
-    } else {
-      delete el.dataset.lite;
-      delete el.dataset.density;
-      delete el.dataset.font;
-      delete el.dataset.accent;
-      delete el.dataset.mlayout;
-    }
-  }, [active, design?.density, design?.fontScale, design?.accent, design?.mobileLayout]);
-
-  return null;
+  const js =
+    active && design
+      ? `(function(){try{var e=document.documentElement;e.dataset.lite='1';` +
+        `e.dataset.density=${JSON.stringify(design.density)};` +
+        `e.dataset.font=${JSON.stringify(design.fontScale)};` +
+        `e.dataset.accent=${JSON.stringify(design.accent)};` +
+        `e.dataset.mlayout=${JSON.stringify(design.mobileLayout)};}catch(_){}})();`
+      : `(function(){try{var e=document.documentElement;delete e.dataset.lite;` +
+        `delete e.dataset.density;delete e.dataset.font;delete e.dataset.accent;` +
+        `delete e.dataset.mlayout;}catch(_){}})();`;
+  return <script dangerouslySetInnerHTML={{ __html: js }} />;
 }

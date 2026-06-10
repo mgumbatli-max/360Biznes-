@@ -7,7 +7,7 @@ import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { getAppMode } from "@/lib/app-mode";
 import { getLiteConfig } from "@/lib/lite/config";
-import { LiteThemeApplier } from "@/components/layout/lite-theme";
+import { LiteThemeScript } from "@/components/layout/lite-theme";
 import { gateRoute } from "@/lib/auth/route-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -151,10 +151,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <AuthSessionProvider>
       <PermissionsProvider icazeler={icazeler}>
+        {/* Lite dizayn forması — SSR inline script, ilk paint-dən əvvəl (FOUC yox) */}
+        <LiteThemeScript design={liteDesign} active={appMode === "lite"} />
         <EmbedDetector />
         <NavigationTracker />
         <RouteProgress />
-        <LiteThemeApplier design={liteDesign} active={appMode === "lite"} />
         <div className="flex min-h-screen bg-background" data-app-shell>
           <div data-sidebar-container>
             <Suspense fallback={<SidebarFallback />}>

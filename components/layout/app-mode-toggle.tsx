@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 export function AppModeToggle({ serverMode }: { serverMode?: AppMode }) {
   const router = useRouter();
   const mode = useAppMode((s) => s.mode);
+  const hydrated = useAppMode((s) => s.hydrated);
   const setMode = useAppMode((s) => s.setMode);
   const hydrate = useAppMode((s) => s.hydrate);
 
@@ -23,8 +24,11 @@ export function AppModeToggle({ serverMode }: { serverMode?: AppMode }) {
     hydrate(serverMode);
   }, [hydrate, serverMode]);
 
+  // Hidrasiyadan əvvəl serverMode-u göstər (SSR=client uyğun, "pro" flash olmaz).
+  const displayMode = hydrated ? mode : serverMode ?? mode;
+
   function pick(next: AppMode) {
-    if (next === mode) return;
+    if (next === displayMode) return;
     setMode(next);
     // Server-render olunan səhifələr (dashboard, hesabatlar…) yeni rejimə görə
     // yenilənsin — cookie artıq yazılıb, refresh server-də getAppMode-u yenidən oxuyur.
@@ -42,12 +46,12 @@ export function AppModeToggle({ serverMode }: { serverMode?: AppMode }) {
         onClick={() => pick("lite")}
         className={cn(
           "inline-flex h-7 items-center rounded-md px-2.5 transition",
-          mode === "lite"
+          displayMode === "lite"
             ? "bg-background text-foreground shadow-sm"
             : "text-muted-foreground hover:text-foreground",
         )}
         title="Lite — sadə, yalnız ən vacib məlumatlar"
-        aria-pressed={mode === "lite"}
+        aria-pressed={displayMode === "lite"}
       >
         Lite
       </button>
@@ -56,12 +60,12 @@ export function AppModeToggle({ serverMode }: { serverMode?: AppMode }) {
         onClick={() => pick("pro")}
         className={cn(
           "inline-flex h-7 items-center gap-1 rounded-md px-2.5 transition",
-          mode === "pro"
+          displayMode === "pro"
             ? "bg-background text-foreground shadow-sm"
             : "text-muted-foreground hover:text-foreground",
         )}
         title="Pro — tam funksional, bütün detallar"
-        aria-pressed={mode === "pro"}
+        aria-pressed={displayMode === "pro"}
       >
         <Zap className="h-3 w-3" />
         Pro

@@ -90,10 +90,15 @@ export const getLiteConfig = cache(async (): Promise<LiteConfig> => {
   }
 });
 
-/** Bir blokun Lite-da göstərilməsi (config + modul aktivliyi). */
+/**
+ * Bir blokun Lite-da göstərilməsi.
+ * `enabled=false` = "bu modulu Lite-da sadələşdirmə" → BÜTÜN bloklar göstərilir
+ * (Pro kimi, boş səhifə riski yoxdur). `enabled=true` = blok config-inə görə.
+ */
 export function liteBlockOn(config: LiteConfig, modul: string, blok: string): boolean {
   const m = config.modules[modul];
-  if (!m || !m.enabled) return false;
+  if (!m) return true;
+  if (!m.enabled) return true; // sadələşdirilməyən modul tam görünür
   return m.blocks[blok] ?? false;
 }
 

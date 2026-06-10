@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Save, Eye, Zap } from "lucide-react";
+import { Save, Eye, Zap, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -17,6 +17,20 @@ import type { LiteConfig } from "@/lib/lite/config";
 
 const FONT_PX: Record<string, number> = { kicik: 13.5, normal: 15, boyuk: 16.5 };
 const DENSITY_PAD: Record<string, number> = { kompakt: 8, rahat: 14, genis: 22 };
+
+// Registry-dən client-safe default config (server-only config.ts-i import etmədən).
+function buildDefaultConfig(): LiteConfig {
+  const modules: LiteConfig["modules"] = {};
+  for (const m of LITE_MODULES) {
+    const blocks: Record<string, boolean> = {};
+    for (const b of m.bloklar) blocks[b.kod] = b.liteDefault;
+    modules[m.kod] = { enabled: true, blocks };
+  }
+  return {
+    design: { density: "rahat", mobileLayout: "kart", fontScale: "normal", accent: "rose" },
+    modules,
+  };
+}
 
 function Segment<T extends string>({
   value,
@@ -78,7 +92,7 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
   function save() {
     start(async () => {
       const res = await saveLiteConfig(cfg);
-      if (res.ok) toast.success("Lite ayarları saxlanıldı — bütün səhifələrə tətbiq olundu");
+      if (res.ok) toast.success("Lite ayarları saxlanıldı — dashboard və modul səhifələrinə tətbiq olundu");
       else toast.error(res.error ?? "Xəta baş verdi");
     });
   }
@@ -161,8 +175,9 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
       <section className="space-y-3">
         <h2 className="text-sm font-bold">Modullarda Lite görünüşü</h2>
         <p className="text-xs text-muted-foreground">
-          Lite rejimində hər modulda hansı blokların görünəcəyini seçin. Pro rejimi
-          bunlardan asılı deyil — orada hər şey görünür.
+          Hər modulu Lite-da sadələşdirin və hansı blokların görünəcəyini seçin.
+          <span className="font-medium"> Sadələşdirmə söndürülübsə</span>, həmin modul Lite-da
+          da tam görünür. Pro rejimi həmişə tam funksionaldır.
         </p>
         {LITE_MODULES.map((m) => {
           const mc = cfg.modules[m.kod];
@@ -172,7 +187,7 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold">{m.ad}</span>
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                  Lite-də göstər
+                  {mc.enabled ? "Lite-da sadələşdir" : "Tam göstərilir"}
                   <input
                     type="checkbox"
                     checked={mc.enabled}
@@ -204,8 +219,20 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
         })}
       </section>
 
-      {/* Saxla — sticky alt */}
-      <div className="sticky bottom-0 -mx-1 flex justify-end border-t border-border bg-background/90 px-1 py-3 backdrop-blur">
+      {/* Saxla / Defolta qaytar — sticky alt */}
+      <div className="sticky bottom-0 -mx-1 flex items-center justify-between gap-2 border-t border-border bg-background/90 px-1 py-3 backdrop-blur">
+        <Button
+          variant="outline"
+          onClick={() => {
+            setCfg(buildDefaultConfig());
+            toast.message("Defolt seçimlər bərpa olundu — saxlamağı unutmayın");
+          }}
+          disabled={pending}
+          className="h-10"
+        >
+          <RotateCcw className="h-4 w-4" />
+          Defolta qaytar
+        </Button>
         <Button onClick={save} disabled={pending} className="h-10">
           <Save className="h-4 w-4" />
           {pending ? "Saxlanılır…" : "Yadda saxla"}

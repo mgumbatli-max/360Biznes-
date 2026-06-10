@@ -805,12 +805,32 @@ html[data-density="genis"] th {
   padding-bottom: 0.85rem;
 }
 
-/* Aksent rəng — --primary/--ring/--accent qlobal dəyişir (hsl triplet) */
-html[data-accent="rose"]    { --primary: 347 77% 50%; --ring: 347 77% 50%; --accent: 347 77% 50%; }
-html[data-accent="blue"]    { --primary: 221 83% 53%; --ring: 221 83% 53%; --accent: 221 83% 53%; }
-html[data-accent="emerald"] { --primary: 160 84% 39%; --ring: 160 84% 39%; --accent: 160 84% 39%; }
-html[data-accent="violet"]  { --primary: 262 83% 58%; --ring: 262 83% 58%; --accent: 262 83% 58%; }
-html[data-accent="amber"]   { --primary: 32 95% 44%;  --ring: 32 95% 44%;  --accent: 32 95% 44%; }
+/* Aksent rəng — --primary + light/dark + ring/accent + brand-gradient qlobal dəyişir */
+html[data-accent="rose"] {
+  --primary: 347 77% 50%; --primary-light: 347 80% 60%; --primary-dark: 347 75% 42%;
+  --ring: 347 77% 50%; --accent: 347 77% 50%;
+  --brand-gradient: linear-gradient(135deg, hsl(347 77% 50%), hsl(340 82% 58%), hsl(330 85% 66%));
+}
+html[data-accent="blue"] {
+  --primary: 221 83% 53%; --primary-light: 221 86% 63%; --primary-dark: 221 80% 45%;
+  --ring: 221 83% 53%; --accent: 221 83% 53%;
+  --brand-gradient: linear-gradient(135deg, hsl(221 83% 53%), hsl(214 90% 60%), hsl(199 89% 64%));
+}
+html[data-accent="emerald"] {
+  --primary: 160 84% 39%; --primary-light: 160 76% 48%; --primary-dark: 161 88% 32%;
+  --ring: 160 84% 39%; --accent: 160 84% 39%;
+  --brand-gradient: linear-gradient(135deg, hsl(161 88% 34%), hsl(160 84% 42%), hsl(152 76% 52%));
+}
+html[data-accent="violet"] {
+  --primary: 262 83% 58%; --primary-light: 262 86% 68%; --primary-dark: 263 78% 50%;
+  --ring: 262 83% 58%; --accent: 262 83% 58%;
+  --brand-gradient: linear-gradient(135deg, hsl(262 83% 58%), hsl(258 86% 66%), hsl(270 88% 72%));
+}
+html[data-accent="amber"] {
+  --primary: 32 95% 44%; --primary-light: 36 92% 52%; --primary-dark: 28 92% 38%;
+  --ring: 32 95% 44%; --accent: 32 95% 44%;
+  --brand-gradient: linear-gradient(135deg, hsl(28 92% 42%), hsl(32 95% 48%), hsl(40 94% 56%));
+}
 
 /* Mobil layout = "cədvəl": data-stack-on-mobile stacking-ini ləğv et (<640px) */
 @media (max-width: 640px) {

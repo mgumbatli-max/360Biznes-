@@ -144,6 +144,10 @@ export default async function DashboardPage() {
   // KPI grid, cashflow, mənim işim, qrafiklər). İcazələrə görə hissəli render.
   const showHero = canKpi || canCashflow || canTapshiriq || canCharts || canInsight;
 
+  // Lite-da heç bir blok seçilməyibsə boş-hal mesajı (istifadəçi hamısını söndürüb).
+  const anyLiteBlock =
+    showHero || canAlerts || canStok || canTop5 || canDebtors || canAktivlik || canFeed || canSync;
+
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <DemoBanner
@@ -209,6 +213,16 @@ export default async function DashboardPage() {
               <SyncHealthSection />
             </Suspense>
           </>
+        )}
+
+        {lite && !anyLiteBlock && (
+          <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+            Lite-də heç bir bölmə seçilməyib.{" "}
+            <Link href="/ayarlar/gorunis" className="font-semibold text-primary underline">
+              Ayarlardan seçin
+            </Link>{" "}
+            və ya yuxarıdan Pro rejimə keçin.
+          </div>
         )}
 
         <Suspense fallback={null}>
