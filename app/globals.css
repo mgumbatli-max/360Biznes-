@@ -216,8 +216,11 @@ html.dark { color-scheme: dark; }
     transform: scale(0.97);
     transition: transform 80ms cubic-bezier(0.4, 0, 0.2, 1);
   }
-  /* Scroll konteyner-lərdə inertial momentum + chain bounce-u dayandır */
-  [data-scroll-area], main, nav, aside {
+  /* İNNER scroll sahələrində inertial momentum + chain bounce-u dayandır.
+     DİQQƏT: `main` BURADA OLMAMALIDIR — main səhifə (body) scroll-udur, inner
+     sahə deyil. `overscroll-behavior: contain` main-də iOS-da body scroll-unu
+     bloklayır (donma). Yalnız həqiqi inner scroll konteynerləri saxlanılır. */
+  [data-scroll-area], nav, aside {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }

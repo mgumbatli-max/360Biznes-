@@ -158,7 +158,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 <TopbarShell user={session.user} />
               </Suspense>
             </div>
-            <main className="flex-1 overflow-x-hidden p-4 pb-safe-20 md:p-6 md:pb-6 animate-fade-in">{children}</main>
+            {/* overflow-x-CLIP (hidden DEYİL): `hidden` overflow-y-ni `auto`-ya
+                çevirir → main scroll-konteyner olur və iOS-da body scroll-unu
+                bloklayır (donma). `clip` üfüqi daşmanı kəsir, amma şaquli oxu
+                `visible` saxlayır → səhifə body kimi rahat scroll olur. */}
+            <main className="flex-1 overflow-x-clip p-4 pb-safe-20 md:p-6 md:pb-6 animate-fade-in">{children}</main>
           </div>
           <BottomNav />
           {/* Critical olmayan widget-lər — interactive olduqdan sonra mount olur.

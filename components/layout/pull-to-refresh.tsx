@@ -26,6 +26,11 @@ export function PullToRefresh() {
   const [isPending, startTransition] = useTransition();
   const startY = useRef<number | null>(null);
   const enabled = useRef(false);
+  // Latest-ref — listener-lər BİR dəfə bağlanır, churn olmadan dəyəri oxuyur.
+  const pullRef = useRef(0);
+  pullRef.current = pull;
+  const routerRef = useRef(router);
+  routerRef.current = router;
 
   useEffect(() => {
     // Yalnız touch device-larda
@@ -42,37 +47,39 @@ export function PullToRefresh() {
       startY.current = e.touches[0]?.clientY ?? null;
     };
 
+    // DİQQƏT: bütün touch listener-lər `passive: true` — heç vaxt
+    // `preventDefault` çağırmır, ona görə brauzerin native (threaded) scroll-u
+    // BLOKLANMIR → iOS-da tam smooth, donma yox. Pull-down bounce-u CSS
+    // (`overscroll-behavior-y: none`) söndürür, ona görə preventDefault lazım deyil.
     const onTouchMove = (e: TouchEvent) => {
       if (!enabled.current || startY.current === null) return;
       const y = e.touches[0]?.clientY ?? 0;
       const delta = y - startY.current;
       if (delta <= 0) {
         // İstifadəçi yuxarı sürür → normal scroll
-        setPull(0);
+        if (pullRef.current !== 0) setPull(0);
         return;
       }
       // Resistance: lastik effekti — sürəti azalt
       const next = Math.min(MAX_PULL, delta / RESISTANCE);
       setPull(next);
-      // Browser native overscroll bounce-u söndür ki, jitter olmasın
-      if (next > 4) e.preventDefault();
     };
 
     const onTouchEnd = () => {
       if (!enabled.current) return;
       enabled.current = false;
       startY.current = null;
-      if (pull >= THRESHOLD) {
+      if (pullRef.current >= THRESHOLD) {
         // Threshold keçilib → refresh
         startTransition(() => {
-          router.refresh();
+          routerRef.current.refresh();
         });
       }
       setPull(0);
     };
 
     document.addEventListener("touchstart", onTouchStart, { passive: true });
-    document.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.addEventListener("touchmove", onTouchMove, { passive: true });
     document.addEventListener("touchend", onTouchEnd, { passive: true });
     document.addEventListener("touchcancel", onTouchEnd, { passive: true });
     return () => {
@@ -81,7 +88,9 @@ export function PullToRefresh() {
       document.removeEventListener("touchend", onTouchEnd);
       document.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, [pull, router]);
+    // Boş deps — listener-lər komponentin ömrü boyu YALNIZ bir dəfə bağlanır.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const progress = Math.min(1, pull / THRESHOLD);
   const visible = pull > 4 || isPending;
