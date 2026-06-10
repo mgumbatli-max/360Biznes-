@@ -17,6 +17,6 @@ export const config = {
   // PWA manifest, robots, or sitemap. Each invocation re-runs auth() and
   // adds tens of ms on the critical path.
   matcher: [
-    "/((?!api/auth|api/webhook/v1|_next/static|_next/image|_next/data|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.json|assets|uploads|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|woff|woff2|ttf|eot|map)$).*)",
+    "/((?!api/auth|api/webhook/v1|_next/static|_next/image|_next/data|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.json|wasm|assets|uploads|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js|woff|woff2|ttf|eot|map|wasm)$).*)",
   ],
 };
