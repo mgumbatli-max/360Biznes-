@@ -247,7 +247,9 @@ export async function createMarketSatis(
                 donem_bitme: today,
                 gozlenen_meblegh: netMebleg,
                 komissiya: komissiyaMebleg,
-                status: "gozlenir",
+                // QA-K21: bütün oxuyanlar (stats/triggers/UI) 'gozleyir' axtarır —
+                // 'gozlenir' yazı səhvi payout-u görünməz edirdi.
+                status: "gozleyir",
                 hesab_id: data.hesab_id ?? null,
                 qeyd: `[ORDER:${data.platform}:${data.sifaris_nomresi}] Satış #${sale.id}`,
                 yaradan_id: istifadeciId,

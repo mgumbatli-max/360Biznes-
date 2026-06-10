@@ -76,9 +76,11 @@ export async function checkCustomerCreditLimit(
   return withTenant(async () => {
     const c = await prisma.kontragentler.findUnique({
       where: { id: musteriId },
-      select: { borc: true, borc_limiti: true },
+      // QA: müştəri borcu SoT `alacaq` sahəsindədir (customer-balance.ts ora
+      // yazır); `borc` təchizatçı tərəfidir — limit praktikada işləmirdi.
+      select: { alacaq: true, borc_limiti: true },
     });
-    const current = Number(c?.borc ?? 0);
+    const current = Number(c?.alacaq ?? 0);
     const limit = c?.borc_limiti === null || c?.borc_limiti === undefined ? null : Number(c.borc_limiti);
     if (limit === null) {
       return { ok: true, current, limit: null, available: null };

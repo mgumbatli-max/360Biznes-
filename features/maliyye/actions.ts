@@ -409,8 +409,11 @@ const QUICK_META: Record<string, QuickMetaEntry> = {
   avans:            { qrup: "maas_isci", ad: "Avans",                 yon: "xaric",    needHesab: true, needIsci: true },
   bonus:            { qrup: "maas_isci", ad: "Bonus",                 yon: "xaric",    needHesab: true, needIsci: true },
   cerime:           { qrup: "maas_isci", ad: "Cərimə",                yon: "daxil",    needHesab: true, needIsci: true },
-  tesisci_pul:      { qrup: "sahibkar",  ad: "Təsisçi pulu",          yon: "transfer", needHesab: true },
-  tehtl_hesab:      { qrup: "sahibkar",  ad: "Tahtəl hesab",          yon: "transfer", needHesab: true },
+  // QA-K19: tək-hesablı əməliyyatlar 'transfer' yönü ilə balansa HEÇ düşmürdü
+  // (calculateAccountBalance transfer üçün hesab_id2 tələb edir) — təsisçi pulu
+  // hesaba DAXİL, tahtəl hesab hesabdan XARİC kimi modelləşdirilir.
+  tesisci_pul:      { qrup: "sahibkar",  ad: "Təsisçi pulu",          yon: "daxil",    needHesab: true },
+  tehtl_hesab:      { qrup: "sahibkar",  ad: "Tahtəl hesab",          yon: "xaric",    needHesab: true },
   transfer:         { qrup: "transfer",  ad: "Transfer",              yon: "transfer", needHesab: true, needHesab2: true },
   valyuta_mubadile: { qrup: "transfer",  ad: "Valyuta mübadiləsi",    yon: "transfer", needHesab: true, needHesab2: true },
   dividend:         { qrup: "sahibkar",  ad: "Dividend",              yon: "xaric",    needHesab: true },

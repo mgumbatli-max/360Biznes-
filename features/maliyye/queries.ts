@@ -36,16 +36,16 @@ async function fetchFinanceKpisRaw(sahibkarId: string) {
       _sum: { acilis_qaligi: true },
     }),
     prismaUnscoped.$queryRaw<{ total: number }[]>`
+      SELECT COALESCE(SUM(alacaq), 0)::float AS total
+        FROM kontragentler
+       WHERE sahibkar_id = ${sahibkarId}::uuid
+         AND nov IN ('musteri', 'her_ikisi') AND alacaq > 0
+    `,
+    prismaUnscoped.$queryRaw<{ total: number }[]>`
       SELECT COALESCE(SUM(borc), 0)::float AS total
         FROM kontragentler
        WHERE sahibkar_id = ${sahibkarId}::uuid
-         AND nov IN ('musteri', 'her_ikisi') AND borc > 0
-    `,
-    prismaUnscoped.$queryRaw<{ total: number }[]>`
-      SELECT COALESCE(ABS(SUM(LEAST(borc, 0))), 0)::float AS total
-        FROM kontragentler
-       WHERE sahibkar_id = ${sahibkarId}::uuid
-         AND nov IN ('techizatci', 'her_ikisi')
+         AND nov IN ('techizatci', 'her_ikisi') AND borc > 0
     `,
   ]);
 
@@ -133,14 +133,14 @@ async function fetchMaliyyeDashboardKpisRaw(sahibkarId: string) {
       _sum: { mebleg: true },
     }),
     prismaUnscoped.$queryRaw<{ total: number }[]>`
-      SELECT COALESCE(SUM(borc), 0)::float AS total FROM kontragentler
+      SELECT COALESCE(SUM(alacaq), 0)::float AS total FROM kontragentler
        WHERE sahibkar_id = ${sahibkarId}::uuid
-         AND nov IN ('musteri', 'her_ikisi') AND borc > 0
+         AND nov IN ('musteri', 'her_ikisi') AND alacaq > 0
     `,
     prismaUnscoped.$queryRaw<{ total: number }[]>`
-      SELECT COALESCE(ABS(SUM(LEAST(borc, 0))), 0)::float AS total FROM kontragentler
+      SELECT COALESCE(SUM(borc), 0)::float AS total FROM kontragentler
        WHERE sahibkar_id = ${sahibkarId}::uuid
-         AND nov IN ('techizatci', 'her_ikisi')
+         AND nov IN ('techizatci', 'her_ikisi') AND borc > 0
     `,
     prismaUnscoped.kassalar.aggregate({
       where: { sahibkar_id: sahibkarId, status: "acig" },

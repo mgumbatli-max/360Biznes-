@@ -204,9 +204,12 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
       }),
     ]);
 
+    // QA-K20: 'mexaric' və 'xaric' (iki yazılış) hər ikisi çıxış sayılır.
     const sumByYn = (rows: { y_n: string; _sum: { azn_meblegh: import("@prisma/client/runtime/library").Decimal | null } }[], target: string) => {
-      const r = rows.find((x) => x.y_n === target);
-      return Number(r?._sum.azn_meblegh ?? 0);
+      const targets = target === "mexaric" ? ["mexaric", "xaric"] : target === "daxil" ? ["daxil", "medaxil"] : [target];
+      return rows
+        .filter((x) => targets.includes(x.y_n))
+        .reduce((s, r) => s + Number(r._sum.azn_meblegh ?? 0), 0);
     };
 
     // 30-gün-lik bucketləri doldur

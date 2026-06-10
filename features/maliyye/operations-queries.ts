@@ -219,8 +219,11 @@ export async function getOperationsSummary(filter: OperationFilter) {
       for (const g of grouped) {
         const mb = Number(g._sum.azn_meblegh ?? 0);
         cemi += g._count._all;
-        if (g.y_n === "daxil") daxil += mb;
-        else if (g.y_n === "xaric") xaric += mb;
+        if (g.y_n === "daxil" || g.y_n === "medaxil") daxil += mb;
+        // QA-K20: çıxışlar iki etiketlə yazılır (saveExpense/maas/paySupplier →
+        // 'mexaric'; quick xerc/azaltma/dividend → 'xaric') — hər ikisi sayılır,
+        // yoxsa maaş/xərc/təchizatçı ödənişləri net-dən çıxmırdı.
+        else if (g.y_n === "xaric" || g.y_n === "mexaric") xaric += mb;
         else if (g.y_n === "transfer") transfer += mb;
       }
       return { cemi, daxil, xaric, transfer, net: daxil - xaric };
