@@ -12,6 +12,7 @@ import { gateRoute } from "@/lib/auth/route-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { LiteMenu } from "@/components/layout/lite-menu";
 import { PullToRefresh } from "@/components/layout/pull-to-refresh";
 import { PwaInstallPrompt } from "@/components/layout/pwa-install-prompt";
 import { OfflineIndicator } from "@/components/layout/offline-indicator";
@@ -176,7 +177,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <main className="flex-1 overflow-x-clip p-4 pb-safe-20 md:p-6 md:pb-6 animate-fade-in">{children}</main>
           </div>
           <BottomNav />
-          {/* Critical olmayan widget-lər — interactive olduqdan sonra mount olur.
+          <LiteMenu />
+  {/* Critical olmayan widget-lər — interactive olduqdan sonra mount olur.
               Bu, ilk paint-i bloklayan client JS-i ~3-5 komponent həcmində azaldır. */}
           <IdleMount>
             <KeyboardShortcuts />

@@ -3,6 +3,8 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Menu } from "lucide-react";
 import { useSidebar } from "@/stores/sidebar";
+import { useAppMode } from "@/stores/app-mode";
+import { useLiteMenu } from "@/stores/lite-menu";
 import { cn } from "@/lib/utils";
 
 /**
@@ -69,7 +71,11 @@ const EMPTY_MY_WORK: MyWorkData = {
 
 function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK, appMode }: Props) {
   const setMobileOpen = useSidebar((s) => s.setMobileOpen);
+  const setLiteMenuOpen = useLiteMenu((s) => s.setOpen);
+  const clientMode = useAppMode((s) => s.mode);
   const hidden = useHideOnScrollDown();
+  // Lite-da mobil hamburger yan drawer ƏVƏZİNƏ sadə modul grid-ini açır
+  const liteNow = (clientMode ?? appMode) === "lite";
 
   return (
     <header
@@ -82,7 +88,7 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
       <div className="flex h-14 items-center gap-2 px-4 md:px-6">
         <button
           type="button"
-          onClick={() => setMobileOpen(true)}
+          onClick={() => (liteNow ? setLiteMenuOpen(true) : setMobileOpen(true))}
           className="inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground active:bg-secondary/80 md:hidden"
           aria-label="Naviqasiya menyusu"
         >
