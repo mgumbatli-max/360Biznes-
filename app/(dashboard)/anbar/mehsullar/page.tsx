@@ -11,6 +11,7 @@ import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { ProductWizard } from "@/features/anbar/components/product-wizard";
 import { ProductFilters } from "@/features/anbar/components/product-filters";
 import { ProductTable } from "@/features/anbar/components/product-table";
+import { liteGate } from "@/lib/lite/config";
 import { ProductGrid } from "@/features/anbar/components/product-grid";
 import { ViewModeToggle } from "@/features/anbar/components/view-mode-toggle";
 import { TransferDialog } from "@/features/anbar/components/transfer-dialog";
@@ -241,6 +242,8 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
   const anbarlarP = getAnbarOptions();
   const unitsP = getUnitOptions();
 
+  const lite = await liteGate("anbar"); // Lite-da bloklar config-ə görə
+
   return (
     <div className="mx-auto max-w-7xl">
       <AnbarSubNav active="/anbar/mehsullar" />
@@ -278,23 +281,27 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
           </div>
         </header>
 
-        {/* Modern KPI hero — 5 ən vacib göstərici */}
-        <Suspense
-          fallback={
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-[88px] rounded-2xl" />
-              ))}
-            </div>
-          }
-        >
-          <KpiHeroSection />
-        </Suspense>
+        {/* Modern KPI hero — 5 ən vacib göstərici (Lite: ozet bloku) */}
+        {lite("ozet") && (
+          <Suspense
+            fallback={
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-[88px] rounded-2xl" />
+                ))}
+              </div>
+            }
+          >
+            <KpiHeroSection />
+          </Suspense>
+        )}
 
-        {/* Sürətli stok + problem filterləri — chip stilli */}
-        <Suspense fallback={<Skeleton className="h-14 w-full rounded-xl" />}>
-          <ProblemPanelSection />
-        </Suspense>
+        {/* Sürətli stok + problem filterləri — chip stilli (Lite: filtrler bloku) */}
+        {lite("filtrler") && (
+          <Suspense fallback={<Skeleton className="h-14 w-full rounded-xl" />}>
+            <ProblemPanelSection />
+          </Suspense>
+        )}
 
         <Suspense fallback={<TableSkeleton />}>
           <ProductListSection

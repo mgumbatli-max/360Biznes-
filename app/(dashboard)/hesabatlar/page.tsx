@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
+import { liteGate } from "@/lib/lite/config";
 import { getSalesKpi, getTopProductsExt, getTopCustomersExt, getYoyComparison } from "@/features/hesabatlar/satis-queries";
 import { getPlSummary, getMonthlyPl12 } from "@/features/hesabatlar/maliyye-queries";
 import { getStockCounters } from "@/features/hesabatlar/stok-queries";
@@ -136,6 +137,7 @@ function TopRowSkeleton() {
 
 export default async function HesabatlarHubPage() {
   const thisR = thisMonthRange();
+  const lite = await liteGate("hesabatlar"); // Lite-da bloklar config-ə görə
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       {/* Hero header — render immediately. */}
@@ -182,21 +184,27 @@ export default async function HesabatlarHubPage() {
         </div>
       </header>
 
-      <Suspense fallback={<KpiGridSkeleton />}>
-        <ExecutiveKpiSection />
-      </Suspense>
+      {lite("ozet") && (
+        <Suspense fallback={<KpiGridSkeleton />}>
+          <ExecutiveKpiSection />
+        </Suspense>
+      )}
 
       <Suspense fallback={null}>
         <AiInsightsSection />
       </Suspense>
 
-      <Suspense fallback={<TrendsRowSkeleton />}>
-        <TrendsRow />
-      </Suspense>
+      {lite("qrafikler") && (
+        <Suspense fallback={<TrendsRowSkeleton />}>
+          <TrendsRow />
+        </Suspense>
+      )}
 
-      <Suspense fallback={<TopRowSkeleton />}>
-        <TopPerformersRow />
-      </Suspense>
+      {lite("detal_cedvel") && (
+        <Suspense fallback={<TopRowSkeleton />}>
+          <TopPerformersRow />
+        </Suspense>
+      )}
 
       {/* Report navigation cards — pure static, render immediately. */}
       <div>

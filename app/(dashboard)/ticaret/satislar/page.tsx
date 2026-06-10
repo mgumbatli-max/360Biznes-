@@ -11,6 +11,7 @@ import { PipelineBoard } from "@/features/ticaret/components/pipeline-board";
 import { getSaleStats, getSales, type SaleFilter } from "@/features/ticaret/satis-queries";
 import { getSalesByPipelineStage } from "@/features/ticaret/pipeline-queries";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
+import { liteGate } from "@/lib/lite/config";
 import { formatMoney } from "@/lib/utils";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 import { RecordStatusFilter } from "@/components/ui/record-status-filter";
@@ -131,6 +132,7 @@ export default async function SatislarPage({
   };
 
   const isKanban = sp.view === "kanban";
+  const lite = await liteGate("ticaret"); // Lite-da bloklar config-ə görə
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -201,9 +203,11 @@ export default async function SatislarPage({
         </div>
       )}
 
-      <Suspense fallback={<StatsKpisSkeleton />}>
-        <StatsKpis />
-      </Suspense>
+      {lite("ozet") && (
+        <Suspense fallback={<StatsKpisSkeleton />}>
+          <StatsKpis />
+        </Suspense>
+      )}
 
       {/* View toggle — Cədvəl vs Kanban (pipeline board) */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -244,7 +248,7 @@ export default async function SatislarPage({
         </Suspense>
       ) : (
         <>
-          <SaleFilters />
+          {lite("filtrler") && <SaleFilters />}
           <Suspense fallback={<SalesTableSkeleton />}>
             <SalesContent filter={filter} canPay={canPay} canCancel={canCancel} />
           </Suspense>

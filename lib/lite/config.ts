@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { auth } from "@/auth";
+import { getAppMode } from "@/lib/app-mode";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import {
   LITE_MODULES,
@@ -94,6 +95,19 @@ export function liteBlockOn(config: LiteConfig, modul: string, blok: string): bo
   const m = config.modules[modul];
   if (!m || !m.enabled) return false;
   return m.blocks[blok] ?? false;
+}
+
+/**
+ * Səhifə üçün blok-gate funksiyası. Pro-da həmişə `true` (config nəzərə alınmır),
+ * Lite-da config-ə görə. İstifadə (Server Component):
+ *   const on = await liteGate("ticaret");
+ *   {on("ozet") && <Ozet/>}
+ */
+export async function liteGate(modul: string): Promise<(blok: string) => boolean> {
+  const mode = await getAppMode();
+  if (mode !== "lite") return () => true;
+  const cfg = await getLiteConfig();
+  return (blok: string) => liteBlockOn(cfg, modul, blok);
 }
 
 export { COOKIE_GROUP as LITE_CONFIG_GROUP, CONFIG_KEY as LITE_CONFIG_KEY };

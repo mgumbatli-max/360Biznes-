@@ -41,36 +41,32 @@ export const LITE_MODULES: LiteModuleDef[] = [
     kod: "ticaret",
     ad: "Ticarət (satışlar)",
     bloklar: [
-      { kod: "ozet", ad: "Xülasə kartları (cəmi, say…)", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə kartları (bugün / həftə / ay / borc)", liteDefault: true },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər", liteDefault: false },
-      { kod: "ikincil_sutunlar", ad: "İkincil sütunlar (maya, marja, kanal…)", liteDefault: false },
     ],
   },
   {
     kod: "anbar",
     ad: "Anbar (məhsullar)",
     bloklar: [
-      { kod: "ozet", ad: "Xülasə kartları (dəyər, say…)", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə kartları (dəyər, say, az stok…)", liteDefault: true },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər", liteDefault: false },
-      { kod: "ikincil_sutunlar", ad: "İkincil sütunlar (maya, barkod, SKU…)", liteDefault: false },
     ],
   },
   {
     kod: "hesabatlar",
     ad: "Hesabatlar",
     bloklar: [
-      { kod: "ozet", ad: "Xülasə göstəriciləri", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə göstəriciləri (KPI)", liteDefault: true },
       { kod: "qrafikler", ad: "Qrafiklər", liteDefault: false },
       { kod: "detal_cedvel", ad: "Detal cədvəllər", liteDefault: false },
     ],
   },
   {
     kod: "maliyye",
-    ad: "Maliyyə",
+    ad: "Maliyyə (əməliyyatlar)",
     bloklar: [
-      { kod: "ozet", ad: "Xülasə kartları (qalıq, borc…)", liteDefault: true },
-      { kod: "qrafikler", ad: "Qrafiklər", liteDefault: false },
-      { kod: "ikincil_sutunlar", ad: "İkincil detallar", liteDefault: false },
+      { kod: "ozet", ad: "Xülasə kartları (mədaxil, məxaric, net…)", liteDefault: true },
     ],
   },
 ];

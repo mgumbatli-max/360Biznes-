@@ -6,6 +6,7 @@ import { getOperations, getOperationsSummary, type OperationFilter } from "@/fea
 import { getQuickRefs } from "@/features/maliyye/queries";
 import { formatMoney } from "@/lib/utils";
 import { RecordStatusFilter } from "@/components/ui/record-status-filter";
+import { liteGate } from "@/lib/lite/config";
 
 export const metadata: Metadata = { title: "Maliyyə əməliyyatları" };
 
@@ -73,6 +74,8 @@ export default async function EmeliyyatPage({
   const weekStart = new Date(today);
   weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const lite = await liteGate("maliyye"); // Lite-da bloklar config-ə görə
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -292,13 +295,15 @@ export default async function EmeliyyatPage({
         </div>
       </form>
 
-      {/* Stat pills */}
-      <section className="grid grid-cols-2 gap-0 rounded-xl border-y border-border bg-card/30 md:grid-cols-4">
-        <Pill label="Cəmi əməliyyat" value={String(summary.cemi)} />
-        <Pill label="Mədaxil" value={`+${formatMoney(summary.daxil)}`} tone="success" />
-        <Pill label="Məxaric" value={`−${formatMoney(summary.xaric)}`} tone="danger" />
-        <Pill label="Net" value={`${summary.net >= 0 ? "+" : "−"}${formatMoney(Math.abs(summary.net))}`} tone={summary.net >= 0 ? "info" : "danger"} />
-      </section>
+      {/* Stat pills (Lite: ozet bloku) */}
+      {lite("ozet") && (
+        <section className="grid grid-cols-2 gap-0 rounded-xl border-y border-border bg-card/30 md:grid-cols-4">
+          <Pill label="Cəmi əməliyyat" value={String(summary.cemi)} />
+          <Pill label="Mədaxil" value={`+${formatMoney(summary.daxil)}`} tone="success" />
+          <Pill label="Məxaric" value={`−${formatMoney(summary.xaric)}`} tone="danger" />
+          <Pill label="Net" value={`${summary.net >= 0 ? "+" : "−"}${formatMoney(Math.abs(summary.net))}`} tone={summary.net >= 0 ? "info" : "danger"} />
+        </section>
+      )}
 
       <OperationsTable items={items} total={total} canApprove={canApprove} canCancel={canCancel} />
 
