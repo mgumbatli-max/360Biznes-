@@ -64,18 +64,57 @@ export const READ_TOOLS: AgentToolDef[] = [
       required: [],
     },
   },
+  {
+    name: "kassa_hesablar",
+    description: "Bütün kassa və bank hesablarının cari qalıqları.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "xerc_hesabati",
+    description: "Dövr üzrə xərclər: cəmi məbləğ + son xərclərin siyahısı (tarix, təsvir, məbləğ).",
+    input_schema: {
+      type: "object",
+      properties: { gun_sayi: { type: "number", description: "Neçə günlük dövr (1-365)", default: 30 } },
+      required: [],
+    },
+  },
+  {
+    name: "emekdaslar",
+    description: "Aktiv əməkdaşların siyahısı: ad, vəzifə, aylıq maaş, doğum tarixi.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "tapsiriqlar",
+    description: "Açıq sahibkar tapşırıqlarının siyahısı (id, başlıq, status, tarix).",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "stok_az",
+    description: "Kritik səviyyədə və ya altında olan məhsulların siyahısı (ad, qalıq, kritik hədd).",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
 ];
+
+/** Hər yazma alətinə əlavə olunan təsdiq parametri — server bunsuz İCRA ETMİR. */
+const TESDIQ_PROP = {
+  tesdiq: {
+    type: "boolean",
+    description:
+      "İlk çağırışda OLMASIN/false — server icra etmədən xülasə qaytaracaq. İstifadəçi xülasəyə AÇIQ təsdiq verəndən sonra (bəli/təsdiq/elə) eyni parametrlərlə tesdiq=true ilə yenidən çağır.",
+  },
+} as const;
 
 export const WRITE_TOOLS: AgentToolDef[] = [
   {
     name: "qiymet_deyis",
     description:
-      "Məhsulun satış qiymətini dəyişir. ƏVVƏL mehsul_axtar ilə məhsulu tap, mehsul_id-ni buraya ötür. İstifadəçi açıq şəkildə qiymət dəyişməyi istəyəndə işlət.",
+      "Məhsulun satış qiymətini dəyişir. ƏVVƏL mehsul_axtar ilə məhsulu tap, mehsul_id-ni buraya ötür.",
     input_schema: {
       type: "object",
       properties: {
         mehsul_id: { type: "string", description: "mehsul_axtar-dan alınan dəqiq məhsul id-si" },
         yeni_qiymet: { type: "number", description: "Yeni satış qiyməti (AZN)" },
+        ...TESDIQ_PROP,
       },
       required: ["mehsul_id", "yeni_qiymet"],
     },
@@ -92,6 +131,7 @@ export const WRITE_TOOLS: AgentToolDef[] = [
         alish_qiymeti: { type: "number", description: "Maya/alış qiyməti (AZN), bilinmirsə 0" },
         barkod: { type: "string", description: "Barkod (opsional)" },
         kod: { type: "string", description: "Daxili kod/SKU (opsional)" },
+        ...TESDIQ_PROP,
       },
       required: ["ad", "satis_qiymeti"],
     },
@@ -107,6 +147,7 @@ export const WRITE_TOOLS: AgentToolDef[] = [
         telefon: { type: "string", description: "Telefon (opsional)" },
         dogum_tarixi: { type: "string", description: "Doğum tarixi, məs. 10.12.1989 (opsional)" },
         qeyd: { type: "string", description: "Qeyd (opsional)" },
+        ...TESDIQ_PROP,
       },
       required: ["ad"],
     },
@@ -134,13 +175,117 @@ export const WRITE_TOOLS: AgentToolDef[] = [
         musteri_id: { type: "string", description: "Müştəri id (borc satışında mütləq)" },
         odenis_nov: { type: "string", enum: ["negd", "kart", "kecirme", "nisye"], default: "negd" },
         qaralama: { type: "boolean", default: false },
+        ...TESDIQ_PROP,
       },
       required: ["lines"],
+    },
+  },
+  {
+    name: "xerc_yarat",
+    description: "Yeni xərc qeyd edir (maliyyə). Hesab adı verilərsə həmin hesabdan çıxılır.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mebleg: { type: "number", description: "Məbləğ (AZN)" },
+        tesvir: { type: "string", description: "Xərcin təsviri (məs. 'Ofis icarəsi iyun')" },
+        odenis_nov: { type: "string", enum: ["negd", "kart", "kecirme"], default: "negd" },
+        hesab_ad: { type: "string", description: "Çıxılacaq hesab/kassanın adı (opsional)" },
+        ...TESDIQ_PROP,
+      },
+      required: ["mebleg", "tesvir"],
+    },
+  },
+  {
+    name: "tapsiriq_yarat",
+    description: "Yeni tapşırıq yaradır (sahibkar tapşırıqları).",
+    input_schema: {
+      type: "object",
+      properties: {
+        basliq: { type: "string", description: "Tapşırığın başlığı" },
+        tesvir: { type: "string", description: "Ətraflı təsvir (opsional)" },
+        tarix: { type: "string", description: "Son tarix İİİİ-AA-GG (opsional)" },
+        ...TESDIQ_PROP,
+      },
+      required: ["basliq"],
+    },
+  },
+  {
+    name: "tapsiriq_tamamla",
+    description: "Tapşırığı tamamlanmış kimi işarələyir. ƏVVƏL tapsiriqlar aləti ilə id-ni tap.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "tapsiriqlar alətindən alınan tapşırıq id-si" },
+        ...TESDIQ_PROP,
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "stok_duzelis",
+    description:
+      "Məhsulun stok miqdarını düzəldir (inventar düzəlişi). ƏVVƏL mehsul_axtar ilə tap. Yeni mütləq miqdar verilir.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mehsul_id: { type: "string" },
+        yeni_miqdar: { type: "number", description: "Yeni stok miqdarı" },
+        sebeb: { type: "string", description: "Düzəliş səbəbi" },
+        ...TESDIQ_PROP,
+      },
+      required: ["mehsul_id", "yeni_miqdar", "sebeb"],
+    },
+  },
+  {
+    name: "mehsul_sil",
+    description:
+      "Məhsulu deaktiv edir (soft-silmə — kataloqdan çıxır, keçmiş sənədlər toxunulmur). ƏVVƏL mehsul_axtar ilə tap.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mehsul_id: { type: "string" },
+        ...TESDIQ_PROP,
+      },
+      required: ["mehsul_id"],
+    },
+  },
+  {
+    name: "lead_yarat",
+    description: "CRM-də yeni lead (potensial müştəri) yaradır.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ad: { type: "string", description: "Lead adı" },
+        telefon: { type: "string", description: "Telefon (opsional)" },
+        menbe: { type: "string", description: "Mənbə: instagram/telefon/tovsiye/reklam və s. (opsional)" },
+        ...TESDIQ_PROP,
+      },
+      required: ["ad"],
     },
   },
 ];
 
 /* ───────────────────────── Executor ───────────────────────── */
+
+/**
+ * Təsdiq protokolu (server-məcburi): yazma aləti tesdiq=true OLMADAN çağırılsa
+ * heç nə icra olunmur — xülasə qaytarılır ki, AI istifadəçiyə göstərib açıq
+ * təsdiq alsın və sonra eyni parametrlərlə tesdiq=true ilə təkrar çağırsın.
+ */
+function needConfirm(
+  input: Record<string, unknown>,
+  emeliyyat: string,
+  xulase: string,
+): { confirm_required: true; emeliyyat: string; xulase: string; talimat: string } | null {
+  if (input.tesdiq === true) return null;
+  return {
+    confirm_required: true,
+    emeliyyat,
+    xulase,
+    talimat:
+      "Bu xülasəni istifadəçiyə göstər və açıq təsdiq istə. YALNIZ istifadəçi təsdiq edəndən sonra eyni aləti eyni parametrlərlə + tesdiq=true ilə çağır.",
+  };
+}
 
 export async function executeAgentTool(
   name: string,
@@ -300,6 +445,9 @@ export async function executeAgentTool(
       });
       if (!mehsul) return { error: "Məhsul tapılmadı" };
       const kohne = Number(mehsul.satis_qiymeti ?? 0);
+      const confirm = needConfirm(input, "Qiymət dəyişikliyi",
+        `"${mehsul.ad}" satış qiyməti: ${kohne} → ${yeniQiymet} AZN`);
+      if (confirm) return confirm;
       await prisma.mehsullar.update({
         where: { id: mehsul.id },
         data: { satis_qiymeti: yeniQiymet },
@@ -335,6 +483,9 @@ export async function executeAgentTool(
         const dup = await prisma.mehsullar.findFirst({ where: { kod }, select: { ad: true } });
         if (dup) return { error: `Bu kod artıq mövcuddur: ${dup.ad}` };
       }
+      const confirmM = needConfirm(input, "Yeni məhsul",
+        `"${ad}" — satış ${satisQiymeti} AZN${input.alish_qiymeti ? `, maya ${Number(input.alish_qiymeti)} AZN` : ""}${barkod ? `, barkod ${barkod}` : ""}`);
+      if (confirmM) return confirmM;
       const created = await prisma.mehsullar.create({
         data: {
           sahibkar_id: sahibkarId,
@@ -391,6 +542,9 @@ export async function executeAgentTool(
           error: `Oxşar müştəri artıq var: ${dup.ad}${dup.telefon ? ` (${dup.telefon})` : ""} — yenisini yaratmadım. Mövcudunu istifadə et: musteri_id=${dup.id}`,
         };
       }
+      const confirmK = needConfirm(input, "Yeni müştəri",
+        `"${ad}"${telefon ? `, tel: ${telefon}` : ""}${dogum ? `, doğum: ${dogum.toISOString().slice(0, 10)}` : ""}`);
+      if (confirmK) return confirmK;
       const created = await prisma.kontragentler.create({
         data: {
           sahibkar_id: sahibkarId,
@@ -431,6 +585,7 @@ export async function executeAgentTool(
 
       // Sətirləri qur — qiymət verilməyibsə məhsulun satış qiyməti
       const lines: { mehsul_id: string; anbar_id: number; miqdar: number; qiymet: number; endirim_faiz: number }[] = [];
+      const lineDescs: string[] = [];
       for (const rl of rawLines) {
         const mid = String(rl.mehsul_id ?? "");
         if (!mid) return { error: "Sətirdə mehsul_id yoxdur" };
@@ -440,13 +595,15 @@ export async function executeAgentTool(
         });
         if (!m) return { error: `Məhsul tapılmadı: ${mid}` };
         const qiymet = Number(rl.qiymet ?? m.satis_qiymeti ?? 0);
+        const miqdar = Math.max(0.001, Number(rl.miqdar ?? 1));
         lines.push({
           mehsul_id: m.id,
           anbar_id: anbar.id,
-          miqdar: Math.max(0.001, Number(rl.miqdar ?? 1)),
+          miqdar,
           qiymet,
           endirim_faiz: 0,
         });
+        lineDescs.push(`${m.ad} ×${miqdar} @${qiymet} AZN`);
       }
 
       const odenisNov = ["negd", "kart", "kecirme", "nisye"].includes(String(input.odenis_nov))
@@ -456,6 +613,11 @@ export async function executeAgentTool(
       if (odenisNov === "nisye" && !musteriId) {
         return { error: "Borc (nisyə) satış üçün musteri_id tələb olunur — musteri_axtar ilə tapın" };
       }
+
+      const cem = lines.reduce((s, l) => s + l.miqdar * l.qiymet, 0);
+      const confirmS = needConfirm(input, "Yeni SATIŞ (real sənəd — stok azalacaq)",
+        `${lineDescs.join("; ")} | Cəm: ${cem.toFixed(2)} AZN | Ödəniş: ${odenisNov}${input.qaralama ? " | QARALAMA" : ""}`);
+      if (confirmS) return confirmS;
 
       // Mövcud, tam bütövlük-təminatlı satış action-ı — stok/kassa/borc eyni axın
       const { createOrUpdateSatisYeni } = await import("@/features/ticaret/satis-yeni-actions");
@@ -485,6 +647,259 @@ export async function executeAgentTool(
         qaralama: res.qaralama,
         link: `/ticaret/satislar/${res.satis_id}`,
       };
+    }
+
+    /* ─────────── Yeni READ alətləri ─────────── */
+
+    case "kassa_hesablar": {
+      const [hesablar, kassalar] = await Promise.all([
+        prisma.maliye_hesablari.findMany({
+          where: { aktiv: true },
+          select: { ad: true, nov: true, qaliq: true, valyuta: true },
+          orderBy: { qaliq: "desc" },
+        }),
+        prisma.kassalar.findMany({
+          where: { status: "acig" },
+          select: { ad: true, acilis_qaligi: true },
+        }).catch(() => []),
+      ]);
+      return {
+        hesablar: hesablar.map((h) => ({ ad: h.ad, nov: h.nov, qaliq: Number(h.qaliq ?? 0), valyuta: h.valyuta })),
+        acik_kassalar: kassalar.map((k) => ({ ad: k.ad, acilis_qaligi: Number(k.acilis_qaligi ?? 0) })),
+      };
+    }
+
+    case "xerc_hesabati": {
+      const gun = Math.min(365, Math.max(1, Number(input.gun_sayi ?? 30)));
+      const from = new Date();
+      from.setDate(from.getDate() - gun);
+      const [agg, son] = await Promise.all([
+        prisma.xercl_r.aggregate({ where: { tarix: { gte: from } }, _sum: { mebleg: true }, _count: { _all: true } }),
+        prisma.xercl_r.findMany({
+          where: { tarix: { gte: from } },
+          orderBy: { tarix: "desc" },
+          take: 10,
+          select: { tarix: true, tesvir: true, mebleg: true },
+        }),
+      ]);
+      return {
+        dovr_gun: gun,
+        cemi: Number(agg._sum.mebleg ?? 0),
+        say: agg._count._all,
+        son_xercler: son.map((x) => ({
+          tarix: x.tarix?.toISOString().slice(0, 10),
+          tesvir: x.tesvir,
+          mebleg: Number(x.mebleg),
+        })),
+      };
+    }
+
+    case "emekdaslar": {
+      const rows = await prisma.istifadeciler.findMany({
+        where: { aktiv: true },
+        select: { ad_soyad: true, vezife: true, aylik_maas: true, dogum_tarixi: true },
+        orderBy: { ad_soyad: "asc" },
+        take: 50,
+      });
+      return rows.map((r) => ({
+        ad: r.ad_soyad,
+        vezife: r.vezife,
+        aylik_maas: Number(r.aylik_maas ?? 0),
+        dogum_tarixi: r.dogum_tarixi ? r.dogum_tarixi.toISOString().slice(0, 10) : null,
+      }));
+    }
+
+    case "tapsiriqlar": {
+      const rows = await prisma.sahibkar_tapshiriq.findMany({
+        where: { status: { in: ["acig", "isleyir"] } },
+        orderBy: { yaradildi: "desc" },
+        take: 20,
+        select: { id: true, basliq: true, status: true, tarix: true },
+      });
+      return rows.map((t) => ({
+        id: t.id,
+        basliq: t.basliq,
+        status: t.status,
+        tarix: t.tarix ? t.tarix.toISOString().slice(0, 10) : null,
+      }));
+    }
+
+    case "stok_az": {
+      const rows = await prisma.$queryRaw<{ ad: string; qaliq: number; kritik: number }[]>`
+        SELECT m.ad, COALESCE(SUM(s.miqdar), 0)::float AS qaliq, m.kritik_stok::float AS kritik
+          FROM mehsullar m
+          LEFT JOIN stok s ON s.mehsul_id = m.id
+         WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = true AND m.kritik_stok IS NOT NULL
+         GROUP BY m.id, m.ad, m.kritik_stok
+        HAVING COALESCE(SUM(s.miqdar), 0) <= m.kritik_stok
+         ORDER BY 2 ASC LIMIT 15
+      `;
+      return rows;
+    }
+
+    /* ─────────── Yeni WRITE alətləri ─────────── */
+
+    case "xerc_yarat": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const mebleg = Number(input.mebleg);
+      const tesvir = String(input.tesvir ?? "").trim();
+      if (!Number.isFinite(mebleg) || mebleg <= 0 || tesvir.length < 2) {
+        return { error: "Müsbət mebleg və təsvir (min 2 simvol) tələb olunur" };
+      }
+      let hesabId: string | undefined;
+      let hesabAd: string | null = null;
+      if (input.hesab_ad) {
+        const h = await prisma.maliye_hesablari.findFirst({
+          where: { aktiv: true, ad: { contains: String(input.hesab_ad), mode: "insensitive" } },
+          select: { id: true, ad: true },
+        });
+        if (!h) return { error: `Hesab tapılmadı: "${input.hesab_ad}" — kassa_hesablar aləti ilə siyahıya bax` };
+        hesabId = h.id;
+        hesabAd = h.ad;
+      }
+      const confirmX = needConfirm(input, "Yeni xərc",
+        `${tesvir} — ${mebleg} AZN${hesabAd ? ` (hesab: ${hesabAd})` : ""}`);
+      if (confirmX) return confirmX;
+
+      const { saveExpense } = await import("@/features/maliyye/actions");
+      const fd = new FormData();
+      fd.set("tarix", new Date().toISOString().slice(0, 10));
+      fd.set("mebleg", String(mebleg));
+      fd.set("tesvir", tesvir);
+      fd.set("odenis_nov", ["negd", "kart", "kecirme"].includes(String(input.odenis_nov)) ? String(input.odenis_nov) : "negd");
+      if (hesabId) fd.set("hesab_id", hesabId);
+      const res = await saveExpense(fd);
+      if (!res.ok) return { error: res.error };
+      await safeAuditLog({
+        sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
+        emeliyyat: "ai_xerc_yarat", resurs_nov: "xerc", resurs_id: res.id ?? null,
+        yeni_data: { mebleg, tesvir, hesab: hesabAd }, sebeb: "AI agent ilə xərc", status: "ugur",
+      }).catch(() => {});
+      return { ok: true, mebleg, tesvir, hesab: hesabAd };
+    }
+
+    case "tapsiriq_yarat": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const basliq = String(input.basliq ?? "").trim();
+      if (basliq.length < 2) return { error: "basliq (min 2 simvol) tələb olunur" };
+      const confirmT = needConfirm(input, "Yeni tapşırıq", `"${basliq}"${input.tarix ? ` (son tarix: ${input.tarix})` : ""}`);
+      if (confirmT) return confirmT;
+      const created = await prisma.sahibkar_tapshiriq.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId,
+          basliq,
+          tesvir: input.tesvir ? String(input.tesvir).slice(0, 2000) : null,
+          tarix: input.tarix && /^\d{4}-\d{2}-\d{2}$/.test(String(input.tarix)) ? new Date(String(input.tarix)) : null,
+          status: "acig",
+        },
+        select: { id: true, basliq: true },
+      });
+      return { ok: true, id: created.id, basliq: created.basliq };
+    }
+
+    case "tapsiriq_tamamla": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const id = Number(input.id);
+      if (!Number.isInteger(id) || id <= 0) return { error: "Düzgün tapşırıq id-si lazımdır (tapsiriqlar aləti ilə tap)" };
+      const t = await prisma.sahibkar_tapshiriq.findFirst({ where: { id }, select: { id: true, basliq: true, status: true } });
+      if (!t) return { error: "Tapşırıq tapılmadı" };
+      const confirmTT = needConfirm(input, "Tapşırığı tamamla", `"${t.basliq}" → tamamlandı`);
+      if (confirmTT) return confirmTT;
+      await prisma.sahibkar_tapshiriq.update({ where: { id }, data: { status: "tamam", yenilendi: new Date() } });
+      return { ok: true, id, basliq: t.basliq, status: "tamam" };
+    }
+
+    case "stok_duzelis": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const mehsulId = String(input.mehsul_id ?? "");
+      const yeniMiqdar = Number(input.yeni_miqdar);
+      const sebeb = String(input.sebeb ?? "").trim();
+      if (!mehsulId || !Number.isFinite(yeniMiqdar) || yeniMiqdar < 0 || sebeb.length < 2) {
+        return { error: "mehsul_id, yeni_miqdar (≥0) və sebeb tələb olunur" };
+      }
+      const m = await prisma.mehsullar.findFirst({ where: { id: mehsulId }, select: { id: true, ad: true } });
+      if (!m) return { error: "Məhsul tapılmadı" };
+      const anbar = await prisma.anbarlar.findFirst({ where: { aktiv: true }, orderBy: { id: "asc" }, select: { id: true } });
+      if (!anbar) return { error: "Aktiv anbar tapılmadı" };
+      const cur = await prisma.stok.findFirst({
+        where: { mehsul_id: m.id, anbar_id: anbar.id },
+        select: { miqdar: true },
+      });
+      const kohneMiqdar = Number(cur?.miqdar ?? 0);
+      const confirmSD = needConfirm(input, "Stok düzəlişi",
+        `"${m.ad}": ${kohneMiqdar} → ${yeniMiqdar} (səbəb: ${sebeb})`);
+      if (confirmSD) return confirmSD;
+
+      await prisma.$transaction(async (tx) => {
+        if (cur) {
+          await tx.stok.updateMany({
+            where: { mehsul_id: m.id, anbar_id: anbar.id },
+            data: { miqdar: yeniMiqdar },
+          });
+        } else {
+          await tx.stok.create({
+            data: { sahibkar_id: sahibkarId, mehsul_id: m.id, anbar_id: anbar.id, miqdar: yeniMiqdar },
+          });
+        }
+        await tx.anbar_hereketleri.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            anbar_id: anbar.id,
+            mehsul_id: m.id,
+            nov: "inventar",
+            miqdar: Math.abs(yeniMiqdar - kohneMiqdar),
+            qiymet: 0,
+            ref_nov: "ai_duzelis",
+            edilen_id: istifadeciId,
+            qeyd: `AI stok düzəlişi: ${kohneMiqdar}→${yeniMiqdar}. Səbəb: ${sebeb}`,
+          },
+        });
+      });
+      await safeAuditLog({
+        sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
+        emeliyyat: "ai_stok_duzelis", resurs_nov: "mehsul", resurs_id: m.id,
+        evvelki_data: { miqdar: kohneMiqdar }, yeni_data: { miqdar: yeniMiqdar, sebeb },
+        sebeb: "AI agent ilə stok düzəlişi", status: "ugur",
+      }).catch(() => {});
+      return { ok: true, mehsul: m.ad, kohne: kohneMiqdar, yeni: yeniMiqdar };
+    }
+
+    case "mehsul_sil": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const mehsulId = String(input.mehsul_id ?? "");
+      const m = await prisma.mehsullar.findFirst({ where: { id: mehsulId }, select: { id: true, ad: true, aktiv: true } });
+      if (!m) return { error: "Məhsul tapılmadı" };
+      if (m.aktiv === false) return { error: `"${m.ad}" onsuz da deaktivdir` };
+      const confirmDel = needConfirm(input, "Məhsulu deaktiv et (SİLMƏ)",
+        `"${m.ad}" kataloqdan çıxarılacaq (keçmiş sənədlər toxunulmur, geri qaytarmaq olar)`);
+      if (confirmDel) return confirmDel;
+      await prisma.mehsullar.update({ where: { id: m.id }, data: { aktiv: false } });
+      await safeAuditLog({
+        sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
+        emeliyyat: "ai_mehsul_sil", resurs_nov: "mehsul", resurs_id: m.id,
+        yeni_data: { aktiv: false }, sebeb: "AI agent ilə məhsul deaktivasiyası", status: "ugur",
+      }).catch(() => {});
+      return { ok: true, mehsul: m.ad, status: "deaktiv" };
+    }
+
+    case "lead_yarat": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const ad = String(input.ad ?? "").trim();
+      if (ad.length < 2) return { error: "ad (min 2 simvol) tələb olunur" };
+      const confirmL = needConfirm(input, "Yeni lead", `"${ad}"${input.telefon ? `, tel: ${input.telefon}` : ""}`);
+      if (confirmL) return confirmL;
+      const created = await prisma.leads.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          ad,
+          telefon: input.telefon ? String(input.telefon).slice(0, 30) : null,
+          menbe: input.menbe ? String(input.menbe).slice(0, 40) : null,
+          status: "yeni",
+        },
+        select: { id: true, ad: true },
+      });
+      return { ok: true, lead_id: created.id, ad: created.ad };
     }
 
     default:

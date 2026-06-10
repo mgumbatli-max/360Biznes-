@@ -68,7 +68,11 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
     // Agent rejimi (owner): AI alətlərlə DB-dən özü oxuyur və əməliyyat edir.
     const isAgent = effectiveMode === "owner";
     const agentNote = isAgent
-      ? `\n\nALƏTLƏRİN VAR: məhsul/müştəri axtarışı, satış hesabatı, borclular, son satışlar — istənilən xırda detal soruşulsa aləti ÇAĞIR, təxmin etmə. Yazma alətləri: qiymet_deyis, mehsul_yarat, satis_yarat — istifadəçi AÇIQ şəkildə istəyəndə işlət (əvvəl mehsul_axtar/musteri_axtar ilə dəqiq id tap). Əməliyyatdan sonra nəticəni (sənəd nömrəsi, link, köhnə→yeni qiymət) konkret bildir.`
+      ? `\n\nALƏTLƏRİN VAR — istənilən xırda detal soruşulsa uyğun aləti ÇAĞIR, təxmin etmə:
+OXU: mehsul_axtar, musteri_axtar, satis_hesabati, borclular, son_satislar, kassa_hesablar, xerc_hesabati, emekdaslar, tapsiriqlar, stok_az.
+YAZ: qiymet_deyis, mehsul_yarat, musteri_yarat, satis_yarat, xerc_yarat, tapsiriq_yarat, tapsiriq_tamamla, stok_duzelis, mehsul_sil, lead_yarat.
+
+TƏSDİQ PROTOKOLU (MƏCBURİ): yazma alətini ƏVVƏLCƏ tesdiq parametrsiz çağır — server icra etmədən xülasə qaytaracaq. Xülasəni istifadəçiyə göstər və "Təsdiq edirsiniz?" soruş. YALNIZ istifadəçinin NÖVBƏTİ mesajı açıq təsdiqdirsə (bəli, təsdiq, elə, davam) eyni aləti EYNİ parametrlərlə + tesdiq=true ilə çağır. İstifadəçi imtina etsə heç nə etmə. Əməliyyatdan sonra nəticəni (sənəd nömrəsi, link, köhnə→yeni) konkret bildir.`
       : "";
     const system = businessCtx
       ? `Sən 360Biznes ERP sistemində ${baseRole}\n\nCavabını Azərbaycan dilində ver. Aşağıdakı real data-dan istifadə edib konkret rəqəmlərlə cavab ver. Heç vaxt "məlumatım yoxdur" demə.${agentNote}\n\n${businessCtx}\n\nQısa ol (3-4 abzas). Markdown bullet işlət. JSON/HTML/kod blok QAYTARMA.`
