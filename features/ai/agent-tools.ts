@@ -93,6 +93,21 @@ export const READ_TOOLS: AgentToolDef[] = [
     description: "Kritik səviyyədə və ya altında olan məhsulların siyahısı (ad, qalıq, kritik hədd).",
     input_schema: { type: "object", properties: {}, required: [] },
   },
+  {
+    name: "anbarlar",
+    description: "Anbarların siyahısı (id, ad) — transfer üçün mənbə/hədəf seçimində istifadə et.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "satis_axtar",
+    description:
+      "Satış sənədini nömrəyə görə tapır (satis_id, məbləğ, müştəri, status, sətirlər). Qaytarma etməzdən əvvəl bununla satis_id-ni tap.",
+    input_schema: {
+      type: "object",
+      properties: { nomre: { type: "string", description: "Satış nömrəsi və ya hissəsi" } },
+      required: ["nomre"],
+    },
+  },
 ];
 
 /** Hər yazma alətinə əlavə olunan təsdiq parametri — server bunsuz İCRA ETMİR. */
@@ -261,6 +276,62 @@ export const WRITE_TOOLS: AgentToolDef[] = [
         ...TESDIQ_PROP,
       },
       required: ["ad"],
+    },
+  },
+  {
+    name: "servis_yarat",
+    description:
+      "Yeni servis sifarişi (təmir qəbulu) yaradır. Müştəri sistemdə varsa musteri_axtar ilə id tap; yoxdursa ad+telefon kifayətdir.",
+    input_schema: {
+      type: "object",
+      properties: {
+        musteri_ad: { type: "string", description: "Müştəri adı" },
+        musteri_telefon: { type: "string", description: "Müştəri telefonu" },
+        musteri_id: { type: "string", description: "Mövcud müştəri id (opsional)" },
+        mehsul_ad: { type: "string", description: "Təmirə gətirilən məhsul/cihaz adı" },
+        problem_tesviri: { type: "string", description: "Problemin təsviri (min 5 simvol)" },
+        zemanet_var: { type: "boolean", default: false },
+        prioritet: { type: "string", enum: ["asagi", "orta", "yuksek", "tecili"] },
+        ...TESDIQ_PROP,
+      },
+      required: ["musteri_ad", "musteri_telefon", "mehsul_ad", "problem_tesviri"],
+    },
+  },
+  {
+    name: "qaytarma_yarat",
+    description:
+      "Satışın TAM qaytarılması — stok geri qayıdır, kassa/borc düzəlir (real maliyyə təsiri!). ƏVVƏL satis_axtar ilə satis_id-ni tap.",
+    input_schema: {
+      type: "object",
+      properties: {
+        satis_id: { type: "string", description: "satis_axtar-dan alınan satış id-si" },
+        sebeb: { type: "string", description: "Qaytarma səbəbi" },
+        ...TESDIQ_PROP,
+      },
+      required: ["satis_id", "sebeb"],
+    },
+  },
+  {
+    name: "transfer_yarat",
+    description:
+      "Anbarlar arası transfer SƏNƏDİ yaradır (stok hərəkəti hədəf anbar QƏBUL EDƏNDƏ baş verir — bunu istifadəçiyə bildir). anbarlar aləti ilə id-ləri, mehsul_axtar ilə məhsulu tap.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kaynak_anbar_id: { type: "number" },
+        hedef_anbar_id: { type: "number" },
+        lines: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { mehsul_id: { type: "string" }, miqdar: { type: "number" } },
+            required: ["mehsul_id", "miqdar"],
+          },
+        },
+        qeyd: { type: "string" },
+        ...TESDIQ_PROP,
+      },
+      required: ["kaynak_anbar_id", "hedef_anbar_id", "lines"],
     },
   },
 ];
@@ -900,6 +971,155 @@ export async function executeAgentTool(
         select: { id: true, ad: true },
       });
       return { ok: true, lead_id: created.id, ad: created.ad };
+    }
+
+    case "anbarlar": {
+      const rows = await prisma.anbarlar.findMany({
+        where: { aktiv: true },
+        select: { id: true, ad: true },
+        orderBy: { id: "asc" },
+      });
+      return rows;
+    }
+
+    case "satis_axtar": {
+      const nomre = String(input.nomre ?? "").trim();
+      if (!nomre) return { error: "nomre tələb olunur" };
+      const rows = await prisma.satis_sifarisleri.findMany({
+        where: {
+          deleted_at: null,
+          OR: [{ nomre: { contains: nomre, mode: "insensitive" } }, { qaime_nomresi: { contains: nomre, mode: "insensitive" } }],
+        },
+        orderBy: { yaradildi: "desc" },
+        take: 5,
+        select: {
+          id: true, nomre: true, qaime_nomresi: true, son_mebleg: true, odenis_nov: true, status: true,
+          kontragentler: { select: { ad: true } },
+          satis_sifaris_satirlari: { select: { miqdar: true, mehsullar: { select: { ad: true } } }, take: 10 },
+        },
+      });
+      return rows.map((r) => ({
+        satis_id: r.id,
+        nomre: r.nomre,
+        qaime: r.qaime_nomresi,
+        mebleg: Number(r.son_mebleg ?? 0),
+        odenis: r.odenis_nov,
+        status: r.status,
+        musteri: r.kontragentler?.ad ?? null,
+        setirler: r.satis_sifaris_satirlari.map((l) => `${l.mehsullar?.ad ?? "?"} ×${Number(l.miqdar)}`),
+      }));
+    }
+
+    case "servis_yarat": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const musteriAd = String(input.musteri_ad ?? "").trim();
+      const tel = String(input.musteri_telefon ?? "").trim();
+      const mehsulAd = String(input.mehsul_ad ?? "").trim();
+      const problem = String(input.problem_tesviri ?? "").trim();
+      if (musteriAd.length < 2 || tel.length < 5 || mehsulAd.length < 2 || problem.length < 5) {
+        return { error: "musteri_ad, musteri_telefon (min 5), mehsul_ad, problem_tesviri (min 5) tələb olunur" };
+      }
+      const confirmSv = needConfirm(input, "Yeni servis sifarişi",
+        `Müştəri: ${musteriAd} (${tel}) | Cihaz: ${mehsulAd} | Problem: ${problem.slice(0, 80)}${input.zemanet_var ? " | ZƏMANƏTLİ" : ""}`);
+      if (confirmSv) return confirmSv;
+
+      const { createServisRequest } = await import("@/features/servis/actions");
+      const fd = new FormData();
+      fd.set("musteri_ad", musteriAd);
+      fd.set("musteri_telefon", tel);
+      if (input.musteri_id) fd.set("musteri_id", String(input.musteri_id));
+      fd.set("mehsul_ad", mehsulAd);
+      fd.set("problem_tesviri", problem);
+      fd.set("zemanet_var", input.zemanet_var ? "true" : "false");
+      if (input.prioritet && ["asagi", "orta", "yuksek", "tecili"].includes(String(input.prioritet))) {
+        fd.set("prioritet", String(input.prioritet));
+      }
+      const res = await createServisRequest(fd);
+      if (!res.ok) return { error: res.error };
+      await safeAuditLog({
+        sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
+        emeliyyat: "ai_servis_yarat", resurs_nov: "servis", resurs_id: (res as { id?: string }).id ?? null,
+        yeni_data: { musteri: musteriAd, mehsul: mehsulAd }, sebeb: "AI agent ilə servis qəbulu", status: "ugur",
+      }).catch(() => {});
+      return { ok: true, musteri: musteriAd, mehsul: mehsulAd };
+    }
+
+    case "qaytarma_yarat": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const satisId = String(input.satis_id ?? "");
+      const sebeb = String(input.sebeb ?? "").trim();
+      if (!satisId || sebeb.length < 2) return { error: "satis_id və sebeb tələb olunur" };
+      const sale = await prisma.satis_sifarisleri.findFirst({
+        where: { id: satisId, deleted_at: null },
+        select: { nomre: true, son_mebleg: true, status: true, kontragentler: { select: { ad: true } } },
+      });
+      if (!sale) return { error: "Satış tapılmadı — satis_axtar ilə düzgün id tap" };
+      if (sale.status === "qaytarilib") return { error: `Satış #${sale.nomre} artıq qaytarılıb` };
+      const confirmQ = needConfirm(input, "TAM QAYTARMA (stok geri, pul/borc düzəlir)",
+        `Satış #${sale.nomre} — ${Number(sale.son_mebleg ?? 0)} AZN${sale.kontragentler?.ad ? ` (${sale.kontragentler.ad})` : ""} | Səbəb: ${sebeb}`);
+      if (confirmQ) return confirmQ;
+
+      const { returnFullSale } = await import("@/features/ticaret/qaytarma-tez-actions");
+      const res = await returnFullSale({ satis_id: satisId, sebeb });
+      if (!res.ok) return { error: res.error };
+      await safeAuditLog({
+        sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
+        emeliyyat: "ai_qaytarma", resurs_nov: "qaytarma", resurs_id: res.id,
+        yeni_data: { satis_nomre: sale.nomre, qaytarma_nomre: res.nomre, sebeb },
+        sebeb: "AI agent ilə qaytarma", status: "ugur",
+      }).catch(() => {});
+      return { ok: true, qaytarma_nomre: res.nomre, satis_nomre: sale.nomre };
+    }
+
+    case "transfer_yarat": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const kaynak = Number(input.kaynak_anbar_id);
+      const hedef = Number(input.hedef_anbar_id);
+      const rawLines = Array.isArray(input.lines) ? (input.lines as Record<string, unknown>[]) : [];
+      if (!Number.isInteger(kaynak) || !Number.isInteger(hedef) || kaynak === hedef || rawLines.length === 0) {
+        return { error: "Fərqli kaynak/hedef anbar id-ləri və ən az 1 sətir tələb olunur" };
+      }
+      const descs: string[] = [];
+      const satirlar: { mehsul_id: string; miqdar: number }[] = [];
+      for (const rl of rawLines) {
+        const mid = String(rl.mehsul_id ?? "");
+        const miqdar = Number(rl.miqdar);
+        if (!mid || !Number.isFinite(miqdar) || miqdar <= 0) return { error: "Hər sətirdə mehsul_id və müsbət miqdar lazımdır" };
+        const m = await prisma.mehsullar.findFirst({ where: { id: mid }, select: { ad: true } });
+        if (!m) return { error: `Məhsul tapılmadı: ${mid}` };
+        satirlar.push({ mehsul_id: mid, miqdar });
+        descs.push(`${m.ad} ×${miqdar}`);
+      }
+      const anbarAdlari = await prisma.anbarlar.findMany({
+        where: { id: { in: [kaynak, hedef] } },
+        select: { id: true, ad: true },
+      });
+      const kAd = anbarAdlari.find((a) => a.id === kaynak)?.ad ?? `#${kaynak}`;
+      const hAd = anbarAdlari.find((a) => a.id === hedef)?.ad ?? `#${hedef}`;
+      const confirmTr = needConfirm(input, "Anbar transferi (sənəd — qəbulda icra olunur)",
+        `${kAd} → ${hAd}: ${descs.join("; ")}`);
+      if (confirmTr) return confirmTr;
+
+      const { createTransfer } = await import("@/features/anbar/transfer/actions");
+      const res = await createTransfer({
+        kaynak_anbar_id: kaynak,
+        hedef_anbar_id: hedef,
+        satirlar,
+        qeyd: input.qeyd ? String(input.qeyd).slice(0, 500) : "AI agent ilə transfer",
+      });
+      if (!res.ok) return { error: res.error };
+      await safeAuditLog({
+        sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
+        emeliyyat: "ai_transfer_yarat", resurs_nov: "anbar_transferi", resurs_id: res.data?.id ?? null,
+        yeni_data: { kaynak: kAd, hedef: hAd, setir: satirlar.length },
+        sebeb: "AI agent ilə transfer", status: "ugur",
+      }).catch(() => {});
+      return {
+        ok: true,
+        kaynak: kAd,
+        hedef: hAd,
+        qeyd: "Sənəd yaradıldı — stok hərəkəti hədəf anbar Anbar→Transfer bölməsində QƏBUL edəndə baş verəcək",
+      };
     }
 
     default:

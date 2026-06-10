@@ -69,8 +69,8 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
     const isAgent = effectiveMode === "owner";
     const agentNote = isAgent
       ? `\n\nALƏTLƏRİN VAR — istənilən xırda detal soruşulsa uyğun aləti ÇAĞIR, təxmin etmə:
-OXU: mehsul_axtar, musteri_axtar, satis_hesabati, borclular, son_satislar, kassa_hesablar, xerc_hesabati, emekdaslar, tapsiriqlar, stok_az.
-YAZ: qiymet_deyis, mehsul_yarat, musteri_yarat, satis_yarat, xerc_yarat, tapsiriq_yarat, tapsiriq_tamamla, stok_duzelis, mehsul_sil, lead_yarat.
+OXU: mehsul_axtar, musteri_axtar, satis_hesabati, borclular, son_satislar, kassa_hesablar, xerc_hesabati, emekdaslar, tapsiriqlar, stok_az, anbarlar, satis_axtar.
+YAZ: qiymet_deyis, mehsul_yarat, musteri_yarat, satis_yarat, xerc_yarat, tapsiriq_yarat, tapsiriq_tamamla, stok_duzelis, mehsul_sil, lead_yarat, servis_yarat, qaytarma_yarat, transfer_yarat.
 
 TƏSDİQ PROTOKOLU (MƏCBURİ): yazma alətini ƏVVƏLCƏ tesdiq parametrsiz çağır — server icra etmədən xülasə qaytaracaq. Xülasəni istifadəçiyə göstər və "Təsdiq edirsiniz?" soruş. YALNIZ istifadəçinin NÖVBƏTİ mesajı açıq təsdiqdirsə (bəli, təsdiq, elə, davam) eyni aləti EYNİ parametrlərlə + tesdiq=true ilə çağır. İstifadəçi imtina etsə heç nə etmə. Əməliyyatdan sonra nəticəni (sənəd nömrəsi, link, köhnə→yeni) konkret bildir.`
       : "";
