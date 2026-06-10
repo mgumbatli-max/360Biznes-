@@ -12,6 +12,7 @@ import { getCampaigns, getCampaignStats } from "@/features/kampaniyalar/queries"
 import { TIP_META, STATUS_META, type KampaniyaTip, type KampaniyaStatus } from "@/features/kampaniyalar/types";
 import { TEMPLATES } from "@/features/kampaniyalar/templates";
 import { cn, formatMoney } from "@/lib/utils";
+import { liteGate } from "@/lib/lite/config";
 
 export const metadata: Metadata = { title: "Kampaniyalar — endirim, loyalty, kuponlar" };
 
@@ -29,6 +30,8 @@ export default async function KampaniyalarPage() {
     getCampaignStats(),
     getCampaigns(),
   ]);
+
+  const lite = await liteGate("kampaniyalar"); // Lite-da bloklar config-ə görə
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -63,12 +66,14 @@ export default async function KampaniyalarPage() {
       </header>
 
       {/* KPI */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard icon={Megaphone} label="Cəm kampaniya" value={String(stats.total)} subline={`${stats.aktiv} aktiv · ${stats.paused} dayanıb`} />
-        <KpiCard icon={Power} label="Aktiv" value={String(stats.aktiv)} subline="İşləyən kampaniyalar" tone="success" />
-        <KpiCard icon={TrendingUp} label="Bu ay endirim" value={formatMoney(stats.endirimCemi)} subline={`${stats.istifade30g} istifadə`} tone="info" />
-        <KpiCard icon={Gift} label="Bonus verildi" value={formatMoney(stats.bonusVerildi)} subline="Müştəri qazandı" tone="warning" />
-      </section>
+      {lite("ozet") && (
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <KpiCard icon={Megaphone} label="Cəm kampaniya" value={String(stats.total)} subline={`${stats.aktiv} aktiv · ${stats.paused} dayanıb`} />
+          <KpiCard icon={Power} label="Aktiv" value={String(stats.aktiv)} subline="İşləyən kampaniyalar" tone="success" />
+          <KpiCard icon={TrendingUp} label="Bu ay endirim" value={formatMoney(stats.endirimCemi)} subline={`${stats.istifade30g} istifadə`} tone="info" />
+          <KpiCard icon={Gift} label="Bonus verildi" value={formatMoney(stats.bonusVerildi)} subline="Müştəri qazandı" tone="warning" />
+        </section>
+      )}
 
       {/* Quick links */}
       <section className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

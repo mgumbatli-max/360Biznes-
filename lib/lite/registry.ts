@@ -69,6 +69,37 @@ export const LITE_MODULES: LiteModuleDef[] = [
       { kod: "ozet", ad: "Xülasə kartları (mədaxil, məxaric, net…)", liteDefault: true },
     ],
   },
+  {
+    kod: "servis",
+    ad: "Servis",
+    bloklar: [
+      { kod: "ozet", ad: "Xülasə / KPI kartları (gecikən, orta təmir, gəlir…)", liteDefault: true },
+      { kod: "qrafikler", ad: "Qrafiklər (qəbul/təhvil, heatmap)", liteDefault: false },
+      { kod: "detal_cedvel", ad: "Texnik liderlik cədvəli", liteDefault: false },
+    ],
+  },
+  {
+    kod: "elaqe",
+    ad: "Əlaqə (müştərilər)",
+    bloklar: [
+      { kod: "ozet", ad: "Xülasə kartları (aktiv, borclu, cəmi borc…)", liteDefault: true },
+      { kod: "filtrler", ad: "Qabaqcıl filtrlər (menecer, ölkə/şəhər…)", liteDefault: false },
+    ],
+  },
+  {
+    kod: "kampaniyalar",
+    ad: "Kampaniyalar",
+    bloklar: [
+      { kod: "ozet", ad: "Xülasə kartları (cəmi, aktiv, endirim, bonus…)", liteDefault: true },
+    ],
+  },
+  {
+    kod: "iscilier",
+    ad: "İşçilər",
+    bloklar: [
+      { kod: "ozet", ad: "Heyət xülasə (KPI) kartları", liteDefault: true },
+    ],
+  },
 ];
 
 /* ── Dizayn forması seçimləri ─────────────────────────────────────────── */

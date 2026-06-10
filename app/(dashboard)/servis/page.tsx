@@ -40,6 +40,7 @@ import { DailyServisChart, HourlyHeatmap } from "@/features/servis/components/ex
 import { TechnicianLeaderboard } from "@/features/servis/components/technician-leaderboard";
 import { getTechnicianLeaderboard } from "@/features/maliyye/queries";
 import { formatMoney } from "@/lib/utils";
+import { liteGate } from "@/lib/lite/config";
 
 export const metadata: Metadata = { title: "Servis" };
 
@@ -140,6 +141,8 @@ export default async function ServisPage({
   const heatmapP = getHourlyHeatmap();
   const leaderboardP = getTechnicianLeaderboard(30, 10);
 
+  const lite = await liteGate("servis"); // Lite-da bloklar config-ə görə
+
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -186,26 +189,30 @@ export default async function ServisPage({
         </div>
       </header>
 
-      <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
-        <WidgetsBlock widgetsP={widgetsP} />
-      </Suspense>
+      {lite("ozet") && (
+        <>
+          <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
+            <WidgetsBlock widgetsP={widgetsP} />
+          </Suspense>
 
-      <Suspense fallback={<Skeleton className="h-12 w-full rounded-xl" />}>
-        <StatusStripBlock statsP={statsP} status={status} />
-      </Suspense>
+          <Suspense fallback={<Skeleton className="h-12 w-full rounded-xl" />}>
+            <StatusStripBlock statsP={statsP} status={status} />
+          </Suspense>
 
-      <Suspense fallback={<KpiStripSkeleton />}>
-        <KpiCardsBlock
-          statsP={statsP}
-          gecikme={gecikme}
-          ay={ay}
-          fromKey={fromKey}
-        />
-      </Suspense>
+          <Suspense fallback={<KpiStripSkeleton />}>
+            <KpiCardsBlock
+              statsP={statsP}
+              gecikme={gecikme}
+              ay={ay}
+              fromKey={fromKey}
+            />
+          </Suspense>
 
-      <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
-        <SummaryCards statsP={statsP} />
-      </Suspense>
+          <Suspense fallback={<Skeleton className="h-24 w-full rounded-xl" />}>
+            <SummaryCards statsP={statsP} />
+          </Suspense>
+        </>
+      )}
 
       <div className="flex items-center justify-between">
         <Suspense fallback={<Skeleton className="h-4 w-24" />}>
@@ -226,13 +233,17 @@ export default async function ServisPage({
         />
       </Suspense>
 
-      <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
-        <ChartsBlock dailyP={dailyP} heatmapP={heatmapP} />
-      </Suspense>
+      {lite("qrafikler") && (
+        <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
+          <ChartsBlock dailyP={dailyP} heatmapP={heatmapP} />
+        </Suspense>
+      )}
 
-      <Suspense fallback={<Skeleton className="h-48 w-full rounded-xl" />}>
-        <LeaderboardBlock leaderboardP={leaderboardP} />
-      </Suspense>
+      {lite("detal_cedvel") && (
+        <Suspense fallback={<Skeleton className="h-48 w-full rounded-xl" />}>
+          <LeaderboardBlock leaderboardP={leaderboardP} />
+        </Suspense>
+      )}
 
       {/* Modal pəncərə — URL `?detail=<id>` parametri ilə açılır */}
       <Suspense fallback={null}>

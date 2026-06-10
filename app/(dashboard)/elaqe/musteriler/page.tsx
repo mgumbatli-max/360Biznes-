@@ -19,6 +19,7 @@ import {
   type SortKey,
 } from "@/features/elaqe/queries";
 import { formatMoney } from "@/lib/utils";
+import { liteGate } from "@/lib/lite/config";
 
 export const metadata: Metadata = { title: "Müştərilər" };
 
@@ -196,6 +197,8 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
   const managersP = getManagers();
   const segmentsP = getContactSegmentCounts("musteri");
 
+  const lite = await liteGate("elaqe");
+
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -223,13 +226,17 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
         <SegmentTabsBlock sp={sp} segmentsP={segmentsP} />
       </Suspense>
 
-      <Suspense fallback={<KpiSkeleton />}>
-        <StatsKpis dataP={dataP} segmentsP={segmentsP} />
-      </Suspense>
+      {lite("ozet") && (
+        <Suspense fallback={<KpiSkeleton />}>
+          <StatsKpis dataP={dataP} segmentsP={segmentsP} />
+        </Suspense>
+      )}
 
-      <Suspense fallback={<Skeleton className="h-14 w-full rounded-md" />}>
-        <SearchBlock managersP={managersP} segmentsP={segmentsP} />
-      </Suspense>
+      {lite("filtrler") && (
+        <Suspense fallback={<Skeleton className="h-14 w-full rounded-md" />}>
+          <SearchBlock managersP={managersP} segmentsP={segmentsP} />
+        </Suspense>
+      )}
 
       <Suspense fallback={<TableSkeleton />}>
         <ContactsTableBlock dataP={dataP} managersP={managersP} page={page} />

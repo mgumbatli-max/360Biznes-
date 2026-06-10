@@ -32,6 +32,7 @@ import {
   getVezifeOptions,
 } from "@/features/iscilier/queries";
 import { getHeadcountStats } from "@/features/iscilier/hr-queries";
+import { liteGate } from "@/lib/lite/config";
 
 export const metadata: Metadata = { title: "Əməkdaşlar" };
 
@@ -101,6 +102,7 @@ export default async function IscilierPage({
   const sp = await searchParams;
   const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
   const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(sp);
+  const lite = await liteGate("iscilier");
   return (
     <div className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -126,9 +128,11 @@ export default async function IscilierPage({
         </div>
       </header>
 
-      <Suspense fallback={<HeadcountSkeleton />}>
-        <HeadcountSection />
-      </Suspense>
+      {lite("ozet") && (
+        <Suspense fallback={<HeadcountSkeleton />}>
+          <HeadcountSection />
+        </Suspense>
+      )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6">
         <SubLink href="/iscilier/maas" icon={Wallet} title="Maaş" desc="Bordro" />
