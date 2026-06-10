@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { TopicsBrowser } from "@/features/komekci/components/topics-browser";
 import { ErpHelperChat } from "@/features/komekci/components/erp-helper-chat";
 import { ChatClient } from "@/features/ai/components/chat-client";
-import { getChatHistory, getMockStatus, getDailyInsights } from "@/features/ai/queries";
+import { getChatHistory, getMockStatus, getDailyInsights, canUseOwnerMode } from "@/features/ai/queries";
+import { auth } from "@/auth";
 import type { ChatTurn } from "@/features/ai/types";
 import { cn } from "@/lib/utils";
 
@@ -47,9 +48,15 @@ export default async function KomekciPage({ searchParams }: { searchParams: Prom
   const tab = sp.tab === "biznes" ? "biznes" : "oyretme";
   const prefilledQuery = sanitizeQueryInput(sp.q ?? "");
 
+  // QA: AI rejimi roldan asılıdır — sahibkar/admin/direktor OWNER rejimi alır
+  // (əvvəl hardcoded "employee" idi: sahibkara "əməkdaş rejimindəsən" deyirdi).
+  const session = await auth();
+  const rolAd = (session?.user as { rol_ad?: string } | undefined)?.rol_ad;
+  const aiMode: "owner" | "employee" = canUseOwnerMode(rolAd) ? "owner" : "employee";
+
   // Biznes tab üçün AI history + insights yüklə (yalnız aktiv tab-da)
   const [history, insights] = tab === "biznes"
-    ? await Promise.all([getChatHistory(50, "employee"), getDailyInsights()])
+    ? await Promise.all([getChatHistory(50, aiMode), getDailyInsights()])
     : [[], []];
   const isMockMode = tab === "biznes" ? getMockStatus() : false;
 
@@ -164,9 +171,13 @@ export default async function KomekciPage({ searchParams }: { searchParams: Prom
             <ChatClient
               initial={turns}
               isMockMode={isMockMode}
-              mode="employee"
+              mode={aiMode}
               emptyHeading="AI Köməkçi — Biznes datası ilə"
-              emptySubtext="Şəxsi performans, satış, tapşırıq, anbar və vəzifə inkişafı haqqında sual ver. Şirkətin ümumi gəlir/mənfəət/kassa məlumatları yalnız Sahibkar bölməsindədir."
+              emptySubtext={
+                aiMode === "owner"
+                  ? "Sahibkar rejimi: gəlir, mənfəət, kassa, borc, maaş — bütün biznes datası üzrə sual verin."
+                  : "Şəxsi performans, satış, tapşırıq, anbar və vəzifə inkişafı haqqında sual ver. Şirkətin ümumi gəlir/mənfəət/kassa məlumatları yalnız Sahibkar bölməsindədir."
+              }
               prefilledInput={prefilledQuery || undefined}
             />
           </section>

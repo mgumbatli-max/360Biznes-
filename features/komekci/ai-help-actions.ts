@@ -99,7 +99,12 @@ export async function askErpHelper(input: z.input<typeof AskSchema>): Promise<As
     const topTopics = rankTopicsByQuery(question, messages);
     const topicsCtx = buildTopicsCtx(topTopics);
 
-    const role = rolAd === "sahibkar" ? "biznes sahibi" : "əməkdaş";
+    // QA: rol adı klonlarda böyük hərfli/fərqli ola bilər — strict bərabərlik yox
+    const rolLower = (rolAd ?? "").toLowerCase();
+    const role =
+      rolLower.includes("sahibkar") || rolLower.includes("admin") || rolLower.includes("direktor")
+        ? "biznes sahibi"
+        : "əməkdaş";
     const system = `Sən 360biznes ERP sisteminə qoşulmuş AI köməkçisən. İstifadəçi (${role}) sistemin hansı bölməsində nə edəcəyini öyrənmək üçün sual verir.
 
 VƏZIFƏN: Konkret, addım-addım Azərbaycanca cavab ver. Hər cavab:
