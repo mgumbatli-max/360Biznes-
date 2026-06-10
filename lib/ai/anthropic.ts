@@ -108,6 +108,108 @@ export async function chatCompletion(
   throw new Error(errMsg);
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Tool-use (agent) rejimi — AI alətlər çağıraraq DB-dən oxuyur və
+ * (sahibkar rejimində) əməliyyat edir. Maks 6 iterasiyalı loop.
+ * ────────────────────────────────────────────────────────────────────────── */
+export type AgentToolDef = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+};
+
+export async function chatWithTools(
+  messages: ChatMessage[],
+  opts: {
+    system: string;
+    tools: AgentToolDef[];
+    executeTool: (name: string, input: Record<string, unknown>) => Promise<unknown>;
+    max_tokens?: number;
+  },
+): Promise<CompletionResult & { tool_calls: number }> {
+  if (!hasKey()) return { ...mockResponse(messages), tool_calls: 0 };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let msgs: any[] = messages.map((m) => ({ role: m.role, content: m.content }));
+  let toolCalls = 0;
+  let inTok = 0;
+  let outTok = 0;
+
+  for (let iter = 0; iter < 6; iter++) {
+    let response;
+    try {
+      response = await getClient().messages.create({
+        model: DEFAULT_MODEL,
+        max_tokens: opts.max_tokens ?? 1200,
+        system: opts.system,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tools: opts.tools as any,
+        messages: msgs,
+      });
+    } catch (e) {
+      const status = (e as { status?: number })?.status;
+      if (status === 429 || status === 503) {
+        await new Promise((r) => setTimeout(r, 800));
+        response = await getClient().messages.create({
+          model: DEFAULT_MODEL,
+          max_tokens: opts.max_tokens ?? 1200,
+          system: opts.system,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          tools: opts.tools as any,
+          messages: msgs,
+        });
+      } else {
+        throw e;
+      }
+    }
+    inTok += response.usage?.input_tokens ?? 0;
+    outTok += response.usage?.output_tokens ?? 0;
+
+    if (response.stop_reason === "tool_use") {
+      const toolUses = response.content.filter((c) => c.type === "tool_use");
+      msgs.push({ role: "assistant", content: response.content });
+      const results = [];
+      for (const tu of toolUses) {
+        toolCalls++;
+        let out: unknown;
+        try {
+          out = await opts.executeTool(tu.name, (tu.input ?? {}) as Record<string, unknown>);
+        } catch (e) {
+          out = { error: e instanceof Error ? e.message : "Alət xətası" };
+        }
+        results.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: JSON.stringify(out).slice(0, 6000),
+        });
+      }
+      msgs.push({ role: "user", content: results });
+      continue;
+    }
+
+    const text = response.content
+      .map((c) => (c.type === "text" ? c.text : ""))
+      .filter(Boolean)
+      .join("\n");
+    return {
+      text,
+      model: response.model,
+      is_mock: false,
+      input_tokens: inTok,
+      output_tokens: outTok,
+      tool_calls: toolCalls,
+    };
+  }
+  return {
+    text: "Sorğu çox mürəkkəb alət zənciri tələb etdi — sualı sadələşdirib yenidən cəhd edin.",
+    model: DEFAULT_MODEL,
+    is_mock: false,
+    input_tokens: inTok,
+    output_tokens: outTok,
+    tool_calls: toolCalls,
+  };
+}
+
 /* Local mock — produces a context-aware response based on keywords. */
 function mockResponse(messages: ChatMessage[]): CompletionResult {
   const last = messages[messages.length - 1]?.content?.toLowerCase() ?? "";

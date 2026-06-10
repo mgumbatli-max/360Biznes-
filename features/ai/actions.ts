@@ -7,7 +7,8 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit } from "@/lib/audit/log";
-import { chatCompletion, type ChatMessage } from "@/lib/ai/anthropic";
+import { chatCompletion, chatWithTools, type ChatMessage } from "@/lib/ai/anthropic";
+import { READ_TOOLS, WRITE_TOOLS, executeAgentTool } from "./agent-tools";
 import { getBusinessContext, canUseOwnerMode } from "./queries";
 import { checkAiRateLimit } from "./rate-limit";
 
@@ -64,13 +65,24 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
     const baseRole = effectiveMode === "owner"
       ? "biznes sahibinə kömək edən sahibkar-rejimində AI köməkçisən. Tam giriş icazən var: gəlir, mənfəət, maya, kassa, maaş, məxfi qeydlər."
       : "şirkət əməkdaşına kömək edən əməkdaş-rejimində AI köməkçisən. Sənin icazən məhdud: yalnız şəxsi performans, vəzifə, anbar və ümumi məhsul/müştəri datasına. Sahibkar-yalnız mövzuları rədd et.";
+    // Agent rejimi (owner): AI alətlərlə DB-dən özü oxuyur və əməliyyat edir.
+    const isAgent = effectiveMode === "owner";
+    const agentNote = isAgent
+      ? `\n\nALƏTLƏRİN VAR: məhsul/müştəri axtarışı, satış hesabatı, borclular, son satışlar — istənilən xırda detal soruşulsa aləti ÇAĞIR, təxmin etmə. Yazma alətləri: qiymet_deyis, mehsul_yarat, satis_yarat — istifadəçi AÇIQ şəkildə istəyəndə işlət (əvvəl mehsul_axtar/musteri_axtar ilə dəqiq id tap). Əməliyyatdan sonra nəticəni (sənəd nömrəsi, link, köhnə→yeni qiymət) konkret bildir.`
+      : "";
     const system = businessCtx
-      ? `Sən 360Biznes ERP sistemində ${baseRole}\n\nCavabını Azərbaycan dilində ver. Aşağıdakı real data-dan istifadə edib konkret rəqəmlərlə cavab ver. Heç vaxt "məlumatım yoxdur" demə.\n\n${businessCtx}\n\nQısa ol (3-4 abzas). Markdown bullet işlət. JSON/HTML/kod blok QAYTARMA.`
-      : `Sən 360Biznes ERP sistemində ${baseRole} Cavabını Azərbaycan dilində ver. Qısa və faydalı ol.`;
+      ? `Sən 360Biznes ERP sistemində ${baseRole}\n\nCavabını Azərbaycan dilində ver. Aşağıdakı real data-dan istifadə edib konkret rəqəmlərlə cavab ver. Heç vaxt "məlumatım yoxdur" demə.${agentNote}\n\n${businessCtx}\n\nQısa ol (3-4 abzas). Markdown bullet işlət. JSON/HTML/kod blok QAYTARMA.`
+      : `Sən 360Biznes ERP sistemində ${baseRole}${agentNote} Cavabını Azərbaycan dilində ver. Qısa və faydalı ol.`;
 
     let result;
     try {
-      result = await chatCompletion(history, { system });
+      result = isAgent
+        ? await chatWithTools(history, {
+            system,
+            tools: [...READ_TOOLS, ...WRITE_TOOLS],
+            executeTool: (name, input) => executeAgentTool(name, input, { allowWrite: true }),
+          })
+        : await chatCompletion(history, { system });
     } catch (e) {
       console.error("[sendMessage] chatCompletion threw", e);
       return { ok: false, error: "AI servisi cavab vermir, bir az sonra cəhd edin" };
