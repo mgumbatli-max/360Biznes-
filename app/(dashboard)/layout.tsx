@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { auth } from "@/auth";
 import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { getAppMode } from "@/lib/app-mode";
 import { gateRoute } from "@/lib/auth/route-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -52,7 +53,7 @@ async function SidebarShell({ user }: { user: SessionUser }) {
 }
 
 async function TopbarShell({ user }: { user: SessionUser }) {
-  const [alertsData, myNotifs, myWork] = await Promise.all([
+  const [alertsData, myNotifs, myWork, appMode] = await Promise.all([
     getRecentAlerts(7).catch(() => ({ items: [], unreadCount: 0 })),
     getMyNotifications(7).catch(() => ({ items: [], unreadCount: 0 })),
     getMyWorkSummary().catch(() => ({
@@ -62,6 +63,7 @@ async function TopbarShell({ user }: { user: SessionUser }) {
       canSeeApprovals: false,
       totals: { tasks: 0, reminders: 0, approvals: 0 },
     })),
+    getAppMode().catch(() => "pro" as const),
   ]);
   const alertItems = alertsData.items.map((a) => ({
     id: a.id,
@@ -95,6 +97,7 @@ async function TopbarShell({ user }: { user: SessionUser }) {
       alerts={merged}
       unreadCount={totalUnread}
       myWork={myWork}
+      appMode={appMode}
     />
   );
 }

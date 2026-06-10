@@ -55,9 +55,9 @@ await page.locator('button[aria-pressed]:has-text("Pro"), button:has-text("Pro")
 await page.waitForTimeout(800);
 const pro = await snapshot("PRO");
 
-// localStorage persist yoxla
-const stored = await page.evaluate(() => localStorage.getItem("pos.mode.v1"));
-console.log("\nlocalStorage pos.mode.v1 =", stored, "(pro gözlənilir)");
+// Qlobal cookie persist yoxla (POS artıq qlobal app-mode cookie-sini işlədir)
+const stored = await page.evaluate(() => (document.cookie.match(/app-mode=(lite|pro)/) || [])[1] ?? "(yox)");
+console.log("\napp-mode cookie =", stored, "(pro gözlənilir)");
 
 console.log("\n===== QİYMƏTLƏNDİRMƏ =====");
 const ok =

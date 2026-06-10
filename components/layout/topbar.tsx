@@ -47,6 +47,8 @@ import { CommandPaletteTrigger } from "./command-palette";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationBell, type NotificationItem } from "./notification-bell";
 import { MyWork, type MyWorkData } from "./my-work";
+import { AppModeToggle } from "./app-mode-toggle";
+import type { AppMode } from "@/stores/app-mode";
 import type { SessionUser } from "@/lib/auth/types";
 
 type Props = {
@@ -54,6 +56,7 @@ type Props = {
   alerts?: NotificationItem[];
   unreadCount?: number;
   myWork?: MyWorkData;
+  appMode?: AppMode;
 };
 
 const EMPTY_MY_WORK: MyWorkData = {
@@ -64,7 +67,7 @@ const EMPTY_MY_WORK: MyWorkData = {
   totals: { tasks: 0, reminders: 0, approvals: 0 },
 };
 
-function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK }: Props) {
+function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK, appMode }: Props) {
   const setMobileOpen = useSidebar((s) => s.setMobileOpen);
   const hidden = useHideOnScrollDown();
 
@@ -94,6 +97,8 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
         </div>
 
         <div className="ml-auto flex items-center gap-1.5">
+          {/* Qlobal Lite/Pro keçidi — hər səhifədə görünür */}
+          <AppModeToggle serverMode={appMode} />
           {/* Axtarış həmişə görünür — mobildə kompakt ikon, md+-də enli qutu (komponentin öz daxili variantı) */}
           <CommandPaletteTrigger />
           {/* Tema mobildə gizli — user dropdown-da var */}

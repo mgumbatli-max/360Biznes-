@@ -9,7 +9,21 @@ import { auth } from "@/auth";
 export default auth((req) => {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-pathname", req.nextUrl.pathname);
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+
+  // Qlobal Lite/Pro rejimi — cookie yoxdursa cihaza görə ilkin təyin et:
+  // mobil (telefon/tablet) → lite (sadə, sürətli), masaüstü → pro (tam).
+  // Bundan sonra həm server (getAppMode), həm client eyni cookie-ni oxuyur.
+  if (!req.cookies.get("app-mode")) {
+    const ua = req.headers.get("user-agent") ?? "";
+    const mode = /Mobile|Android|iPhone|iPad|iPod|Mobi/i.test(ua) ? "lite" : "pro";
+    res.cookies.set("app-mode", mode, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+  }
+  return res;
 });
 
 export const config = {

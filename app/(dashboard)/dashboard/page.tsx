@@ -11,6 +11,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { getAppMode } from "@/lib/app-mode";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DemoBanner } from "@/features/dashboard/components/demo-banner";
@@ -94,9 +95,17 @@ async function DashboardEmptyState() {
 export default async function DashboardPage() {
   // Yalnız session-u sinxron çək — heç bir DB sorğusu burada yox.
   // Bütün widgetlər öz Suspense-ində paralel + müstəqil stream olur.
-  const [session, icazeler] = await Promise.all([auth(), getRequestPermissions()]);
+  const [session, icazeler, appMode] = await Promise.all([
+    auth(),
+    getRequestPermissions(),
+    getAppMode(),
+  ]);
   if (!session?.user) return null;
   const u = session.user;
+
+  // Lite rejimi — yalnız ən vacib bölmələr (KPI, xəbərdarlıq, stok, borclular).
+  // Pro — bütün bölmələr (qrafiklər, aktivlik, biznes lent, sync, insight).
+  const lite = appMode === "lite";
 
   // Sahibkar/admin = tam giriş (ad ilə — id klon səbəbindən etibarsız, audit #14).
   // Bu, icazə cədvəlinin prod-da seed olunmamasından asılı olmadan owner-i keçirir
@@ -113,17 +122,19 @@ export default async function DashboardPage() {
   }
 
   // Bölmə icazələri — hər biri ayrı-ayrı yoxlanılır (privileged hamısını görür)
+  // Əsas bölmələr — hər iki rejimdə (Lite + Pro)
   const canKpi       = isPrivileged || has(icazeler, "dashboard.kpi");
   const canCashflow  = isPrivileged || has(icazeler, "dashboard.cashflow");
   const canTapshiriq = isPrivileged || has(icazeler, "dashboard.tapshiriq");
-  const canAktivlik  = isPrivileged || has(icazeler, "dashboard.aktivlik");
   const canStok      = isPrivileged || has(icazeler, "dashboard.stok");
   const canTop5      = isPrivileged || has(icazeler, "dashboard.top5");
   const canAlerts    = isPrivileged || has(icazeler, "dashboard.alerts");
-  const canSync      = isPrivileged || has(icazeler, "dashboard.sync");
-  const canFeed      = isPrivileged || has(icazeler, "dashboard.feed");
-  const canCharts    = isPrivileged || has(icazeler, "dashboard.charts");
-  const canInsight   = isPrivileged || has(icazeler, "dashboard.insight");
+  // İrəli bölmələr — yalnız Pro (Lite-da gizli, sadə və sürətli qalsın)
+  const canAktivlik  = !lite && (isPrivileged || has(icazeler, "dashboard.aktivlik"));
+  const canSync      = !lite && (isPrivileged || has(icazeler, "dashboard.sync"));
+  const canFeed      = !lite && (isPrivileged || has(icazeler, "dashboard.feed"));
+  const canCharts    = !lite && (isPrivileged || has(icazeler, "dashboard.charts"));
+  const canInsight   = !lite && (isPrivileged || has(icazeler, "dashboard.insight"));
 
   // HeroSection tək komponentin içində bir neçə bölmə var (insight banner,
   // KPI grid, cashflow, mənim işim, qrafiklər). İcazələrə görə hissəli render.

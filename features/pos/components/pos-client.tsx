@@ -41,7 +41,7 @@ import {
   Percent,
 } from "lucide-react";
 import { usePosSalesperson } from "@/stores/pos-salesperson";
-import { usePosMode } from "@/stores/pos-mode";
+import { useAppMode } from "@/stores/app-mode";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -419,8 +419,12 @@ export function PosClient({
     }
   }, [storeSalespersonId, salespersonId]);
 
-  /* ------------------------- Lite / Pro rejimi --------------------------- */
-  const posMode = usePosMode((s) => s.mode);
+  /* ------------------------- Lite / Pro rejimi (qlobal) ------------------ */
+  const posMode = useAppMode((s) => s.mode);
+  const hydrateMode = useAppMode((s) => s.hydrate);
+  useEffect(() => {
+    hydrateMode();
+  }, [hydrateMode]);
   const pro = posMode === "pro";
   // Keyhandler (latest-ref) closure churn olmadan oxusun.
   const proRef = useRef(pro);

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ScanLine, User as UserIcon, X, Zap } from "lucide-react";
 import { usePosSalesperson } from "@/stores/pos-salesperson";
-import { usePosMode } from "@/stores/pos-mode";
+import { useAppMode } from "@/stores/app-mode";
 
 type Props = {
   user: {
@@ -27,10 +27,10 @@ export function PosHeader({ user, sessionInfo }: Props) {
   const canSwitch = usePosSalesperson((s) => s.canSwitch);
   const setSalespersonId = usePosSalesperson((s) => s.setSalespersonId);
 
-  // Lite/Pro rejimi — mount-da localStorage/cihaz default-undan oxunur.
-  const posMode = usePosMode((s) => s.mode);
-  const setPosMode = usePosMode((s) => s.setMode);
-  const hydratePosMode = usePosMode((s) => s.hydrate);
+  // Qlobal Lite/Pro rejimi — mount-da cookie-dən oxunur (sayt ilə eyni).
+  const posMode = useAppMode((s) => s.mode);
+  const setPosMode = useAppMode((s) => s.setMode);
+  const hydratePosMode = useAppMode((s) => s.hydrate);
   useEffect(() => {
     hydratePosMode();
   }, [hydratePosMode]);
