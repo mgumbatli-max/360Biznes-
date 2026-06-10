@@ -235,17 +235,24 @@ export async function getMarjaBuckets(range: DateRange): Promise<MarjaBucket[]> 
            AND ss.status != 'legv'
          GROUP BY sls.mehsul_id
       )
-      SELECT CASE
-               WHEN margin_pct < 0 THEN 'Zərərlə'
-               WHEN margin_pct < 10 THEN '0-10%'
-               WHEN margin_pct < 20 THEN '10-20%'
-               WHEN margin_pct < 30 THEN '20-30%'
-               WHEN margin_pct < 50 THEN '30-50%'
-               ELSE '50%+'
-             END AS bucket,
+      , bucketed AS (
+        SELECT CASE
+                 WHEN margin_pct < 0 THEN 'Zərərlə'
+                 WHEN margin_pct < 10 THEN '0-10%'
+                 WHEN margin_pct < 20 THEN '10-20%'
+                 WHEN margin_pct < 30 THEN '20-30%'
+                 WHEN margin_pct < 50 THEN '30-50%'
+                 ELSE '50%+'
+               END AS bucket,
+               revenue
+          FROM per_product
+      )
+      -- QA-CANLI-2: ORDER BY ifadəsi içində SELECT alias-ı (bucket) Postgres-də
+      -- qadağandır (42703) — bucket əvvəlcə CTE sütununa çevrilir.
+      SELECT bucket,
              COUNT(*)::int AS count,
              COALESCE(SUM(revenue), 0)::float AS revenue
-        FROM per_product
+        FROM bucketed
        GROUP BY bucket
        ORDER BY CASE bucket
          WHEN 'Zərərlə' THEN 1
