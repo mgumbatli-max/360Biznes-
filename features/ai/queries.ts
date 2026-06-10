@@ -197,8 +197,90 @@ async function _computeBusinessContext(
         topProducts.forEach((p, i) => lines.push(`  ${i + 1}. ${p.ad} — ${fmt(Number(p.cemi))} ${valyuta}`));
         lines.push(``);
       }
+
+      // ── QA: DETAL bölmələri — sahibkar AI-ı yalnız ümumi rəqəm yox, KONKRET
+      // adlar/məbləğlər/tarixlər bilməlidir (borclu adları, doğum günləri,
+      // kritik stok adları, açıq tapşırıqlar). 60s cache bahalığı qoruyur.
+      const [debtorRows, supplierDebtRows, custBdays, isciBdays, lowStockRows, openTaskRows] = await Promise.all([
+        prisma.kontragentler.findMany({
+          where: { nov: { in: ["musteri", "her_ikisi"] }, alacaq: { gt: 0 } },
+          orderBy: { alacaq: "desc" },
+          take: 10,
+          select: { ad: true, alacaq: true, telefon: true },
+        }).catch(() => []),
+        prisma.kontragentler.findMany({
+          where: { nov: { in: ["techizatci", "her_ikisi"] }, borc: { gt: 0 } },
+          orderBy: { borc: "desc" },
+          take: 5,
+          select: { ad: true, borc: true },
+        }).catch(() => []),
+        prisma.$queryRaw<{ ad: string; dogum_tarixi: Date }[]>`
+          SELECT ad, dogum_tarixi FROM kontragentler
+           WHERE sahibkar_id = ${sahibkarId}::uuid AND dogum_tarixi IS NOT NULL
+             AND ((EXTRACT(DOY FROM dogum_tarixi)::int - EXTRACT(DOY FROM CURRENT_DATE)::int + 366) % 366) BETWEEN 0 AND 30
+           ORDER BY ((EXTRACT(DOY FROM dogum_tarixi)::int - EXTRACT(DOY FROM CURRENT_DATE)::int + 366) % 366)
+           LIMIT 10
+        `.catch(() => []),
+        prisma.$queryRaw<{ ad_soyad: string; dogum_tarixi: Date }[]>`
+          SELECT ad_soyad, dogum_tarixi FROM istifadeciler
+           WHERE sahibkar_id = ${sahibkarId}::uuid AND aktiv = true AND dogum_tarixi IS NOT NULL
+             AND ((EXTRACT(DOY FROM dogum_tarixi)::int - EXTRACT(DOY FROM CURRENT_DATE)::int + 366) % 366) BETWEEN 0 AND 30
+           ORDER BY ((EXTRACT(DOY FROM dogum_tarixi)::int - EXTRACT(DOY FROM CURRENT_DATE)::int + 366) % 366)
+           LIMIT 10
+        `.catch(() => []),
+        prisma.$queryRaw<{ ad: string; qaliq: number }[]>`
+          SELECT m.ad, COALESCE(SUM(s.miqdar), 0)::float AS qaliq
+            FROM mehsullar m
+            LEFT JOIN stok s ON s.mehsul_id = m.id
+           WHERE m.sahibkar_id = ${sahibkarId}::uuid AND m.aktiv = true AND m.kritik_stok IS NOT NULL
+           GROUP BY m.id, m.ad, m.kritik_stok
+          HAVING COALESCE(SUM(s.miqdar), 0) <= m.kritik_stok
+           ORDER BY COALESCE(SUM(s.miqdar), 0) ASC
+           LIMIT 8
+        `.catch(() => []),
+        prisma.sahibkar_tapshiriq.findMany({
+          where: { sahibkar_id: sahibkarId, status: { in: ["acig", "isleyir"] } },
+          orderBy: { yaradildi: "desc" },
+          take: 8,
+          select: { basliq: true, status: true },
+        }).catch(() => []),
+      ]);
+
+      const fmtDay = (d: Date) => {
+        const dd = new Date(d);
+        return `${String(dd.getDate()).padStart(2, "0")}.${String(dd.getMonth() + 1).padStart(2, "0")}`;
+      };
+      if (debtorRows.length > 0) {
+        lines.push(`Borclu müştərilər (ad — borc):`);
+        debtorRows.forEach((d, i) =>
+          lines.push(`  ${i + 1}. ${d.ad} — ${fmt(Number(d.alacaq))} ${valyuta}${d.telefon ? ` (tel: ${d.telefon})` : ""}`),
+        );
+        lines.push(``);
+      }
+      if (supplierDebtRows.length > 0) {
+        lines.push(`Borclu olduğumuz təchizatçılar:`);
+        supplierDebtRows.forEach((d, i) => lines.push(`  ${i + 1}. ${d.ad} — ${fmt(Number(d.borc))} ${valyuta}`));
+        lines.push(``);
+      }
+      if (custBdays.length > 0 || isciBdays.length > 0) {
+        lines.push(`Yaxın 30 gündə doğum günləri:`);
+        custBdays.forEach((b) => lines.push(`  Müştəri: ${b.ad} — ${fmtDay(b.dogum_tarixi)}`));
+        isciBdays.forEach((b) => lines.push(`  Əməkdaş: ${b.ad_soyad} — ${fmtDay(b.dogum_tarixi)}`));
+        lines.push(``);
+      }
+      if (lowStockRows.length > 0) {
+        lines.push(`Kritik stokda olan məhsullar (ad — qalıq):`);
+        lowStockRows.forEach((p) => lines.push(`  • ${p.ad} — ${fmt(Number(p.qaliq))} əd`));
+        lines.push(``);
+      }
+      if (openTaskRows.length > 0) {
+        lines.push(`Açıq tapşırıqlar:`);
+        openTaskRows.forEach((t) => lines.push(`  • [${t.status}] ${t.basliq}`));
+        lines.push(``);
+      }
+
       lines.push(
-        `İCAZƏ: Tam sahibkar görüşü — bütün gəlir/xərc/maya/borc/məxfi qeyd və əməkdaş datalarını müzakirə edə bilərsən.`,
+        `İCAZƏ: Tam sahibkar görüşü — bütün gəlir/xərc/maya/borc/məxfi qeyd və əməkdaş datalarını müzakirə edə bilərsən. Yuxarıdakı konkret adları/məbləğləri/tarixləri birbaşa cavablarında istifadə et.`,
       );
     } else {
       // ─── ƏMƏKDAŞ (və ya əməkdaş rejimindəki sahibkar) — şəxsi performans + ümumi modul
