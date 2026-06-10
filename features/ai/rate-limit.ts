@@ -19,8 +19,8 @@ export type RateLimitResult =
   | { ok: true; saatlik: number; gunluk: number }
   | { ok: false; error: string; saatlik: number; gunluk: number };
 
-const DEFAULT_SAATLIK = 30;
-const DEFAULT_GUNLUK = 200;
+const DEFAULT_SAATLIK = 120;
+const DEFAULT_GUNLUK = 1000;
 const MIN_LIMIT = 5;
 const MAX_LIMIT = 5000;
 

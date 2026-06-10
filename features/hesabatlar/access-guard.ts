@@ -89,8 +89,8 @@ export function bustHesabatCache() {
 /**
  * AI insights üçün quota (per tenant).
  */
-const DEFAULT_AI_SAATLIK = 10;
-const DEFAULT_AI_GUNLUK = 50;
+const DEFAULT_AI_SAATLIK = 60;
+const DEFAULT_AI_GUNLUK = 400;
 
 export async function checkAiReportQuota(): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
