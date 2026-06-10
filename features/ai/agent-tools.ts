@@ -97,6 +97,21 @@ export const WRITE_TOOLS: AgentToolDef[] = [
     },
   },
   {
+    name: "musteri_yarat",
+    description:
+      "Yeni müştəri (kontragent) yaradır. İstifadəçi açıq istəyəndə işlət. Doğum tarixi GG.AA.İİİİ və ya İİİİ-AA-GG formatında qəbul olunur.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ad: { type: "string", description: "Müştərinin adı (şəxs/şirkət)" },
+        telefon: { type: "string", description: "Telefon (opsional)" },
+        dogum_tarixi: { type: "string", description: "Doğum tarixi, məs. 10.12.1989 (opsional)" },
+        qeyd: { type: "string", description: "Qeyd (opsional)" },
+      },
+      required: ["ad"],
+    },
+  },
+  {
     name: "satis_yarat",
     description:
       "Yeni satış yaradır — stok azalır, kassa/borc yazılır (real sənəd!). ƏVVƏL mehsul_axtar ilə məhsul(lar)ı tap. Müştərili borc satışı üçün musteri_axtar ilə müştərini də tap. İstifadəçi miqdar deməyibsə 1 götür. qaralama=true yalnız istifadəçi 'qaralama/draft' deyəndə.",
@@ -175,15 +190,20 @@ export async function executeAgentTool(
           OR: [{ ad: { contains: q, mode: "insensitive" } }, { telefon: { contains: q } }],
         },
         take: 10,
-        select: { id: true, ad: true, telefon: true, alacaq: true, dogum_tarixi: true },
+        select: { id: true, ad: true, telefon: true, alacaq: true, borc: true, nov: true, dogum_tarixi: true },
       });
-      return rows.map((r) => ({
-        musteri_id: r.id,
-        ad: r.ad,
-        telefon: r.telefon,
-        borc: Number(r.alacaq ?? 0),
-        dogum_tarixi: r.dogum_tarixi ? r.dogum_tarixi.toISOString().slice(0, 10) : null,
-      }));
+      return rows.map((r) => {
+        // SoT alacaq; legacy saf müştərilərdə borc sahəsində qala bilər
+        const alacaq = Number(r.alacaq ?? 0);
+        const legacyBorc = r.nov === "musteri" ? Number(r.borc ?? 0) : 0;
+        return {
+          musteri_id: r.id,
+          ad: r.ad,
+          telefon: r.telefon,
+          borc: alacaq > 0 ? alacaq : legacyBorc,
+          dogum_tarixi: r.dogum_tarixi ? r.dogum_tarixi.toISOString().slice(0, 10) : null,
+        };
+      });
     }
 
     case "satis_hesabati": {
@@ -226,13 +246,18 @@ export async function executeAgentTool(
     }
 
     case "borclular": {
-      const rows = await prisma.kontragentler.findMany({
-        where: { nov: { in: ["musteri", "her_ikisi"] }, alacaq: { gt: 0 } },
-        orderBy: { alacaq: "desc" },
-        take: 15,
-        select: { ad: true, alacaq: true, telefon: true },
-      });
-      return rows.map((r) => ({ ad: r.ad, borc: Number(r.alacaq), telefon: r.telefon }));
+      // SoT alacaq + legacy fallback (saf müştərilərdə köhnə borc sahəsi)
+      const rows = await prisma.$queryRaw<{ ad: string; borc: number; telefon: string | null }[]>`
+        SELECT ad, telefon,
+               (CASE WHEN COALESCE(alacaq,0) > 0 THEN alacaq
+                     WHEN nov = 'musteri' THEN borc ELSE 0 END)::float AS borc
+          FROM kontragentler
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND nov IN ('musteri','her_ikisi')
+           AND (COALESCE(alacaq,0) > 0 OR (nov = 'musteri' AND COALESCE(borc,0) > 0))
+         ORDER BY 3 DESC LIMIT 15
+      `;
+      return rows.map((r) => ({ ad: r.ad, borc: Number(r.borc), telefon: r.telefon }));
     }
 
     case "son_satislar": {
@@ -334,6 +359,61 @@ export async function executeAgentTool(
         status: "ugur",
       }).catch(() => {});
       return { ok: true, mehsul_id: created.id, ad: created.ad, satis_qiymeti: Number(created.satis_qiymeti ?? 0) };
+    }
+
+    case "musteri_yarat": {
+      if (!opts.allowWrite) return { error: "Bu əməliyyat yalnız sahibkar rejimində mümkündür" };
+      const ad = String(input.ad ?? "").trim();
+      if (ad.length < 2) return { error: "ad (min 2 simvol) tələb olunur" };
+      const telefon = input.telefon ? String(input.telefon).trim() : null;
+      // Doğum tarixi: GG.AA.İİİİ və ya İİİİ-AA-GG
+      let dogum: Date | null = null;
+      if (input.dogum_tarixi) {
+        const s = String(input.dogum_tarixi).trim();
+        const m1 = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+        const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m1) dogum = new Date(Date.UTC(+m1[3], +m1[2] - 1, +m1[1]));
+        else if (m2) dogum = new Date(Date.UTC(+m2[1], +m2[2] - 1, +m2[3]));
+        if (dogum && isNaN(dogum.getTime())) dogum = null;
+      }
+      // Dublikat: eyni ad (case-insensitive) və ya eyni telefon
+      const dup = await prisma.kontragentler.findFirst({
+        where: {
+          OR: [
+            { ad: { equals: ad, mode: "insensitive" } },
+            ...(telefon ? [{ telefon }] : []),
+          ],
+        },
+        select: { id: true, ad: true, telefon: true },
+      });
+      if (dup) {
+        return {
+          error: `Oxşar müştəri artıq var: ${dup.ad}${dup.telefon ? ` (${dup.telefon})` : ""} — yenisini yaratmadım. Mövcudunu istifadə et: musteri_id=${dup.id}`,
+        };
+      }
+      const created = await prisma.kontragentler.create({
+        data: {
+          sahibkar_id: sahibkarId,
+          ad,
+          nov: "musteri",
+          telefon,
+          dogum_tarixi: dogum,
+          qeyd: input.qeyd ? String(input.qeyd).slice(0, 500) : "AI agent ilə yaradılıb",
+          aktiv: true,
+        },
+        select: { id: true, ad: true, telefon: true },
+      });
+      await safeAuditLog({
+        sahibkar_id: sahibkarId,
+        istifadeci_id: istifadeciId,
+        emeliyyat: "ai_musteri_yarat",
+        resurs_nov: "kontragent",
+        resurs_id: created.id,
+        yeni_data: { ad, telefon, dogum_tarixi: dogum?.toISOString().slice(0, 10) ?? null },
+        sebeb: "AI agent ilə müştəri yaradılması",
+        status: "ugur",
+      }).catch(() => {});
+      return { ok: true, musteri_id: created.id, ad: created.ad, telefon: created.telefon };
     }
 
     case "satis_yarat": {

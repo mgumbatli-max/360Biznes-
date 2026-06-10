@@ -155,8 +155,16 @@ async function _computeBusinessContext(
             AND COALESCE(st.miqdar, 0) <= m.kritik_stok
         `.catch(() => [{ c: 0 }]),
         prisma.$queryRaw<{ c: number; cemi: number }[]>`
-          SELECT COUNT(*)::int AS c, COALESCE(SUM(borc), 0)::float AS cemi
-          FROM kontragentler WHERE sahibkar_id = ${sahibkarId}::uuid AND borc > 0
+          -- Müştəri borcu: SoT alacaq; legacy datada saf müştərilərdə borc
+          -- sahəsində qala bilər (hər iki forma dəstəklənir). Təchizatçı
+          -- borcları BURAYA DÜŞMÜR (əvvəl düşürdü — yanlış "borclu müştəri").
+          SELECT COUNT(*)::int AS c,
+                 COALESCE(SUM(CASE WHEN COALESCE(alacaq,0) > 0 THEN alacaq
+                                   WHEN nov = 'musteri' THEN borc ELSE 0 END), 0)::float AS cemi
+          FROM kontragentler
+          WHERE sahibkar_id = ${sahibkarId}::uuid
+            AND nov IN ('musteri','her_ikisi')
+            AND (COALESCE(alacaq,0) > 0 OR (nov = 'musteri' AND COALESCE(borc,0) > 0))
         `.catch(() => [{ c: 0, cemi: 0 }]),
         prisma.sahibkar_partiya.aggregate({
           where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart } },
@@ -202,12 +210,16 @@ async function _computeBusinessContext(
       // adlar/məbləğlər/tarixlər bilməlidir (borclu adları, doğum günləri,
       // kritik stok adları, açıq tapşırıqlar). 60s cache bahalığı qoruyur.
       const [debtorRows, supplierDebtRows, custBdays, isciBdays, lowStockRows, openTaskRows] = await Promise.all([
-        prisma.kontragentler.findMany({
-          where: { nov: { in: ["musteri", "her_ikisi"] }, alacaq: { gt: 0 } },
-          orderBy: { alacaq: "desc" },
-          take: 10,
-          select: { ad: true, alacaq: true, telefon: true },
-        }).catch(() => []),
+        prisma.$queryRaw<{ ad: string; alacaq: number; telefon: string | null }[]>`
+          SELECT ad, telefon,
+                 (CASE WHEN COALESCE(alacaq,0) > 0 THEN alacaq
+                       WHEN nov = 'musteri' THEN borc ELSE 0 END)::float AS alacaq
+            FROM kontragentler
+           WHERE sahibkar_id = ${sahibkarId}::uuid
+             AND nov IN ('musteri','her_ikisi')
+             AND (COALESCE(alacaq,0) > 0 OR (nov = 'musteri' AND COALESCE(borc,0) > 0))
+           ORDER BY 3 DESC LIMIT 10
+        `.catch(() => []),
         prisma.kontragentler.findMany({
           where: { nov: { in: ["techizatci", "her_ikisi"] }, borc: { gt: 0 } },
           orderBy: { borc: "desc" },
