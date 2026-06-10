@@ -771,3 +771,68 @@ a {
     transition: none;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   LITE DİZAYN FORMASI — html[data-lite] atributları LiteThemeApplier-dən gəlir
+   (yalnız Lite rejimində aktiv). Ayar: /ayarlar/gorunis. Bax: lib/lite/config.ts
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Şrift ölçüsü — bütün rem-əsaslı mətn (Tailwind) miqyaslanır */
+html[data-font="kicik"]  { font-size: 15px; }
+html[data-font="normal"] { font-size: 16px; }
+html[data-font="boyuk"]  { font-size: 17.5px; }
+
+/* Sıxlıq — ümumi kart/cədvəl boşluqları */
+html[data-density="kompakt"] [data-slot="card"],
+html[data-density="kompakt"] .glass {
+  padding: 0.625rem !important;
+}
+html[data-density="kompakt"] td,
+html[data-density="kompakt"] th {
+  padding-top: 0.3rem !important;
+  padding-bottom: 0.3rem !important;
+}
+html[data-density="kompakt"] .space-y-8 > * + * { margin-top: 1rem !important; }
+html[data-density="kompakt"] .space-y-6 > * + * { margin-top: 0.75rem !important; }
+
+html[data-density="genis"] [data-slot="card"],
+html[data-density="genis"] .glass {
+  padding: 1.5rem;
+}
+html[data-density="genis"] td,
+html[data-density="genis"] th {
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+/* Aksent rəng — --primary/--ring/--accent qlobal dəyişir (hsl triplet) */
+html[data-accent="rose"]    { --primary: 347 77% 50%; --ring: 347 77% 50%; --accent: 347 77% 50%; }
+html[data-accent="blue"]    { --primary: 221 83% 53%; --ring: 221 83% 53%; --accent: 221 83% 53%; }
+html[data-accent="emerald"] { --primary: 160 84% 39%; --ring: 160 84% 39%; --accent: 160 84% 39%; }
+html[data-accent="violet"]  { --primary: 262 83% 58%; --ring: 262 83% 58%; --accent: 262 83% 58%; }
+html[data-accent="amber"]   { --primary: 32 95% 44%;  --ring: 32 95% 44%;  --accent: 32 95% 44%; }
+
+/* Mobil layout = "cədvəl": data-stack-on-mobile stacking-ini ləğv et (<640px) */
+@media (max-width: 640px) {
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile],
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] thead,
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] tbody,
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] tr,
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] th,
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] td {
+    display: revert;
+  }
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] { display: table; }
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] thead {
+    position: static; left: auto; top: auto;
+  }
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] tr {
+    border: 0; border-bottom: 1px solid hsl(var(--border));
+    border-radius: 0; padding: 0; margin: 0; background: transparent; box-shadow: none;
+  }
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] td {
+    padding: 0.4rem 0.5rem; padding-left: 0.5rem; min-height: 0;
+    display: table-cell; vertical-align: middle;
+  }
+  html[data-mlayout="cedvel"] table[data-stack-on-mobile] td::before { display: none; }
+}

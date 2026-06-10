@@ -264,6 +264,9 @@ function buildGroups(stats: SettingsGridStats): SettingGroup[] {
       icon: Settings,
       tone: "rose",
       tiles: [
+        { href: "/ayarlar/gorunis", icon: Eye, title: "Görünüş · Lite rejimi",
+          desc: "Lite-da nə görünsün + dizayn forması",
+          synonyms: "lite pro gorunis tema dizayn sixliq font accent rejim sade gorunus" },
         { href: "/ayarlar/ilkin-qaliqlar", icon: PlayCircle, title: "İlkin qalıqlar",
           desc: "Yeni sahibkar başlanğıcı",
           synonyms: "initial balance ilkin qaliq onboarding" },

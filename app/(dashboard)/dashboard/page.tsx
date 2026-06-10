@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { getAppMode } from "@/lib/app-mode";
+import { getLiteConfig, liteBlockOn } from "@/lib/lite/config";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DemoBanner } from "@/features/dashboard/components/demo-banner";
@@ -103,9 +104,12 @@ export default async function DashboardPage() {
   if (!session?.user) return null;
   const u = session.user;
 
-  // Lite rejimi — yalnız ən vacib bölmələr (KPI, xəbərdarlıq, stok, borclular).
-  // Pro — bütün bölmələr (qrafiklər, aktivlik, biznes lent, sync, insight).
+  // Lite rejimi — hansı bölmələrin göründüyü artıq sahibkarın konfiqurasiyasından
+  // gəlir (/ayarlar/gorunis → ayarlar cədvəli). Pro-da hamısı (config nəzərə alınmır).
   const lite = appMode === "lite";
+  const liteCfg = lite ? await getLiteConfig() : null;
+  const liteOn = (blok: string) =>
+    !lite || (liteCfg ? liteBlockOn(liteCfg, "dashboard", blok) : true);
 
   // Sahibkar/admin = tam giriş (ad ilə — id klon səbəbindən etibarsız, audit #14).
   // Bu, icazə cədvəlinin prod-da seed olunmamasından asılı olmadan owner-i keçirir
@@ -121,20 +125,20 @@ export default async function DashboardPage() {
     redirect("/tapshiriqlar");
   }
 
-  // Bölmə icazələri — hər biri ayrı-ayrı yoxlanılır (privileged hamısını görür)
-  // Əsas bölmələr — hər iki rejimdə (Lite + Pro)
-  const canKpi       = isPrivileged || has(icazeler, "dashboard.kpi");
-  const canCashflow  = isPrivileged || has(icazeler, "dashboard.cashflow");
-  const canTapshiriq = isPrivileged || has(icazeler, "dashboard.tapshiriq");
-  const canStok      = isPrivileged || has(icazeler, "dashboard.stok");
-  const canTop5      = isPrivileged || has(icazeler, "dashboard.top5");
-  const canAlerts    = isPrivileged || has(icazeler, "dashboard.alerts");
-  // İrəli bölmələr — yalnız Pro (Lite-da gizli, sadə və sürətli qalsın)
-  const canAktivlik  = !lite && (isPrivileged || has(icazeler, "dashboard.aktivlik"));
-  const canSync      = !lite && (isPrivileged || has(icazeler, "dashboard.sync"));
-  const canFeed      = !lite && (isPrivileged || has(icazeler, "dashboard.feed"));
-  const canCharts    = !lite && (isPrivileged || has(icazeler, "dashboard.charts"));
-  const canInsight   = !lite && (isPrivileged || has(icazeler, "dashboard.insight"));
+  // İcazə (perm) + Lite config birləşir. Pro-da yalnız icazə, Lite-da həm də
+  // sahibkarın seçdiyi bloklar. Registry blok kodları: lib/lite/registry.ts.
+  const canKpi       = (isPrivileged || has(icazeler, "dashboard.kpi"))       && liteOn("kpi");
+  const canCashflow  = (isPrivileged || has(icazeler, "dashboard.cashflow"))  && liteOn("kpi");
+  const canTapshiriq = (isPrivileged || has(icazeler, "dashboard.tapshiriq")) && liteOn("kpi");
+  const canStok      = (isPrivileged || has(icazeler, "dashboard.stok"))      && liteOn("lowStock");
+  const canTop5      = (isPrivileged || has(icazeler, "dashboard.top5"))      && liteOn("top5");
+  const canAlerts    = (isPrivileged || has(icazeler, "dashboard.alerts"))    && liteOn("alerts");
+  const canDebtors   = (isPrivileged || has(icazeler, "dashboard.cashflow"))  && liteOn("debtors");
+  const canAktivlik  = (isPrivileged || has(icazeler, "dashboard.aktivlik"))  && liteOn("activity");
+  const canSync      = (isPrivileged || has(icazeler, "dashboard.sync"))      && liteOn("sync");
+  const canFeed      = (isPrivileged || has(icazeler, "dashboard.feed"))      && liteOn("feed");
+  const canCharts    = (isPrivileged || has(icazeler, "dashboard.charts"))    && liteOn("charts");
+  const canInsight   = (isPrivileged || has(icazeler, "dashboard.insight"))   && liteOn("insight");
 
   // HeroSection tək komponentin içində bir neçə bölmə var (insight banner,
   // KPI grid, cashflow, mənim işim, qrafiklər). İcazələrə görə hissəli render.
@@ -182,7 +186,7 @@ export default async function DashboardPage() {
           </Suspense>
         )}
 
-        {canCashflow && <TopDebtorsSection />}
+        {canDebtors && <TopDebtorsSection />}
 
         {canAktivlik && (
           <Suspense fallback={<ChartSkeleton h={300} />}>

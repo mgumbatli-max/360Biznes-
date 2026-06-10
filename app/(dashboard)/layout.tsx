@@ -6,6 +6,8 @@ import { auth } from "@/auth";
 import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { getAppMode } from "@/lib/app-mode";
+import { getLiteConfig } from "@/lib/lite/config";
+import { LiteThemeApplier } from "@/components/layout/lite-theme";
 import { gateRoute } from "@/lib/auth/route-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -114,6 +116,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const [session, icazeler] = await Promise.all([auth(), getRequestPermissions()]);
   if (!session?.user) redirect("/login");
 
+  // Lite dizayn forması — yalnız Lite rejimində <html>-ə tətbiq olunur.
+  const appMode = await getAppMode();
+  const liteDesign = appMode === "lite" ? (await getLiteConfig()).design : null;
+
   // Mərkəzi route gate — kassir /maliyye URL-ə yaza bilməsin və s.
   // Sahibkar/admin/owner rolları onsuz da bypass-ed olunur (gateRoute içində).
   try {
@@ -148,6 +154,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <EmbedDetector />
         <NavigationTracker />
         <RouteProgress />
+        <LiteThemeApplier design={liteDesign} active={appMode === "lite"} />
         <div className="flex min-h-screen bg-background" data-app-shell>
           <div data-sidebar-container>
             <Suspense fallback={<SidebarFallback />}>
