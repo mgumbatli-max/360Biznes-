@@ -41,6 +41,7 @@ import {
   Percent,
 } from "lucide-react";
 import { usePosSalesperson } from "@/stores/pos-salesperson";
+import { usePosMode } from "@/stores/pos-mode";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -417,6 +418,37 @@ export function PosClient({
       setSalespersonId(storeSalespersonId);
     }
   }, [storeSalespersonId, salespersonId]);
+
+  /* ------------------------- Lite / Pro rejimi --------------------------- */
+  const posMode = usePosMode((s) => s.mode);
+  const pro = posMode === "pro";
+  // Keyhandler (latest-ref) closure churn olmadan oxusun.
+  const proRef = useRef(pro);
+  proRef.current = pro;
+
+  // Pro→Lite keçəndə Pro-yalnız vəziyyəti təmizlə — Lite satışda gizli
+  // endirim/kupon/bonus/qarışıq ödəniş qalıb yekuna təsir etməsin.
+  useEffect(() => {
+    if (pro) return;
+    setCouponApplied(null);
+    setBonusSerfMebleg(0);
+    setEndirimMebleg(0);
+    setEndirimFaiz(0);
+    setEndirimMode("mebleg");
+    setSplitNegd("");
+    setSplitKart("");
+    setSplitBank("");
+    setPaymentMethod((m) =>
+      m === "negd" || m === "kart" || m === "nisye" ? m : "negd",
+    );
+  }, [pro]);
+
+  // Lite-da görünən ödəniş növləri: Nağd / Kart / Borc. Pro-da mövcud 4-lük.
+  const visiblePayments = pro
+    ? PAYMENT_OPTIONS.slice(0, 4)
+    : PAYMENT_OPTIONS.filter(
+        (o) => o.value === "negd" || o.value === "kart" || o.value === "nisye",
+      );
 
   /* ------------------------------- Totals -------------------------------- */
   // Gross of all lines (before any line- or global-discount).
@@ -1103,13 +1135,15 @@ export function PosClient({
         endirimInputRef.current?.focus();
       } else if (e.key === "F7") {
         e.preventDefault();
-        // Cycle payment
-        const idx = PAYMENT_OPTIONS.findIndex(
-          (o) => o.value === paymentMethod,
-        );
-        setPaymentMethod(
-          PAYMENT_OPTIONS[(idx + 1) % PAYMENT_OPTIONS.length].value,
-        );
+        // Cycle payment — Lite-da yalnız Nağd/Kart/Borc arasında dövr et.
+        const cycle = proRef.current
+          ? PAYMENT_OPTIONS
+          : PAYMENT_OPTIONS.filter(
+              (o) =>
+                o.value === "negd" || o.value === "kart" || o.value === "nisye",
+            );
+        const idx = cycle.findIndex((o) => o.value === paymentMethod);
+        setPaymentMethod(cycle[(idx + 1) % cycle.length].value);
       } else if (e.key === "F8") {
         e.preventDefault();
         setAutoZemanet((v) => !v);
@@ -1370,7 +1404,10 @@ export function PosClient({
                     <li
                       key={l.uid}
                       className={cn(
-                        "grid grid-cols-[20px_minmax(120px,1fr)_auto_auto_auto_auto_72px_auto] sm:grid-cols-[24px_minmax(0,1fr)_auto_auto_auto_auto_88px_auto] items-center gap-2 sm:gap-3 border-b border-slate-100 px-2 py-2 sm:px-3 transition hover:bg-slate-50/60",
+                        "grid items-center gap-2 sm:gap-3 border-b border-slate-100 px-2 py-2 sm:px-3 transition hover:bg-slate-50/60",
+                        pro
+                          ? "grid-cols-[20px_minmax(120px,1fr)_auto_auto_auto_auto_72px_auto] sm:grid-cols-[24px_minmax(0,1fr)_auto_auto_auto_auto_88px_auto]"
+                          : "grid-cols-[20px_minmax(120px,1fr)_auto_auto_auto_72px_auto] sm:grid-cols-[24px_minmax(0,1fr)_auto_auto_auto_88px_auto]",
                         belowMin && "bg-rose-50/40",
                       )}
                     >
@@ -1452,51 +1489,55 @@ export function PosClient({
                           !can.changePrice && "cursor-not-allowed opacity-60",
                         )}
                       />
-                      {/* Line-level discount (faiz / AZN) */}
-                      <EndirimCell
-                        faiz={l.endirim_faiz}
-                        mebleg={l.endirim_mebleg}
-                        mode={l.endirim_mode}
-                        onChange={(next) =>
-                          setCart((prev) =>
-                            prev.map((row, i) =>
-                              i === idx
-                                ? {
-                                    ...row,
-                                    endirim_mode: next.mode,
-                                    endirim_faiz:
-                                      next.mode === "faiz" ? next.value : 0,
-                                    endirim_mebleg:
-                                      next.mode === "mebleg" ? next.value : 0,
-                                  }
-                                : row,
-                            ),
-                          )
-                        }
-                      />
-                      {/* Eye / quick view + tier popover */}
-                      <div className="flex items-center gap-0.5">
-                        <PriceTiersPopover
-                          mehsulId={l.mehsul_id}
-                          title="Qiymət tipləri"
-                          allowedTiers={allowedTiers}
-                          onPickPrice={(price) => {
+                      {/* Line-level discount (faiz / AZN) — yalnız Pro */}
+                      {pro && (
+                        <EndirimCell
+                          faiz={l.endirim_faiz}
+                          mebleg={l.endirim_mebleg}
+                          mode={l.endirim_mode}
+                          onChange={(next) =>
                             setCart((prev) =>
                               prev.map((row, i) =>
                                 i === idx
                                   ? {
                                       ...row,
-                                      qiymet: price,
-                                      tier: "custom" as TierName,
+                                      endirim_mode: next.mode,
+                                      endirim_faiz:
+                                        next.mode === "faiz" ? next.value : 0,
+                                      endirim_mebleg:
+                                        next.mode === "mebleg" ? next.value : 0,
                                     }
                                   : row,
                               ),
-                            );
-                            toast.success(
-                              `Sətrə tətbiq olundu: ${formatMoney(price)}`,
-                            );
-                          }}
+                            )
+                          }
                         />
+                      )}
+                      {/* Eye / quick view + tier popover (tier yalnız Pro) */}
+                      <div className="flex items-center gap-0.5">
+                        {pro && (
+                          <PriceTiersPopover
+                            mehsulId={l.mehsul_id}
+                            title="Qiymət tipləri"
+                            allowedTiers={allowedTiers}
+                            onPickPrice={(price) => {
+                              setCart((prev) =>
+                                prev.map((row, i) =>
+                                  i === idx
+                                    ? {
+                                        ...row,
+                                        qiymet: price,
+                                        tier: "custom" as TierName,
+                                      }
+                                    : row,
+                                ),
+                              );
+                              toast.success(
+                                `Sətrə tətbiq olundu: ${formatMoney(price)}`,
+                              );
+                            }}
+                          />
+                        )}
                         <button
                           type="button"
                           onClick={() => setQuickViewId(l.mehsul_id)}
@@ -1634,15 +1675,17 @@ export function PosClient({
                     ⚠️ Bu müştərinin {formatMoney(customer.borc)} ödənilməmiş borcu var
                   </div>
                 )}
-                {/* Loyalty widget — tier, balans, bonus ilə öde */}
-                <PosLoyaltyWidget
-                  kontragentId={customer.id}
-                  sebetCemi={sonMebleg}
-                  onBonusChange={(kart, serfMebleg) => {
-                    setLoyaltyCard(kart);
-                    setBonusSerfMebleg(serfMebleg);
-                  }}
-                />
+                {/* Loyalty widget — tier, balans, bonus ilə öde (yalnız Pro) */}
+                {pro && (
+                  <PosLoyaltyWidget
+                    kontragentId={customer.id}
+                    sebetCemi={sonMebleg}
+                    onBonusChange={(kart, serfMebleg) => {
+                      setLoyaltyCard(kart);
+                      setBonusSerfMebleg(serfMebleg);
+                    }}
+                  />
+                )}
               </div>
             ) : (
               <div className="relative">
@@ -1701,18 +1744,20 @@ export function PosClient({
             )}
           </div>
 
-          {/* Kupon / promokod — müştəri olmasa da işləyir */}
-          <div className="space-y-1">
-            <Label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-              Endirim kodu (opsional)
-            </Label>
-            <PosCouponInput
-              sebetCemi={Math.max(0, umumi - endirimEffectiveMebleg)}
-              kontragentId={customer?.id ?? null}
-              onApply={setCouponApplied}
-              onClear={() => setCouponApplied(null)}
-            />
-          </div>
+          {/* Kupon / promokod — müştəri olmasa da işləyir (yalnız Pro) */}
+          {pro && (
+            <div className="space-y-1">
+              <Label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                Endirim kodu (opsional)
+              </Label>
+              <PosCouponInput
+                sebetCemi={Math.max(0, umumi - endirimEffectiveMebleg)}
+                kontragentId={customer?.id ?? null}
+                onApply={setCouponApplied}
+                onClear={() => setCouponApplied(null)}
+              />
+            </div>
+          )}
 
           {/* Stats rows */}
           <div className="space-y-1.5 text-sm">
@@ -1734,49 +1779,51 @@ export function PosClient({
                 </span>
               </div>
             )}
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-slate-500">Ümumi endirim</span>
-              <input
-                ref={endirimInputRef}
-                type="number"
-                min={0}
-                step={endirimMode === "faiz" ? 0.1 : 0.01}
-                max={endirimMode === "faiz" ? 100 : undefined}
-                value={endirimMode === "mebleg" ? endirimMebleg : endirimFaiz}
-                onChange={(e) => {
-                  const v = Math.max(0, Number(e.target.value) || 0);
-                  if (endirimMode === "mebleg") setEndirimMebleg(v);
-                  else setEndirimFaiz(Math.min(100, v));
-                }}
-                className="h-7 w-20 rounded-md border border-slate-200 bg-white px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-rose-300"
-              />
-              <div className="flex h-7 items-center rounded-md border border-slate-200 bg-white p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setEndirimMode("mebleg")}
-                  className={cn(
-                    "rounded px-1.5 text-[10px] font-semibold transition",
-                    endirimMode === "mebleg"
-                      ? "bg-slate-800 text-white"
-                      : "text-slate-500 hover:bg-slate-100",
-                  )}
-                >
-                  ₼
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEndirimMode("faiz")}
-                  className={cn(
-                    "rounded px-1.5 text-[10px] font-semibold transition",
-                    endirimMode === "faiz"
-                      ? "bg-amber-500 text-white"
-                      : "text-amber-600 hover:bg-amber-50",
-                  )}
-                >
-                  %
-                </button>
+            {pro && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500">Ümumi endirim</span>
+                <input
+                  ref={endirimInputRef}
+                  type="number"
+                  min={0}
+                  step={endirimMode === "faiz" ? 0.1 : 0.01}
+                  max={endirimMode === "faiz" ? 100 : undefined}
+                  value={endirimMode === "mebleg" ? endirimMebleg : endirimFaiz}
+                  onChange={(e) => {
+                    const v = Math.max(0, Number(e.target.value) || 0);
+                    if (endirimMode === "mebleg") setEndirimMebleg(v);
+                    else setEndirimFaiz(Math.min(100, v));
+                  }}
+                  className="h-7 w-20 rounded-md border border-slate-200 bg-white px-2 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-rose-300"
+                />
+                <div className="flex h-7 items-center rounded-md border border-slate-200 bg-white p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setEndirimMode("mebleg")}
+                    className={cn(
+                      "rounded px-1.5 text-[10px] font-semibold transition",
+                      endirimMode === "mebleg"
+                        ? "bg-slate-800 text-white"
+                        : "text-slate-500 hover:bg-slate-100",
+                    )}
+                  >
+                    ₼
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEndirimMode("faiz")}
+                    className={cn(
+                      "rounded px-1.5 text-[10px] font-semibold transition",
+                      endirimMode === "faiz"
+                        ? "bg-amber-500 text-white"
+                        : "text-amber-600 hover:bg-amber-50",
+                    )}
+                  >
+                    %
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Yekun */}
@@ -1811,8 +1858,8 @@ export function PosClient({
             <Label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
               Ödəniş növü
             </Label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {PAYMENT_OPTIONS.slice(0, 4).map((p) => {
+            <div className={cn("grid gap-1.5", pro ? "grid-cols-4" : "grid-cols-3")}>
+              {visiblePayments.map((p) => {
                 const active = paymentMethod === p.value;
                 return (
                   <button
@@ -1832,7 +1879,7 @@ export function PosClient({
               })}
             </div>
             {/* Mixed/Credit/Taksit inline forms */}
-            {paymentMethod === "qarisiq" && (
+            {pro && paymentMethod === "qarisiq" && (
               <div className="mt-2 space-y-1.5 rounded-md border border-rose-200 bg-rose-50/40 p-2">
                 <div className="grid grid-cols-3 gap-1.5">
                   <NumField label="Nağd" value={splitNegd} onChange={setSplitNegd} />
@@ -1849,7 +1896,7 @@ export function PosClient({
                 </div>
               </div>
             )}
-            {paymentMethod === "kreditle" && (
+            {pro && paymentMethod === "kreditle" && (
               <div className="mt-2 space-y-1.5 rounded-md border border-rose-200 bg-rose-50/40 p-2">
                 <select
                   value={creditBank}
@@ -1871,7 +1918,7 @@ export function PosClient({
                 </div>
               </div>
             )}
-            {paymentMethod === "taksit" && (
+            {pro && paymentMethod === "taksit" && (
               <div className="mt-2 flex items-center gap-2 rounded-md border border-rose-200 bg-rose-50/40 p-2 text-xs">
                 <Label className="text-slate-600">Hissə sayı</Label>
                 <select
@@ -1926,37 +1973,39 @@ export function PosClient({
             </div>
           </div>
 
-          {/* Auto checkboxes (compact) */}
-          <div className="flex flex-wrap items-center gap-3 text-[11px]">
-            <label className="flex cursor-pointer items-center gap-1 text-slate-700">
-              <input
-                type="checkbox"
-                checked={autoVergiCek}
-                onChange={(e) => setAutoVergiCek(e.target.checked)}
-                className="h-3.5 w-3.5 accent-rose-500"
-              />
-              Vergi çeki
-            </label>
-            <label className="flex cursor-pointer items-center gap-1 text-slate-700">
-              <input
-                type="checkbox"
-                checked={autoZemanet}
-                onChange={(e) => setAutoZemanet(e.target.checked)}
-                disabled={!can.printWarranty}
-                className="h-3.5 w-3.5 accent-rose-500"
-              />
-              Zəmanət
-            </label>
-            <label className="flex cursor-pointer items-center gap-1 text-slate-700">
-              <input
-                type="checkbox"
-                checked={autoDavam}
-                onChange={(e) => setAutoDavam(e.target.checked)}
-                className="h-3.5 w-3.5 accent-rose-500"
-              />
-              Davam
-            </label>
-          </div>
+          {/* Auto checkboxes (compact) — yalnız Pro; Lite-da defaultlar tətbiq olunur */}
+          {pro && (
+            <div className="flex flex-wrap items-center gap-3 text-[11px]">
+              <label className="flex cursor-pointer items-center gap-1 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={autoVergiCek}
+                  onChange={(e) => setAutoVergiCek(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-rose-500"
+                />
+                Vergi çeki
+              </label>
+              <label className="flex cursor-pointer items-center gap-1 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={autoZemanet}
+                  onChange={(e) => setAutoZemanet(e.target.checked)}
+                  disabled={!can.printWarranty}
+                  className="h-3.5 w-3.5 accent-rose-500"
+                />
+                Zəmanət
+              </label>
+              <label className="flex cursor-pointer items-center gap-1 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={autoDavam}
+                  onChange={(e) => setAutoDavam(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-rose-500"
+                />
+                Davam
+              </label>
+            </div>
+          )}
 
           {minPriceViolation && (
             <div className="flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700">

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ScanLine, User as UserIcon, X } from "lucide-react";
+import { ScanLine, User as UserIcon, X, Zap } from "lucide-react";
 import { usePosSalesperson } from "@/stores/pos-salesperson";
+import { usePosMode } from "@/stores/pos-mode";
 
 type Props = {
   user: {
@@ -25,6 +26,14 @@ export function PosHeader({ user, sessionInfo }: Props) {
   const salespersonId = usePosSalesperson((s) => s.salespersonId);
   const canSwitch = usePosSalesperson((s) => s.canSwitch);
   const setSalespersonId = usePosSalesperson((s) => s.setSalespersonId);
+
+  // Lite/Pro rejimi — mount-da localStorage/cihaz default-undan oxunur.
+  const posMode = usePosMode((s) => s.mode);
+  const setPosMode = usePosMode((s) => s.setMode);
+  const hydratePosMode = usePosMode((s) => s.hydrate);
+  useEffect(() => {
+    hydratePosMode();
+  }, [hydratePosMode]);
 
   useEffect(() => {
     function tick() {
@@ -87,6 +96,41 @@ export function PosHeader({ user, sessionInfo }: Props) {
             Sessiya açıq · Açılış {sessionInfo.acilisQaligi}₼
           </span>
         )}
+
+        {/* Lite / Pro rejim keçidi — Lite mobil-doğma sadə satış, Pro tam funksiya */}
+        <div
+          className="inline-flex h-8 items-center rounded-md bg-slate-800 p-0.5 text-[11px] font-semibold"
+          role="group"
+          aria-label="POS rejimi"
+        >
+          <button
+            type="button"
+            onClick={() => setPosMode("lite")}
+            className={`inline-flex h-7 items-center gap-1 rounded px-2.5 transition ${
+              posMode === "lite"
+                ? "bg-rose-500 text-white shadow-sm"
+                : "text-slate-300 hover:text-white"
+            }`}
+            title="Lite — sadə, sürətli satış (telefon üçün)"
+            aria-pressed={posMode === "lite"}
+          >
+            Lite
+          </button>
+          <button
+            type="button"
+            onClick={() => setPosMode("pro")}
+            className={`inline-flex h-7 items-center gap-1 rounded px-2.5 transition ${
+              posMode === "pro"
+                ? "bg-rose-500 text-white shadow-sm"
+                : "text-slate-300 hover:text-white"
+            }`}
+            title="Pro — bütün funksiyalar (endirim, kupon, kreditlə, taksit…)"
+            aria-pressed={posMode === "pro"}
+          >
+            <Zap className="h-3 w-3" />
+            Pro
+          </button>
+        </div>
 
         {/* Salesperson chip (sourced from PosClient via shared store) */}
         {saticilar.length > 0 && (

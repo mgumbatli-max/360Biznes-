@@ -8,10 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 /**
- * Mobil barkod kamera skaner — heç bir 3rd-party library tələb etmir.
+ * Mobil barkod kamera skaner.
  *
- * Browser `BarcodeDetector` API istifadə edir (Chrome Android, Safari iOS 17+).
- * Browser dəstəkləmirsə xəbərdarlıq göstərir və manual input fallback verir.
+ * Native `BarcodeDetector` (Chromium) varsa onu istifadə edir; yoxdursa
+ * (iOS Safari, Firefox) `barcode-detector` WASM ponyfill-ə keçir — beləcə
+ * BÜTÜN brauzerlərdə kamera ilə skan işləyir. Kamera icazəsi yoxdursa
+ * manual input fallback verir.
  *
  * Hadisə axını:
  *  1) Trigger düyməsinə klik → modal açılır, kameraya icazə tələb edir
@@ -30,11 +32,9 @@ type BarcodeDetectorResult = {
   format: string;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const BarcodeDetectorCtor: any = typeof window !== "undefined" && "BarcodeDetector" in window
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ? (window as any).BarcodeDetector
-  : null;
+type BarcodeDetectorLike = {
+  detect(source: ImageBitmapSource): Promise<BarcodeDetectorResult[]>;
+};
 
 const SUPPORTED_FORMATS = [
   "ean_13",
@@ -47,6 +47,29 @@ const SUPPORTED_FORMATS = [
   "itf",
   "codabar",
 ] as const;
+
+/**
+ * Barkod detektoru yüklə.
+ *  - Chromium (Chrome/Edge/Android): native `window.BarcodeDetector` — sürətli, WASM yox.
+ *  - iOS Safari / Firefox / digər: `barcode-detector` ponyfill (zxing-wasm) — eyni API.
+ *
+ * WASM faylı CDN-dən yox, öz domenimizdən (`/wasm/zxing_reader.wasm`) yüklənir —
+ * prod-da xarici asılılıq olmasın, lokal=prod davranış (bax: scripts/sync-wasm.mjs).
+ */
+async function loadDetector(): Promise<BarcodeDetectorLike> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Native: any = typeof window !== "undefined" ? (window as any).BarcodeDetector : undefined;
+  if (typeof Native === "function") {
+    return new Native({ formats: SUPPORTED_FORMATS });
+  }
+  const mod = await import("barcode-detector/ponyfill");
+  mod.setZXingModuleOverrides({
+    // Emscripten locateFile — wasm-ı lokal public/ qovluğundan götür
+    locateFile: (path: string, prefix: string) =>
+      path.endsWith(".wasm") ? "/wasm/zxing_reader.wasm" : (prefix ?? "") + path,
+  });
+  return new mod.BarcodeDetector({ formats: [...SUPPORTED_FORMATS] });
+}
 
 export function BarcodeScannerButton({
   onDetected,
@@ -109,7 +132,7 @@ function ScannerView({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<{ detect(s: ImageBitmapSource): Promise<BarcodeDetectorResult[]> } | null>(null);
+  const detectorRef = useRef<BarcodeDetectorLike | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [supported, setSupported] = useState<boolean | null>(null);
@@ -118,16 +141,45 @@ function ScannerView({
   const [manualInput, setManualInput] = useState("");
 
   useEffect(() => {
-    if (!BarcodeDetectorCtor) {
-      setSupported(false);
-      setError("Brauzeriniz barkod aşkarlama API-sini dəstəkləmir. Manual daxil edin.");
-      return;
-    }
-    setSupported(true);
-    detectorRef.current = new BarcodeDetectorCtor({ formats: SUPPORTED_FORMATS });
-
     let active = true;
-    async function start() {
+
+    async function init() {
+      // 1) Kamera API mövcudluğu (HTTPS yox / köhnə brauzer)
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        setSupported(false);
+        setError("Bu brauzerdə kamera əlçatan deyil. Barkodu manual daxil edin.");
+        return;
+      }
+
+      // 2) Detektoru yüklə — native, yoxdursa WASM ponyfill (iOS Safari daxil)
+      try {
+        const detector = await loadDetector();
+        if (!active) return;
+        // Warm-up: wasm-ı qabaqcadan yüklə, yüklənmə xətasını indi aşkarla
+        try {
+          const c = document.createElement("canvas");
+          c.width = 8;
+          c.height = 8;
+          await detector.detect(c);
+        } catch (e) {
+          if (!active) return;
+          console.error("[scanner] warmup detect failed", e);
+          setSupported(false);
+          setError("Barkod oxuyucu yüklənmədi (şəbəkə problemi ola bilər). Barkodu manual daxil edin.");
+          return;
+        }
+        if (!active) return;
+        detectorRef.current = detector;
+        setSupported(true);
+      } catch (e) {
+        if (!active) return;
+        console.error("[scanner] loadDetector failed", e);
+        setSupported(false);
+        setError("Barkod oxuyucu yüklənmədi. Barkodu manual daxil edin.");
+        return;
+      }
+
+      // 3) Kameranı başlat
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -148,12 +200,16 @@ function ScannerView({
         }
         setScanning(true);
       } catch (e) {
+        // Detektor işləyir, yalnız kamera açılmadı (icazə rədd / kamera yox) —
+        // `supported` true qalır ki, manual input + kamera mesajı düzgün görünsün.
         const msg = e instanceof Error ? e.message : String(e);
-        setError(`Kameraya giriş alına bilmir: ${msg}`);
-        setSupported(false);
+        if (!active) return;
+        setScanning(false);
+        setError(`Kameraya giriş alına bilmir: ${msg}. Barkodu manual daxil edin.`);
       }
     }
-    start();
+
+    init();
 
     return () => {
       active = false;
@@ -254,7 +310,7 @@ function ScannerView({
           <X className="h-4 w-4" />
         </button>
         {/* Flip camera */}
-        {supported !== false && (
+        {scanning && (
           <button
             type="button"
             onClick={flipCamera}
@@ -277,8 +333,8 @@ function ScannerView({
               <div className="font-semibold text-amber-700">{error}</div>
               {supported === false && (
                 <div className="mt-0.5 text-amber-600/90">
-                  Dəstəklənən brauzerlər: Chrome (Android), Safari iOS 17+.
-                  Desktop Safari və Firefox hələ dəstəkləmir — Chrome / Edge istifadə edin.
+                  Kamera skaneri üçün HTTPS və kamera icazəsi lazımdır. İcazəni
+                  brauzer ayarlarından verə, yaxud barkodu aşağıda manual daxil edə bilərsiniz.
                 </div>
               )}
             </div>

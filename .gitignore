@@ -48,3 +48,6 @@ next-env.d.ts
 
 # local screenshot scratch folder (note: trailing space in name)
 /screenerp /
+
+# barkod skaneri WASM — build/postinstall-da node_modules-dan kopyalanır
+/public/wasm/
