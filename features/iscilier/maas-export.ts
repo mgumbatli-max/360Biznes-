@@ -2,6 +2,7 @@
 
 import ExcelJS from "exceljs";
 import { getMaasTable } from "./maas-queries";
+import { requireHrActionPerm } from "./access-guard";
 
 const MONTH_LABELS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 
@@ -11,6 +12,11 @@ const MONTH_LABELS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyu
  */
 export async function exportMaasExcel(monthArg?: string): Promise<{ ok: true; filename: string; data: string } | { ok: false; error: string }> {
   try {
+    // QA-K1: server action client-dən birbaşa çağırıla bilir — səhifə guard-ı
+    // kifayət deyil, action özü maas.view/maas.idare tələb etməlidir.
+    const perm = await requireHrActionPerm(["maas.view", "maas.idare"]);
+    if (!perm.ok) return { ok: false, error: perm.error };
+
     const { month, rows, totals } = await getMaasTable(monthArg);
 
     const wb = new ExcelJS.Workbook();

@@ -31,6 +31,9 @@ export const ROUTE_RULES: RouteRule[] = [
   // — Hesabatlar
   { prefix: "/hesabatlar", anyOf: ["hesabat.view", "hesabat.gor"] },
   // — Əməkdaşlar / İşçilər
+  // QA-K1: kütləvi maaş bordrosu dar icazə tələb edir (ilk uyğun qayda qazandığı
+  // üçün /iscilier-dən ƏVVƏL durmalıdır).
+  { prefix: "/iscilier/maas", anyOf: ["maas.view", "maas.idare"] },
   { prefix: "/iscilier", anyOf: ["isci.view", "isci.idare", "hr.view"] },
   // — Anbar (məhsul redaktə daha dar icazə tələb edir, amma view geniş ola bilər)
   { prefix: "/anbar", anyOf: ["anbar.view", "anbar.gor", "anbar.idare"] },

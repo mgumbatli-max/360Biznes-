@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -704,11 +704,31 @@ const PermSchema = z.object({
 });
 
 export async function saveFilialUserPerm(input: FormData): Promise<ActionResult> {
+  // QA-K2: icazə guard-ı (əvvəl YOX idi — istənilən autentifikasiyalı istifadəçi çağıra bilirdi)
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = PermSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
   return withTenant(async () => {
     try {
+      // QA-K2: istifadeci_filial cədvəlində sahibkar_id yoxdur (tenant extension
+      // qoruya bilmir) — hədəf istifadəçi VƏ filial bu tenant-a aid olmalıdır,
+      // əks halda cross-tenant yazma mümkün olur.
+      const { sahibkarId } = requireTenant();
+      const [targetUser, targetFilial] = await Promise.all([
+        prismaUnscoped.istifadeciler.findFirst({
+          where: { id: d.istifadeci_id, sahibkar_id: sahibkarId },
+          select: { id: true },
+        }),
+        prismaUnscoped.filiallar.findFirst({
+          where: { id: d.filial_id, sahibkar_id: sahibkarId },
+          select: { id: true },
+        }),
+      ]);
+      if (!targetUser || !targetFilial) {
+        return { ok: false, error: "İstifadəçi və ya filial tapılmadı" };
+      }
       await prisma.istifadeci_filial.update({
         where: { istifadeci_id_filial_id: { istifadeci_id: d.istifadeci_id, filial_id: d.filial_id } },
         data: { [d.field]: d.value },

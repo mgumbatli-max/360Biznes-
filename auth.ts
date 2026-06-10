@@ -186,7 +186,33 @@ const config = {
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) Object.assign(token, user);
+      if (user) {
+        Object.assign(token, user);
+        (token as Record<string, unknown>).revalidatedAt = Date.now();
+        return token;
+      }
+      // QA-K4: JWT 7 gün yaşayır — rol dəyişikliyi / deaktivasiya dərhal
+      // qüvvəyə minsin deyə token 60 saniyədən bir DB ilə tutuşdurulur:
+      //  - istifadəçi silinib/deaktivdirsə → sessiya LƏĞV (null);
+      //  - rol dəyişibsə → token-dəki rol_id/rol_ad yenilənir.
+      const t = token as Record<string, unknown>;
+      const last = typeof t.revalidatedAt === "number" ? t.revalidatedAt : 0;
+      if (t.id && Date.now() - last > 60_000) {
+        try {
+          const { prismaUnscoped } = await import("@/lib/db/prisma");
+          const u = await prismaUnscoped.istifadeciler.findUnique({
+            where: { id: String(t.id) },
+            select: { aktiv: true, rol_id: true, roles: { select: { ad: true } } },
+          });
+          if (!u || u.aktiv === false) return null; // dərhal logout
+          t.rol_id = u.rol_id;
+          t.rol_ad = u.roles?.ad ?? t.rol_ad;
+          t.revalidatedAt = Date.now();
+        } catch {
+          // DB əlçatmazdırsa köhnə token qalsın — bütün istifadəçiləri
+          // çıxarmaq əvəzinə növbəti intervalda yenidən cəhd olunur.
+        }
+      }
       return token;
     },
     async session({ session, token }) {

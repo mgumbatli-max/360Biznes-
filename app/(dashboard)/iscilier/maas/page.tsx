@@ -3,12 +3,16 @@ import { BackButton } from "@/components/ui/back-button";
 import { MaasTable } from "@/features/iscilier/components/maas-table";
 import { MaasExportButton } from "@/features/iscilier/components/maas-export-button";
 import { getMaasTable } from "@/features/iscilier/maas-queries";
+import { requireHrPagePerm } from "@/features/iscilier/access-guard";
 
 export const metadata: Metadata = { title: "Maaş bordrosu" };
 
 const MONTH_LABELS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 
 export default async function MaasPage({ searchParams }: { searchParams?: Promise<{ month?: string }> }) {
+  // QA-K1: bütün işçilərin maaş/vergi/bonus cədvəli — yalnız maas.view ilə
+  // ([id]/bordro-print-dəki canViewSalary məntiqi ilə eyni standart).
+  await requireHrPagePerm("maas.view");
   const sp = (await searchParams) ?? {};
   const data = await getMaasTable(sp.month);
   const monthLabel = `${MONTH_LABELS[data.month.ay - 1]} ${data.month.il}`;

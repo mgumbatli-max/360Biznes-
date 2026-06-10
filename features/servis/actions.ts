@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils/date-parse";
@@ -952,7 +952,9 @@ export async function submitCustomerReview(input: FormData): Promise<ActionResul
   if (!rl.ok) return { ok: false, error: rl.error };
 
   try {
-    const s = await prisma.servis_qeydleri.findUnique({
+    // QA-K26: public endpoint — tenant kontekst YOXDUR; scoped prisma burada
+    // tenant-guard ilə çökür. prismaUnscoped + token sahibkar bağını təsdiqləyir.
+    const s = await prismaUnscoped.servis_qeydleri.findUnique({
       where: { id: d.servis_id },
       select: { daxili_qeyd: true, sahibkar_id: true, musteri_ad: true },
     });
@@ -967,8 +969,8 @@ export async function submitCustomerReview(input: FormData): Promise<ActionResul
     const reyTag = `[Müştəri Rəyi] ${"★".repeat(d.ulduz)}${"☆".repeat(5 - d.ulduz)} ulduz:${d.ulduz} ${d.yazi ?? ""}`.trim();
     const logLine = `[${ts}] ${reyTag}`;
     const merged = [s.daxili_qeyd, logLine].filter(Boolean).join("\n");
-    await prisma.servis_qeydleri.update({
-      where: { id: d.servis_id },
+    await prismaUnscoped.servis_qeydleri.updateMany({
+      where: { id: d.servis_id, sahibkar_id: s.sahibkar_id },
       data: { daxili_qeyd: merged, yenilendi: new Date() },
     });
     // 🔒 Audit — tenant-li (sahibkar_id manual təyin edilir, çünki public endpoint-də withTenant yoxdur)
@@ -1010,7 +1012,9 @@ export async function customerApproveQuote(input: FormData): Promise<ActionResul
   if (!rl.ok) return { ok: false, error: rl.error };
 
   try {
-    const s = await prisma.servis_qeydleri.findUnique({
+    // QA-K26: public endpoint — tenant kontekst YOXDUR; prismaUnscoped işlədilir
+    // (token aşağıda id↔sahibkar bağını təsdiqləyir).
+    const s = await prismaUnscoped.servis_qeydleri.findUnique({
       where: { id: d.servis_id },
       select: { id: true, status: true, daxili_qeyd: true, sahibkar_id: true, musteri_ad: true },
     });
@@ -1042,9 +1046,9 @@ export async function customerApproveQuote(input: FormData): Promise<ActionResul
       : `[${ts}] [Müştəri RƏDD] Təklif rədd edildi. ${d.reason ?? ""}`.trim();
     const merged = [s.daxili_qeyd, note].filter(Boolean).join("\n");
     const newStatus = d.approved ? "temir_olunur" : "redd_edildi";
-    await prisma.$transaction(async (tx) => {
-      await tx.servis_qeydleri.update({
-        where: { id: d.servis_id },
+    await prismaUnscoped.$transaction(async (tx) => {
+      await tx.servis_qeydleri.updateMany({
+        where: { id: d.servis_id, sahibkar_id: s.sahibkar_id },
         data: { daxili_qeyd: merged, status: newStatus, yenilendi: new Date() },
       });
       await tx.servis_status_tarixce.create({

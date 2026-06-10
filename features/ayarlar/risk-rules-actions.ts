@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { setRiskRules } from "./risk-rules";
 import { audit } from "@/lib/audit/log";
+import { requireAyarActionPerm } from "./access-guard";
 
 const ActionSchema = z.enum(["warn", "approve", "block"]);
 
@@ -20,6 +21,9 @@ const Schema = z.object({
 type Result = { ok: true } | { ok: false; error: string };
 
 export async function saveRiskRules(input: FormData): Promise<Result> {
+  // QA-K5: backend icazə guard-ı (əvvəl yalnız frontend gizlədirdi)
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const raw = Object.fromEntries(input.entries());
   const parsed = Schema.safeParse(raw);
   if (!parsed.success) {
