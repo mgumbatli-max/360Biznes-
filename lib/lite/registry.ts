@@ -100,6 +100,14 @@ export const LITE_MODULES: LiteModuleDef[] = [
       { kod: "ozet", ad: "Heyət xülasə (KPI) kartları", liteDefault: true },
     ],
   },
+  {
+    kod: "tapshiriqlar",
+    ad: "Tapşırıqlar",
+    bloklar: [
+      { kod: "ozet", ad: "KPI strip (tapşırıq xülasəsi)", liteDefault: true },
+      { kod: "filtrler", ad: "Qabaqcıl filtrlər", liteDefault: false },
+    ],
+  },
 ];
 
 /* ── Dizayn forması seçimləri ─────────────────────────────────────────── */

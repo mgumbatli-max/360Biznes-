@@ -9,6 +9,7 @@ import { KanbanBoard } from "@/features/tapshiriqlar/components/kanban-board";
 import { CalendarView } from "@/features/tapshiriqlar/components/calendar-view";
 import { ViewToggle } from "@/features/tapshiriqlar/components/view-toggle";
 import { TaskFilters } from "@/features/tapshiriqlar/components/filters";
+import { liteGate } from "@/lib/lite/config";
 import { TaskKpiStrip } from "@/features/tapshiriqlar/components/kpi-strip";
 import { PomodoroTimer } from "@/features/tapshiriqlar/components/pomodoro-timer";
 import { TaskSectionTabs } from "@/features/tapshiriqlar/components/section-tabs";
@@ -94,6 +95,7 @@ export default async function TapshiriqlarPage({
 
   // Overdue filter artıq server-side (queries.ts) tətbiq olunur — paginasiya doğru
   const visibleItems = tasks.items;
+  const lite = await liteGate("tapshiriqlar"); // Lite-da bloklar config-ə görə
 
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -113,7 +115,7 @@ export default async function TapshiriqlarPage({
 
       <TaskSectionTabs current="list" />
 
-      <TaskKpiStrip stats={stats} />
+      {lite("ozet") && <TaskKpiStrip stats={stats} />}
 
       {canCreate && <QuickAddBar users={canAssign ? users : []} currentUserId={myId} />}
 
@@ -121,7 +123,7 @@ export default async function TapshiriqlarPage({
         <TasksTabs />
       </div>
 
-      <TaskFilters users={users} />
+      {lite("filtrler") && <TaskFilters users={users} />}
 
       {view === "kanban" ? (
         <KanbanBoard items={visibleItems} users={users} />
