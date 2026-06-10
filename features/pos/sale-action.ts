@@ -57,6 +57,7 @@ const CreateSaleSchema = z.object({
         bonus_qazanildi: z.coerce.number(),
         free_shipping: z.coerce.boolean(),
         qeyd: z.string(),
+        coupon_id: z.string().optional(), // QA-K8
       }),
     )
     .optional(),
@@ -152,6 +153,9 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
               nomre: dup.nomre,
               sonMebleg: Number(dup.son_mebleg ?? 0),
               posCekNomresi: dup.qaime_nomresi ?? "",
+              // QA-K7: post-commit yan-təsirlər (kampaniya/kupon/bonus) dup-da
+              // TƏKRARLANMASIN deyə bayraq.
+              isDuplicate: true,
             };
           }
         }
@@ -388,7 +392,7 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
           await recalculateCustomerBalance(data.musteri_id, tx);
         }
 
-        return { id: sale.id, nomre, sonMebleg, posCekNomresi };
+        return { id: sale.id, nomre, sonMebleg, posCekNomresi, isDuplicate: false };
       }, { timeout: 20_000 });
 
       revalidatePath("/pos");
@@ -402,7 +406,9 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
 
       // Kampaniya/kupon istifadəsini qeydə al (audit #10: əvvəl commit olunmurdu —
       // campaign_usage yazılmırdı, kupon/kampaniya sayğacı artmırdı, dead code idi).
-      if (data.applied_campaigns && data.applied_campaigns.length > 0) {
+      // QA-K7: dup (idempotent təkrar) halında kampaniya/kupon/bonus yan-təsirləri
+      // TƏKRARLANMIR — yalnız satış həqiqətən bu çağırışda yarananda işlədilir.
+      if (!result.isDuplicate && data.applied_campaigns && data.applied_campaigns.length > 0) {
         try {
           const { commitCampaignApplications } = await import("@/features/kampaniyalar/matcher");
           await commitCampaignApplications(result.id, data.musteri_id ?? null, data.applied_campaigns);

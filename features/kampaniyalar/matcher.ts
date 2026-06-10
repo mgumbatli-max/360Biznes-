@@ -30,6 +30,8 @@ export type AppliedCampaign = {
   bonus_qazanildi: number;
   free_shipping: boolean;
   qeyd: string;
+  /** QA-K8: kupon vasitəsilə gəlibsə — commit zamanı coupons.current_uses artır. */
+  coupon_id?: string;
 };
 
 /**
@@ -209,6 +211,15 @@ export async function commitCampaignApplications(
     try {
       let bonusAdded = 0;
       for (const a of applied) {
+        // QA-K7: idempotentlik — eyni satış üçün eyni kampaniya artıq qeyd
+        // olunubsa (offline retry / double-submit) təkrar yazma, sayğac artırma,
+        // bonus toplama.
+        const existing = await prisma.campaign_usage.findFirst({
+          where: { satis_id: satisId, campaign_id: a.campaign_id },
+          select: { id: true },
+        });
+        if (existing) continue;
+
         await prisma.campaign_usage.create({
           data: {
             sahibkar_id: sahibkarId,
@@ -224,6 +235,14 @@ export async function commitCampaignApplications(
           where: { id: a.campaign_id },
           data: { current_uses: { increment: 1 }, yenilendi: new Date() },
         });
+        // QA-K8: kupon istifadə sayğacı — əvvəl HEÇ artırılmırdı (max_uses=1
+        // kupon sonsuz işləyirdi). Atomic guard: limiti keçmiş kuponu artırma.
+        if (a.coupon_id) {
+          await prisma.coupons.updateMany({
+            where: { id: a.coupon_id },
+            data: { current_uses: { increment: 1 } },
+          });
+        }
 
         // Loyalty bonus accrual
         if (a.bonus_qazanildi > 0 && kontragentId) {
@@ -323,6 +342,7 @@ export async function applyCoupon(kod: string, cart: CartContext): Promise<{ ok:
         bonus_qazanildi: 0,
         free_shipping: false,
         qeyd,
+        coupon_id: coupon.id, // QA-K8: commit-də coupons.current_uses artırılsın
       },
     };
   });

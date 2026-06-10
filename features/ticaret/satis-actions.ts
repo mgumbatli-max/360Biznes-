@@ -303,38 +303,39 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
         // ləğvi fantom stok mədaxili yaratmamalıdır. Etibarlı yoxlama:
         // orijinal mexaric anbar_hereketi mövcuddurmu (hər iki satış yolu —
         // POS və B2B — ref_nov='satis_sifarisi' yazır).
-        const hadStockOut = await tx.anbar_hereketleri.findFirst({
+        // QA-K17: bərpa orijinal mexaric hərəkətlərinə əsaslanır — çox-anbarlı
+        // satışda hər sətir ÖZ anbarına qayıdır (əvvəl hamısı sale.anbar_id-ə
+        // yazılırdı). Hərəkət yoxdursa (qaralama/tesdiq_gozleyir) bərpa da yoxdur.
+        const outMoves = await tx.anbar_hereketleri.findMany({
           where: {
             sahibkar_id: sahibkarId,
             ref_nov: "satis_sifarisi",
             ref_id: sale.id,
             nov: "mexaric",
           },
-          select: { id: true },
+          select: { mehsul_id: true, anbar_id: true, miqdar: true, qiymet: true },
         });
-        if (hadStockOut) {
-          for (const line of sale.satis_sifaris_satirlari) {
-            if (!line.mehsul_id || !sale.anbar_id) continue;
-            restoredMehsulIds.push(line.mehsul_id);
-            await tx.stok.updateMany({
-              where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: sale.anbar_id },
-              data: { miqdar: { increment: Number(line.miqdar) } },
-            });
-            await tx.anbar_hereketleri.create({
-              data: {
-                sahibkar_id: sahibkarId,
-                anbar_id: sale.anbar_id,
-                mehsul_id: line.mehsul_id,
-                nov: "medaxil",
-                miqdar: Number(line.miqdar),
-                qiymet: Number(line.vahid_qiymet),
-                ref_nov: "satis_legv",
-                ref_id: sale.id,
-                edilen_id: istifadeciId,
-                qeyd: `Satış ləğv: ${reason}`,
-              },
-            });
-          }
+        for (const mv of outMoves) {
+          if (!mv.mehsul_id || !mv.anbar_id) continue;
+          restoredMehsulIds.push(mv.mehsul_id);
+          await tx.stok.updateMany({
+            where: { sahibkar_id: sahibkarId, mehsul_id: mv.mehsul_id, anbar_id: mv.anbar_id },
+            data: { miqdar: { increment: Number(mv.miqdar) } },
+          });
+          await tx.anbar_hereketleri.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              anbar_id: mv.anbar_id,
+              mehsul_id: mv.mehsul_id,
+              nov: "medaxil",
+              miqdar: Number(mv.miqdar),
+              qiymet: Number(mv.qiymet ?? 0),
+              ref_nov: "satis_legv",
+              ref_id: sale.id,
+              edilen_id: istifadeciId,
+              qeyd: `Satış ləğv: ${reason}`,
+            },
+          });
         }
 
         // 2. Reverse cash if it was a paid sale

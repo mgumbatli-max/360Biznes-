@@ -135,16 +135,23 @@ async function propagateDocumentApproval(
         where: { id: resursId },
         select: { status: true },
       });
-      // Təsdiqdən sonra status "yeni"-yə düşür — qaimə istifadəçi üçün
-      // adi yeni satış kimi siyahıda görünür. Stok endirilməsi və ödəniş
-      // əməliyyatları üçün satıcı "Tamamla" düyməsindən istifadə edir
-      // (createOrUpdateSatisYeni satışı təsdiq-gözləyən kimi yaratdığı üçün
-      // post-qaralama finalize bloku işləməmişdi).
+      // QA-K16: təsdiqdən sonra satış REAL materiallaşır — stok mexarici,
+      // kassa/finance, müştəri borcu (əvvəl yalnız status "yeni" olurdu və
+      // heç bir təsir yaranmırdı: satış hesabatda görünür, stok azalmırdı).
+      // İdempotentdir — mexaric artıq varsa təkrar etmir.
       if (sale?.status === "tesdiq_gozleyir") {
-        await prisma.satis_sifarisleri.update({
-          where: { id: resursId },
-          data: { status: "yeni" },
-        });
+        const { materializeApprovedSale } = await import("@/features/ticaret/satis-materialize");
+        const mat = await materializeApprovedSale(resursId);
+        if (!mat.ok) {
+          // Materiallaşma alınmadısa (məs. stok çatışmır) satışı tesdiq_gozleyir
+          // saxlamaq əvəzinə statusu yeni-yə salıb xətanı log edirik — təsdiq
+          // axını bloklanmasın, amma izi qalsın.
+          console.error("[propagateDocumentApproval] materialize failed:", mat.error);
+          await prisma.satis_sifarisleri.update({
+            where: { id: resursId },
+            data: { status: "yeni", xeber_qeydi: `Materiallaşma xətası: ${mat.error}` },
+          });
+        }
       }
       return;
     }

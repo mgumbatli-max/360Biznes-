@@ -416,10 +416,30 @@ export async function returnFullSale(
           },
         });
 
+        // QA-K17: çox-anbarlı satışda hər məhsul ÖZ anbarına qayıtsın —
+        // orijinal mexaric hərəkətlərindən mehsul→anbar xəritəsi qurulur
+        // (əvvəl hamısı sale.anbar_id-ə yazılırdı).
+        const origMoves = await tx.anbar_hereketleri.findMany({
+          where: {
+            sahibkar_id: sahibkarId,
+            ref_nov: "satis_sifarisi",
+            ref_id: sale.id,
+            nov: "mexaric",
+          },
+          select: { mehsul_id: true, anbar_id: true },
+        });
+        const anbarByMehsul = new Map<string, number>();
+        for (const mv of origMoves) {
+          if (mv.mehsul_id && mv.anbar_id && !anbarByMehsul.has(mv.mehsul_id)) {
+            anbarByMehsul.set(mv.mehsul_id, mv.anbar_id);
+          }
+        }
+
         for (const l of lines) {
           if (!l.mehsul_id) continue;
           const miqdar = Number(l.miqdar ?? 0);
           const qiymet = Number(l.vahid_qiymet ?? 0);
+          const targetAnbar = anbarByMehsul.get(l.mehsul_id) ?? sale.anbar_id;
           await tx.qaytarma_satirlari.create({
             data: {
               sahibkar_id: sahibkarId,
@@ -433,14 +453,14 @@ export async function returnFullSale(
             where: {
               sahibkar_id: sahibkarId,
               mehsul_id: l.mehsul_id,
-              anbar_id: sale.anbar_id,
+              anbar_id: targetAnbar,
             },
             data: { miqdar: { increment: miqdar } },
           });
           await tx.anbar_hereketleri.create({
             data: {
               sahibkar_id: sahibkarId,
-              anbar_id: sale.anbar_id,
+              anbar_id: targetAnbar,
               mehsul_id: l.mehsul_id,
               nov: "medaxil",
               miqdar,

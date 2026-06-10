@@ -342,6 +342,15 @@ export async function applyBonusToSale(
     try {
       // Atomic update — yalnız balans ≥ mebleg olduqda decrement
       const result = await prisma.$transaction(async (tx) => {
+        // QA-K7: idempotentlik — eyni satış üçün bonus artıq SƏRF olunubsa
+        // (offline retry / double-submit) kartdan təkrar çıxma.
+        if (satisId) {
+          const already = await tx.loyalty_tx.findFirst({
+            where: { kart_id: kartId, satis_id: satisId, nov: "serf" },
+            select: { qaliq: true },
+          });
+          if (already) return Number(already.qaliq);
+        }
         const updated = await tx.loyalty_cards.updateMany({
           where: { id: kartId, balans: { gte: mebleg } },
           data: {
