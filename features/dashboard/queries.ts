@@ -746,7 +746,7 @@ async function fetchTodayCashFlowRaw(sahibkarId: string): Promise<TodayCashFlow>
   const rows = await prismaUnscoped.$queryRaw<{ daxil: number; xaric: number; cnt: number }[]>`
     SELECT
       COALESCE(SUM(CASE WHEN emeliyyat_nov IN ('satis','medaxil') THEN mebleg ELSE 0 END), 0)::float AS daxil,
-      COALESCE(SUM(CASE WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN mebleg ELSE 0 END), 0)::float AS xaric,
+      COALESCE(SUM(CASE WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN ABS(mebleg) ELSE 0 END), 0)::float AS xaric,
       COUNT(*)::int AS cnt
     FROM kassa_emeliyyatlari
     WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${today}

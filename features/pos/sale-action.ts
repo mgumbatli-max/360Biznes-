@@ -35,6 +35,15 @@ const CreateSaleSchema = z.object({
   // Offline növbə / double-submit idempotentliyi (audit #3) — klient tərəfdə
   // bir dəfə generasiya olunan açar; eyni açarla təkrar göndəriş dublikat yaratmır.
   client_op_id: z.string().max(80).optional(),
+  // QA-K6: qarışıq ödənişin bölgüsü — hər metod ayrıca kassa sətri kimi yazılır
+  // (əvvəl tam məbləğ tək 'negd' sətrində idi, kart/bank hissələri itirdi).
+  split: z
+    .object({
+      negd: z.coerce.number().min(0).default(0),
+      kart: z.coerce.number().min(0).default(0),
+      kecirme: z.coerce.number().min(0).default(0),
+    })
+    .optional(),
   // Tətbiq olunan kampaniya/kupon (audit #10) — satışdan sonra campaign_usage-ə
   // yazılır və kupon/kampaniya istifadə sayğacı artırılır.
   applied_campaigns: z
@@ -278,18 +287,40 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
 
         // 8. Cash register operation — nisye olarsa kassaya pul düşmür
         if (data.odenis_nov !== "nisye") {
-          await tx.kassa_emeliyyatlari.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              kassa_id: data.kassa_id,
-              emeliyyat_nov: "satis",
-              odenis_nov: data.odenis_nov,
-              mebleg: sonMebleg,
-              ref_nov: "satis_sifarisi",
-              ref_id: sale.id,
-              istifadeci_id: istifadeciId,
-            },
-          });
+          // QA-K6: qarışıq ödənişdə hər metod AYRICA sətir — kassa hesabatı və
+          // gün-sonu nağd/kart/bank bölgüsü düzgün olsun. Split cəmi satış
+          // məbləği ilə üst-üstə düşmürsə (drift/köhnə client) nağd hissə
+          // fərqi ilə korreksiya edilir; split etibarsızdırsa tək sətir fallback.
+          let parts: { nov: "negd" | "kart" | "kecirme"; mebleg: number }[] | null = null;
+          if (data.split) {
+            const kart = Math.max(0, data.split.kart || 0);
+            const kecirme = Math.max(0, data.split.kecirme || 0);
+            const negd = +(sonMebleg - kart - kecirme).toFixed(2);
+            if (negd >= -0.01 && kart + kecirme > 0.001) {
+              parts = [
+                { nov: "negd" as const, mebleg: Math.max(0, negd) },
+                { nov: "kart" as const, mebleg: kart },
+                { nov: "kecirme" as const, mebleg: kecirme },
+              ].filter((p) => p.mebleg > 0.001);
+            }
+          }
+          if (!parts || parts.length === 0) {
+            parts = [{ nov: data.odenis_nov as "negd" | "kart" | "kecirme", mebleg: sonMebleg }];
+          }
+          for (const part of parts) {
+            await tx.kassa_emeliyyatlari.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                kassa_id: data.kassa_id,
+                emeliyyat_nov: "satis",
+                odenis_nov: part.nov,
+                mebleg: part.mebleg,
+                ref_nov: "satis_sifarisi",
+                ref_id: sale.id,
+                istifadeci_id: istifadeciId,
+              },
+            });
+          }
 
           // 8b. finance_operations — maliyyə hesabatlarında POS satışları görünsün
           // Hesabatlar (P&L, cashflow) finance_operations üzərindən hesablanır,

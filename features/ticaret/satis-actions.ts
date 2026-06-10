@@ -273,7 +273,6 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
         if (!sale) throw new Error("Satış tapılmadı");
         if (sale.status === "legv") throw new Error("Bu satış artıq ləğv edilib");
 
-        const sonMebleg = Number(sale.son_mebleg ?? 0);
         const odenilmis = Number(sale.odenilmis ?? 0);
 
         // 🛑 Ödəniş və ya digər bağlı sənədlər varsa — STRUKTURLU blocker cavabı.
@@ -299,38 +298,56 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
         }
 
         // 1. Restore stock + reverse warehouse movement
-        for (const line of sale.satis_sifaris_satirlari) {
-          if (!line.mehsul_id || !sale.anbar_id) continue;
-          restoredMehsulIds.push(line.mehsul_id);
-          await tx.stok.updateMany({
-            where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: sale.anbar_id },
-            data: { miqdar: { increment: Number(line.miqdar) } },
-          });
-          await tx.anbar_hereketleri.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              anbar_id: sale.anbar_id,
-              mehsul_id: line.mehsul_id,
-              nov: "medaxil",
-              miqdar: Number(line.miqdar),
-              qiymet: Number(line.vahid_qiymet),
-              ref_nov: "satis_legv",
-              ref_id: sale.id,
-              edilen_id: istifadeciId,
-              qeyd: `Satış ləğv: ${reason}`,
-            },
-          });
+        // QA-K12: stok yalnız HƏQİQƏTƏN azalıbsa bərpa olunur. Qaralama /
+        // tesdiq_gozleyir satışlarında mexaric heç vaxt baş vermir — onların
+        // ləğvi fantom stok mədaxili yaratmamalıdır. Etibarlı yoxlama:
+        // orijinal mexaric anbar_hereketi mövcuddurmu (hər iki satış yolu —
+        // POS və B2B — ref_nov='satis_sifarisi' yazır).
+        const hadStockOut = await tx.anbar_hereketleri.findFirst({
+          where: {
+            sahibkar_id: sahibkarId,
+            ref_nov: "satis_sifarisi",
+            ref_id: sale.id,
+            nov: "mexaric",
+          },
+          select: { id: true },
+        });
+        if (hadStockOut) {
+          for (const line of sale.satis_sifaris_satirlari) {
+            if (!line.mehsul_id || !sale.anbar_id) continue;
+            restoredMehsulIds.push(line.mehsul_id);
+            await tx.stok.updateMany({
+              where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: sale.anbar_id },
+              data: { miqdar: { increment: Number(line.miqdar) } },
+            });
+            await tx.anbar_hereketleri.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                anbar_id: sale.anbar_id,
+                mehsul_id: line.mehsul_id,
+                nov: "medaxil",
+                miqdar: Number(line.miqdar),
+                qiymet: Number(line.vahid_qiymet),
+                ref_nov: "satis_legv",
+                ref_id: sale.id,
+                edilen_id: istifadeciId,
+                qeyd: `Satış ləğv: ${reason}`,
+              },
+            });
+          }
         }
 
         // 2. Reverse cash if it was a paid sale
-        if (sale.odenis_nov !== "borc" && sale.kassa_id) {
+        // QA-K32: yalnız REAL daxil olmuş pul (odenilmis) geri çıxır —
+        // hissəvi ödənilmiş satışda -sonMebleg yazmaq kassanı artıq azaldırdı.
+        if (sale.odenis_nov !== "borc" && sale.kassa_id && odenilmis > 0.001) {
           await tx.kassa_emeliyyatlari.create({
             data: {
               sahibkar_id: sahibkarId,
               kassa_id: sale.kassa_id,
               emeliyyat_nov: "qaytarma",
               odenis_nov: sale.odenis_nov ?? "negd",
-              mebleg: new Prisma.Decimal(-sonMebleg),
+              mebleg: new Prisma.Decimal(-odenilmis),
               ref_nov: "satis_legv",
               ref_id: sale.id,
               istifadeci_id: istifadeciId,

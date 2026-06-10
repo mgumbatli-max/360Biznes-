@@ -949,6 +949,16 @@ export function PosClient({
         musteri_id: customer?.id ?? null,
         satis_meneceri_id: salespersonId,
         odenis_nov: serverOdenis,
+        // QA-K6: qarışıq ödənişin bölgüsü serverə gedir — hər metod ayrıca
+        // kassa sətri olur (əvvəl hamısı tək "negd" sətrində itirdi).
+        split:
+          paymentMethod === "qarisiq"
+            ? {
+                negd: Number(splitNegd) || 0,
+                kart: Number(splitKart) || 0,
+                kecirme: Number(splitBank) || 0,
+              }
+            : undefined,
         // Kupon + loyallıq bonusu da serverə gedən endirimə daxildir ki, son_mebleg
         // göstərilən məbləğə bərabər olsun və kassa/maliyyə uyğunsuzluğu olmasın
         // (audit #11/#12). Bonus kartdan ayrıca düşür (applyBonusToSale) — nağd yazılmır.

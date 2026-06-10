@@ -503,6 +503,33 @@ export async function returnFullSale(
           }
         }
 
+        // QA-K11: adi NƏĞD/KART satışın qaytarılmasında kassadan pul çıxışı —
+        // fastReturn-da var idi, burada YOX idi (iki qaytarma yolu uyğunsuz).
+        // Marketplace satışda kassaya pul düşməyib (payout axını), ona toxunmuruq.
+        {
+          const isNisyeSale = sale.odenis_nov === "nisye" || sale.odenis_nov === "borc";
+          if (!isNisyeSale && !sale.marketplace_platform && sale.kassa_id) {
+            // Yalnız real daxil olmuş pul qədər geri çıx (hissəvi ödəniş müdafiəsi)
+            const odenilmisSale = Number(sale.odenilmis ?? 0);
+            const refund = Math.min(total, odenilmisSale > 0 ? odenilmisSale : total);
+            if (refund > 0.001) {
+              await tx.kassa_emeliyyatlari.create({
+                data: {
+                  sahibkar_id: sahibkarId,
+                  kassa_id: sale.kassa_id,
+                  emeliyyat_nov: "qaytarma",
+                  odenis_nov: sale.odenis_nov ?? "negd",
+                  mebleg: new Prisma.Decimal(-refund),
+                  ref_nov: "qaytarma",
+                  ref_id: ret.id,
+                  istifadeci_id: istifadeciId,
+                  qeyd: `Qaytarma refund: ${input.sebeb} (satis #${sale.nomre})`,
+                },
+              });
+            }
+          }
+        }
+
         if (fullReturn) {
           await tx.satis_sifarisleri.update({
             where: { id: sale.id },

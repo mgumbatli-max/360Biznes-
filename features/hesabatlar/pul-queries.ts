@@ -14,7 +14,7 @@ export async function getDailyCashFlow30(): Promise<CashFlowDay[]> {
     const rows = await prisma.$queryRaw<{ d: Date; daxil: number; xaric: number }[]>`
       SELECT date_trunc('day', tarix)::date AS d,
              SUM(CASE WHEN emeliyyat_nov IN ('satis','medaxil') THEN mebleg ELSE 0 END)::float AS daxil,
-             SUM(CASE WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN mebleg ELSE 0 END)::float AS xaric
+             SUM(CASE WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN ABS(mebleg) ELSE 0 END)::float AS xaric
         FROM kassa_emeliyyatlari
        WHERE sahibkar_id = ${sahibkarId}::uuid
          AND tarix >= ${since}
@@ -38,7 +38,7 @@ export async function getCashFlowByPayment(): Promise<PaymentFlow[]> {
     const rows = await prisma.$queryRaw<PaymentFlow[]>`
       SELECT odenis_nov,
              SUM(CASE WHEN emeliyyat_nov IN ('satis','medaxil') THEN mebleg ELSE 0 END)::float AS daxil,
-             SUM(CASE WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN mebleg ELSE 0 END)::float AS xaric
+             SUM(CASE WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN ABS(mebleg) ELSE 0 END)::float AS xaric
         FROM kassa_emeliyyatlari
        WHERE sahibkar_id = ${sahibkarId}::uuid
          AND tarix >= ${monthStart}
@@ -57,7 +57,7 @@ export async function getAccountBalances(): Promise<AccountBalance[]> {
     const rows = await prisma.$queryRaw<AccountBalance[]>`
       SELECT k.id::text, k.ad, k.status,
              COALESCE(SUM(CASE WHEN e.emeliyyat_nov IN ('satis','medaxil') THEN e.mebleg ELSE 0 END), 0)::float AS daxil,
-             COALESCE(SUM(CASE WHEN e.emeliyyat_nov IN ('qaytarma','mexaric') THEN e.mebleg ELSE 0 END), 0)::float AS xaric
+             COALESCE(SUM(CASE WHEN e.emeliyyat_nov IN ('qaytarma','mexaric') THEN ABS(e.mebleg) ELSE 0 END), 0)::float AS xaric
         FROM kassalar k
         LEFT JOIN kassa_emeliyyatlari e ON e.kassa_id = k.id
        WHERE k.sahibkar_id = ${sahibkarId}::uuid
@@ -93,7 +93,7 @@ export async function getCashFlowSummary30(daily: CashFlowDay[]): Promise<CashFl
     const openingRow = await prisma.$queryRaw<{ acilis: number }[]>`
       SELECT COALESCE(SUM(CASE
         WHEN emeliyyat_nov IN ('satis','medaxil') THEN mebleg
-        WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN -mebleg
+        WHEN emeliyyat_nov IN ('qaytarma','mexaric') THEN -ABS(mebleg)
         ELSE 0 END), 0)::float AS acilis
         FROM kassa_emeliyyatlari
        WHERE sahibkar_id = ${sahibkarId}::uuid
