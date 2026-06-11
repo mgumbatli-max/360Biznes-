@@ -2,16 +2,8 @@ import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { cache } from "react";
 import { headers } from "next/headers";
-import { z } from "zod";
-import { prismaUnscoped } from "@/lib/db/prisma";
-import { verifyPassword } from "@/lib/auth/password";
-import { checkLoginRate, recordLoginAttempt } from "@/lib/auth/login-guard";
+import { authorizeUser } from "@/lib/auth/credentials-core";
 import "@/lib/auth/types";
-
-const LoginSchema = z.object({
-  email: z.string().email("Email düzgün deyil"),
-  password: z.string().min(6, "Şifrə ən az 6 simvol olmalıdır"),
-});
 
 const PUBLIC_ROUTES = new Set([
   "/",
@@ -39,11 +31,6 @@ const config = {
         password: { label: "Şifrə", type: "password" },
       },
       async authorize(raw) {
-        const t0 = Date.now();
-        const parsed = LoginSchema.safeParse(raw);
-        if (!parsed.success) return null;
-        const { email, password } = parsed.data;
-
         // Request hint-ləri — rate limit və audit üçün
         let ip: string | null = null;
         let ua: string | null = null;
@@ -54,133 +41,12 @@ const config = {
           ua = h.get("user-agent") || null;
         } catch { /* request scope dışı — pas */ }
 
-        // Brute-force qoruması: son 15 dəq-də limit aşılıbsa, dərhal blok
-        const gate = await checkLoginRate(email, ip);
-        if (!gate.allowed) {
-          await recordLoginAttempt({ success: false, email, ip, ua, sebeb: gate.reason });
-          return null;
-        }
-
-        // `select` ilə yalnız lazımi sahələr — Prisma daha az JOIN edir,
-        // payload kiçik olur. `include` bütün sütunları gətirir.
-        const user = await prismaUnscoped.istifadeciler.findFirst({
-          where: { email: email.toLowerCase().trim(), aktiv: true },
-          select: {
-            id: true,
-            email: true,
-            ad_soyad: true,
-            sifre_hash: true,
-            sahibkar_id: true,
-            rol_id: true,
-            sahibkarlar: {
-              select: {
-                ad: true,
-                status: true,
-                abuneler: {
-                  orderBy: { yaradildi: "desc" },
-                  take: 1,
-                  select: {
-                    bitme: true,
-                    status: true,
-                    abune_planlari: { select: { kod: true, ad: true } },
-                  },
-                },
-              },
-            },
-            roles: { select: { ad: true } },
-          },
-        });
-        const tDb = Date.now();
-        if (!user) {
-          await recordLoginAttempt({ success: false, email, ip, ua, sebeb: "user_not_found" });
-          return null;
-        }
-
-        const ok = await verifyPassword(password, user.sifre_hash);
-        const tBcrypt = Date.now();
-        if (!ok) {
-          await recordLoginAttempt({
-            success: false,
-            email,
-            ip,
-            ua,
-            sahibkarId: user.sahibkar_id,
-            istifadeciId: user.id,
-            sebeb: "wrong_password",
-          });
-          return null;
-        }
-
-        // Tenant must be active
-        if (user.sahibkarlar?.status !== "aktiv") {
-          await recordLoginAttempt({
-            success: false, email, ip, ua,
-            sahibkarId: user.sahibkar_id,
-            istifadeciId: user.id,
-            sebeb: "tenant_not_active",
-          });
-          return null;
-        }
-
-        // Subscription must not be expired (if any)
-        const abune = user.sahibkarlar?.abuneler?.[0];
-        if (abune?.bitme && new Date(abune.bitme) < new Date()) {
-          await recordLoginAttempt({
-            success: false, email, ip, ua,
-            sahibkarId: user.sahibkar_id,
-            istifadeciId: user.id,
-            sebeb: "subscription_expired",
-          });
-          return null;
-        }
-        if (abune && abune.status && !["aktiv", "sinaq"].includes(abune.status)) {
-          await recordLoginAttempt({
-            success: false, email, ip, ua,
-            sahibkarId: user.sahibkar_id,
-            istifadeciId: user.id,
-            sebeb: `subscription_status:${abune.status}`,
-          });
-          return null;
-        }
-
-        const rolId = user.rol_id ?? 0;
-
-        // Uğurlu giriş — audit + giris_cehdleri
-        await recordLoginAttempt({
-          success: true,
-          email,
-          ip,
-          ua,
-          sahibkarId: user.sahibkar_id,
-          istifadeciId: user.id,
-        });
-
-        // Touch last-login timestamp — fire-and-forget, login cavabını bloklamasın.
-        void prismaUnscoped.istifadeciler
-          .update({ where: { id: user.id }, data: { son_giris: new Date() } })
-          .catch(() => {});
-
-        // Diagnostic — Vercel log-larında axtarır: "[auth] timing"
-        console.log(
-          `[auth] timing db=${tDb - t0}ms bcrypt=${tBcrypt - tDb}ms total=${Date.now() - t0}ms`,
+        const res = await authorizeUser(
+          raw as { email?: unknown; password?: unknown },
+          { ip, ua },
         );
-
-        // NOTE: Permissions are deliberately NOT included here. With 307+
-        // codes the JWT exceeds the 4KB cookie limit and gets chunked, which
-        // breaks reassembly in some clients. Load via getRequestPermissions().
-        return {
-          id: user.id,
-          email: user.email,
-          ad_soyad: user.ad_soyad,
-          sahibkar_id: user.sahibkar_id,
-          sahibkar_ad: user.sahibkarlar?.ad ?? "",
-          rol_id: rolId,
-          rol_ad: user.roles?.ad ?? "",
-          plan_kod: abune?.abune_planlari?.kod ?? null,
-          plan_ad: abune?.abune_planlari?.ad ?? null,
-          abune_bitme: abune?.bitme ? new Date(abune.bitme).toISOString() : null,
-          abune_status: abune?.status ?? null,
-        };
+        if (!res.ok) return null;
+        return res.user;
       },
     }),
   ],
