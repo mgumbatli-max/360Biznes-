@@ -24,5 +24,9 @@ console.log("refresh:", ref.s, ref.b.accessToken ? "yeni access ✓" : JSON.stri
 const list = await j("/api/mobile/v1/mehsullar?q=", { headers: { Authorization: "Bearer " + tok } });
 console.log("mehsullar:", list.s, "say:", list.b?.total, "ilk:", list.b?.items?.[0]?.ad ?? "(boş)");
 
+const created = await j("/api/mobile/v1/mehsullar", { method:"POST", headers:{ "Content-Type":"application/json", Authorization:"Bearer "+tok }, body: JSON.stringify({ ad:"Mobil Test "+Date.now(), satis_qiymeti:"9.99", aktiv:"true" }) });
+console.log("yarat:", created.s, created.b?.id ? "id ✓" : JSON.stringify(created.b));
+if (created.b?.id) { const det = await j("/api/mobile/v1/mehsullar/"+created.b.id, { headers:{ Authorization:"Bearer "+tok } }); console.log("detal:", det.s, det.b?.ad || det.b?.item?.ad || "(?)"); }
+
 const out = await j("/api/mobile/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: ref.b.refreshToken || refresh }) });
 console.log("logout:", out.s, out.b.ok ? "✓" : "");
