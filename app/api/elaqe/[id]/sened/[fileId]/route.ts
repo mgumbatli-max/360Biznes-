@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { unlink } from "node:fs/promises";
-import path from "node:path";
 import { auth } from "@/auth";
+import { deleteUploadFile } from "@/lib/storage/upload";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -41,15 +40,10 @@ export async function DELETE(
 
       await prisma.kontragentler.update({ where: { id }, data: { qeyd: newQeyd } });
 
-      // Try delete file (best-effort, only inside public/uploads/elaqe/{id})
-      try {
-        if (target.url.startsWith(`/uploads/elaqe/${id}/`)) {
-          const rel = target.url.replace(/^\//, "");
-          const abs = path.join(process.cwd(), "public", rel);
-          await unlink(abs).catch(() => {});
-        }
-      } catch {
-        /* skip */
+      // Try delete file (best-effort) — lokal /uploads/ və ya Vercel Blob URL.
+      // Guard: yalnız bu kontragentin qovluğundakı fayl silinə bilər.
+      if (target.url.includes(`elaqe/${id}/`)) {
+        await deleteUploadFile(target.url);
       }
 
       try {

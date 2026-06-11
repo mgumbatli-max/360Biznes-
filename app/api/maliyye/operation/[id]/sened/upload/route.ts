@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
 import { auth } from "@/auth";
+import { saveUploadFile } from "@/lib/storage/upload";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -59,14 +58,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
               ? "webp"
               : "pdf";
       const filename = `${randomUUID()}.${ext}`;
-      const uploadsDir = path.join(process.cwd(), "public", "uploads", "maliyye", id);
-      await mkdir(uploadsDir, { recursive: true });
-      const filepath = path.join(uploadsDir, filename);
-
       const buf = Buffer.from(await file.arrayBuffer());
-      await writeFile(filepath, buf);
-
-      const url = `/uploads/maliyye/${id}/${filename}`;
+      // QA: prod-da Vercel Blob (lokal FS serverless-də yazıla bilmir), dev-də public/uploads
+      const url = await saveUploadFile(buf, `maliyye/${id}/${filename}`, type);
       const att = await prisma.finance_attachments.create({
         data: {
           sahibkar_id: sahibkarId,

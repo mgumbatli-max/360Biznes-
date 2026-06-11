@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { auth } from "@/auth";
+import { saveUploadFile } from "@/lib/storage/upload";
 import { revalidatePath } from "next/cache";
 import { getSenedTree, saveSenedTree } from "@/features/sahibkar/senedler/queries";
 import type { SenedFayl } from "@/features/sahibkar/senedler/types";
@@ -47,12 +47,9 @@ export async function POST(req: NextRequest) {
     const ext = path.extname(originalName) || ".bin";
     const fileId = randomUUID();
     const newName = `${fileId}${ext}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "sahibkar-senedler");
-    await mkdir(uploadDir, { recursive: true });
-    const filePath = path.join(uploadDir, newName);
     const bytes = Buffer.from(await file.arrayBuffer());
-    await writeFile(filePath, bytes);
-    const url = `/uploads/sahibkar-senedler/${newName}`;
+    // QA: prod-da Vercel Blob (lokal FS serverless-də yazıla bilmir), dev-də public/uploads
+    const url = await saveUploadFile(bytes, `sahibkar-senedler/${newName}`, type);
 
     const tree = await getSenedTree();
     const item: SenedFayl = {

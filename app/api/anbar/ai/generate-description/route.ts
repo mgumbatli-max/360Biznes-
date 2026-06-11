@@ -18,22 +18,27 @@ export async function POST(req: NextRequest) {
   if (!ad) return NextResponse.json({ error: "Məhsul adı tələb olunur" }, { status: 400 });
 
   const prompt = [
-    `Mən onlayn mağaza üçün məhsul kartı hazırlayıram. Aşağıdakı məhsul üçün qısa, satışa kömək edən təsvir yaz (3-5 cümlə, AZ dilində).`,
-    `Məhsul: ${ad}`,
+    `Onlayn mağaza üçün məhsul kartı təsviri yaz (3-5 cümlə, Azərbaycan dilində).`,
+    `Məhsul adı: ${ad}`,
     marka && `Marka: ${marka}`,
     kateqoriya && `Kateqoriya: ${kateqoriya}`,
-    `Tələblər:`,
-    `- Faktiki xüsusiyyətlər (material, ölçü, istifadə sahəsi əgər ada aydındırsa)`,
-    `- Müştəri faydası, niyə alsın`,
-    `- Texniki şərt və ya parametr varsa qeyd et`,
-    `- HTML, kod, list işarəsi qoyma — saf mətn`,
-    `Yalnız təsvir mətnini qaytar, başqa heç nə.`,
+    `Qaydalar:`,
+    `- ƏN VACİB: yalnız məhsul adından/markasından AÇIQ-AYDIN bilinən faktları yaz. Ad-da olmayan material, ölçü, rəng, texniki parametr, model nömrəsi UYDURMA.`,
+    `- Əmin olmadığın spesifikasiya əvəzinə istifadə sahəsi və ümumi müştəri faydasından yaz.`,
+    `- Satışa kömək edən, təbii, peşəkar ton — reklam şişirtməsi yox.`,
+    `- HTML, kod, list işarəsi, emoji qoyma — saf mətn.`,
+    `Yalnız təsvir mətnini qaytar, başqa heç nə (giriş cümləsi, izah yazma).`,
   ].filter(Boolean).join("\n");
 
   try {
     const result = await chatCompletion(
       [{ role: "user", content: prompt }],
-      { max_tokens: 600 }
+      {
+        // Default köməkçi system promptu yox — bu tapşırığa fokuslu
+        system:
+          "Sən e-ticarət məhsul təsvirləri yazan peşəkar kopiraytersən. Azərbaycan dilində, qrammatik düzgün, qısa və dəqiq yazırsan. Heç vaxt məhsul haqqında bilmədiyin faktı uydurmursan.",
+        max_tokens: 600,
+      }
     );
     return NextResponse.json({
       text: result.text.trim(),

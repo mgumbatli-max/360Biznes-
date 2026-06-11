@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
 import { auth } from "@/auth";
+import { saveUploadFile } from "@/lib/storage/upload";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -56,17 +55,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
       const ext = type === "image/jpeg" ? "jpg" : type === "image/png" ? "png" : "webp";
       const filename = `${randomUUID()}.${ext}`;
-      const uploadsDir = path.join(process.cwd(), "public", "uploads", "servis", id);
-      await mkdir(uploadsDir, { recursive: true });
-      const filepath = path.join(uploadsDir, filename);
-
       const buf = Buffer.from(await file.arrayBuffer());
-      await writeFile(filepath, buf);
+      // QA: prod-da Vercel Blob (lokal FS serverless-də yazıla bilmir), dev-də public/uploads
+      const url = await saveUploadFile(buf, `servis/${id}/${filename}`, type);
 
       const fayl = await prisma.servis_fayllari.create({
         data: {
           servis_id: id,
-          fayl_adi: `/uploads/servis/${id}/${filename}`,
+          fayl_adi: url,
           orijinal_adi: (file as File).name || filename,
           mime_tip: type,
           olcu_bayt: BigInt(file.size),
