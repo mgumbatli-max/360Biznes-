@@ -12,7 +12,8 @@ export async function issueRefreshToken(sahibkarId: string, istifadeciId: string
       sahibkar_id: sahibkarId,
       istifadeci_id: istifadeciId,
       token_hash: hash(raw),
-      cihaz: cihaz ?? null,
+      // cihaz sütunu VarChar(120) — real user-agent çox uzun olur, kəsirik (login 500-ün qarşısı)
+      cihaz: cihaz ? String(cihaz).slice(0, 120) : null,
       expires_at: new Date(Date.now() + REFRESH_TTL_DAYS * 86_400_000),
     },
   });

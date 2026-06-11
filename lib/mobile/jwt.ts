@@ -1,7 +1,12 @@
 import "server-only";
 import jwt from "jsonwebtoken";
 
-const SECRET = process.env.MOBILE_JWT_SECRET || process.env.AUTH_SECRET || "dev-only-secret";
+const RAW_SECRET = process.env.MOBILE_JWT_SECRET || process.env.AUTH_SECRET;
+// Prod-da real secret olmadan işləmə (forge riski) — dev-də fallback ok.
+if (!RAW_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("MOBILE_JWT_SECRET və ya AUTH_SECRET prod-da təyin olunmalıdır");
+}
+const SECRET = RAW_SECRET || "dev-only-secret";
 const ACCESS_TTL = "15m";
 
 export type MobileTokenPayload = {
