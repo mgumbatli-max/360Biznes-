@@ -5,26 +5,38 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * DETERMINISTIK az-AZ rəqəm formatı — minlik ayırıcı boşluq, onluq vergül.
+ * KRİTİK: `Intl.NumberFormat("az-AZ")` Node (server) və brauzer (client) ICU
+ * datasına görə FƏRQLİ nəticə verirdi (server "AZN 100.00", client "100,00 ₼")
+ * → hydration mismatch → React server HTML-i atıb yenidən render edirdi (flash +
+ * yavaşlıq + console error). Manual format hər iki tərəfdə eynidir.
+ */
+function azGroup(intStr: string): string {
+  return intStr.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+const CURRENCY_SYMBOL: Record<string, string> = {
+  AZN: "₼", USD: "$", EUR: "€", RUB: "₽", TRY: "₺", GBP: "£",
+};
+
 export function formatMoney(value: number | string | null | undefined, currency = "AZN") {
   if (value === null || value === undefined || value === "") return "—";
   const num = typeof value === "string" ? Number(value) : value;
   if (Number.isNaN(num)) return "—";
-  return new Intl.NumberFormat("az-AZ", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num);
+  const sym = CURRENCY_SYMBOL[currency] ?? currency;
+  const neg = num < 0;
+  const [intPart, dec] = Math.abs(num).toFixed(2).split(".");
+  return `${neg ? "-" : ""}${azGroup(intPart)},${dec} ${sym}`;
 }
 
 export function formatNumber(value: number | string | null | undefined, fractionDigits = 0) {
   if (value === null || value === undefined || value === "") return "—";
   const num = typeof value === "string" ? Number(value) : value;
   if (Number.isNaN(num)) return "—";
-  return new Intl.NumberFormat("az-AZ", {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(num);
+  const neg = num < 0;
+  const [intPart, dec] = Math.abs(num).toFixed(fractionDigits).split(".");
+  return `${neg ? "-" : ""}${azGroup(intPart)}${dec ? "," + dec : ""}`;
 }
 
 /**
@@ -50,7 +62,7 @@ export function formatCompactNumber(value: number | string | null | undefined): 
   if (abs >= 1_000) {
     return sign + trimZero((abs / 1_000).toFixed(1)) + "K";
   }
-  return new Intl.NumberFormat("az-AZ").format(num);
+  return formatNumber(num); // deterministik (Intl mismatch-dən qaçınmaq üçün)
 }
 
 /** Compact pul formatı: "2.26M ₼", "12.5K ₼". */
