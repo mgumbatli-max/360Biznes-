@@ -112,6 +112,9 @@ const CreateTaskSchema = z.object({
   obyekt_basliq: z.string().max(300).optional().or(z.literal("")),
   requires_approval: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
   escalation_enabled: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
+  // QA-orta: eskalasiya hədəfi — əvvəl heç bir forma/action bu sahəni yazmırdı,
+  // escalation_to həmişə NULL qalırdı və rəhbərə bildiriş getmirdi
+  escalation_to: z.string().uuid().optional().or(z.literal("")),
   /** Hamı aktiv işçiyə paylaş — icracilar avtomatik dolur */
   broadcast_all: z.union([z.literal("1"), z.literal("on"), z.literal("")]).optional(),
   /** Telegram bildirişi göndər (sahibkar konfiqurasiyası varsa) */
@@ -201,6 +204,9 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
             status: "yeni",
             requires_approval: requiresApproval,
             escalation_enabled: escalationEnabled,
+            // QA-orta: eskalasiya hədəfini yaz — əvvəl heç vaxt set olunmurdu,
+            // overdue check-də t.escalation_to həmişə NULL idi (rəhbər bildirişi ölü kod)
+            escalation_to: escalationEnabled && d.escalation_to ? d.escalation_to : null,
             qeyd_daxili: initialQeyd,
           },
         });
@@ -384,6 +390,21 @@ export async function changeTaskStatus(
       if (status === "icrada") patch.baslandi_de = new Date();
 
       await prisma.tapshiriqlar.update({ where: { id: taskId }, data: patch });
+
+      // QA-orta: tapşırıq bağlananda açıq overdue alert avtomatik həll olunur
+      // (stok auto-clear pattern-i ilə simmetrik — features/anbar/alert-helpers.ts)
+      if (status === "tamamlandi" || status === "legv") {
+        const cleared = await prisma.alerts.updateMany({
+          where: {
+            sahibkar_id: sahibkarId,
+            tapshiriq_id: taskId,
+            rule_kod: "task_overdue_auto",
+            status: { in: ["yeni", "baxilir", "snoozed"] },
+          },
+          data: { status: "hell_olundu", resolved_at: new Date(), resolution_note: "Tapşırıq bağlandı" },
+        });
+        if (cleared.count > 0) revalidateTag(`alerts:${sahibkarId}`, "max");
+      }
 
       // Status dəyişəndə tapşırığın yaradanını və məsulu xəbərdar et (özüm dəyişən deyiləmsə)
       const STATUS_LABEL: Record<string, string> = {
@@ -719,7 +740,9 @@ export async function _executeOverdueCheckForTenant(): Promise<{ ok: true; creat
           kateqoriya_id: tapshiriqCat.id,
           kateqoriya_kod: "tapshiriq",
           rule_kod: "task_overdue_auto",
-          seviyye: "yuxsek",
+          // QA-orta: "yuxsek" typo idi — alert severity kanonik "yuksek"dir
+          // (SEVERITY_RANK / severity-badge / qrup kritik sayğacı bu açarı tanıyır)
+          seviyye: "yuksek",
           status: "yeni",
           basliq: `Gecikən tapşırıq: ${t.basliq}`.slice(0, 255),
           tesvir: `Tapşırıq son tarixi (${t.deadline?.toISOString() ?? "—"}) keçib və hələ tamamlanmayıb.`,

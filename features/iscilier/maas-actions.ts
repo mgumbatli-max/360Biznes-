@@ -38,7 +38,7 @@ async function recordMaasFinanceLeg(
   let hesabId = opts.hesabId ?? null;
   if (!hesabId) {
     const defaultKassa = await tx.maliye_hesablari.findFirst({
-      where: { sahibkar_id: opts.sahibkarId, aktiv: true, nov: "nagd" },
+      where: { sahibkar_id: opts.sahibkarId, aktiv: true, nov: "negd" }, // QA-orta: kanonik nov "negd" (AccountSchema) — "nagd" heç vaxt tapılmırdı
       orderBy: { yaradildi: "asc" },
       select: { id: true },
     });
@@ -168,7 +168,11 @@ export async function calculateBordro(input: FormData): Promise<Result> {
       for (const a of attendance) {
         const cur = attMap.get(a.istifadeci_id) ?? { faktiki: 0, qaib: 0 };
         if (a.status === "qaib") cur.qaib += a._count._all;
-        else cur.faktiki += a._count._all;
+        // QA-orta: istirahət/məzuniyyət işlənmiş gün deyil — faktiki-yə yalnız
+        // real iş statusları (qaydasinda/gecikib) sayılır (davamiyyet-queries.ts
+        // ilə eyni semantika); məzuniyyət ayrıca mezuniyyet_gun-da uçota alınır
+        else if (a.status !== "istirahet" && a.status !== "mezuniyyet")
+          cur.faktiki += a._count._all;
         attMap.set(a.istifadeci_id, cur);
       }
       const leaveMap = new Map<string, number>();

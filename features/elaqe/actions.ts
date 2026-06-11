@@ -366,7 +366,8 @@ const PaymentSchema = z.object({
 
 export async function recordContactPayment(input: FormData): Promise<ActionResult> {
   // Borc qarşı ödəniş qəbulu — `odenis.qebul` maliyyə icazəsi tələb edir
-  const permCheck = await requireElaqeActionPerm("musteri.duzelt");
+  // QA-orta: əvvəl yanlış "musteri.duzelt" yoxlanırdı — odenis.qebul gate-i bypass olunurdu
+  const permCheck = await requireElaqeActionPerm("odenis.qebul");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   const parsed = PaymentSchema.safeParse(Object.fromEntries(input.entries()));
@@ -391,7 +392,8 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
           odenis_nov: { in: ["nisye", "borc"] },
         },
         select: { id: true, son_mebleg: true, odenilmis: true, nomre: true, tarix: true },
-        orderBy: { tarix: "asc" },
+        // QA-orta: tarix @db.Date — eyni günün qaimələrində FIFO sırası deterministik olsun
+        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
       });
       const openWithQalig = openSales
         .map((s) => ({

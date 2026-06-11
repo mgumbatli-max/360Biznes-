@@ -77,6 +77,8 @@ export async function getCustomerStatement(opts: {
            AND status = 'aktiv'
            AND "yön" = 'daxil'
            AND type_kod IN ('qaime', 'borc_silinme')
+           -- QA-orta: [AVANS] tətbiqi reklassifikasiyadır, yeni pul daxilolması deyil — ikiqat kredit sayılmasın
+           AND COALESCE(qeyd, '') NOT LIKE '%[AVANS]%'
         UNION ALL
         SELECT 0 AS debet, geri_qaytarildi AS kredit, tarix::timestamp
           FROM qaytarma_sifarisleri
@@ -195,9 +197,12 @@ export async function getCustomerStatement(opts: {
         nov: "avans",
         sened_nomresi: a.sened_nomresi ?? a.id.slice(0, 8),
         qaime_nomresi: null,
-        tesvir: "Avansdan tətbiq",
+        // QA-orta: avans tətbiqi reklassifikasiyadır — pul orijinal ödənişdə artıq
+        // kredit sayılıb; ikinci kredit yazılsa eyni məbləğ İKİ DƏFƏ kreditlənir
+        // (son_qaliq/cemi_kredit şişirdi). Net-zero məlumat sətri kimi göstərilir.
+        tesvir: `Avansdan tətbiq (${Number(a.meblegh).toFixed(2)} ₼ — məlumat)`,
         debet: 0,
-        kredit: Number(a.meblegh),
+        kredit: 0,
         qaliq: 0,
         ref_id: a.satis_id,
         ref_link: a.satis_id ? `/ticaret/satislar/${a.satis_id}` : null,

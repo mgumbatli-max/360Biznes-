@@ -66,7 +66,8 @@ export default async function KreditPage({
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard icon={CreditCard} label="Aktiv kredit" value={String(stats.aktiv)} subline="kredit satışı" tone={stats.aktiv > 0 ? "info" : "neutral"} />
-        <KpiCard icon={Wallet} label="Toplam borc" value={formatMoney(stats.toplam_borc)} subline="müştəri borcu" tone={stats.toplam_borc > 0 ? "warning" : "neutral"} />
+        {/* QA-orta: kredit satışı müştəri borcu deyil — bankdan gözlənilən net qalıqdır */}
+        <KpiCard icon={Wallet} label="Toplam qalıq" value={formatMoney(stats.toplam_borc)} subline="nisyə + bankdan gözlənilən net" tone={stats.toplam_borc > 0 ? "warning" : "neutral"} />
         <KpiCard icon={AlertTriangle} label="Gecikmiş" value={String(stats.gecikmis)} subline={formatMoney(stats.gecikmis_borc)} tone={stats.gecikmis > 0 ? "danger" : "neutral"} />
         <KpiCard icon={TrendingUp} label="Bu ay yeni" value={String(stats.bu_ay_yeni)} subline={formatMoney(stats.bu_ay_yeni_mebleg)} tone="info" />
       </section>
@@ -91,7 +92,8 @@ export default async function KreditPage({
           </div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3">
-          <h4 className="mb-2 text-sm font-semibold tracking-tight">Müştəri başına borc (top 10)</h4>
+          {/* QA-orta: siyahıda nisyə borcu + bankdan gözlənilən net qarışıqdır — "borc" əvəzinə "qalıq" */}
+          <h4 className="mb-2 text-sm font-semibold tracking-tight">Müştəri başına qalıq (top 10)</h4>
           <ul className="space-y-0">
             {musteriBorc.length === 0 && (
               <li className="py-2 text-xs text-muted-foreground">Borc qalmayıb.</li>

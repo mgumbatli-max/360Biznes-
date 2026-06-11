@@ -963,6 +963,9 @@ export function PosClient({
         // göstərilən məbləğə bərabər olsun və kassa/maliyyə uyğunsuzluğu olmasın
         // (audit #11/#12). Bonus kartdan ayrıca düşür (applyBonusToSale) — nağd yazılmır.
         endirim_mebleg: endirimEffectiveMebleg + couponEndirim + bonusAfterDiscount,
+        // QA-orta: bonus ayrıca göndərilir — server kassir endirim limitindən
+        // kupon+bonus hissəsini çıxarır (müştərinin öz bonusu limit tetikləməsin)
+        bonus_mebleg: bonusAfterDiscount,
         // Tətbiq olunan kupon/kampaniya (audit #10) — istifadə qeydə alınsın
         applied_campaigns: couponApplied ? [couponApplied] : undefined,
         qeyd:

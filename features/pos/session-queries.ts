@@ -57,6 +57,19 @@ export async function getActiveKassa(): Promise<ActiveKassa | null> {
     const totalSales = Object.values(byPayment).reduce((s, v) => s + v.count, 0);
     const totalAmount = Object.values(byPayment).reduce((s, v) => s + v.sum, 0);
 
+    // QA-orta: nisyə satışlar kassa_emeliyyatlari sətri yaratmır (sale-action §8) —
+    // sessiya "Borc" cəmi birbaşa satis_sifarisleri-dən hesablanır.
+    // Qeyd: `tarix` DATE tipidir; sessiya pəncərəsi üçün `yaradildi` (timestamp) işlədilir.
+    const nisyeAgg = await prisma.satis_sifarisleri.aggregate({
+      where: {
+        kassa_id: kassa.id,
+        odenis_nov: "nisye",
+        status: { not: "legv" },
+        yaradildi: { gte: kassa.acilis_tarixi },
+      },
+      _sum: { son_mebleg: true },
+    });
+
     const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
 
@@ -72,8 +85,10 @@ export async function getActiveKassa(): Promise<ActiveKassa | null> {
       emeliyyatlar_say: totalSales,
       cari_negd: (byPayment.negd?.sum ?? 0) * s,
       cari_kart: (byPayment.kart?.sum ?? 0) * s,
-      cari_bank: (byPayment.bank?.sum ?? 0) * s,
-      cari_borc: (byPayment.borc?.sum ?? 0) * s,
+      // QA-orta: kassa yazılışında bank-köçürmə enum-u "kecirme"dir ("bank" heç vaxt yazılmır)
+      cari_bank: (byPayment.kecirme?.sum ?? 0) * s,
+      // QA-orta: nisyə üçün kassa sətri yaranmır — nisyə satışların cəmi göstərilir
+      cari_borc: Number(nisyeAgg._sum.son_mebleg ?? 0) * s,
       cemi_satis: totalAmount * s,
     };
   });

@@ -383,6 +383,22 @@ export function NewTaskDialog({
               />
               <span>Gecikəndə rəhbərə avto bildiriş</span>
             </label>
+            {/* QA-orta: eskalasiya hədəfi seçimi — əvvəl heç bir formada yox idi,
+                escalation_to həmişə NULL qalırdı və rəhbər bildirişi işləmirdi */}
+            <select
+              name="escalation_to"
+              aria-label="Eskalasiya rəhbəri"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+              defaultValue=""
+              disabled={pending}
+            >
+              <option value="">— Eskalasiya rəhbəri (opsional) —</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.vezife ? `${u.ad_soyad} (${u.vezife})` : u.ad_soyad}
+                </option>
+              ))}
+            </select>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"

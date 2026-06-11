@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { getSupplierStatement } from "@/features/maliyye/supplier-statement";
+// QA-orta: maliyyə çıxarışı icazəsiz endirilə bilirdi — maliyyə icazə guard-ı
+import { requireMaliyyeActionPerm } from "@/features/maliyye/access-guard";
 
 export const runtime = "nodejs";
 
@@ -14,6 +16,9 @@ function csvCell(v: unknown): string {
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+  // QA-orta: tam mühasibat dəftəri yalnız maliyyə icazəsi olanlara (audit-log/export nümunəsi kimi)
+  const perm = await requireMaliyyeActionPerm(["maliyye.oxu", "kreditor.oxu", "elaqe.borc"]);
+  if (!perm.ok) return new NextResponse("İcazə yoxdur", { status: 403 });
 
   const { id } = await params;
   const sp = req.nextUrl.searchParams;

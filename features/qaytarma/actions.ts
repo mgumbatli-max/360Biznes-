@@ -8,6 +8,8 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldApproveRefund } from "@/features/tesdiq/create";
 import { audit } from "@/lib/audit/log";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
+// QA-orta: raw Prisma/DB mesajı UI toast-una sızmasın — mərkəzi sanitizer
+import { logAndFriendly } from "@/lib/error/user-message";
 import { requireTicaretActionPerm } from "@/features/ticaret/access-guard";
 
 type ActionResult<T = void> = { ok: true; data?: T } | { ok: false; error: string };
@@ -134,7 +136,8 @@ export async function createReturn(
 
       return { ok: true, data: created };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      // QA-orta: raw DB mesajı əvəzinə təmiz istifadəçi mesajı
+      return { ok: false, error: logAndFriendly("createReturn", e, "Qaytarma yaradılmadı") };
     }
   });
 }
@@ -151,6 +154,12 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       await prisma.$transaction(async (tx) => {
+        // QA-orta: FOR UPDATE lock — paralel qəbul (double-click / iki tab)
+        // hər ikisi "tesdiqlenmemis" oxuyub stoku İKİQAT artıra bilirdi;
+        // sibling pattern: satis-actions.ts recordSalePayment
+        await tx.$queryRaw`
+          SELECT id FROM qaytarma_sifarisleri WHERE id = ${returnId}::uuid FOR UPDATE
+        `;
         const ret = await tx.qaytarma_sifarisleri.findUnique({
           where: { id: returnId },
           include: { qaytarma_satirlari: true },
@@ -271,7 +280,8 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
       });
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      // QA-orta: raw DB mesajı əvəzinə təmiz istifadəçi mesajı
+      return { ok: false, error: logAndFriendly("acceptReturn", e, "Qaytarma qəbul edilmədi") };
     }
   });
 }
@@ -309,7 +319,8 @@ export async function cancelReturn(returnId: string, reason: string): Promise<Ac
       revalidatePath("/ticaret/qaytarma");
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      // QA-orta: raw DB mesajı əvəzinə təmiz istifadəçi mesajı
+      return { ok: false, error: logAndFriendly("cancelReturn", e, "Qaytarma ləğvi alınmadı") };
     }
   });
 }

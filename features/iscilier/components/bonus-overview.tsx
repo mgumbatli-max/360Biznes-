@@ -121,6 +121,11 @@ export function BonusOverview({
             <div className="mt-2 text-[11px] text-muted-foreground">
               {methodLabel(profile)}
             </div>
+            {/* QA-orta: profil bonusu bordroya (kpi_bonus) avtomatik yazılmır —
+                yanlış maaş gözləntisi yaranmasın deyə simulyasiya etiketi */}
+            <div className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-500">
+              Təxmini hesablama — bordroya avtomatik əlavə olunmur
+            </div>
           </div>
           {canEdit && (
             <EditDialog

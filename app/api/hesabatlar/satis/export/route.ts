@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   const [kpi, daily, byPay, byUser, topProducts, topCustomers, pivot] = await withTenant(async () =>
     Promise.all([
-      getSalesKpi(filter),
+      getSalesKpi(filter, { bypassStealth: true }), // QA-orta: Excel export real data — Xülasə detal vərəqləri ilə uzlaşsın
       getDailySales(filter),
       getPaymentMethodSlices(filter),
       getSalesByUser(filter, 50),

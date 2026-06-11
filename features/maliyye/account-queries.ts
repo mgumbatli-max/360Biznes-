@@ -233,7 +233,7 @@ export async function getAccountDetail(id: string): Promise<AccountDetail | null
       id: h.id,
       ad: h.ad,
       nov: h.nov,
-      is_kassa: h.nov === "nagd",
+      is_kassa: h.nov === "negd", // QA-orta: kanonik nov "negd" — "nagd" müqayisəsi həmişə false idi
       bank_adi: h.bank_adi,
       iban: h.iban,
       kart_son4: h.kart_son4,

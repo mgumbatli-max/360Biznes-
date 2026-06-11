@@ -6,6 +6,7 @@ import { getOperations, getOperationsSummary, type OperationFilter } from "@/fea
 import { getQuickRefs } from "@/features/maliyye/queries";
 import { formatMoney } from "@/lib/utils";
 import { RecordStatusFilter } from "@/components/ui/record-status-filter";
+import { Pagination } from "@/components/ui/pagination"; // QA-orta: səhifələmə
 import { liteGate } from "@/lib/lite/config";
 
 export const metadata: Metadata = { title: "Maliyyə əməliyyatları" };
@@ -19,6 +20,7 @@ type SearchParams = {
   to?: string;
   min?: string;
   max?: string;
+  page?: string; // QA-orta: səhifələmə
 };
 
 export default async function EmeliyyatPage({
@@ -50,8 +52,12 @@ export default async function EmeliyyatPage({
     recordStatus,
   };
 
+  // QA-orta: page əvvəl 1-ə hard-code edilmişdi — 100-dən köhnə əməliyyatlar
+  // UI-dan əlçatmaz idi. İndi sp.page oxunur və aşağıda Pagination göstərilir.
+  const page = Math.max(1, Number(sp.page) || 1);
+  const PAGE_SIZE = 100;
   const [{ items, total }, refs, summary] = await Promise.all([
-    getOperations(filter, 1, 100),
+    getOperations(filter, page, PAGE_SIZE),
     getQuickRefs(),
     getOperationsSummary(filter),
   ]);
@@ -306,6 +312,9 @@ export default async function EmeliyyatPage({
       )}
 
       <OperationsTable items={items} total={total} canApprove={canApprove} canCancel={canCancel} />
+
+      {/* QA-orta: 100-dən çox əməliyyat üçün səhifələmə (anbar/hereketler pattern-i) */}
+      <Pagination total={total} pageSize={PAGE_SIZE} page={page} basePath="/maliyye/emeliyyat" />
 
       <QuickOpDialog
         hesablar={refs.hesablar}

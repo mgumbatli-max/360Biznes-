@@ -22,7 +22,13 @@ export async function getImportStats(range: DateRange) {
     const { sahibkarId } = requireTenant();
     const [agg, taxAgg] = await Promise.all([
       prisma.alis_sifarisleri.aggregate({
-        where: { tarix: { gte: range.from, lte: range.to } },
+        // QA-orta: ləğv/silinmiş alışlar cəmə daxil olmasın (digər hesabat
+        // sorğularındakı status != 'legv' + deleted_at konvensiyası ilə eyni).
+        where: {
+          tarix: { gte: range.from, lte: range.to },
+          status: { not: "legv" },
+          deleted_at: null,
+        },
         _sum: { umumi_mebleg: true, odenilmis: true, elave_xerc: true },
         _count: { _all: true },
       }),
@@ -61,6 +67,8 @@ export async function getSupplierBreakdown(range: DateRange, limit = 20): Promis
         JOIN kontragentler k ON k.id = asi.techiazatci_id
        WHERE asi.sahibkar_id = ${sahibkarId}::uuid
          AND asi.tarix BETWEEN ${range.from} AND ${range.to}
+         AND COALESCE(asi.status, '') != 'legv' -- QA-orta: ləğv alışlar borc cəminə düşməsin
+         AND asi.deleted_at IS NULL
        GROUP BY k.id, k.ad, k.sirket_adi
        ORDER BY cemi DESC
        LIMIT ${limit}

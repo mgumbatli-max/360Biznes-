@@ -56,7 +56,15 @@ export async function getContactDebtTimeline(id: string, limit = 200): Promise<D
         take: limit,
       }),
       prisma.finance_operations.findMany({
-        where: { kontragent_id: id, status: "aktiv" },
+        // QA-orta: rol filtri — təchizatçı ödənişləri (alis_odenis, mexaric) müştəri
+        // borc xəttinə qarışmasın; alış qalığı onsuz da `odenilmis` ilə nettlənir.
+        // customer-statement pattern-i: y_n='daxil' + type_kod IN ('qaime','borc_silinme').
+        where: {
+          kontragent_id: id,
+          status: "aktiv",
+          y_n: "daxil",
+          type_kod: { in: ["qaime", "borc_silinme"] },
+        },
         select: { id: true, type_kod: true, y_n: true, tarix: true, meblegh: true, qeyd: true },
         orderBy: { tarix: "desc" },
         take: limit,
@@ -190,7 +198,8 @@ export async function getCustomer360Kpis(id: string): Promise<Customer360Kpis> {
       }),
       prisma.kontragentler.findUnique({
         where: { id },
-        select: { borc: true, musteri_reyting: true },
+        // QA-orta: müştəri borcu = alacaq (recalculateCustomerBalance yalnız alacaq yazır; borc təchizatçı sahəsidir)
+        select: { alacaq: true, musteri_reyting: true },
       }),
     ]);
     const count = agg._count._all;
@@ -204,7 +213,7 @@ export async function getCustomer360Kpis(id: string): Promise<Customer360Kpis> {
       ltv: total,
       sales_total: total,
       sales_count: count,
-      borc: Number(contact?.borc ?? 0),
+      borc: Number(contact?.alacaq ?? 0), // QA-orta: alacaq = müştərinin bizə qalan borcu
       son_alish_gun: sonGun,
       avg_check: avg,
       nps: contact?.musteri_reyting ?? null,
@@ -223,9 +232,10 @@ export async function getCustomerHealthScore(id: string): Promise<CustomerHealth
     const kpis = await getCustomer360Kpis(id);
     const contact = await prisma.kontragentler.findUnique({
       where: { id },
-      select: { borc: true, borc_limiti: true, qara_siyahi: true, aktiv: true },
+      // QA-orta: müştəri borcu alacaq sahəsindədir — borc yalnız təchizatçılar üçün yenilənir
+      select: { alacaq: true, borc_limiti: true, qara_siyahi: true, aktiv: true },
     });
-    const borc = Number(contact?.borc ?? 0);
+    const borc = Number(contact?.alacaq ?? 0);
     const limit = contact?.borc_limiti !== null && contact?.borc_limiti !== undefined ? Number(contact.borc_limiti) : null;
 
     // 1) Satış tezliyi (0-100): 10+ satış = 100, 0 = 0

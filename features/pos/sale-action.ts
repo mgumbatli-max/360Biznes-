@@ -28,6 +28,8 @@ const CreateSaleSchema = z.object({
   // POS-da default Nağd (sürətli satış). Nisyə də qəbul olunur — standartdır.
   odenis_nov: z.enum(["negd", "kart", "kecirme", "nisye"]),
   endirim_mebleg: z.coerce.number().min(0).default(0),
+  // QA-orta: müştərinin öz loyalty bonus sərfi — limit yoxlamasında kassir endirimindən çıxarılır
+  bonus_mebleg: z.coerce.number().min(0).default(0),
   qeyd: z.string().max(2000).nullish(),
   lines: z.array(LineSchema).min(1, "Ən az 1 məhsul olmalıdır"),
   override_credit_limit: z.coerce.boolean().optional(),
@@ -97,8 +99,15 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
         if (line.endirim_faiz > maxLineDiscount) maxLineDiscount = line.endirim_faiz;
       }
       const preSonMebleg = Math.max(0, preUmumi - data.endirim_mebleg);
+      // QA-orta: limit yoxlaması yalnız KASSİRİN verdiyi endirimi saymalıdır —
+      // admin kuponu (applied_campaigns) və müştərinin öz loyalty bonusu
+      // (bonus_mebleg) kassir endirim limitini tetikləməsin.
+      const kuponBonusEndirim =
+        (data.applied_campaigns ?? []).reduce((s, c) => s + Math.max(0, c.endirim_mebleg), 0) +
+        data.bonus_mebleg;
+      const kassirEndirim = Math.min(preUmumi, Math.max(0, data.endirim_mebleg - kuponBonusEndirim));
       const overallDiscountPct =
-        preUmumi > 0 ? Math.round(((preUmumi - preSonMebleg) / preUmumi) * 1000) / 10 : 0;
+        preUmumi > 0 ? Math.round((kassirEndirim / preUmumi) * 1000) / 10 : 0;
       const effectiveMaxPct = Math.max(maxLineDiscount, overallDiscountPct);
 
       // Credit-limit check for nisye sales (POS-da nisyə qəbul olunur).
@@ -224,7 +233,18 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
         const lastPosNum = lastPos?.qaime_nomresi
           ? Number(lastPos.qaime_nomresi.split("-").pop()) || 0
           : 0;
-        const posCekNomresi = `${posPrefix}${String(lastPosNum + 1).padStart(5, "0")}`;
+        // QA-orta: max+1 findFirst race-unsafe idi (paralel satışda dublikat POS çek
+        // nömrəsi) — sened_nomre_counter UPSERT atomikdir (nextDocNumber pattern-i);
+        // GREATEST mövcud max-dan seed edir ki, köhnə nömrələrlə toqquşma olmasın.
+        const posRows = await tx.$queryRaw<{ son_nomre: number }[]>`
+          INSERT INTO sened_nomre_counter (sahibkar_id, prefix, il, son_nomre, yenilendi)
+          VALUES (${sahibkarId}::uuid, ${`pos-${kassaShort}`}::varchar, ${year}::integer, ${lastPosNum + 1}::integer, NOW())
+          ON CONFLICT (sahibkar_id, prefix, il) DO UPDATE
+            SET son_nomre = GREATEST(sened_nomre_counter.son_nomre, ${lastPosNum}::integer) + 1,
+                yenilendi = NOW()
+          RETURNING son_nomre
+        `;
+        const posCekNomresi = `${posPrefix}${String(posRows[0]?.son_nomre ?? lastPosNum + 1).padStart(5, "0")}`;
 
         // 6. Sale header
         const sale = await tx.satis_sifarisleri.create({
@@ -271,6 +291,8 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
             mehsulId: line.mehsul_id,
             anbarId: data.anbar_id,
             miqdar: line.miqdar,
+            // QA-orta: aktiv bron POS satışını bloklasın (oversell qoruması)
+            rezervNezereAl: true,
           });
           if (!dec.ok) throw new Error(dec.error);
 
@@ -345,7 +367,23 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
               // Kassanın bağlı olduğu maliye hesabını tap — finance_op-a yazmaq üçün.
               // Bu hesab POS açılış zamanı seçilmişdir; əgər yoxdursa sahibkar-ın
               // ilk aktiv nağd hesabına fallback.
-              let hesabIdForOp = kassa.maliye_hesab_id ?? null;
+              // QA-orta: kart/köçürmə pulu nağd kassa hesabına yazılmasın deyə
+              // ödəniş növünə uyğun hesab (kart→kart, kecirme→bank) üstün tutulur
+              // (satis-actions.ts fallbackNov pattern-i); tapılmasa kassa hesabı.
+              let hesabIdForOp: string | null = null;
+              if (data.odenis_nov === "kart" || data.odenis_nov === "kecirme") {
+                const novHesab = await tx.maliye_hesablari.findFirst({
+                  where: {
+                    sahibkar_id: sahibkarId,
+                    aktiv: true,
+                    nov: data.odenis_nov === "kart" ? "kart" : "bank",
+                  },
+                  orderBy: { yaradildi: "asc" },
+                  select: { id: true },
+                });
+                hesabIdForOp = novHesab?.id ?? null;
+              }
+              if (!hesabIdForOp) hesabIdForOp = kassa.maliye_hesab_id ?? null;
               if (!hesabIdForOp) {
                 const def = await tx.maliye_hesablari.findFirst({
                   where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },

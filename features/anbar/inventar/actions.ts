@@ -261,7 +261,9 @@ export async function completeInventar(id: string, opts?: { allowMissingReasons?
             where: { mehsul_id: r.mehsul_id, anbar_id: inv.anbar_id },
           });
           if (s) {
-            await tx.stok.update({ where: { id: s.id }, data: { miqdar: fakti } });
+            // QA-orta: mütləq force-set əvəzinə NİSBİ delta — sayım snapshot-u ilə
+            // tamamlama arasındakı satış/medaxil itməsin, cache = ledger invariantı qorunsun.
+            await tx.stok.update({ where: { id: s.id }, data: { miqdar: { increment: ferq } } });
           } else if (fakti > 0) {
             await tx.stok.create({
               data: { sahibkar_id: sahibkarId, mehsul_id: r.mehsul_id, anbar_id: inv.anbar_id, miqdar: fakti },

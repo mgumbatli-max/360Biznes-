@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@prisma/client"; // QA-orta: server-side sort orderBy tipi
 import { unstable_cache } from "next/cache";
 import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -56,6 +57,9 @@ export type SaleFilter = {
   borc?: "var" | "yox" | "any";
   /** Soft-delete filter — default "aktiv" */
   recordStatus?: "aktiv" | "silinmis" | "hamisi";
+  // QA-orta: sütun sıralaması server-side tətbiq olunsun deyə URL sort/dir parametrləri
+  sort?: string;
+  dir?: "asc" | "desc";
 };
 
 export type SaleStats = {
@@ -82,17 +86,19 @@ async function fetchSaleStatsRaw(sahibkarId: string) {
 
   const [b, h, a, borc] = await Promise.all([
     prismaUnscoped.satis_sifarisleri.aggregate({
-      where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true } },
+      // QA-orta: legv/qaytarilib/soft-delete satışlar gəlir KPI-yə düşməsin
+      // (borc_total sorğusu və getTradeKpis ilə eyni standart)
+      where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true }, deleted_at: null, status: { notIn: ["legv", "qaytarilib"] } },
       _sum: { son_mebleg: true },
       _count: { _all: true },
     }),
     prismaUnscoped.satis_sifarisleri.aggregate({
-      where: { sahibkar_id: sahibkarId, tarix: { gte: weekStart }, qaralama: { not: true } },
+      where: { sahibkar_id: sahibkarId, tarix: { gte: weekStart }, qaralama: { not: true }, deleted_at: null, status: { notIn: ["legv", "qaytarilib"] } }, // QA-orta: legv/silinmiş istisna
       _sum: { son_mebleg: true },
       _count: { _all: true },
     }),
     prismaUnscoped.satis_sifarisleri.aggregate({
-      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, qaralama: { not: true } },
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, qaralama: { not: true }, deleted_at: null, status: { notIn: ["legv", "qaytarilib"] } }, // QA-orta: legv/silinmiş istisna
       _sum: { son_mebleg: true },
       _count: { _all: true },
     }),
@@ -192,10 +198,29 @@ export async function getSales(
       where.status = { in: ["tamamlandi"] };
     }
 
+    // QA-orta: sütun sıralaması server-side — əvvəl yalnız yüklənmiş 50 sətir
+    // client-side sıralanırdı, "ən böyük satış" qlobal nəticə yanlış idi
+    const sortDir: "asc" | "desc" = filter.dir === "asc" ? "asc" : "desc";
+    const SORT_MAP: Record<string, Prisma.satis_sifarisleriOrderByWithRelationInput> = {
+      tarix: { tarix: sortDir },
+      nomre: { nomre: sortDir },
+      musteri: { kontragentler: { ad: sortDir } },
+      status: { status: sortDir },
+      cemi: { son_mebleg: sortDir },
+      endirim: { endirim_mebleg: sortDir },
+      alinan: { odenilmis: sortDir },
+      satir_say: { satis_sifaris_satirlari: { _count: sortDir } },
+      yaradildi: { yaradildi: sortDir },
+    };
+    const sortRule = filter.sort ? SORT_MAP[filter.sort] : undefined;
+    const orderBy: Prisma.satis_sifarisleriOrderByWithRelationInput[] = sortRule
+      ? [sortRule, { yaradildi: "desc" }]
+      : [{ tarix: "desc" }, { yaradildi: "desc" }];
+
     const [items, total] = await Promise.all([
       prisma.satis_sifarisleri.findMany({
         where,
-        orderBy: [{ tarix: "desc" }, { yaradildi: "desc" }],
+        orderBy,
         take: pageSize,
         skip: (page - 1) * pageSize,
         include: {

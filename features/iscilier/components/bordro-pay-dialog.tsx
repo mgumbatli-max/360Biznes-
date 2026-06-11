@@ -44,7 +44,7 @@ export function BordroPayDialog({ row, open, onOpenChange, onDone }: Props) {
       .then(([rows, ctx]) => {
         setAccounts(rows);
         setContext(ctx);
-        const def = rows.find((r) => r.nov === "nagd") ?? rows[0];
+        const def = rows.find((r) => r.nov === "negd") ?? rows[0]; // QA-orta: kanonik nov "negd" — "nagd" heç vaxt tapılmırdı
         setHesabId(def?.id ?? "");
       })
       .finally(() => setLoading(false));

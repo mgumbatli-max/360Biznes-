@@ -32,9 +32,11 @@ const COLUMN_HINTS: Record<string, string> = {
   emekdas: "Əməkdaşın adı və avatarı. Klikləsən onun fərdi bonus paneli açılır.",
   vezife: "Əməkdaşın vəzifəsi (məs. kassir, mühasib) və sistem rolu.",
   maas: "Aylıq sabit maaş ₼. Bonus və cəriməyə daxil deyil.",
-  bonus: "Bu ay qazanılan KPI bonus. Mini progress bar pool-dan neçə faiz qazandığını göstərir.",
+  // QA-orta: profil bonusu bordroya avtomatik yazılmır — təxmin olduğunu açıq bildir.
+  bonus: "Bu ay qazanılan KPI bonus (təxmini — bordroya avtomatik düşmür). Mini progress bar pool-dan neçə faiz qazandığını göstərir.",
   cerime: "Bu ay tətbiq olunan cərimə cəmi. 0 olarsa boş görünür.",
-  net: "Maaş + Bonus − Cərimə. Bu əməkdaşa bu ay ödəniləcək ümumi məbləğ.",
+  // QA-orta: hint reallıqla uyğunlaşdırıldı — bordro NET (vergi/sosial/avans/prorata daxil)
+  net: "Bordro NET (prorata maaş + bonus − cərimə − avans − vergi/sosial). Bordro hesablanmayıbsa təxmini: Maaş + Bonus − Cərimə.",
   davamiyyet: "İş günlərində qaydasında olduğu gün faizi. ≥90% yaşıl, 70-89% sarı, <70% qırmızı. Trend ▲▼ keçən aydan dəyişiklik göstərir.",
   tapsiriq: "Vaxtında bitirilən tapşırıq faizi. Deadline-dan əvvəl tamamlanan tapşırıqlar nəzərə alınır.",
   sehv: "Təsdiq mərkəzində rədd edilmiş sorğu faizi. TƏRS göstərici — 0% yaşıl (yaxşı), çoxalan qırmızı.",

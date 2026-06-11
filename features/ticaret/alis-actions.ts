@@ -127,12 +127,23 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
           // approveRequest helper-i receivePurchase çağıracaq.
           if (d.receive_now && !needsApproval) {
             // Race-safe upsert — paralel alış qəbulları unique constraint-ə düşmür
+            // QA-orta: receive_now yolunda da stoka REAL maya yazılır (proporsional
+            // gömrük/çatdırılma daxil) — receivePurchase ilə eyni davranış, COGS/inventar düz olsun
             await stockIncrement(tx, {
               sahibkarId,
               mehsulId: line.mehsul_id,
               anbarId: d.anbar_id,
               miqdar: line.miqdar,
-              sonQiymet: line.qiymet,
+              sonQiymet: realMayaEded,
+            });
+
+            // QA-orta: məhsulun son alış qiyməti/tarixi yenilənir (receivePurchase ilə eyni)
+            await tx.mehsullar.updateMany({
+              where: { id: line.mehsul_id, sahibkar_id: sahibkarId },
+              data: {
+                alish_qiymeti: new Prisma.Decimal(realMayaEded.toFixed(4)),
+                son_alish_de: new Date(),
+              },
             });
 
             await tx.anbar_hereketleri.create({
@@ -142,7 +153,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
                 mehsul_id: line.mehsul_id,
                 nov: "medaxil",
                 miqdar: line.miqdar,
-                qiymet: line.qiymet,
+                qiymet: realMayaEded,
                 ref_nov: "alis_sifarisi",
                 ref_id: purchase.id,
                 edilen_id: istifadeciId,
@@ -164,7 +175,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
             usedHesabId = d.hesab_id ?? null;
             if (!usedHesabId) {
               const def = await tx.maliye_hesablari.findFirst({
-                where: { sahibkar_id: sahibkarId, aktiv: true, nov: "nagd" },
+                where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" }, // QA-orta: kanonik nov "negd" — "nagd" ilə kassa heç vaxt tapılmırdı
                 orderBy: { yaradildi: "asc" },
                 select: { id: true },
               });

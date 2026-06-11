@@ -1462,7 +1462,18 @@ export async function getServisEhtiyatHisseler(servis_id: string) {
       },
       take: 50,
     });
-    return rows.map((r) => ({
+    // QA-orta: servis_iade reversal sətirləri "işlədilmiş hissə" kimi görünməsin —
+    // həm iadə sətrini, həm də onun qaytardığı orijinal hərəkəti gizlət
+    // (deleteEhtiyatHisse reversal qeydində "ref hereket: <id>" saxlayır)
+    const reversedIds = new Set<string>();
+    for (const r of rows) {
+      if (r.nov === "servis_iade") {
+        const m = r.qeyd?.match(/ref hereket:\s*(\S+)/);
+        if (m) reversedIds.add(m[1]);
+      }
+    }
+    const visible = rows.filter((r) => r.nov !== "servis_iade" && !reversedIds.has(r.id));
+    return visible.map((r) => ({
       id: r.id,
       mehsul_id: r.mehsul_id,
       mehsul_ad: r.mehsullar?.ad ?? "Naməlum",

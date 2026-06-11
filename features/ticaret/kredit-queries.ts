@@ -61,53 +61,56 @@ export async function getKreditStats(): Promise<KreditStats> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const KREDIT_NOVLER = ["nisye", "kredit", "kredit_qeyd"];
-    const [aktiv, bu_ay] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: {
-          odenis_nov: { in: KREDIT_NOVLER },
-          status: { not: "legv" },
-        },
-        _sum: { son_mebleg: true, odenilmis: true },
-        _count: { _all: true },
-      }),
-      prisma.satis_sifarisleri.aggregate({
-        where: {
-          odenis_nov: { in: KREDIT_NOVLER },
-          tarix: { gte: monthStart },
-          status: { not: "legv" },
-        },
-        _sum: { son_mebleg: true },
-        _count: { _all: true },
-      }),
-    ]);
-
-    const toplam_borc = Number(aktiv._sum.son_mebleg ?? 0) - Number(aktiv._sum.odenilmis ?? 0);
-
-    // Calculate overdue (>30 days)
+    // QA-orta: kredit/kredit_qeyd satışlarında qalıq brüt son_mebleg ilə deyil,
+    // bankdan gözlənilən NET (magaza_net - odenilmis) ilə hesablanmalıdır — əks halda
+    // bank komissiyası qədər heç vaxt bağlanmayan fantom borc qalırdı.
+    const { sahibkarId } = requireTenant();
     const cutoff = new Date(today);
     cutoff.setDate(cutoff.getDate() - 30);
-    const gecikmis = await prisma.satis_sifarisleri.aggregate({
-      where: {
-        odenis_nov: { in: KREDIT_NOVLER },
-        status: { not: "legv" },
-        tarix: { lt: cutoff },
-      },
-      _sum: { son_mebleg: true, odenilmis: true },
-      _count: { _all: true },
-    });
-    const gecikmis_borc = Number(gecikmis._sum.son_mebleg ?? 0) - Number(gecikmis._sum.odenilmis ?? 0);
+    const [row] = await prisma.$queryRaw<
+      {
+        aktiv: number;
+        toplam_borc: number;
+        bu_ay_yeni: number;
+        bu_ay_yeni_mebleg: number;
+        gecikmis: number;
+        gecikmis_borc: number;
+      }[]
+    >`
+      SELECT
+        COUNT(*)::int                                                          AS aktiv,
+        COALESCE(SUM(b.qaliq), 0)::float                                       AS toplam_borc,
+        COUNT(*) FILTER (WHERE b.tarix >= ${monthStart})::int                  AS bu_ay_yeni,
+        COALESCE(SUM(b.net) FILTER (WHERE b.tarix >= ${monthStart}), 0)::float AS bu_ay_yeni_mebleg,
+        COUNT(*) FILTER (WHERE b.tarix < ${cutoff})::int                       AS gecikmis,
+        COALESCE(SUM(b.qaliq) FILTER (WHERE b.tarix < ${cutoff}), 0)::float    AS gecikmis_borc
+      FROM (
+        SELECT
+          s.tarix,
+          CASE WHEN s.odenis_nov IN ('kredit', 'kredit_qeyd')
+               THEN COALESCE(ks.magaza_net, s.son_mebleg)
+               ELSE s.son_mebleg END AS net,
+          CASE WHEN s.odenis_nov IN ('kredit', 'kredit_qeyd')
+               THEN COALESCE(ks.magaza_net, s.son_mebleg)
+               ELSE s.son_mebleg END - COALESCE(s.odenilmis, 0) AS qaliq
+        FROM satis_sifarisleri s
+        LEFT JOIN kredit_satislari ks ON ks.satis_id = s.id
+        WHERE s.sahibkar_id = ${sahibkarId}::uuid
+          AND s.odenis_nov IN ('nisye', 'kredit', 'kredit_qeyd')
+          AND COALESCE(s.status, '') <> 'legv'
+      ) b
+    `;
 
     const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
 
     return {
-      aktiv: aktiv._count._all,
-      toplam_borc: toplam_borc * s,
-      bu_ay_yeni: bu_ay._count._all,
-      bu_ay_yeni_mebleg: Number(bu_ay._sum.son_mebleg ?? 0) * s,
-      gecikmis: gecikmis._count._all,
-      gecikmis_borc: gecikmis_borc * s,
+      aktiv: Number(row?.aktiv ?? 0),
+      toplam_borc: Number(row?.toplam_borc ?? 0) * s,
+      bu_ay_yeni: Number(row?.bu_ay_yeni ?? 0),
+      bu_ay_yeni_mebleg: Number(row?.bu_ay_yeni_mebleg ?? 0) * s,
+      gecikmis: Number(row?.gecikmis ?? 0),
+      gecikmis_borc: Number(row?.gecikmis_borc ?? 0) * s,
     };
   });
 }
@@ -249,7 +252,13 @@ export async function getMusteriBorc(limit = 20): Promise<MusteriBorc[]> {
         k.id::text                  AS musteri_id,
         k.ad                        AS musteri_ad,
         k.telefon                   AS telefon,
-        COALESCE(SUM(s.son_mebleg - COALESCE(s.odenilmis, 0)), 0)::float AS borc,
+        -- QA-orta: kredit/kredit_qeyd üçün qalıq bankdan gözlənilən NET-dir (magaza_net);
+        -- brüt son_mebleg bank komissiyası qədər fantom borc göstərirdi
+        COALESCE(SUM(
+          CASE WHEN s.odenis_nov IN ('kredit', 'kredit_qeyd')
+               THEN COALESCE(ks.magaza_net, s.son_mebleg)
+               ELSE s.son_mebleg END - COALESCE(s.odenilmis, 0)
+        ), 0)::float AS borc,
         COUNT(s.id)::int            AS satislar_sayi,
         MAX(s.tarix)                AS son_satis_tarix
       FROM kontragentler k
@@ -258,9 +267,14 @@ export async function getMusteriBorc(limit = 20): Promise<MusteriBorc[]> {
        AND s.sahibkar_id = k.sahibkar_id
        AND s.odenis_nov IN ('nisye', 'kredit', 'kredit_qeyd')
        AND COALESCE(s.status, '') NOT IN ('legv')
+      LEFT JOIN kredit_satislari ks ON ks.satis_id = s.id
       WHERE k.sahibkar_id = ${sahibkarId}::uuid
       GROUP BY 1, 2, 3
-      HAVING COALESCE(SUM(s.son_mebleg - COALESCE(s.odenilmis, 0)), 0) > 0
+      HAVING COALESCE(SUM(
+        CASE WHEN s.odenis_nov IN ('kredit', 'kredit_qeyd')
+             THEN COALESCE(ks.magaza_net, s.son_mebleg)
+             ELSE s.son_mebleg END - COALESCE(s.odenilmis, 0)
+      ), 0) > 0
       ORDER BY borc DESC
       LIMIT ${limit}
     `;

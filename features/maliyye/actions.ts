@@ -1115,7 +1115,9 @@ export async function receivePartialPayment(input: FormData): Promise<ActionResu
           odenis_nov: { in: ["nisye", "borc"] },
         },
         select: { id: true, son_mebleg: true, odenilmis: true, nomre: true, tarix: true, status: true },
-        orderBy: { tarix: "asc" },
+        // QA-orta: tarix @db.Date (gün dəqiqliyi) — eyni günün qaimələrində FIFO
+        // sırası deterministik olsun deyə yaradildi+nomre tiebreaker əlavə edildi.
+        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
       });
       const openWithQalig = openSales
         .map((s) => ({
@@ -1491,7 +1493,8 @@ export async function payAllOpenInvoices(
           qaralama: { not: true },
           odenis_nov: { in: ["nisye", "borc"] },
         },
-        orderBy: { tarix: "asc" },
+        // QA-orta: eyni günün qaimələrində FIFO sırası deterministik olsun
+        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
         select: { id: true, son_mebleg: true, odenilmis: true, nomre: true },
       });
 
@@ -1661,7 +1664,8 @@ export async function paySupplierAllOpen(
           techiazatci_id: d.techizatci_id,
           status: { not: "legv" },
         },
-        orderBy: { tarix: "asc" },
+        // QA-orta: eyni günün alışlarında FIFO sırası deterministik olsun
+        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
         select: { id: true, umumi_mebleg: true, odenilmis: true, nomre: true },
       });
 
@@ -1846,7 +1850,8 @@ export async function paySupplierInvoice(
           status: { not: "legv" },
         },
         select: { id: true, nomre: true, umumi_mebleg: true, odenilmis: true, tarix: true },
-        orderBy: { tarix: "asc" },
+        // QA-orta: eyni günün alışlarında FIFO sırası deterministik olsun
+        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
       });
       const openWithQalig = openPurchases
         .map((p) => ({

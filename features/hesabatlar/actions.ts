@@ -110,9 +110,21 @@ export async function exportStaffPerformanceCsv(
         preset: parsed.data.preset,
       });
       const rows = await getStaffPerformance(range, parsed.data.limit);
+      // QA-orta: başlıqlar StaffPerf açarları ilə uyğun deyildi → sütunlar boş çıxırdı.
+      // exportCustomersCsv pattern-i ilə açıq remapping (marja/hedef_faiz sahələri yoxdur —
+      // real metriklər: ort_cek, endirim, endirim_pct, roi).
       const csv = rowsToCsv(
-        ["ad_soyad", "vezife", "sifaris_sayi", "gelir", "marja", "hedef_faiz"],
-        rows as unknown as Record<string, unknown>[],
+        ["ad_soyad", "vezife", "sifaris_sayi", "gelir", "ort_cek", "endirim", "endirim_pct", "roi"],
+        rows.map((r) => ({
+          ad_soyad: r.ad,
+          vezife: r.vezife ?? "",
+          sifaris_sayi: r.sifaris_say,
+          gelir: r.cemi,
+          ort_cek: r.ort_cek,
+          endirim: r.endirim,
+          endirim_pct: r.endirim_pct,
+          roi: r.roi,
+        })) as Record<string, unknown>[],
       );
       const stamp = new Date().toISOString().slice(0, 10);
       const filename = `emekdas-performans-${stamp}.csv`;

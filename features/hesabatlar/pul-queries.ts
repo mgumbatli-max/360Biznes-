@@ -152,6 +152,7 @@ export async function getExpenseCategories(): Promise<ExpenseCategory[]> {
         LEFT JOIN xerc_kateqoriyalari xk ON xk.id = x.kateqoriya_id
        WHERE x.sahibkar_id = ${sahibkarId}::uuid
          AND x.tarix >= ${monthStart}
+         AND x.legv_de IS NULL -- QA-orta: ləğv edilmiş xərc hesabata düşməsin
        GROUP BY xk.ad
        ORDER BY mebleg DESC
     `.catch(() => [] as ExpenseCategory[]);

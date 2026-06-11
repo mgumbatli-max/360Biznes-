@@ -143,25 +143,46 @@ export async function getKpiDashboard(opts: {
         _count: { _all: true },
       }),
       // Tapşırıqlar — hər əməkdaş üçün ümumi
-      prisma.tapshiriqlar.groupBy({
-        by: ["mesul_id"],
-        where: {
-          sahibkar_id: sahibkarId,
-          mesul_id: { in: empIds },
-          deadline: { gte: start, lte: end },
-        },
-        _count: { _all: true },
-      }),
-      // Vaxtında bitirilmiş tapşırıqlar
+      // QA-orta: icraçı (tapshiriq_iscilier) tapşırıqları da sayılsın — əvvəl yalnız
+      // mesul_id sayılırdı, tapshiriqlar modulunun analitikası ilə ziddiyyət yaranırdı
       prisma.$queryRaw<{ mesul_id: string; count: bigint }[]>`
-        SELECT mesul_id::text, COUNT(*)::bigint AS count
-        FROM tapshiriqlar
-        WHERE sahibkar_id = ${sahibkarId}::uuid
-          AND mesul_id = ANY(${empIds}::uuid[])
-          AND deadline BETWEEN ${start} AND ${end}
-          AND tamamlandi_de IS NOT NULL
-          AND tamamlandi_de <= deadline
-        GROUP BY mesul_id
+        WITH user_task AS (
+          SELECT t.id, t.mesul_id AS istifadeci_id
+            FROM tapshiriqlar t
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid AND t.mesul_id IS NOT NULL
+             AND t.deadline BETWEEN ${start} AND ${end}
+          UNION
+          SELECT t.id, ti.istifadeci_id
+            FROM tapshiriqlar t
+            JOIN tapshiriq_iscilier ti ON ti.tapshiriq_id = t.id
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid
+             AND t.deadline BETWEEN ${start} AND ${end}
+        )
+        SELECT istifadeci_id::text AS mesul_id, COUNT(*)::bigint AS count
+          FROM user_task
+         WHERE istifadeci_id = ANY(${empIds}::uuid[])
+         GROUP BY istifadeci_id
+      `,
+      // Vaxtında bitirilmiş tapşırıqlar
+      // QA-orta: icraçı tapşırıqları da daxil (mesul_id UNION tapshiriq_iscilier)
+      prisma.$queryRaw<{ mesul_id: string; count: bigint }[]>`
+        WITH user_task AS (
+          SELECT t.id, t.deadline, t.tamamlandi_de, t.mesul_id AS istifadeci_id
+            FROM tapshiriqlar t
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid AND t.mesul_id IS NOT NULL
+          UNION
+          SELECT t.id, t.deadline, t.tamamlandi_de, ti.istifadeci_id
+            FROM tapshiriqlar t
+            JOIN tapshiriq_iscilier ti ON ti.tapshiriq_id = t.id
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid
+        )
+        SELECT istifadeci_id::text AS mesul_id, COUNT(*)::bigint AS count
+          FROM user_task
+         WHERE istifadeci_id = ANY(${empIds}::uuid[])
+           AND deadline BETWEEN ${start} AND ${end}
+           AND tamamlandi_de IS NOT NULL
+           AND tamamlandi_de <= deadline
+         GROUP BY istifadeci_id
       `,
       // Təsdiq sorğuları — yaradılmış
       prisma.tesdiq_telep.groupBy({
@@ -209,13 +230,16 @@ export async function getKpiDashboard(opts: {
           kpi_bonus: true,
           manual_bonus: true,
           cerime: true,
+          // QA-orta: bordro faktiki NET — dashboard "Net" sütunu bununla uyğunlaşdırılır
+          son_meblegh: true,
         },
       }),
     ]);
 
     // 3. Helper maps — strict tipləmə tsc üçün
     const davMap = new Map<string, number>(davamiyyet.map((d: { istifadeci_id: string; _count: { _all: number } }) => [d.istifadeci_id, d._count._all]));
-    const taskMap = new Map<string, number>(tasks.map((t: { mesul_id: string | null; _count: { _all: number } }) => [t.mesul_id ?? "", t._count._all]));
+    // QA-orta: raw UNION nəticəsi {mesul_id, count} formasındadır
+    const taskMap = new Map<string, number>(tasks.map((t) => [t.mesul_id, Number(t.count)]));
     const onTimeMap = new Map<string, number>(tasksOnTime.map((t: { mesul_id: string; count: bigint }) => [t.mesul_id, Number(t.count)]));
     const apprMap = new Map<string, number>(approvals.map((a: { yaradan_id: string | null; _count: { _all: number } }) => [a.yaradan_id ?? "", a._count._all]));
     const rejectMap = new Map<string, number>(approvalsRejected.map((a: { yaradan_id: string | null; _count: { _all: number } }) => [a.yaradan_id ?? "", a._count._all]));
@@ -224,11 +248,13 @@ export async function getKpiDashboard(opts: {
         [s.yaradan_id ?? "", { mebleg: Number(s._sum.son_mebleg ?? 0), sayi: s._count._all }],
       ),
     );
-    const bordroMap = new Map<string, { bonus: number; cerime: number }>(
-      bordro.map((b: { istifadeci_id: string; kpi_bonus: unknown; manual_bonus: unknown; cerime: unknown }) =>
+    const bordroMap = new Map<string, { bonus: number; cerime: number; net: number | null }>(
+      bordro.map((b: { istifadeci_id: string; kpi_bonus: unknown; manual_bonus: unknown; cerime: unknown; son_meblegh: unknown }) =>
         [b.istifadeci_id, {
           bonus: Number(b.kpi_bonus ?? 0) + Number(b.manual_bonus ?? 0),
           cerime: Number(b.cerime ?? 0),
+          // QA-orta: bordro faktiki NET (prorata/vergi/sosial/avans daxil) — bordro yoxdursa null
+          net: b.son_meblegh == null ? null : Number(b.son_meblegh),
         }],
       ),
     );
@@ -260,24 +286,44 @@ export async function getKpiDashboard(opts: {
         },
         _count: { _all: true },
       }),
-      prisma.tapshiriqlar.groupBy({
-        by: ["mesul_id"],
-        where: {
-          sahibkar_id: sahibkarId,
-          mesul_id: { in: empIds },
-          deadline: { gte: prevStart, lte: prevEnd },
-        },
-        _count: { _all: true },
-      }),
+      // QA-orta: icraçı tapşırıqları da daxil (mesul_id UNION tapshiriq_iscilier)
       prisma.$queryRaw<{ mesul_id: string; count: bigint }[]>`
-        SELECT mesul_id::text, COUNT(*)::bigint AS count
-        FROM tapshiriqlar
-        WHERE sahibkar_id = ${sahibkarId}::uuid
-          AND mesul_id = ANY(${empIds}::uuid[])
-          AND deadline BETWEEN ${prevStart} AND ${prevEnd}
-          AND tamamlandi_de IS NOT NULL
-          AND tamamlandi_de <= deadline
-        GROUP BY mesul_id
+        WITH user_task AS (
+          SELECT t.id, t.mesul_id AS istifadeci_id
+            FROM tapshiriqlar t
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid AND t.mesul_id IS NOT NULL
+             AND t.deadline BETWEEN ${prevStart} AND ${prevEnd}
+          UNION
+          SELECT t.id, ti.istifadeci_id
+            FROM tapshiriqlar t
+            JOIN tapshiriq_iscilier ti ON ti.tapshiriq_id = t.id
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid
+             AND t.deadline BETWEEN ${prevStart} AND ${prevEnd}
+        )
+        SELECT istifadeci_id::text AS mesul_id, COUNT(*)::bigint AS count
+          FROM user_task
+         WHERE istifadeci_id = ANY(${empIds}::uuid[])
+         GROUP BY istifadeci_id
+      `,
+      // QA-orta: icraçı tapşırıqları da daxil (mesul_id UNION tapshiriq_iscilier)
+      prisma.$queryRaw<{ mesul_id: string; count: bigint }[]>`
+        WITH user_task AS (
+          SELECT t.id, t.deadline, t.tamamlandi_de, t.mesul_id AS istifadeci_id
+            FROM tapshiriqlar t
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid AND t.mesul_id IS NOT NULL
+          UNION
+          SELECT t.id, t.deadline, t.tamamlandi_de, ti.istifadeci_id
+            FROM tapshiriqlar t
+            JOIN tapshiriq_iscilier ti ON ti.tapshiriq_id = t.id
+           WHERE t.sahibkar_id = ${sahibkarId}::uuid
+        )
+        SELECT istifadeci_id::text AS mesul_id, COUNT(*)::bigint AS count
+          FROM user_task
+         WHERE istifadeci_id = ANY(${empIds}::uuid[])
+           AND deadline BETWEEN ${prevStart} AND ${prevEnd}
+           AND tamamlandi_de IS NOT NULL
+           AND tamamlandi_de <= deadline
+         GROUP BY istifadeci_id
       `,
       prisma.satis_sifarisleri.groupBy({
         by: ["yaradan_id"],
@@ -291,7 +337,7 @@ export async function getKpiDashboard(opts: {
       }),
     ]);
     const prevDavMap = new Map<string, number>(prevDav.map((d) => [d.istifadeci_id, d._count._all]));
-    const prevTaskMap = new Map<string, number>(prevTasks.map((t) => [t.mesul_id ?? "", t._count._all]));
+    const prevTaskMap = new Map<string, number>(prevTasks.map((t) => [t.mesul_id, Number(t.count)])); // QA-orta: raw UNION forması
     const prevOnTimeMap = new Map<string, number>(prevOnTime.map((t) => [t.mesul_id, Number(t.count)]));
     const prevSalesMap = new Map<string, number>(
       prevSales.map((s) => [s.yaradan_id ?? "", Number(s._sum.son_mebleg ?? 0)]),
@@ -309,7 +355,7 @@ export async function getKpiDashboard(opts: {
       const sehvFaiz = totalAppr > 0 ? (rejAppr / totalAppr) * 100 : 0;
       const satis = salesMap.get(e.id) ?? { mebleg: 0, sayi: 0 };
       const bonus = bonusMap.get(e.id);
-      const b = bordroMap.get(e.id) ?? { bonus: 0, cerime: 0 };
+      const b = bordroMap.get(e.id) ?? { bonus: 0, cerime: 0, net: null }; // QA-orta: net sahəsi əlavə olundu
       const maas = Number(e.aylik_maas ?? 0);
       const bonusQaz = bonus?.qazanilan ?? b.bonus;
       const cerime = b.cerime;
@@ -341,7 +387,9 @@ export async function getKpiDashboard(opts: {
         bonus_qazanilan: bonusQaz,
         bonus_pool: bonus?.pool ?? 0,
         cerime_toplam: cerime,
-        net_maas: maas + bonusQaz - cerime,
+        // QA-orta: bordro hesablanıbsa faktiki NET (son_meblegh) — bordro səhifəsi ilə eyni
+        // rəqəm görünsün; bordro yoxdursa köhnə təxmini düstur (brüt) fallback.
+        net_maas: b.net ?? (maas + bonusQaz - cerime),
         davamiyyet_faiz: davFaiz,
         tapsiriq_faiz: tapsFaiz,
         sehv_faiz: sehvFaiz,

@@ -12,11 +12,16 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 import { RecordStatusFilter } from "@/components/ui/record-status-filter";
+// QA-orta: alışlar siyahısı səhifələnsin — əvvəl yalnız ilk 50 alış görünürdü
+import { Pagination } from "@/components/ui/pagination";
 
 export const metadata: Metadata = { title: "Alışlar" };
 
+const PAGE_SIZE = 50;
+
 type SearchParams = {
   q?: string;
+  page?: string;
   status?: string | string[];
   techizatci?: string;
   anbar?: string;
@@ -65,8 +70,10 @@ export default async function AlislarPage({
     borc: sp.borc === "var" || sp.borc === "yox" ? sp.borc : undefined,
     recordStatus,
   };
+  // QA-orta: pagination — sp.page oxunur, əvvəl həmişə page=1 (ilk 50) gəlirdi
+  const page = Math.max(1, Number(sp.page) || 1);
   const [{ items, total }, suppliers, products, anbarlar, defaultAnbar] = await Promise.all([
-    getPurchases(filter),
+    getPurchases(filter, page, PAGE_SIZE),
     getSuppliers(),
     getProductsForPurchase(),
     getAnbarOptions(),
@@ -117,7 +124,11 @@ export default async function AlislarPage({
           </p>
         </div>
       ) : (
-        <PurchasesTable items={items} total={total} canReceive={canReceive} canCancel={canCancel} />
+        <>
+          <PurchasesTable items={items} total={total} canReceive={canReceive} canCancel={canCancel} />
+          {/* QA-orta: 50-dən çox alış səhifələmə ilə əlçatan olsun */}
+          <Pagination total={total} pageSize={PAGE_SIZE} page={page} basePath="/ticaret/alislar" />
+        </>
       )}
 
       <Link

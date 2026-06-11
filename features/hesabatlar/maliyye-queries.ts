@@ -20,10 +20,18 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     const [salesAgg, cogsAgg, expensesAgg, returnsAgg] = await Promise.all([
-      prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: range.from, lte: range.to }, status: { not: "legv" }, qaralama: { not: true } },
-        _sum: { son_mebleg: true },
-      }),
+      // QA-orta: kredit satışda gəlir net (magaza_net) götürülsün — bank
+      // komissiyası mənfəəti şişirtməsin (kassaya da yalnız magaza_net daxil olur)
+      prisma.$queryRaw<{ revenue: number }[]>`
+        SELECT COALESCE(SUM(CASE WHEN s.odenis_nov = 'kredit'
+                                 THEN COALESCE((SELECT k.magaza_net FROM kredit_satislari k
+                                                 WHERE k.satis_id = s.id AND k.deleted_at IS NULL LIMIT 1), s.son_mebleg)
+                                 ELSE s.son_mebleg END), 0)::float AS revenue
+          FROM satis_sifarisleri s
+         WHERE s.sahibkar_id = ${sahibkarId}::uuid
+           AND s.tarix BETWEEN ${range.from} AND ${range.to}
+           AND s.status != 'legv' AND s.qaralama IS NOT TRUE
+      `,
       prisma.$queryRaw<{ cogs: number }[]>`
         SELECT COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs
           FROM satis_sifaris_satirlari sls
@@ -32,6 +40,8 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
          WHERE sls.sahibkar_id = ${sahibkarId}::uuid
            AND ss.tarix BETWEEN ${range.from} AND ${range.to}
            AND ss.status != 'legv'
+           -- QA-orta: gəlir aqreqatı ilə simmetrik — qaralama satışın mayası COGS-a düşməsin
+           AND ss.qaralama IS NOT TRUE
       `,
       prisma.$queryRaw<{ total: number }[]>`
         SELECT COALESCE(SUM(mebleg_azn), 0)::float AS total
@@ -49,7 +59,7 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
       `.catch(() => [{ total: 0 }]),
     ]);
 
-    const revenue = Number(salesAgg._sum.son_mebleg ?? 0);
+    const revenue = Number(salesAgg[0]?.revenue ?? 0); // QA-orta: raw query nəticəsi
     const returns = Number(returnsAgg[0]?.total ?? 0);
     const cogs = Number(cogsAgg[0]?.cogs ?? 0);
     const opex = Number(expensesAgg[0]?.total ?? 0);
@@ -151,11 +161,16 @@ export async function getMonthlyPl12(): Promise<MonthlyPl[]> {
                                date_trunc('month', CURRENT_DATE), '1 month') AS d
       ),
       rev AS (
-        SELECT to_char(tarix, 'YYYY-MM') AS ay, SUM(son_mebleg)::float AS revenue
-          FROM satis_sifarisleri
-         WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND status != 'legv' AND qaralama IS NOT TRUE
-           AND tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
+        -- QA-orta: kredit satışda gəlir net (magaza_net) — bank komissiyası mənfəəti şişirtməsin
+        SELECT to_char(s.tarix, 'YYYY-MM') AS ay,
+               SUM(CASE WHEN s.odenis_nov = 'kredit'
+                        THEN COALESCE((SELECT k.magaza_net FROM kredit_satislari k
+                                        WHERE k.satis_id = s.id AND k.deleted_at IS NULL LIMIT 1), s.son_mebleg)
+                        ELSE s.son_mebleg END)::float AS revenue
+          FROM satis_sifarisleri s
+         WHERE s.sahibkar_id = ${sahibkarId}::uuid
+           AND s.status != 'legv' AND s.qaralama IS NOT TRUE
+           AND s.tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
          GROUP BY 1
       ),
       cogs AS (
@@ -166,6 +181,8 @@ export async function getMonthlyPl12(): Promise<MonthlyPl[]> {
           JOIN mehsullar m ON m.id = sls.mehsul_id
          WHERE sls.sahibkar_id = ${sahibkarId}::uuid
            AND ss.status != 'legv'
+           -- QA-orta: rev CTE ilə simmetrik — qaralama satışın mayası COGS-a düşməsin
+           AND ss.qaralama IS NOT TRUE
            AND ss.tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
          GROUP BY 1
       ),
@@ -175,15 +192,25 @@ export async function getMonthlyPl12(): Promise<MonthlyPl[]> {
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
          GROUP BY 1
+      ),
+      -- QA-orta: P&L kartı (getPlSummary) net-of-returns-dur — trend qrafiki eyni tərifi işlətsin
+      ret AS (
+        SELECT to_char(tarix, 'YYYY-MM') AS ay, SUM(umumi_mebleg)::float AS returns
+          FROM qaytarma_sifarisleri
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND status NOT IN ('legv','tesdiqlenmemis')
+           AND tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
+         GROUP BY 1
       )
       SELECT m.ay,
-             COALESCE(r.revenue, 0)::float AS revenue,
+             (COALESCE(r.revenue, 0) - COALESCE(q.returns, 0))::float AS revenue,
              COALESCE(c.cogs, 0)::float AS cogs,
              COALESCE(o.opex, 0)::float AS opex
         FROM months m
         LEFT JOIN rev r USING (ay)
         LEFT JOIN cogs c USING (ay)
         LEFT JOIN opex o USING (ay)
+        LEFT JOIN ret q USING (ay)
        ORDER BY m.ay ASC
     `.catch(() => [] as { ay: string; revenue: number; cogs: number; opex: number }[]);
     return rows.map((r) => {

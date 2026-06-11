@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getTemplate } from "@/features/inteqrasiya/templates";
 import { parseExcel } from "@/features/inteqrasiya/excel-parser";
 import { isImporterAvailable } from "@/features/inteqrasiya/importer";
+import { safeUserMessage } from "@/lib/error/user-message"; // QA-orta: raw error sızmasın
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     result = await parseExcel(buffer, template);
   } catch (e) {
     console.error("[inteqrasiya parse]", e);
-    return NextResponse.json({ error: "Excel faylı oxuna bilmədi: " + String(e) }, { status: 400 });
+    // QA-orta: raw error mətni client-ə sızmasın
+    return NextResponse.json({ error: safeUserMessage(e, "Excel faylı oxuna bilmədi") }, { status: 400 });
   }
 
   return NextResponse.json({

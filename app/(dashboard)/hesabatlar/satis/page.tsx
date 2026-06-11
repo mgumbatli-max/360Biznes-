@@ -30,6 +30,7 @@ import {
 } from "@/features/hesabatlar/satis-queries";
 import { parseDateRange, formatDateInput } from "@/features/hesabatlar/shared";
 import { formatMoney, formatNumber, cn } from "@/lib/utils";
+import { getStealthState } from "@/lib/stealth/server"; // QA-orta: gizli rejim miqyası
 
 export const metadata: Metadata = { title: "Satış hesabatı" };
 
@@ -87,6 +88,11 @@ export default async function SatisReportPage({ searchParams }: { searchParams: 
     getMarginByProduct(filter, 10, "best"),
     getHourlyPerf(filter),
   ]);
+
+  // QA-orta: kpi.total_amount gizli rejimdə scale olunur, cədvəl sətirləri isə raw —
+  // pay (share) raw cəmlə hesablanır ki, 100%-dən böyük absurd faizlər çıxmasın.
+  const stealth = await getStealthState();
+  const rawTotal = stealth.aktiv && stealth.scale > 0 ? kpi.total_amount / stealth.scale : kpi.total_amount;
 
   const bestHour = hourly.length > 0 ? hourly.reduce((a, b) => (b.mebleg > a.mebleg ? b : a)) : null;
   const worstHour = hourly.filter((h) => h.sayi > 0).length > 0
@@ -450,7 +456,7 @@ export default async function SatisReportPage({ searchParams }: { searchParams: 
                 ) : (
                   byUser.map((u, i) => {
                     const avg = u.sifaris_say > 0 ? u.cemi / u.sifaris_say : 0;
-                    const share = kpi.total_amount > 0 ? (u.cemi / kpi.total_amount) * 100 : 0;
+                    const share = rawTotal > 0 ? (u.cemi / rawTotal) * 100 : 0; // QA-orta: raw pay
                     return (
                       <tr key={u.isci_id} className="border-b border-border/30 hover:bg-secondary/20">
                         <td className="px-3 py-2 text-xs tabular-nums">{i + 1}</td>
@@ -529,7 +535,7 @@ export default async function SatisReportPage({ searchParams }: { searchParams: 
                   ) : (
                     topProducts.map((p, i) => {
                       const avg = p.satilan_qty > 0 ? p.cemi / p.satilan_qty : 0;
-                      const share = kpi.total_amount > 0 ? (p.cemi / kpi.total_amount) * 100 : 0;
+                      const share = rawTotal > 0 ? (p.cemi / rawTotal) * 100 : 0; // QA-orta: raw pay
                       return (
                         <tr key={p.mehsul_id} className="border-b border-border/30 hover:bg-secondary/20">
                           <td className="px-3 py-2 text-xs tabular-nums">{i + 1}</td>
@@ -601,7 +607,7 @@ export default async function SatisReportPage({ searchParams }: { searchParams: 
                   ) : (
                     topCustomers.map((c, i) => {
                       const avg = c.sifaris_say > 0 ? c.cemi / c.sifaris_say : 0;
-                      const share = kpi.total_amount > 0 ? (c.cemi / kpi.total_amount) * 100 : 0;
+                      const share = rawTotal > 0 ? (c.cemi / rawTotal) * 100 : 0; // QA-orta: raw pay
                       return (
                         <tr key={c.musteri_id} className="border-b border-border/30 hover:bg-secondary/20">
                           <td className="px-3 py-2 text-xs tabular-nums">{i + 1}</td>

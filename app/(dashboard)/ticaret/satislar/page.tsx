@@ -15,8 +15,12 @@ import { liteGate } from "@/lib/lite/config";
 import { formatMoney } from "@/lib/utils";
 import { SavedUrlFiltersChip } from "@/features/elaqe/components/saved-url-filters-chip";
 import { RecordStatusFilter } from "@/components/ui/record-status-filter";
+// QA-orta: satışlar siyahısına səhifələmə — əvvəl yalnız ilk 50 sətir görünürdü
+import { Pagination } from "@/components/ui/pagination";
 
 export const metadata: Metadata = { title: "Satışlar" };
+
+const PAGE_SIZE = 50;
 
 type SearchParams = {
   q?: string;
@@ -26,6 +30,10 @@ type SearchParams = {
   to?: string;
   borc?: string;
   view?: string;
+  // QA-orta: server-side sıralama parametrləri
+  sort?: string;
+  dir?: string;
+  page?: string; // QA-orta: səhifələmə
 };
 
 function asArray(v: string | string[] | undefined): string[] {
@@ -80,21 +88,27 @@ function SalesTableSkeleton() {
 
 async function SalesContent({
   filter,
+  page,
   canPay,
   canCancel,
 }: {
   filter: SaleFilter;
+  page: number;
   canPay: boolean;
   canCancel: boolean;
 }) {
-  const sales = await getSales(filter);
+  // QA-orta: page ötürülür + Pagination render olunur — əvvəl həmişə ilk 50 sətir idi
+  const sales = await getSales(filter, page, PAGE_SIZE);
   return (
-    <SalesTable
-      items={sales.items}
-      total={sales.total}
-      canPay={canPay}
-      canCancel={canCancel}
-    />
+    <>
+      <SalesTable
+        items={sales.items}
+        total={sales.total}
+        canPay={canPay}
+        canCancel={canCancel}
+      />
+      <Pagination total={sales.total} pageSize={PAGE_SIZE} page={page} basePath="/ticaret/satislar" />
+    </>
   );
 }
 
@@ -129,8 +143,12 @@ export default async function SatislarPage({
     to: sp.to ? new Date(sp.to + "T23:59:59") : undefined,
     borc: sp.borc === "var" || sp.borc === "yox" ? sp.borc : undefined,
     recordStatus,
+    // QA-orta: sütun sıralaması server query-yə ötürülür
+    sort: sp.sort,
+    dir: sp.dir === "asc" || sp.dir === "desc" ? sp.dir : undefined,
   };
 
+  const page = Math.max(1, Number(sp.page) || 1); // QA-orta: səhifələmə
   const isKanban = sp.view === "kanban";
   const lite = await liteGate("ticaret"); // Lite-da bloklar config-ə görə
 
@@ -250,7 +268,7 @@ export default async function SatislarPage({
         <>
           {lite("filtrler") && <SaleFilters />}
           <Suspense fallback={<SalesTableSkeleton />}>
-            <SalesContent filter={filter} canPay={canPay} canCancel={canCancel} />
+            <SalesContent filter={filter} page={page} canPay={canPay} canCancel={canCancel} />
           </Suspense>
         </>
       )}

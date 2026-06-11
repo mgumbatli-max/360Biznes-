@@ -39,7 +39,8 @@ function applyFilterClause(_f: SalesFilter): { extra: string } {
   return { extra: "" };
 }
 
-export async function getSalesKpi(f: SalesFilter): Promise<SalesKpi> {
+// QA-orta: rəsmi Excel export real data tələb edir (lib/stealth/server.ts) — bypassStealth scale-i söndürür
+export async function getSalesKpi(f: SalesFilter, opts?: { bypassStealth?: boolean }): Promise<SalesKpi> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     void applyFilterClause(f);
@@ -84,7 +85,8 @@ export async function getSalesKpi(f: SalesFilter): Promise<SalesKpi> {
     const return_count = Number(returnAgg[0]?.say ?? 0);
 
     const stealth = await getStealthState();
-    const s = stealth.aktiv ? stealth.scale : 1;
+    // QA-orta: export bypassStealth keçəndə KPI real qalır — detal vərəqləri ilə uzlaşır
+    const s = !opts?.bypassStealth && stealth.aktiv ? stealth.scale : 1;
 
     return {
       total_count,

@@ -25,14 +25,30 @@ export async function safeStockDecrement(
     anbarId: number;
     miqdar: number; // azalmalı miqdar (pozitiv)
     mehsulAd?: string; // UI mesajı üçün opsional
+    // QA-orta: aktiv bron satıla bilən stoku azaltsın — true olduqda decrement
+    // (miqdar − aktiv bron) qalığına qarşı yoxlanır (oversell qoruması)
+    rezervNezereAl?: boolean;
+    // QA-orta: satışın öz bronu hesaba qatılmasın (qaralama→finalize axını)
+    excludeSatisId?: string;
   }
 ): Promise<{ ok: true } | { ok: false; error: string; current: number }> {
+  // QA-orta: rezervNezereAl=true → aktiv (vaxtı keçməmiş) bron satıla bilən
+  // stokdan çıxılır; bron edilmiş mal başqa satışla oversell olunmur
   const updated = await tx.$executeRaw`
     UPDATE stok
        SET miqdar = miqdar - ${args.miqdar}::numeric
      WHERE mehsul_id = ${args.mehsulId}::uuid
        AND anbar_id = ${args.anbarId}
-       AND miqdar >= ${args.miqdar}::numeric
+       AND miqdar - (CASE WHEN ${args.rezervNezereAl === true} THEN COALESCE((
+             SELECT SUM(sb.sayi) FROM stok_bron sb
+              WHERE sb.mehsul_id = ${args.mehsulId}::uuid
+                AND sb.anbar_id = ${args.anbarId}
+                AND sb.status = 'aktiv'
+                AND (sb.bitme_tarixi IS NULL OR sb.bitme_tarixi >= CURRENT_DATE)
+                AND (${args.excludeSatisId ?? null}::uuid IS NULL
+                     OR sb.satis_id IS NULL
+                     OR sb.satis_id <> ${args.excludeSatisId ?? null}::uuid)
+           ), 0) ELSE 0 END) >= ${args.miqdar}::numeric
   `;
   if (updated > 0) return { ok: true };
 
@@ -45,8 +61,11 @@ export async function safeStockDecrement(
   const label = args.mehsulAd ?? `Məhsul ${args.mehsulId.slice(0, 8)}`;
   return {
     ok: false,
+    // QA-orta: fiziki stok çatdığı halda bloklanıbsa səbəb aktiv brondur
     error: row
-      ? `${label} üçün stok kifayət etmir (mövcud: ${current}, tələb: ${args.miqdar})`
+      ? args.rezervNezereAl && current >= args.miqdar
+        ? `${label} üçün satıla bilən stok kifayət etmir — aktiv bron mövcuddur (fiziki: ${current}, tələb: ${args.miqdar})`
+        : `${label} üçün stok kifayət etmir (mövcud: ${current}, tələb: ${args.miqdar})`
       : `${label} bu anbarda stokda yoxdur`,
     current,
   };

@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getTemplate } from "@/features/inteqrasiya/templates";
 import { parseExcel } from "@/features/inteqrasiya/excel-parser";
 import { importByKey, isImporterAvailable } from "@/features/inteqrasiya/importer";
+import { safeUserMessage } from "@/lib/error/user-message"; // QA-orta: raw error sızmasın
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,7 +43,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     parsed = await parseExcel(buffer, template);
   } catch (e) {
     console.error("[inteqrasiya parse]", e);
-    return NextResponse.json({ error: "Excel faylı oxuna bilmədi: " + String(e) }, { status: 400 });
+    // QA-orta: raw error mətni client-ə sızmasın
+    return NextResponse.json({ error: safeUserMessage(e, "Excel faylı oxuna bilmədi") }, { status: 400 });
   }
 
   if (parsed.rows.length === 0) {
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
     });
   } catch (e) {
     console.error("[inteqrasiya import]", e);
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    // QA-orta: Prisma/DB xəta mətni istifadəçiyə sızmasın
+    return NextResponse.json({ error: safeUserMessage(e, "Fayl emal edilə bilmədi") }, { status: 500 });
   }
 }

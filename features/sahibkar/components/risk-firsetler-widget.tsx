@@ -33,7 +33,14 @@ async function loadInsights(): Promise<Insight[]> {
       getUpcomingBirthdays(0).catch(() => []),  // yalnız bu gün
       getInaktivMusteriler(60).catch(() => []),
       prisma.kontragentler.count({
-        where: { sahibkar_id: sahibkarId, aktiv: true, borc: { gte: 1000 } },
+        // QA-orta: müştəri borcu `alacaq` sahəsidir (`borc` = bizim təchizatçıya
+        // borcumuz idi) — getDebtorList semantikası + nov filtri ilə eyniləşdirildi.
+        where: {
+          sahibkar_id: sahibkarId,
+          aktiv: true,
+          nov: { in: ["musteri", "her_ikisi"] },
+          alacaq: { gte: 1000 },
+        },
       }),
       prisma.$queryRaw<{ c: bigint }[]>`
         SELECT COUNT(*)::bigint AS c

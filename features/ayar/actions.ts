@@ -449,6 +449,9 @@ function timeStringToDate(s: string | undefined | null): Date | null {
 }
 
 export async function saveFilial(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = FilialSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -490,6 +493,9 @@ export async function saveFilial(input: FormData): Promise<ActionResult> {
 }
 
 export async function deleteFilial(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const id = Number(input.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
@@ -518,6 +524,9 @@ const IsolationSchema = z.object({
 });
 
 export async function saveFilialIsolation(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = IsolationSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -567,6 +576,9 @@ const GorunushToggleSchema = z.object({
 });
 
 export async function toggleFilialGorunush(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = GorunushToggleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -637,6 +649,9 @@ const VIEW_ONLY_FIELDS = [
 ] as const;
 
 export async function bulkSetFilialGorunush(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = GorunushBulkSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -1085,6 +1100,9 @@ const AnbarUpdateSchema = z.object({
 });
 
 export async function updateFilialAnbar(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = AnbarUpdateSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
@@ -1113,6 +1131,9 @@ export async function updateFilialAnbar(input: FormData): Promise<ActionResult> 
 }
 
 export async function deleteFilialAnbar(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const id = Number(input.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
@@ -1158,6 +1179,9 @@ const HesabCreateSchema = z.object({
 });
 
 export async function createFilialHesab(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = HesabCreateSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
@@ -1197,6 +1221,9 @@ export async function createFilialHesab(input: FormData): Promise<ActionResult> 
 }
 
 export async function createFilialAnbar(input: FormData): Promise<ActionResult> {
+  // QA-orta: backend icazə guard-ı — əvvəl yalnız səhifə-gate qoruyurdu
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = AnbarSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;

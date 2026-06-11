@@ -213,7 +213,12 @@ async function calculateCategory(
     const all = await prisma.tapshiriqlar.count({
       where: {
         sahibkar_id: sahibkarId,
-        mesul_id: istifadeciId,
+        // QA-orta: icraçı (tapshiriq_iscilier) kimi təyin olunan tapşırıqlar da
+        // bonus KPI-yə daxil olsun — tapshiriqlar modulunun analitikası ilə vahid tərif
+        OR: [
+          { mesul_id: istifadeciId },
+          { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
+        ],
         deadline: { gte: start, lte: end },
       },
     });
@@ -221,7 +226,11 @@ async function calculateCategory(
     const onTime = await prisma.tapshiriqlar.count({
       where: {
         sahibkar_id: sahibkarId,
-        mesul_id: istifadeciId,
+        // QA-orta: icraçı tapşırıqları da daxil — yuxarıdakı `all` ilə eyni tərif
+        OR: [
+          { mesul_id: istifadeciId },
+          { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
+        ],
         deadline: { gte: start, lte: end },
         tamamlandi_de: { not: null, lte: prisma.tapshiriqlar.fields.deadline },
       },

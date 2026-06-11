@@ -6,6 +6,8 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { checkAndCreateStockAlertBatch } from "@/features/anbar/alert-helpers";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+// QA-orta: raw Prisma/DB mesajı UI toast-una sızmasın — mərkəzi sanitizer
+import { logAndFriendly, safeUserMessage } from "@/lib/error/user-message";
 import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
 type ActionResult =
@@ -212,7 +214,8 @@ export async function recordSalePayment(
           : undefined,
       };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      // QA-orta: raw DB mesajı əvəzinə təmiz istifadəçi mesajı
+      return { ok: false, error: logAndFriendly("recordSalePayment", e, "Ödəniş alınmadı") };
     }
   });
 }
@@ -261,7 +264,8 @@ export async function changeSaleStatus(saleId: string, status: SaleStatus): Prom
       bustTicaretCache();
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      // QA-orta: raw DB mesajı əvəzinə təmiz istifadəçi mesajı
+      return { ok: false, error: logAndFriendly("changeSaleStatus", e, "Status dəyişmədi") };
     }
   });
 }
@@ -476,7 +480,8 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
           status: "xeta",
         });
       } catch {/* non-fatal */}
-      return { ok: false, error: msg };
+      // QA-orta: audit-ə raw mesaj (yuxarıdakı msg), istifadəçiyə təmiz mesaj
+      return { ok: false, error: safeUserMessage(e, "Satış ləğvi alınmadı") };
     }
   });
 }

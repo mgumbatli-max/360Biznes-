@@ -28,7 +28,8 @@ async function fetchFinanceKpisRaw(sahibkarId: string) {
       _sum: { odenilmis: true },
     }),
     prismaUnscoped.xercl_r.aggregate({
-      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart } },
+      // QA-orta: ləğv edilmiş xərc KPI-ya düşməsin
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, legv_de: null },
       _sum: { mebleg: true },
     }),
     prismaUnscoped.kassalar.aggregate({
@@ -121,7 +122,8 @@ async function fetchMaliyyeDashboardKpisRaw(sahibkarId: string) {
       _sum: { odenilmis: true },
     }),
     prismaUnscoped.xercl_r.aggregate({
-      where: { sahibkar_id: sahibkarId, tarix: { gte: todayStart } },
+      // QA-orta: ləğv edilmiş xərc KPI-ya düşməsin
+      where: { sahibkar_id: sahibkarId, tarix: { gte: todayStart }, legv_de: null },
       _sum: { mebleg: true },
     }),
     prismaUnscoped.satis_sifarisleri.aggregate({
@@ -129,7 +131,8 @@ async function fetchMaliyyeDashboardKpisRaw(sahibkarId: string) {
       _sum: { odenilmis: true, umumi_mebleg: true },
     }),
     prismaUnscoped.xercl_r.aggregate({
-      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart } },
+      // QA-orta: ləğv edilmiş xərc KPI-ya düşməsin
+      where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, legv_de: null },
       _sum: { mebleg: true },
     }),
     prismaUnscoped.$queryRaw<{ total: number }[]>`
@@ -221,6 +224,7 @@ export async function getDailyFlow(days = 30): Promise<DailyFlowRow[]> {
                           AND ss.qaralama IS NOT TRUE), 0) AS daxil,
              COALESCE((SELECT SUM(mebleg)::float FROM "xerclər" x
                         WHERE x.sahibkar_id = ${sahibkarId}::uuid
+                          AND x.legv_de IS NULL -- QA-orta: ləğv edilmiş xərc trendə düşməsin
                           AND to_char(x.tarix, 'YYYY-MM-DD') = s.gun), 0) AS xaric
         FROM series s
        ORDER BY s.gun
@@ -240,6 +244,7 @@ export async function getTopExpenseCategories(limit = 5): Promise<TopRow[]> {
    LEFT JOIN xerc_kateqoriyalari xk ON xk.id = x.kateqoriya_id
        WHERE x.sahibkar_id = ${sahibkarId}::uuid
          AND x.tarix >= date_trunc('month', CURRENT_DATE)
+         AND x.legv_de IS NULL -- QA-orta: ləğv edilmiş xərc top-kateqoriyaya düşməsin
     GROUP BY xk.ad
     ORDER BY mebleg DESC
        LIMIT ${limit}
@@ -325,6 +330,7 @@ export async function getMonthlyFlow(months = 6): Promise<MonthlyFlow[]> {
                           AND ss.qaralama IS NOT TRUE), 0) AS daxil,
              COALESCE((SELECT SUM(mebleg)::float FROM "xerclər" x
                         WHERE x.sahibkar_id = ${sahibkarId}::uuid
+                          AND x.legv_de IS NULL -- QA-orta: ləğv edilmiş xərc trendə düşməsin
                           AND to_char(x.tarix, 'YYYY-MM') = s.month), 0) AS xaric
         FROM series s
        ORDER BY s.month
@@ -461,6 +467,7 @@ export async function getPLReport(year: number, month: number): Promise<PLReport
           LEFT JOIN xerc_kateqoriyalari xk ON xk.id = x.kateqoriya_id
          WHERE x.sahibkar_id = ${sahibkarId}::uuid
            AND x.tarix >= ${start} AND x.tarix < ${end}
+           AND x.legv_de IS NULL -- QA-orta: ləğv edilmiş xərc P&L-ə düşməsin
          GROUP BY xk.qrup
       `,
       prisma.$queryRaw<{ qrup: string | null; mebleg: number }[]>`
@@ -573,6 +580,7 @@ export async function getExpenseCategoryUsage(): Promise<ExpenseCategoryUsage[]>
           SELECT kateqoriya_id, SUM(mebleg_azn)::float AS istifade
             FROM "xerclər"
            WHERE sahibkar_id = ${sahibkarId}::uuid
+             AND legv_de IS NULL -- QA-orta: ləğv edilmiş xərc istifadəyə düşməsin
              AND tarix >= date_trunc('month', CURRENT_DATE)
            GROUP BY kateqoriya_id
         ) cur ON cur.kateqoriya_id = xk.id
@@ -583,6 +591,7 @@ export async function getExpenseCategoryUsage(): Promise<ExpenseCategoryUsage[]>
                    SUM(mebleg_azn) AS mebleg_az_ay
               FROM "xerclər"
              WHERE sahibkar_id = ${sahibkarId}::uuid
+               AND legv_de IS NULL -- QA-orta: ləğv edilmiş xərc orta büdcəyə düşməsin
                AND tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '3 months'
                AND tarix <  date_trunc('month', CURRENT_DATE)
              GROUP BY kateqoriya_id, date_trunc('month', tarix)
@@ -677,6 +686,17 @@ export async function getDebtors(): Promise<DebtorRow[]> {
            AND s.odenis_nov IN ('nisye', 'borc')
          GROUP BY s.musteri_id
       ),
+      -- QA-orta: servis borcu da debitora daxil (customer-balance.ts ilə eyni düstur)
+      servis_borclar AS (
+        SELECT sq.musteri_id,
+               SUM(GREATEST(COALESCE(sq.temir_xerci, 0) - COALESCE(sq.musteriden_alinan, 0), 0)) AS servis_total
+          FROM servis_qeydleri sq
+         WHERE sq.sahibkar_id = ${sahibkarId}::uuid
+           AND sq.deleted_at IS NULL
+           AND sq.status NOT IN ('redd_edildi')
+           AND sq.musteri_id IS NOT NULL
+         GROUP BY sq.musteri_id
+      ),
       son_satislar AS (
         SELECT DISTINCT ON (s.musteri_id)
                s.musteri_id, s.nomre, s.son_mebleg, s.tarix
@@ -703,7 +723,7 @@ export async function getDebtors(): Promise<DebtorRow[]> {
              k.whatsapp,
              k.email,
              k.voen,
-             COALESCE(os.open_total, 0)::float AS borc,
+             (COALESCE(os.open_total, 0) + COALESCE(sb.servis_total, 0))::float AS borc, -- QA-orta: servis borcu daxil
              k.borc_limiti::float AS borc_limiti,
              os.son_satis AS son_alver,
              COALESCE((CURRENT_DATE - os.en_kohne_acig::date)::int, 0) AS gun_kecdi,
@@ -717,13 +737,14 @@ export async function getDebtors(): Promise<DebtorRow[]> {
              COALESCE(k.avans, 0)::float AS avans
         FROM kontragentler k
         LEFT JOIN open_sales os ON os.musteri_id = k.id
+        LEFT JOIN servis_borclar sb ON sb.musteri_id = k.id
         LEFT JOIN son_satislar ss ON ss.musteri_id = k.id
         LEFT JOIN son_odenisler so ON so.kontragent_id = k.id
         LEFT JOIN istifadeciler u ON u.id = k.menecer_id
        WHERE k.sahibkar_id = ${sahibkarId}::uuid
          AND k.aktiv = TRUE
          AND k.nov IN ('musteri', 'her_ikisi')
-         AND COALESCE(os.open_total, 0) > 0
+         AND (COALESCE(os.open_total, 0) + COALESCE(sb.servis_total, 0)) > 0 -- QA-orta: yalnız servis borclu müştəri də görünsün
        ORDER BY borc DESC NULLS LAST
     `;
     return rows.map((r) => ({

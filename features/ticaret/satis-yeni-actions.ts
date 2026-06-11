@@ -217,6 +217,12 @@ export async function createOrUpdateSatisYeni(
           });
           if (!existing) throw new Error("Qaralama tapılmadı");
           if (existing.sahibkar_id !== sahibkarId) throw new Error("İcazə yoxdur");
+          // QA-orta: yalnız həqiqi qaralama yenidən saxlana bilər — əks halda finalize
+          // olunmuş satış təkrar finalize olub stoku ikinci dəfə azaldardı (köhnə
+          // mexaric hərəkətləri geri alınmadığından ledgerdə qoşa məxaric qalardı).
+          if (!existing.qaralama && existing.status !== "qaralama") {
+            throw new Error("Bu sənəd qaralama deyil — üzərinə yazmaq olmaz");
+          }
           // Wipe old lines and bron — explicit sahibkar_id qoruması
           await tx.satis_sifaris_satirlari.deleteMany({ where: { sahibkar_id: sahibkarId, sifaris_id: existing.id } });
           await tx.stok_bron.deleteMany({
@@ -319,6 +325,9 @@ export async function createOrUpdateSatisYeni(
               mehsulId: line.mehsul_id,
               anbarId: line.anbar_id,
               miqdar: line.miqdar,
+              // QA-orta: aktiv bron satışı bloklasın; satışın öz bronu istisna
+              rezervNezereAl: true,
+              excludeSatisId: saleId,
             });
             if (!dec.ok) {
               throw new Error(dec.error);
@@ -589,7 +598,9 @@ export async function saveSatisSablon(
       revalidatePath("/ticaret/satis-yeni");
       return { ok: true };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
+      // QA-orta: raw DB mesajı UI-ya sızmasın — fayldakı mövcud logAndFriendly pattern-i
+      const { logAndFriendly } = await import("@/lib/error/user-message");
+      return { ok: false, error: logAndFriendly("saveSatisSablon", e, "Şablon yadda saxlanmadı") };
     }
   });
 }

@@ -121,9 +121,11 @@ export async function getTeklifStats(): Promise<TeklifStats> {
   });
 }
 
+// QA-orta: pagination — əvvəl sabit take:100 idi, 100-dən çox təklifdə köhnələr görünmürdü
 export async function getTeklifler(
   filter: TeklifFilter,
-  limit = 100
+  page = 1,
+  pageSize = 50
 ): Promise<{ items: TeklifListItem[]; total: number }> {
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -157,7 +159,9 @@ export async function getTeklifler(
       prisma.teklifler.findMany({
         where,
         orderBy: [{ tarix: "desc" }, { yaradildi: "desc" }],
-        take: limit,
+        // QA-orta: pagination — skip/take (əvvəl sabit 100 kəsirdi)
+        skip: (Math.max(1, page) - 1) * pageSize,
+        take: pageSize,
         include: {
           kontragentler: { select: { ad: true, telefon: true } },
           istifadeciler_teklifler_menecer_idToistifadeciler: { select: { ad_soyad: true } },

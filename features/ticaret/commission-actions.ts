@@ -130,8 +130,10 @@ export async function calculateCommission(
         const cerime = Number(existing.cerime ?? 0);
         const avans = Number(existing.avans ?? 0);
         const detal = (existing.detal as Record<string, unknown> | null) ?? {};
-        const komisyon = Number((detal as { satis_komisyon?: number }).satis_komisyon ?? 0);
-        const gross = prorata + totalBonus + manualBonus + komisyon;
+        // QA-orta: ikiqat komissiya — pilləli tarif hesablananda sabit 3%
+        // (detal.satis_komisyon) sıfırlanır; eyni satış iki dəfə komissiyalaşmasın
+        // (maas-queries/maas-table/bordro-print hər ikisini cəmləyirdi).
+        const gross = prorata + totalBonus + manualBonus;
         const vergi = gross * 0.14;
         const sosial = gross * 0.03;
         const son = gross - cerime - avans - vergi - sosial;
@@ -140,7 +142,7 @@ export async function calculateCommission(
           data: {
             kpi_bonus: totalBonus,
             son_meblegh: son,
-            detal: { ...detal, vergi, sosial_sigorta: sosial, gross },
+            detal: { ...detal, satis_komisyon: 0, vergi, sosial_sigorta: sosial, gross },
             yenilendi: new Date(),
           },
         });

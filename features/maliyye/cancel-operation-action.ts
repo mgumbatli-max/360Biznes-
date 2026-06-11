@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit } from "@/lib/audit/log";
+// QA-orta: raw Prisma/DB mesajı UI toast-una sızmasın — mərkəzi sanitizer
+import { safeUserMessage } from "@/lib/error/user-message";
 import { requireMaliyyeActionPerm, bustMaliyyeCache } from "./access-guard";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -45,6 +47,12 @@ export async function cancelFinanceOperation(
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const result = await prisma.$transaction(async (tx) => {
+        // QA-orta: FOR UPDATE lock — paralel ləğv (double-click / iki tab)
+        // hər ikisi köhnə statusu oxuyub keçə bilirdi; kilid ikinci tx-i
+        // birinci commit-dən sonra status guard-ına salır
+        await tx.$queryRaw`
+          SELECT id FROM finance_operations WHERE id = ${d.operation_id}::uuid FOR UPDATE
+        `;
         // Əməliyyatı oxu (idempotency yoxlaması)
         const op = await tx.finance_operations.findFirst({
           where: { id: d.operation_id, sahibkar_id: sahibkarId },
@@ -60,6 +68,9 @@ export async function cancelFinanceOperation(
             isci_id: true,
             satis_id: true,
             alish_id: true,
+            // QA-orta: avans reversal üçün lazım olan sahələr
+            y_n: true,
+            qeyd: true,
             deleted_at: true,
           },
         });
@@ -103,6 +114,37 @@ export async function cancelFinanceOperation(
               data: { odenilmis: { decrement: Number(a.mebleg) } },
             });
             touchedAlis.add(a.alish_id);
+          }
+        }
+
+        // QA-orta: avans reversal — recalculateCustomerBalance kontragentler.avans-a
+        // toxunmur (manual saxlanılan sahə). Surplus ödənişin ləğvində avansa keçən
+        // hissə geri çıxılmalı, [AVANS] tətbiqinin ləğvində sərf olunan avans geri artmalıdır.
+        const qeydText = op.qeyd ?? "";
+        if (op.kontragent_id && op.type_kod === "qaime" && op.y_n === "daxil" && /avans/i.test(qeydText)) {
+          const kAvans = await tx.kontragentler.findFirst({
+            where: { id: op.kontragent_id, sahibkar_id: sahibkarId },
+            select: { avans: true },
+          });
+          if (kAvans) {
+            const curAvans = Number(kAvans.avans ?? 0);
+            const allocatedSum = allocations.reduce((s, a) => s + Number(a.mebleg), 0);
+            if (qeydText.includes("[AVANS]")) {
+              // Avansdan tətbiq ləğv olunur → istifadə olunmuş avans geri qayıdır
+              await tx.kontragentler.update({
+                where: { id: op.kontragent_id },
+                data: { avans: +(curAvans + allocatedSum).toFixed(2), yenilendi: new Date() },
+              });
+            } else {
+              // Adi ödənişin avansa düşmüş (allocation-sız) hissəsi geri çıxılır
+              const advancePortion = +(Number(op.azn_meblegh ?? 0) - allocatedSum).toFixed(2);
+              if (advancePortion > 0.009) {
+                await tx.kontragentler.update({
+                  where: { id: op.kontragent_id },
+                  data: { avans: Math.max(0, +(curAvans - advancePortion).toFixed(2)), yenilendi: new Date() },
+                });
+              }
+            }
           }
         }
 
@@ -163,7 +205,8 @@ export async function cancelFinanceOperation(
       console.error("[cancelFinanceOperation]", e);
       return {
         ok: false,
-        error: e instanceof Error ? e.message : "Ləğv alınmadı",
+        // QA-orta: raw DB mesajı əvəzinə təmiz istifadəçi mesajı
+        error: safeUserMessage(e, "Ləğv alınmadı"),
       };
     }
   });

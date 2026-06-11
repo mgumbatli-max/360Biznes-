@@ -181,7 +181,13 @@ export async function recordKreditPayment(
           await tx.satis_sifarisleri.update({
             where: { id: sale.id },
             data: {
-              odenilmis: new Prisma.Decimal(yeniOdenilmisCem.toFixed(2)),
+              // QA-orta: tam ödənişdə bank komissiya fərqi (son_mebleg − magaza_net)
+              // fantom açıq qalıq kimi qalmasın — odenilmis son_mebleg-ə bərabərləşdirilir.
+              // Real daxilolma finance_operations-da `tutulan` (net) ilə düzgün qalır.
+              odenilmis:
+                tamOdendi && sale.son_mebleg != null
+                  ? sale.son_mebleg
+                  : new Prisma.Decimal(yeniOdenilmisCem.toFixed(2)),
               qaralama: false,
               status: tamOdendi ? "tamamlandi" : "yeni",
               yenilendi: new Date(),

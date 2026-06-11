@@ -51,7 +51,7 @@ export async function calculateTaskBonus(il?: number, ay?: number, bazBonus = 50
         gecikmis: bigint;
       }[]>`
         WITH user_tasks AS (
-          SELECT DISTINCT u.id AS istifadeci_id, u.ad_soyad, t.id AS tapshiriq_id, t.status, t.deadline
+          SELECT DISTINCT u.id AS istifadeci_id, u.ad_soyad, t.id AS tapshiriq_id, t.status, t.deadline, t.tamamlandi_de
             FROM istifadeciler u
             JOIN tapshiriqlar t
               ON (t.mesul_id = u.id
@@ -66,7 +66,11 @@ export async function calculateTaskBonus(il?: number, ay?: number, bazBonus = 50
                ad_soyad,
                COUNT(*)::bigint AS cemi,
                SUM(CASE WHEN status = 'tamamlandi' THEN 1 ELSE 0 END)::bigint AS tamamlandi,
-               SUM(CASE WHEN status NOT IN ('tamamlandi', 'legv') AND deadline < ${now} THEN 1 ELSE 0 END)::bigint AS gecikmis
+               -- QA-orta: gec tamamlanan (tamamlandi_de > deadline) da gecikmiş sayılır —
+               -- əvvəl yalnız hələ açıq+vaxtı keçmiş sayılırdı, gec bitirən 1.2x bonus alırdı
+               SUM(CASE WHEN (status NOT IN ('tamamlandi', 'legv') AND deadline < ${now})
+                          OR (status = 'tamamlandi' AND tamamlandi_de IS NOT NULL AND tamamlandi_de > deadline)
+                        THEN 1 ELSE 0 END)::bigint AS gecikmis
           FROM user_tasks
          GROUP BY istifadeci_id, ad_soyad
          ORDER BY ad_soyad ASC

@@ -13,6 +13,7 @@ import {
   getTeklifStatusCounts,
   type TeklifFilter,
 } from "@/features/ticaret/teklif-queries";
+import { Pagination } from "@/components/ui/pagination"; // QA-orta: pagination
 import { cn, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Təkliflər" };
@@ -22,6 +23,7 @@ type SearchParams = {
   status?: string | string[];
   from?: string;
   to?: string;
+  page?: string; // QA-orta: pagination
 };
 
 function asArray(v: string | string[] | undefined): string[] {
@@ -63,10 +65,13 @@ export default async function TeklifPage({
     recordStatus,
   };
 
+  // QA-orta: pagination — sabit 100 kəsmə əvəzinə səhifələmə (anbar/mehsullar pattern-i)
+  const page = Math.max(1, Number(sp.page) || 1);
+  const PAGE_SIZE = 50;
   const [stats, counts, list] = await Promise.all([
     getTeklifStats(),
     getTeklifStatusCounts(),
-    getTeklifler(filter),
+    getTeklifler(filter, page, PAGE_SIZE),
   ]);
 
   const active = asArray(sp.status)[0] ?? null;
@@ -149,6 +154,8 @@ export default async function TeklifPage({
         canChangeStatus={canChangeStatus}
         canDelete={canDeleteTeklif}
       />
+      {/* QA-orta: pagination — 100+ təklifdə köhnə təkliflər də əlçatan olsun */}
+      <Pagination total={list.total} pageSize={PAGE_SIZE} page={page} basePath="/ticaret/teklif" />
     </div>
   );
 }

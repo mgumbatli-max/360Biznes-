@@ -38,6 +38,7 @@ import { getDailyCashFlow30, getCashFlowSummary30 } from "@/features/hesabatlar/
 import { buildAiInsightsCached as buildAiInsights } from "@/features/hesabatlar/ai-insights";
 import { thisMonthRange, lastMonthRange } from "@/features/hesabatlar/shared";
 import { formatMoney, formatNumber, cn } from "@/lib/utils";
+import { getStealthState } from "@/lib/stealth/server"; // QA-orta: gizli rejim miqyası
 
 export const metadata: Metadata = { title: "Hesabatlar — Executive Hub" };
 
@@ -272,8 +273,14 @@ async function ExecutiveKpiSection() {
   ]);
 
   const cf = await getCashFlowSummary30(daily30);
-  const totalDebt = debt.reduce((s, b) => s + b.amount, 0);
-  const overdueDebt = debt.filter((b) => b.bucket !== "0-30").reduce((s, b) => s + b.amount, 0);
+  // QA-orta: gizli rejim əvvəl yalnız getSalesKpi-yə tətbiq olunurdu — P&L/stok/
+  // kassa/borc KPI-ları raw qalır, "net mənfəət satışdan böyük" absurdu yaranırdı.
+  // Pul KPI-ları ekran səviyyəsində eyni miqyas (sc) ilə göstərilir; DB, eksport
+  // və AI-insight sorğuları toxunulmaz qalır.
+  const stealth = await getStealthState();
+  const sc = stealth.aktiv ? stealth.scale : 1;
+  const totalDebt = debt.reduce((s, b) => s + b.amount, 0) * sc;
+  const overdueDebt = debt.filter((b) => b.bucket !== "0-30").reduce((s, b) => s + b.amount, 0) * sc;
   const revenueChange = delta(sales.total_amount, lastSales.total_amount);
   const profitChange = delta(pl.net_profit, lastPl.net_profit);
   const grossChange = delta(pl.gross_profit, lastPl.gross_profit);
@@ -291,21 +298,21 @@ async function ExecutiveKpiSection() {
       <KpiCard
         icon={Wallet}
         label="Net mənfəət"
-        value={formatMoney(pl.net_profit)}
+        value={formatMoney(pl.net_profit * sc)}
         subline={`${pl.net_margin_pct.toFixed(1)}% net margin · ${profitChange >= 0 ? "+" : ""}${profitChange.toFixed(1)}% MoM`}
         tone={pl.net_profit >= 0 ? "success" : "danger"}
       />
       <KpiCard
         icon={Percent}
         label="Brüt mənfəət"
-        value={formatMoney(pl.gross_profit)}
+        value={formatMoney(pl.gross_profit * sc)}
         subline={`${pl.gross_margin_pct.toFixed(1)}% gross margin · ${grossChange >= 0 ? "+" : ""}${grossChange.toFixed(1)}%`}
         tone={pl.gross_margin_pct >= 25 ? "success" : "warning"}
       />
       <KpiCard
         icon={Receipt}
         label="OPEX"
-        value={formatMoney(pl.opex)}
+        value={formatMoney(pl.opex * sc)}
         subline={`${opexChange >= 0 ? "+" : ""}${opexChange.toFixed(1)}% MoM`}
         tone={opexChange <= 0 ? "success" : "warning"}
       />
@@ -319,15 +326,15 @@ async function ExecutiveKpiSection() {
       <KpiCard
         icon={Boxes}
         label="Stok dəyəri"
-        value={formatMoney(stok.total_value)}
+        value={formatMoney(stok.total_value * sc)}
         subline={`${stok.product_count} məhsul · ${stok.reorder_count} sifariş tələb`}
         tone={stok.reorder_count > 0 ? "warning" : "neutral"}
       />
       <KpiCard
         icon={Coins}
         label="Kassa qalığı"
-        value={formatMoney(cf.closing_balance)}
-        subline={cf.runway_days != null ? `Runway: ${cf.runway_days} gün` : `Net: ${formatMoney(cf.net)}`}
+        value={formatMoney(cf.closing_balance * sc)}
+        subline={cf.runway_days != null ? `Runway: ${cf.runway_days} gün` : `Net: ${formatMoney(cf.net * sc)}`}
         tone={cf.closing_balance > 0 ? (cf.runway_days != null && cf.runway_days < 30 ? "danger" : "success") : "danger"}
       />
       <KpiCard
@@ -404,6 +411,9 @@ async function TrendsRow() {
     getDailyCashFlow30(),
   ]);
   const cf = await getCashFlowSummary30(daily30);
+  // QA-orta: pul etiketləri KPI bölməsi ilə eyni gizli-rejim miqyasında göstərilsin
+  const stealth = await getStealthState();
+  const sc = stealth.aktiv ? stealth.scale : 1;
   const revSeries = monthly.map((m) => m.revenue);
   const netSeries = monthly.map((m) => m.net);
   return (
@@ -422,7 +432,7 @@ async function TrendsRow() {
           <Sparkline values={revSeries} color="hsl(228 100% 67%)" height={64} />
           <div className="mt-2 flex items-center justify-between text-[10.5px]">
             <span className="text-muted-foreground">{monthly[0]?.ay ?? "—"}</span>
-            <span className="font-semibold tabular-nums">{formatMoney(monthly[monthly.length - 1]?.revenue ?? 0)}</span>
+            <span className="font-semibold tabular-nums">{formatMoney((monthly[monthly.length - 1]?.revenue ?? 0) * sc)}</span>
           </div>
         </CardContent>
       </Card>
@@ -441,7 +451,7 @@ async function TrendsRow() {
           <Sparkline values={netSeries} color="hsl(160 60% 52%)" height={64} />
           <div className="mt-2 flex items-center justify-between text-[10.5px]">
             <span className="text-muted-foreground">trend</span>
-            <span className="font-semibold tabular-nums">{formatMoney(monthly[monthly.length - 1]?.net ?? 0)}</span>
+            <span className="font-semibold tabular-nums">{formatMoney((monthly[monthly.length - 1]?.net ?? 0) * sc)}</span>
           </div>
         </CardContent>
       </Card>
@@ -453,7 +463,7 @@ async function TrendsRow() {
               <Coins className="h-3.5 w-3.5 text-pink-500" />
               30 günlük pul axını
             </span>
-            <span className="text-[10px] font-normal text-muted-foreground">net: {formatMoney(cf.net)}</span>
+            <span className="text-[10px] font-normal text-muted-foreground">net: {formatMoney(cf.net * sc)}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -464,7 +474,7 @@ async function TrendsRow() {
           />
           <div className="mt-2 flex items-center justify-between text-[10.5px]">
             <span className="text-muted-foreground">qalıq</span>
-            <span className="font-semibold tabular-nums">{formatMoney(cf.closing_balance)}</span>
+            <span className="font-semibold tabular-nums">{formatMoney(cf.closing_balance * sc)}</span>
           </div>
         </CardContent>
       </Card>
@@ -478,6 +488,9 @@ async function TopPerformersRow() {
     getTopProductsExt({ range: thisR }, 5),
     getTopCustomersExt({ range: thisR }, 5),
   ]);
+  // QA-orta: pul rəqəmləri KPI bölməsi ilə eyni gizli-rejim miqyasında göstərilsin
+  const stealth = await getStealthState();
+  const sc = stealth.aktiv ? stealth.scale : 1;
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <Card className="glass">
@@ -506,7 +519,7 @@ async function TopPerformersRow() {
                       <div className="text-[10px] text-muted-foreground">{formatNumber(p.satilan_qty, 0)} ədəd</div>
                     </div>
                   </div>
-                  <span className="shrink-0 text-sm font-bold tabular-nums">{formatMoney(p.cemi)}</span>
+                  <span className="shrink-0 text-sm font-bold tabular-nums">{formatMoney(p.cemi * sc)}</span>
                 </li>
               ))
             )}
@@ -540,7 +553,7 @@ async function TopPerformersRow() {
                       <div className="text-[10px] text-muted-foreground">{c.sifaris_say} sifariş</div>
                     </div>
                   </div>
-                  <span className="shrink-0 text-sm font-bold tabular-nums">{formatMoney(c.cemi)}</span>
+                  <span className="shrink-0 text-sm font-bold tabular-nums">{formatMoney(c.cemi * sc)}</span>
                 </li>
               ))
             )}

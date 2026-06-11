@@ -49,6 +49,9 @@ export async function materializeApprovedSale(
             mehsulId: line.mehsul_id,
             anbarId,
             miqdar,
+            // QA-orta: aktiv bron materiallaşmanı da bloklasın (öz bronu istisna)
+            rezervNezereAl: true,
+            excludeSatisId: saleId,
           });
           if (!dec.ok) throw new Error(dec.error);
           await tx.anbar_hereketleri.create({

@@ -324,11 +324,13 @@ async function fetchMonthlyComparisonRaw(sahibkarId: string): Promise<MonthlyCom
       _sum: { son_mebleg: true },
     }),
     prismaUnscoped.$queryRaw<{ total: number }[]>`
-      SELECT COALESCE(SUM(mebleg), 0)::float AS total FROM "xerclər"
+      -- QA-orta: P&L hesabatları ilə eyni AZN-normalize sahə (mebleg_azn)
+      SELECT COALESCE(SUM(mebleg_azn), 0)::float AS total FROM "xerclər"
        WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${curStart}::date
     `.catch(() => [{ total: 0 }]),
     prismaUnscoped.$queryRaw<{ total: number }[]>`
-      SELECT COALESCE(SUM(mebleg), 0)::float AS total FROM "xerclər"
+      -- QA-orta: P&L hesabatları ilə eyni AZN-normalize sahə (mebleg_azn)
+      SELECT COALESCE(SUM(mebleg_azn), 0)::float AS total FROM "xerclər"
        WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${prevStart}::date AND tarix <= ${prevEnd}::date
     `.catch(() => [{ total: 0 }]),
     prismaUnscoped.kontragentler.count({ where: { sahibkar_id: sahibkarId, nov: "musteri", yaradildi: { gte: curStart } } }).catch(() => 0),
@@ -693,7 +695,8 @@ async function fetchSalesVsExpense30Raw(sahibkarId: string): Promise<SalesVsExpe
        ORDER BY tarix
     `,
     prismaUnscoped.$queryRaw<{ gun: Date; total: number }[]>`
-      SELECT tarix AS gun, COALESCE(SUM(mebleg), 0)::float AS total
+      -- QA-orta: P&L hesabatları ilə eyni AZN-normalize sahə (mebleg_azn)
+      SELECT tarix AS gun, COALESCE(SUM(mebleg_azn), 0)::float AS total
         FROM "xerclər"
        WHERE sahibkar_id = ${sahibkarId}::uuid
          AND tarix >= ${from}::date

@@ -517,6 +517,33 @@ export async function returnFullSale(
                 },
               });
               reversedFinance = true;
+            } else {
+              // QA-orta: payout hələ GÖZLƏYİRSƏ (marketplace_payout op-u yoxdur) pending
+              // qeyd korreksiya olunur — əvvəl gozlenen_meblegh/komissiya dəyişmirdi və
+              // markPayoutReceived qaytarılmış satışı nəzərə almadan tam kreditləyirdi.
+              const pending = await tx.finance_marketplace_payments.findFirst({
+                where: {
+                  sahibkar_id: sahibkarId,
+                  status: "gozleyir",
+                  qeyd: { contains: `Satış #${sale.id}` },
+                },
+                select: { id: true },
+              });
+              if (pending) {
+                // Orijinal satış net-indən hesabla — ardıcıl hissəvi qaytarmalarda düzgün qalır
+                const saleNet = Math.max(0, saleTotal - komisyon);
+                const netReverse = +(saleNet * ratio).toFixed(2);
+                const komisyonReverse = +(komisyon * ratio).toFixed(2);
+                await tx.finance_marketplace_payments.update({
+                  where: { id: pending.id },
+                  data: {
+                    gozlenen_meblegh: { decrement: netReverse },
+                    komissiya: { decrement: komisyonReverse },
+                    qaytarma_meblegh: { increment: total },
+                  },
+                });
+                reversedFinance = true;
+              }
             }
           } catch (err) {
             console.error("[returnFullSale] finance reverse skipped:", err);

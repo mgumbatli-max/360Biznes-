@@ -155,7 +155,7 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
         if (!hesabId) {
           // Default kassa fallback — sahibkarın ilk aktiv nağd hesabı
           const defaultKassa = await prisma.maliye_hesablari.findFirst({
-            where: { sahibkar_id: sahibkarId, aktiv: true, nov: "nagd" },
+            where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" }, // QA-orta: kanonik nov "negd" — "nagd" ilə kassa heç vaxt tapılmırdı
             orderBy: { yaradildi: "asc" },
             select: { id: true },
           });
@@ -536,7 +536,10 @@ export async function addEhtiyatHisse(input: FormData): Promise<ActionResult> {
           select: { ad: true, min_stok: true },
         });
         if (fullProduct) {
-          const stokSum = await prisma.anbar_hereketleri.aggregate({
+          // QA-orta: cari qalıq 'stok' cədvəlindən oxunur — anbar_hereketleri.miqdar
+          // həmişə müsbətdir (istiqamət 'nov'-dadır), SUM dövriyyəni verirdi və
+          // stok-altı xəbərdarlıq praktiki heç vaxt atəşlənmirdi.
+          const stokSum = await prisma.stok.aggregate({
             where: { mehsul_id: d.mehsul_id, sahibkar_id: sahibkarId },
             _sum: { miqdar: true },
           });
@@ -812,11 +815,14 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
             },
           });
           // Bir sətir: xidmət ünvanı
+          // QA-orta: müştərinin cihazını sətirə bağlama — COGS sorğuları
+          // (JOIN mehsullar) cihazın alish_qiymeti-ni satılmış kimi xərcə
+          // salırdı. Gəlir onsuz da header-dən (son_mebleg) hesablanır.
           await tx.satis_sifaris_satirlari.create({
             data: {
               sahibkar_id: sahibkarId,
               sifaris_id: sale.id,
-              mehsul_id: servis.mehsul_id ?? null,
+              mehsul_id: null,
               miqdar: 1,
               vahid_qiymet: d.meblegh,
               endirim_faiz: 0,
