@@ -31,10 +31,37 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { saveProduct } from "../actions";
 import { MultiImageEditor } from "./multi-image-editor";
+import { useHasPermission } from "@/components/providers/permissions-provider";
 
-type CategoryOpt = { id: number; ad: string };
+type CategoryOpt = { id: number; ad: string; ust_id?: number | null };
 type BrandOpt = { id: number; ad: string };
 type UnitOpt = { id: number; ad: string; qisa_ad?: string | null };
+
+/** Hazır rəng palitrası — istifadəçi seçə və ya yeni ad yaza bilər (#8) */
+const RENG_PALITRA = [
+  "Qara", "Ağ", "Boz", "Gümüşü", "Qızılı", "Qırmızı", "Mavi", "Göy", "Yaşıl",
+  "Sarı", "Narıncı", "Bənövşəyi", "Çəhrayı", "Qəhvəyi", "Bej", "Şəffaf",
+];
+
+/** Kateqoriya id → "Üst › Alt" tam yol (iyerarxiya görünsün — #9) */
+function buildCategoryPaths(categories: CategoryOpt[]): Map<number, string> {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const cache = new Map<number, string>();
+  function path(id: number, depth = 0): string {
+    if (cache.has(id)) return cache.get(id)!;
+    const c = byId.get(id);
+    if (!c) return "";
+    const p =
+      c.ust_id && c.ust_id !== c.id && depth < 6
+        ? `${path(c.ust_id, depth + 1)} › ${c.ad}`
+        : c.ad;
+    cache.set(id, p);
+    return p;
+  }
+  const m = new Map<number, string>();
+  for (const c of categories) m.set(c.id, path(c.id));
+  return m;
+}
 
 type Props = {
   categories: CategoryOpt[];
@@ -53,7 +80,7 @@ const STEPS: Array<{
   { id: 1, title: "Əsas", hint: "Ad, kod, kateqoriya", icon: Package },
   { id: 2, title: "Şəkil", hint: "Foto və təsvir", icon: ImageIcon },
   { id: 3, title: "Qiymət", hint: "Maya və satış", icon: DollarSign },
-  { id: 4, title: "Stok", hint: "Limit və texniki", icon: Boxes },
+  { id: 4, title: "Limitlər", hint: "Stok limiti və texniki", icon: Boxes },
   { id: 5, title: "Əlavə", hint: "Vergi, SEO, icazə", icon: Settings2 },
 ];
 
@@ -169,6 +196,19 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
   const [pending, startTransition] = useTransition();
   const [generatingImg, setGeneratingImg] = useState(false);
   const [generatingDesc, setGeneratingDesc] = useState(false);
+  // #10: qiymət sahələri icazə ilə (yoxdursa read-only). Owner/admin bütün kodları alır.
+  const canEditPrice = useHasPermission("qiymet.duzelt");
+  // #6: AI şəkil yalnız server-də OPENAI_API_KEY varsa aktivdir → düyməni gizlədirik
+  const [aiImageEnabled, setAiImageEnabled] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    fetch("/api/anbar/ai/generate-image", { method: "GET" })
+      .then((r) => r.json())
+      .then((j) => { if (alive) setAiImageEnabled(!!j?.enabled); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [open]);
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setData((prev) => ({ ...prev, [key]: value }));
@@ -450,9 +490,10 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
               generatingDesc={generatingDesc}
               onAiImage={aiGenerateImage}
               onAiDesc={aiGenerateDescription}
+              aiImageEnabled={aiImageEnabled}
             />
           )}
-          {step === 3 && <Step3 data={data} setField={setField} pending={pending} />}
+          {step === 3 && <Step3 data={data} setField={setField} pending={pending} canEditPrice={canEditPrice} />}
           {step === 4 && <Step4 data={data} setField={setField} pending={pending} />}
           {step === 5 && (
             <Step5 data={data} setField={setField} pending={pending} categories={categories} brands={brands} />
@@ -587,6 +628,8 @@ function Step1({
   pending: boolean;
   onGenerateBarcode: () => void;
 }) {
+  // #9: kateqoriya seçimində "Üst › Alt" yolu göstər (hansı hansının içindədir bilinsin)
+  const catPaths = buildCategoryPaths(categories);
   // Live dublikat yoxlaması (debounced 500ms)
   const [duplicates, setDuplicates] = useState<Array<{
     id: string; ad: string; kod: string | null; barkod: string | null;
@@ -683,7 +726,7 @@ function Step1({
         <div className="space-y-1.5">
           <Label>Kateqoriya</Label>
           <Combobox
-            options={categories.map<ComboOption>((c) => ({ value: String(c.id), label: c.ad }))}
+            options={categories.map<ComboOption>((c) => ({ value: String(c.id), label: catPaths.get(c.id) ?? c.ad }))}
             value={data.kateqoriya_id}
             onChange={(v) => setField("kateqoriya_id", v)}
             placeholder="— Seçin —"
@@ -786,6 +829,7 @@ function Step2({
   generatingDesc,
   onAiImage,
   onAiDesc,
+  aiImageEnabled,
 }: {
   data: FormState;
   setField: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
@@ -794,6 +838,7 @@ function Step2({
   generatingDesc: boolean;
   onAiImage: () => Promise<string | null>;
   onAiDesc: () => void;
+  aiImageEnabled: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -807,7 +852,8 @@ function Step2({
         label="Şəkillər"
         aiDisabled={!data.ad.trim()}
         aiGenerating={generatingImg}
-        onAiGenerate={onAiImage}
+        // AI düyməsi yalnız server-də konfiqurasiya olunubsa görünür (#6)
+        onAiGenerate={aiImageEnabled ? onAiImage : undefined}
       />
 
       <div className="space-y-1.5">
@@ -861,95 +907,149 @@ function Step3({
   data,
   setField,
   pending,
+  canEditPrice,
 }: {
   data: FormState;
   setField: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   pending: boolean;
+  canEditPrice: boolean;
 }) {
   const satis = Number(data.satis_qiymeti) || 0;
+  const maya = Number(data.alish_qiymeti) || 0;
+  const [suggesting, setSuggesting] = useState(false);
+  const round2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
+  const disabled = pending || !canEditPrice; // #10 icazə gating
 
-  // Avtomatik qiymət təklifi — istifadəçi satış qiymətini yazandan sonra,
-  // digər qiymət sahələri boş və ya 0-dırsa, faiz əsasında doldur.
-  // Faizlər indilik hardcoded — gələcəkdə Ayarlar > Qiymət siyasətindən oxunacaq.
-  const PRICE_AUTOFILL = {
-    topdan: 0.60,    // satışdan 40% aşağı
-    partnyor: 0.55,  // satışdan 45% aşağı (diler)
-    vip: 0.90,       // satışdan 10% aşağı
-    min_satis: 0.95, // minimum 5% aşağı
-  };
+  // #7 Satışdan auto — Ayarlar > Qiymət siyasətindəki qaydalarla (edit-dialog ilə EYNİ mənbə).
+  // Əvvəl wizard-da hardcoded topdan=0.60 (satışdan 40% aşağı) idi — çox aqressiv və edit-dialogla uyğunsuz.
+  async function retailAuto() {
+    if (satis <= 0) { toast.error("Əvvəlcə pərakəndə satış qiymətini daxil edin"); return; }
+    setSuggesting(true);
+    try {
+      const { getActivePriceRules } = await import("../price-suggestion-action");
+      const { applyPriceRule } = await import("../price-suggestion-utils");
+      const { rules, isDefault } = await getActivePriceRules();
+      const findRule = (...names: string[]) => {
+        const lower = names.map((n) => n.toLowerCase());
+        return rules.find((r) => lower.some((n) => r.ad.toLowerCase().includes(n)));
+      };
+      const topdanRule = findRule("topdan");
+      const dilerRule = findRule("diler", "partnyor");
+      const vipRule = findRule("vip");
+      const minRule = findRule("min");
+      const topdanVal = topdanRule ? applyPriceRule(satis, topdanRule) : satis * 0.85;
+      setField("topdan_qiymeti", round2(topdanVal));
+      // diler qaydası yoxdursa: topdandan 5% aşağı (istifadəçi məntiqi)
+      setField("partnyor_qiymeti", round2(dilerRule ? applyPriceRule(satis, dilerRule) : topdanVal * 0.95));
+      setField("vip_qiymeti", round2(vipRule ? applyPriceRule(satis, vipRule) : satis * 0.85));
+      setField("min_satis_qiymeti", round2(minRule ? applyPriceRule(satis, minRule) : satis * 0.75));
+      toast.success(isDefault
+        ? "Sistem default faizləri tətbiq edildi (Ayarlar > Qiymət siyasətində dəyişə bilərsiniz)"
+        : "Ayarlardakı qiymət qaydaları tətbiq edildi");
+    } catch {
+      setField("topdan_qiymeti", round2(satis * 0.85));
+      setField("partnyor_qiymeti", round2(satis * 0.85 * 0.95));
+      setField("vip_qiymeti", round2(satis * 0.85));
+      setField("min_satis_qiymeti", round2(satis * 0.75));
+      toast.success("Qiymətlər təklif edildi");
+    } finally {
+      setSuggesting(false);
+    }
+  }
 
-  function autoFillPrices() {
-    if (satis <= 0) return;
-    const round2 = (n: number) => (Math.round(n * 100) / 100).toFixed(2);
-    if (!Number(data.topdan_qiymeti)) setField("topdan_qiymeti", round2(satis * PRICE_AUTOFILL.topdan));
-    if (!Number(data.partnyor_qiymeti)) setField("partnyor_qiymeti", round2(satis * PRICE_AUTOFILL.partnyor));
-    if (!Number(data.vip_qiymeti)) setField("vip_qiymeti", round2(satis * PRICE_AUTOFILL.vip));
-    if (!Number(data.min_satis_qiymeti)) setField("min_satis_qiymeti", round2(satis * PRICE_AUTOFILL.min_satis));
+  // #7 Mayaya görə — maya bilindikdə: maya+45%=satış, +25%=topdan, +20%=diler; VIP/min satışdan.
+  function costAuto() {
+    if (maya <= 0) { toast.error("Əvvəlcə maya (alış) qiymətini daxil edin"); return; }
+    const yeniSatis = maya * 1.45;
+    setField("satis_qiymeti", round2(yeniSatis));
+    setField("topdan_qiymeti", round2(maya * 1.25));
+    setField("partnyor_qiymeti", round2(maya * 1.20));
+    setField("vip_qiymeti", round2(yeniSatis * 0.85));      // satışdan -15%
+    setField("min_satis_qiymeti", round2(yeniSatis * 0.75)); // satışdan -25%
+    toast.success("Mayaya görə hesablandı: topdan +25%, diler +20%, satış +45%");
   }
 
   return (
     <div className="space-y-4">
+      {!canEditPrice && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
+          🔒 Qiymət dəyişmək üçün icazəniz yoxdur («qiymet.duzelt»). Qiymət sahələri yalnız oxunur.
+        </div>
+      )}
       <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">💡 Yalnız satış qiyməti məcburidir.</p>
+        <p className="font-medium text-foreground">💡 Satış qiyməti məcburidir. Maya opsionaldır.</p>
         <p className="mt-0.5">
-          <strong>Maya/alış qiyməti</strong> sonradan alış qaiməsindən avtomatik hesablanır.
-          Digər qiymətlər avtomatik təklif edilir.
+          <strong>Satışdan auto</strong> — alt qiymətləri satış qiymətindən hesablayır (Ayarlar &gt; Qiymət siyasəti).{" "}
+          <strong>Mayaya görə</strong> — maya yazılıbsa, qiymətləri mayanın üzərinə faizlə qurur.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <div className="md:col-span-2">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
           <Label>Pərakəndə satış qiyməti *</Label>
-          <div className="mt-1 flex gap-2">
-            <Input
-              type="number"
-              min={0}
-              step="0.01"
-              value={data.satis_qiymeti}
-              onChange={(e) => setField("satis_qiymeti", e.target.value)}
-              disabled={pending}
-              required
-              className="h-9"
-            />
-            {satis > 0 && (
-              <Button type="button" size="sm" variant="outline" onClick={autoFillPrices} disabled={pending}>
-                🪄 Auto qiymət
-              </Button>
-            )}
-          </div>
+          <Input
+            type="number" min={0} step="0.01"
+            value={data.satis_qiymeti}
+            onChange={(e) => setField("satis_qiymeti", e.target.value)}
+            disabled={disabled}
+            required={canEditPrice}
+            className="mt-1 h-9"
+          />
+        </div>
+        <div>
+          <Label>Maya / alış qiyməti (opsional)</Label>
+          <Input
+            type="number" min={0} step="0.01"
+            value={data.alish_qiymeti}
+            onChange={(e) => setField("alish_qiymeti", e.target.value)}
+            disabled={disabled}
+            placeholder="Alış qaiməsindən də gələ bilər"
+            className="mt-1 h-9"
+          />
         </div>
       </div>
 
-      <div className="space-y-1.5">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-          Qiymət təklifləri (faiz əsasında satışdan azalır)
-        </Label>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <NumField
-            label={`Topdan (~${((1 - PRICE_AUTOFILL.topdan) * 100).toFixed(0)}% ↓)`}
-            value={data.topdan_qiymeti}
-            onChange={(v) => setField("topdan_qiymeti", v)}
-            disabled={pending}
-          />
-          <NumField
-            label={`Diler (~${((1 - PRICE_AUTOFILL.partnyor) * 100).toFixed(0)}% ↓)`}
-            value={data.partnyor_qiymeti}
-            onChange={(v) => setField("partnyor_qiymeti", v)}
-            disabled={pending}
-          />
-          <NumField
-            label={`VIP (~${((1 - PRICE_AUTOFILL.vip) * 100).toFixed(0)}% ↓)`}
-            value={data.vip_qiymeti}
-            onChange={(v) => setField("vip_qiymeti", v)}
-            disabled={pending}
-          />
-          <NumField
-            label={`Minimum (~${((1 - PRICE_AUTOFILL.min_satis) * 100).toFixed(0)}% ↓)`}
-            value={data.min_satis_qiymeti}
-            onChange={(v) => setField("min_satis_qiymeti", v)}
-            disabled={pending}
-          />
+      {canEditPrice && (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={retailAuto} disabled={disabled || suggesting || satis <= 0}>
+            {suggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span>🪄</span>} Satışdan auto
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={costAuto} disabled={disabled || maya <= 0}>
+            📦 Mayaya görə
+          </Button>
         </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Qiymət təklifləri</Label>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <NumField label="Topdan" value={data.topdan_qiymeti} onChange={(v) => setField("topdan_qiymeti", v)} disabled={disabled} />
+          <NumField label="Diler" value={data.partnyor_qiymeti} onChange={(v) => setField("partnyor_qiymeti", v)} disabled={disabled} />
+          <NumField label="VIP" value={data.vip_qiymeti} onChange={(v) => setField("vip_qiymeti", v)} disabled={disabled} />
+          <div>
+            <div className="flex items-center justify-between">
+              <Label className="text-[11px]">Minimum satış</Label>
+              {canEditPrice && satis > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setField("min_satis_qiymeti", round2(satis * 0.75))}
+                  disabled={disabled}
+                  className="text-[10px] font-semibold text-primary hover:underline"
+                >
+                  Auto −25%
+                </button>
+              )}
+            </div>
+            <Input
+              type="number" min={0} step="0.01"
+              value={data.min_satis_qiymeti}
+              onChange={(e) => setField("min_satis_qiymeti", e.target.value)}
+              disabled={disabled}
+              className="mt-1 h-9"
+            />
+          </div>
+        </div>
+        <p className="text-[10px] text-muted-foreground">Minimum satış — bu qiymətdən aşağı satış zamanı xəbərdarlıq verilir.</p>
       </div>
 
       <div className="space-y-1.5">
@@ -957,7 +1057,7 @@ function Step3({
           Əlavə qiymət parametrləri (opsional)
         </Label>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-          <NumField label="Endirimli qiymət" value={data.endirimli_qiymet} onChange={(v) => setField("endirimli_qiymet", v)} disabled={pending} />
+          <NumField label="Endirimli qiymət" value={data.endirimli_qiymet} onChange={(v) => setField("endirimli_qiymet", v)} disabled={disabled} />
           <NumField label="Komissiya %" value={data.komissiya_faiz} onChange={(v) => setField("komissiya_faiz", v)} disabled={pending} />
           <NumField label="Çatdırılma xərci" value={data.catdirilma_xerci} onChange={(v) => setField("catdirilma_xerci", v)} disabled={pending} />
           <NumField label="Digər xərc" value={data.diger_xerc} onChange={(v) => setField("diger_xerc", v)} disabled={pending} />
@@ -985,8 +1085,19 @@ function Step4({
       </p>
 
       <div>
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Stok limitləri
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Stok limitləri (xəbərdarlıq üçün — mədaxil deyil)
+          </div>
+          {/* #8: kritik/min stok avto təklifi */}
+          <button
+            type="button"
+            onClick={() => { setField("kritik_stok", "5"); setField("min_stok", "7"); }}
+            disabled={pending}
+            className="text-[10.5px] font-semibold text-primary hover:underline"
+          >
+            🪄 Avto (kritik 5 / min 7)
+          </button>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <NumField label="Kritik stok" value={data.kritik_stok} onChange={(v) => setField("kritik_stok", v)} disabled={pending} />
@@ -1001,7 +1112,21 @@ function Step4({
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <TextField label="Model" value={data.model} onChange={(v) => setField("model", v)} placeholder="iPhone 15 Pro" disabled={pending} />
-          <TextField label="Rəng" value={data.rang} onChange={(v) => setField("rang", v)} placeholder="Qara" disabled={pending} />
+          {/* #8: hazır rəng palitrası (datalist) — seç və ya yeni ad yaz */}
+          <div className="space-y-1.5">
+            <Label className="text-[11px]">Rəng</Label>
+            <Input
+              list="reng-palitra"
+              value={data.rang}
+              onChange={(e) => setField("rang", e.target.value)}
+              placeholder="Seçin və ya yazın"
+              disabled={pending}
+              className="h-9"
+            />
+            <datalist id="reng-palitra">
+              {RENG_PALITRA.map((r) => <option key={r} value={r} />)}
+            </datalist>
+          </div>
           <TextField label="İstehsalçı" value={data.istehsalci} onChange={(v) => setField("istehsalci", v)} placeholder="Apple Inc" disabled={pending} />
           <NumField label="Çəki (kq)" value={data.cheki_kg} onChange={(v) => setField("cheki_kg", v)} disabled={pending} />
           <NumField label="Həcm (m³)" value={data.hecm_m3} onChange={(v) => setField("hecm_m3", v)} disabled={pending} />

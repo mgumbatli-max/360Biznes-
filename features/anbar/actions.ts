@@ -111,6 +111,8 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
   const isEdit = !!(raw as { id?: string }).id;
   const permCheck = await requireAnbarActionPerm(isEdit ? "mehsul.duzelt" : "mehsul.yarat");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  // #10: qiymət dəyişikliyi ayrıca «qiymet.duzelt» icazəsi tələb edir (privileged bypass var)
+  const canEditPrice = (await requireAnbarActionPerm("qiymet.duzelt")).ok;
 
   const parsed = ProductSchema.safeParse(raw);
   if (!parsed.success) {
@@ -172,6 +174,27 @@ export async function saveProduct(input: FormData | z.input<typeof ProductSchema
         etiketsiz: d.etiketsiz,
         aktiv: d.aktiv,
       };
+      // #10: qiymət icazəsi yoxdursa, redaktədə qiymət sahələri dəyişdirilə bilməz —
+      // mövcud dəyərlər saxlanılır (frontend gating-i UI-dir; əsl qoruma buradadır).
+      if (d.id && !canEditPrice) {
+        const cur = await prisma.mehsullar.findUnique({
+          where: { id: d.id },
+          select: {
+            satis_qiymeti: true, alish_qiymeti: true, endirimli_qiymet: true,
+            min_satis_qiymeti: true, topdan_qiymeti: true, partnyor_qiymeti: true, vip_qiymeti: true,
+          },
+        });
+        if (cur) {
+          data.satis_qiymeti = Number(cur.satis_qiymeti ?? 0);
+          data.alish_qiymeti = cur.alish_qiymeti != null ? Number(cur.alish_qiymeti) : null;
+          data.endirimli_qiymet = cur.endirimli_qiymet != null ? Number(cur.endirimli_qiymet) : null;
+          data.min_satis_qiymeti = Number(cur.min_satis_qiymeti ?? 0);
+          data.topdan_qiymeti = Number(cur.topdan_qiymeti ?? 0);
+          data.partnyor_qiymeti = Number(cur.partnyor_qiymeti ?? 0);
+          data.vip_qiymeti = Number(cur.vip_qiymeti ?? 0);
+        }
+      }
+
       // Apply auto price formulas from qiymet_novleri (only fill empty fields)
       const { applyPriceFormulas } = await import("@/features/ayarlar/apply-price-formulas");
       const formulaResult = await applyPriceFormulas(sahibkarId, {

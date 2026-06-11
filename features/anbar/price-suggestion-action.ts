@@ -55,10 +55,12 @@ export async function getActivePriceRules(): Promise<{ rules: PriceRule[]; isDef
     // Default sistem qaydaları — ayarlardan heç bir qayda yoxdursa
     return {
       rules: [
-        { ad: "Topdan", markup: -25, round_to: "0.00", kateqoriya_id: null, aktiv: true },
-        { ad: "Diler", markup: -30, round_to: "0.00", kateqoriya_id: null, aktiv: true },
-        { ad: "VIP", markup: -10, round_to: "0.00", kateqoriya_id: null, aktiv: true },
-        { ad: "Minimum", markup: -35, round_to: "0.00", kateqoriya_id: null, aktiv: true },
+        // Hibrid default sxem (#7) — istifadəçi Ayarlar > Qiymət siyasətində dəyişə bilər.
+        // Əvvəl topdan -25/-30/-10/-35 idi; satışdan ~-15% daha real başlanğıcdır.
+        { ad: "Topdan", markup: -15, round_to: "0.00", kateqoriya_id: null, aktiv: true },
+        { ad: "Diler", markup: -20, round_to: "0.00", kateqoriya_id: null, aktiv: true },
+        { ad: "VIP", markup: -15, round_to: "0.00", kateqoriya_id: null, aktiv: true },
+        { ad: "Minimum", markup: -25, round_to: "0.00", kateqoriya_id: null, aktiv: true },
       ],
       isDefault: true,
     };
