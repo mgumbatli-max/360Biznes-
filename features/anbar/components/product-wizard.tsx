@@ -389,7 +389,7 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
           Yeni məhsul
         </Button>
       </DialogTrigger>
-      <DialogContent className="md:max-w-3xl max-h-[92vh] overflow-hidden p-0 gap-0">
+      <DialogContent className="md:max-w-3xl max-h-[92vh] flex flex-col overflow-hidden p-0 gap-0">
         {/* Modern gradient hero header */}
         <div
           className="relative border-b border-border/30 px-5 py-3 text-white"
@@ -427,8 +427,9 @@ export function ProductWizard({ categories, brands, units = [] }: Props) {
           </div>
         )}
 
-        {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-[340px]">
+        {/* Scrollable body — min-h-0 flex uşağın daralmasına icazə verir ki, scroll işləsin
+            (DialogContent indi flex flex-col; əks halda uzun addımda footer/submit ekrandan çıxırdı = "donma") */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
           {step === 1 && (
             <Step1
               data={data}

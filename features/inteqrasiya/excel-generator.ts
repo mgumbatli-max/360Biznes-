@@ -38,26 +38,10 @@ export async function generateTemplate(template: TemplateDef): Promise<Buffer> {
     };
   });
 
-  // sample rows
-  for (const row of template.samples) {
-    const added = sheet.addRow(row);
-    added.font = { italic: true, color: { argb: "FF94A3B8" } };
-    added.eachCell((cell) => {
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
-      cell.border = {
-        bottom: { style: "hair", color: { argb: "FFE2E8F0" } },
-      };
-    });
-  }
-
-  // add a note row right after samples
-  const noteRow = sheet.addRow(["↑ Bu sətr nümunədir — silə bilərsiz. Aşağıya öz məlumatlarınızı yazın ↓"]);
-  noteRow.font = { italic: true, color: { argb: "FFB91C1C" }, size: 10 };
-  sheet.mergeCells(`A${noteRow.number}:${String.fromCharCode(64 + Math.min(template.columns.length, 26))}${noteRow.number}`);
-  noteRow.alignment = { horizontal: "left" };
-
-  // give some empty rows
-  for (let i = 0; i < 20; i++) sheet.addRow({});
+  // QA: Nümunə sətirləri ARTIQ data səhifəsinə yazılmır — əvvəl onlar (və "↑ nümunədir"
+  // qeyd sətri) saxta data kimi idxal olunurdu. Nümunələr indi «Təlimat» səhifəsindədir.
+  // Data səhifəsi yalnız başlıq + boş sətirlərlə gəlir → istifadəçi birbaşa doldurur.
+  for (let i = 0; i < 30; i++) sheet.addRow({});
 
   // === INSTRUCTION SHEET ===
   const info = wb.addWorksheet("Təlimat", {
@@ -81,6 +65,17 @@ export async function generateTemplate(template: TemplateDef): Promise<Buffer> {
   }
 
   info.addRow([]);
+
+  // Nümunə dəyərlər — data səhifəsindən çıxarıldı, burada göstərilir (idxala düşmür)
+  if (template.samples.length > 0) {
+    info.addRow(["NÜMUNƏ (data səhifəsinə yazmayın)", ""]).font = { bold: true, color: { argb: "FF6366F1" } };
+    const sample = template.samples[0];
+    for (const c of template.columns) {
+      const val = sample[c.key];
+      if (val !== undefined && val !== "") info.addRow([c.header, String(val)]);
+    }
+    info.addRow([]);
+  }
 
   // instructions
   if (template.instructions.length > 0) {

@@ -105,7 +105,9 @@ export function EmployeeDialog({ filiallar = [], vezifeler = [], initial, trigge
               <TabsTrigger value="bank">Bank</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="sexsi" className="space-y-4 pt-3">
+            {/* forceMount: tab dəyişəndə panel unmount olmasın — uncontrolled input
+                dəyərləri (ad_soyad, email, şifrə) itməsin və submit-də FormData hamısını toplasın */}
+            <TabsContent value="sexsi" forceMount className="space-y-4 pt-3 data-[state=inactive]:hidden">
               <div className="space-y-2">
                 <Label htmlFor="ad_soyad">Ad Soyad *</Label>
                 <Input id="ad_soyad" name="ad_soyad" required minLength={2} maxLength={100} defaultValue={initial?.ad_soyad} autoFocus disabled={pending} />
@@ -142,7 +144,7 @@ export function EmployeeDialog({ filiallar = [], vezifeler = [], initial, trigge
               </div>
             </TabsContent>
 
-            <TabsContent value="is" className="space-y-4 pt-3">
+            <TabsContent value="is" forceMount className="space-y-4 pt-3 data-[state=inactive]:hidden">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -232,7 +234,7 @@ export function EmployeeDialog({ filiallar = [], vezifeler = [], initial, trigge
               </div>
             </TabsContent>
 
-            <TabsContent value="sistem" className="space-y-4 pt-3">
+            <TabsContent value="sistem" forceMount className="space-y-4 pt-3 data-[state=inactive]:hidden">
               <Alert>
                 <AlertDescription className="text-xs">
                   Rol və icazələr buradan idarə olunmur. Yeni işçi default «Kassir» rolu ilə yaradılır —
@@ -253,6 +255,7 @@ export function EmployeeDialog({ filiallar = [], vezifeler = [], initial, trigge
                 />
               </div>
               <label className="flex items-center gap-2 text-sm">
+                <input type="hidden" name="aktiv" value="false" />
                 <input
                   type="checkbox"
                   name="aktiv"
@@ -265,7 +268,7 @@ export function EmployeeDialog({ filiallar = [], vezifeler = [], initial, trigge
               </label>
             </TabsContent>
 
-            <TabsContent value="bank" className="space-y-4 pt-3">
+            <TabsContent value="bank" forceMount className="space-y-4 pt-3 data-[state=inactive]:hidden">
               <div className="space-y-2">
                 <Label htmlFor="bank_ad">Bank</Label>
                 <Input id="bank_ad" name="bank_ad" maxLength={100} defaultValue={initial?.bank_ad ?? ""} placeholder="Kapital Bank, AGBank, ..." disabled={pending} />

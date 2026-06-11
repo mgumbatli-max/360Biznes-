@@ -19,7 +19,7 @@ const EmployeeSchema = z.object({
   aylik_maas: z.coerce.number().min(0).default(0),
   ise_baslama: z.string().optional().or(z.literal("")),
   sifre: z.string().min(6).max(100).optional().or(z.literal("")),
-  aktiv: z.coerce.boolean().default(true),
+  aktiv: z.preprocess((v) => v === "true" || v === "on" || v === true, z.boolean()).default(true),
   fin_kod: z.string().max(20).optional().or(z.literal("")),
   dogum_tarixi: z.string().optional().or(z.literal("")),
   unvan: z.string().max(500).optional().or(z.literal("")),

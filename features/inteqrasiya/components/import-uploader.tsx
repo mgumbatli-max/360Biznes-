@@ -19,6 +19,7 @@ type ParsedRow = {
   sira: number;
   values: Record<string, string | number | null>;
   errors: string[];
+  warnings?: string[];
 };
 
 type ParseResponse = {
@@ -353,7 +354,15 @@ function PreviewView({
                         {r.values[c.key] != null ? String(r.values[c.key]) : <span className="text-muted-foreground">—</span>}
                       </td>
                     ))}
-                    <td className="px-2 py-1.5 text-xs text-rose-600">{r.errors.join(", ") || "—"}</td>
+                    <td className="px-2 py-1.5 text-xs">
+                      {r.errors.length > 0 ? (
+                        <span className="text-rose-600">{r.errors.join(", ")}</span>
+                      ) : r.warnings && r.warnings.length > 0 ? (
+                        <span className="text-amber-600">{r.warnings.join(", ")}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

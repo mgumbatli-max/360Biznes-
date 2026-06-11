@@ -41,7 +41,9 @@ const ContactSchema = z.object({
   sheher: z.string().max(100).optional().or(z.literal("")),
   olke: z.string().max(100).optional().or(z.literal("")),
   qeyd: z.string().max(2000).optional().or(z.literal("")),
-  aktiv: z.coerce.boolean().default(true),
+  // z.coerce.boolean Boolean("false")===true verir → checkbox açılanda da true olurdu.
+  // Yalnız açıq "true"/"on" gələndə aktiv (forma gizli "false" input-u ilə birlikdə işləyir).
+  aktiv: z.preprocess((v) => v === "true" || v === "on" || v === true, z.boolean()).default(true),
   qiymet_tipi: z.enum(["adi", "perakende", "topdan", "partnyor", "vip"]).optional(),
   borc_limiti: z.string().optional().or(z.literal("")),
   menecer_id: z.string().uuid().optional().or(z.literal("")),

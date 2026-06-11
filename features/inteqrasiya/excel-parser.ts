@@ -7,6 +7,8 @@ export type ParsedRow = {
   raw: Record<string, string | number | null>;
   values: Record<string, string | number | null>;
   errors: string[];
+  /** Bloklamayan xəbərdarlıqlar (məs. satış qiyməti mayadan aşağı) — import-a mane olmur */
+  warnings: string[];
 };
 
 export type ParseResult = {
@@ -212,7 +214,12 @@ export async function parseExcel(buffer: ArrayBuffer, template: TemplateDef): Pr
 
     if (!hasAnyValue) return; // skip blank rows
 
+    // Şablonun "↑ Bu sətr nümunədir..." qeyd sətrini və nümunə sətrini at —
+    // əks halda saxta müştəri/məhsul kimi idxal olunurdu (merged xana bütün sütunlara replikasiya olur).
+    if (isNoteRow(values) || isSampleRow(values, template)) return;
+
     const errors: string[] = [];
+    const warnings: string[] = [];
 
     // check required fields
     for (const c of template.columns) {
@@ -224,9 +231,9 @@ export async function parseExcel(buffer: ArrayBuffer, template: TemplateDef): Pr
     }
 
     // template-specific sanity checks
-    runTemplateChecks(template.key, values, errors);
+    runTemplateChecks(template.key, values, errors, warnings);
 
-    rows.push({ sira: rowNumber, raw, values, errors });
+    rows.push({ sira: rowNumber, raw, values, errors, warnings });
   });
 
   const errorRows = rows.filter((r) => r.errors.length > 0).length;
@@ -241,10 +248,33 @@ export async function parseExcel(buffer: ArrayBuffer, template: TemplateDef): Pr
   };
 }
 
+/** Köhnə şablonun merged qeyd sətri (hər sütuna replikasiya olunur) */
+function isNoteRow(values: Record<string, string | number | null>): boolean {
+  for (const x of Object.values(values)) {
+    if (typeof x === "string") {
+      const s = x.trim().toLowerCase();
+      if (x.trim().startsWith("↑") || s.includes("nümunədir") || s.includes("numunedir")) return true;
+    }
+  }
+  return false;
+}
+
+/** Şablonun öz nümunə sətri (istifadəçi silməyibsə) — əsas sahə dəyəri ilə tutuşdur */
+function isSampleRow(values: Record<string, string | number | null>, template: TemplateDef): boolean {
+  if (!template.samples?.length) return false;
+  const keyCol = template.columns.find((c) => c.required)?.key ?? template.columns[0]?.key;
+  if (!keyCol) return false;
+  const cur = values[keyCol];
+  if (cur == null || cur === "") return false;
+  const curS = String(cur).trim().toLowerCase();
+  return template.samples.some((s) => String(s[keyCol] ?? "").trim().toLowerCase() === curS && curS.length > 0);
+}
+
 function runTemplateChecks(
   key: string,
   v: Record<string, string | number | null>,
-  errors: string[]
+  errors: string[],
+  warnings: string[]
 ) {
   // negative number guards
   const nonNeg = (field: string, label: string) => {
@@ -262,14 +292,14 @@ function runTemplateChecks(
         typeof v.satis_qiymeti === "number" &&
         v.satis_qiymeti < v.alish_qiymeti
       ) {
-        errors.push("Pərakəndə qiymət mayadan aşağıdır (xəbərdarlıq)");
+        // Xəbərdarlıq — idxalı bloklamır (əvvəl errors-ə düşür, qanuni sətr "xəta" sayılırdı)
+        warnings.push("Pərakəndə qiymət mayadan aşağıdır");
       }
       break;
     case "musteri":
       nonNeg("borc", "İlkin borc qalığı");
-      if (v.tip && typeof v.tip === "string" && !["sahib", "sirket"].includes(v.tip.toLowerCase())) {
-        errors.push("Tip yalnız «sahib» və ya «sirket» ola bilər");
-      }
+      // QA: `tip` validasiyası silindi — DB-yə huquqi_fiziki kimi map olunur, sərt enum xəta verirdi
+      // ("Şirkət"/"şəxsi" kimi təbii sözlər "xəta" sayılırdı). İndi sərbəst mətn qəbul olunur.
       break;
     case "techizatci":
       nonNeg("borc", "İlkin borc");

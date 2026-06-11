@@ -6,6 +6,14 @@ import { ParsedRow } from "./excel-parser";
 import { audit } from "@/lib/audit/log";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
 
+/** Şablon `tip` sütunu (sahib/sirket/fiziki/huquqi/şirkət...) → DB huquqi_fiziki */
+function mapHuquqiFiziki(tip: string | number | null | undefined): string | undefined {
+  if (tip == null || tip === "") return undefined;
+  const s = String(tip).toLowerCase();
+  if (s.includes("sir") || s.includes("şir") || s.includes("huq") || s.includes("hüq") || s.includes("mmc") || s.includes("company")) return "huquqi";
+  return "fiziki"; // sahib / fiziki / şəxs / fərd
+}
+
 export type ImportResult = {
   partiyaId: string;
   cemi: number;
@@ -114,6 +122,31 @@ async function importMehsul(rows: ParsedRow[]): Promise<ImportResult> {
     orderBy: { id: "asc" },
   });
 
+  // FK həlli (kateqoriya/marka adı → id). Əvvəl `kateqoriya`/`tesvir`/`vergi` kimi
+  // mövcud OLMAYAN skaler sahələrə yazılırdı → hər sətir "Unknown argument" atırdı (0 məhsul).
+  const [allCats, allBrands] = await Promise.all([
+    prisma.kateqoriyalar.findMany({ where: { sahibkar_id: sahibkarId }, select: { id: true, ad: true } }),
+    prisma.markalar.findMany({ where: { sahibkar_id: sahibkarId }, select: { id: true, ad: true } }),
+  ]);
+  const catMap = new Map<string, number>(allCats.map((c) => [c.ad.toLowerCase(), c.id]));
+  const brandMap = new Map<string, number>(allBrands.map((b) => [b.ad.toLowerCase(), b.id]));
+  async function resolveCategory(name: string | null): Promise<number | undefined> {
+    if (!name) return undefined;
+    const f = catMap.get(name.toLowerCase());
+    if (f) return f;
+    const created = await prisma.kateqoriyalar.create({ data: { sahibkar_id: sahibkarId, ad: name } });
+    catMap.set(name.toLowerCase(), created.id);
+    return created.id;
+  }
+  async function resolveBrand(name: string | null): Promise<number | undefined> {
+    if (!name) return undefined;
+    const f = brandMap.get(name.toLowerCase());
+    if (f) return f;
+    const created = await prisma.markalar.create({ data: { sahibkar_id: sahibkarId, ad: name, aktiv: true } });
+    brandMap.set(name.toLowerCase(), created.id);
+    return created.id;
+  }
+
   for (const r of rows) {
     try {
       const ad = String(r.values.ad);
@@ -129,21 +162,23 @@ async function importMehsul(rows: ParsedRow[]): Promise<ImportResult> {
         },
       });
 
+      const markaAd = r.values.marka ? String(r.values.marka) : null;
       const data = {
         ad,
         kod,
         barkod,
-        marka: r.values.marka ? String(r.values.marka) : null,
+        marka: markaAd,
+        marka_id: await resolveBrand(markaAd), // queries.ts marka adını markalar FK-dən oxuyur
         model: r.values.model ? String(r.values.model) : null,
-        kateqoriya: r.values.kateqoriya ? String(r.values.kateqoriya) : null,
-        tesvir: r.values.tesvir ? String(r.values.tesvir) : null,
+        kateqoriya_id: await resolveCategory(r.values.kateqoriya ? String(r.values.kateqoriya) : null),
+        aciqlamaq: r.values.tesvir ? String(r.values.tesvir) : undefined, // model sahəsi `tesvir` deyil `aciqlamaq`
         alish_qiymeti: (r.values.alish_qiymeti as number) ?? 0,
         satis_qiymeti: (r.values.satis_qiymeti as number) ?? 0,
-        topdan_qiymeti: (r.values.topdan_qiymeti as number) ?? null,
-        partnyor_qiymeti: (r.values.partnyor_qiymeti as number) ?? null,
-        vip_qiymeti: (r.values.vip_qiymeti as number) ?? null,
-        kritik_stok: (r.values.kritik_stok as number) ?? 0,
-        vergi: (r.values.vergi as number) ?? null,
+        // topdan/partnyor/vip NOT-NULL @default(0) — `null` ötürmək xəta verir, undefined → default/keep
+        topdan_qiymeti: (r.values.topdan_qiymeti as number) ?? undefined,
+        partnyor_qiymeti: (r.values.partnyor_qiymeti as number) ?? undefined,
+        vip_qiymeti: (r.values.vip_qiymeti as number) ?? undefined,
+        kritik_stok: (r.values.kritik_stok as number) ?? undefined,
         aktiv: r.values.aktiv === 0 ? false : true,
       };
 
@@ -246,6 +281,10 @@ async function importMusteri(rows: ParsedRow[]): Promise<ImportResult> {
         telefon,
         email: r.values.email ? String(r.values.email) : null,
         unvan: r.values.unvan ? String(r.values.unvan) : null,
+        // QA: şablonda doldurulan, amma əvvəl DB-yə yazılmayan sahələr (gizli itirdi)
+        sheher: r.values.seh_r ? String(r.values.seh_r) : undefined,
+        borc_limiti: typeof r.values.borc_limit === "number" ? r.values.borc_limit : undefined,
+        huquqi_fiziki: mapHuquqiFiziki(r.values.tip),
         qiymet_tipi: r.values.qiymet_tipi ? String(r.values.qiymet_tipi) : "adi",
         qeyd: r.values.qeyd ? String(r.values.qeyd) : null,
         aktiv: r.values.aktiv === 0 ? false : true,
@@ -304,11 +343,14 @@ async function importTechizatci(rows: ParsedRow[]): Promise<ImportResult> {
       const ad = String(r.values.ad);
       const voen = r.values.voen ? String(r.values.voen) : null;
 
+      // VÖEN varsa onunla, yoxdursa ad ilə dedup et (əks halda hər təkrar yükləmədə dublikat yaranırdı)
       const existing = voen
         ? await prisma.kontragentler.findFirst({
             where: { sahibkar_id: sahibkarId, nov: "techizatci", voen },
           })
-        : null;
+        : await prisma.kontragentler.findFirst({
+            where: { sahibkar_id: sahibkarId, nov: "techizatci", ad },
+          });
 
       const data = {
         nov: "techizatci",
@@ -319,6 +361,9 @@ async function importTechizatci(rows: ParsedRow[]): Promise<ImportResult> {
         unvan: r.values.unvan ? String(r.values.unvan) : null,
         bank_adi: r.values.bank_adi ? String(r.values.bank_adi) : null,
         iban: r.values.iban ? String(r.values.iban) : null,
+        // QA: şablonda doldurulan, amma əvvəl yazılmayan sahələr
+        direktor: r.values.direktor ? String(r.values.direktor) : undefined,
+        odeni__muddet_gun: typeof r.values.odenis_gun === "number" ? r.values.odenis_gun : undefined,
         aktiv: r.values.aktiv === 0 ? false : true,
       };
 

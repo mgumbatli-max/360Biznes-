@@ -17,7 +17,7 @@ import { normalizePhone } from "@/lib/utils/normalize-phone";
  */
 const QuickCreateCustomerSchema = z.object({
   ad: z.string().min(2).max(200),
-  telefon: z.string().max(30).optional().or(z.literal("")),
+  telefon: z.string().max(20).optional().or(z.literal("")), // DB kontragentler.telefon VarChar(20)
   email: z.string().max(150).optional().or(z.literal("")),
   voen: z.string().max(20).optional().or(z.literal("")),
   borc_limiti: z.coerce.number().min(0).optional().nullable(),

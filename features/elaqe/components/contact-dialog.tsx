@@ -126,6 +126,9 @@ export function ContactDialog({ defaultNov, initial, trigger = "new", managers =
               </div>
 
               <label className="flex items-center gap-2 text-sm">
+                {/* Gizli "false" — checkbox açılanda da serverə dəyər getsin (yalnız checkbox-la
+                    açılan halda açar yox olub default-a düşürdü → deaktiv saxlamaq mümkün deyildi) */}
+                <input type="hidden" name="aktiv" value="false" />
                 <input type="checkbox" name="aktiv" value="true" defaultChecked={initial?.aktiv ?? true} className="h-4 w-4 accent-primary" disabled={pending} />
                 Aktivdir
               </label>
