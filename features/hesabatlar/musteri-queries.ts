@@ -216,12 +216,17 @@ export async function getDebtBuckets(): Promise<DebtBucket[]> {
     const { sahibkarId } = requireTenant();
     const rows = await prisma.$queryRaw<{ bucket: string; count: number; amount: number }[]>`
       WITH d AS (
+        -- QA-K31: vahid effective-debt düsturu (alacaq SoT + legacy fallback);
+        -- əvvəl borc oxunur, aktiv/nov filtri yox idi (təchizatçılar da düşürdü)
         SELECT k.id,
                (CURRENT_DATE - GREATEST(k.son_temas::date, k.yenilendi::date, k.yaradildi::date))::int AS gun,
-               k.borc::float AS borc
+               (CASE WHEN COALESCE(k.alacaq,0) > 0 THEN k.alacaq
+                     WHEN k.nov = 'musteri' THEN k.borc ELSE 0 END)::float AS borc
           FROM kontragentler k
          WHERE k.sahibkar_id = ${sahibkarId}::uuid
-           AND COALESCE(k.borc, 0) > 0
+           AND COALESCE(k.aktiv, TRUE) = TRUE
+           AND k.nov IN ('musteri','her_ikisi')
+           AND (COALESCE(k.alacaq,0) > 0 OR (k.nov = 'musteri' AND COALESCE(k.borc,0) > 0))
       ),
       b AS (
         SELECT CASE

@@ -1707,6 +1707,16 @@ export async function paySupplierAllOpen(
         }
         const totalApplied = distribution.reduce((s, x) => s + x.applied, 0);
 
+        // QA-K15: artıq ödəniş (overpayment) əvvəl SƏSSİZ İTİRDİ — açıq
+        // borcdan çox məbləğ hesabdan çıxır, amma heç yerdə izlənmirdi
+        // (təchizatçı avansı anlayışı yoxdur). Bloklayırıq: istifadəçi dəqiq
+        // məbləği görüb düzəltsin.
+        if (d.mebleg > totalApplied + 0.01) {
+          throw new Error(
+            `Məbləğ açıq borcdan çoxdur: açıq borc ${totalApplied.toFixed(2)} ₼, daxil etdiyiniz ${d.mebleg.toFixed(2)} ₼. Artıq ödəniş izlənmir — məbləği ${totalApplied.toFixed(2)} ₼-ə düzəldin.`,
+          );
+        }
+
         // Təchizatçı balansı — source-of-truth recalc (alis_sifarisleri.odenilmis
         // artıq artırıldığı üçün hesablama avtomatik düz olur).
         await tx.kontragentler.update({

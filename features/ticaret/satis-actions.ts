@@ -9,7 +9,7 @@ import { safeAuditLog } from "@/lib/audit/safe-log";
 import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 
 type ActionResult =
-  | { ok: true }
+  | { ok: true; warning?: string }
   | {
       ok: false;
       error: string;
@@ -39,6 +39,7 @@ export async function recordSalePayment(
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    let financeWarn = false; // QA-K33: maliyyə qeydi alınmasa istifadəçi görsün
     try {
       await prisma.$transaction(async (tx) => {
         // 🔒 FOR UPDATE LOCK — paralel ödənişlərdə over-payment önlənir
@@ -64,6 +65,14 @@ export async function recordSalePayment(
           },
         });
         if (!sale) throw new Error("Satış tapılmadı");
+
+        // QA-K25: kredit şirkəti satışına müştəri ödənişi İKİQAT mədaxil
+        // yaradır (bank ayrıca recordKreditPayment ilə daxil edir) — blokla.
+        if (sale.odenis_nov && sale.odenis_nov.startsWith("kredit")) {
+          throw new Error(
+            "Bu, kredit şirkəti satışıdır — ödəniş yalnız Ticarət → Kreditlə bölməsindən (bank ödənişi) qəbul olunur",
+          );
+        }
 
         const son = Number(sale.son_mebleg ?? 0);
         const already = Number(sale.odenilmis ?? 0);
@@ -177,7 +186,8 @@ export async function recordSalePayment(
             }
           }
         } catch (e) {
-          console.warn("[recordSalePayment] finance_operations skipped:", e);
+          console.error("[recordSalePayment] finance_operations skipped:", e);
+          financeWarn = true;
         }
       });
 
@@ -195,7 +205,12 @@ export async function recordSalePayment(
       revalidatePath("/ticaret/satislar");
       revalidatePath("/ticaret/kredit");
       bustTicaretCache();
-      return { ok: true };
+      return {
+        ok: true,
+        warning: financeWarn
+          ? "Ödəniş qəbul edildi, AMMA maliyyə hesabına bağlanmadı — hesab balansı dəyişmədi. Maliyyə → Hesablar-da default hesab yoxlayın."
+          : undefined,
+      };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
     }

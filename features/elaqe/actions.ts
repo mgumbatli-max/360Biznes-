@@ -469,6 +469,18 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
         }
         if (type) {
           const primarySaleId = distribution[0]?.sale_id ?? null;
+          // QA-K14: əvvəl hesab_id YOX idi — pul heç bir kassa/bank hesabına
+          // düşmürdü (account-balance hesab_id üzrə cəmləyir). Default aktiv
+          // nağd hesab (yoxsa ilk aktiv) işlədilir + balans recalc.
+          const defHesab = await tx.maliye_hesablari.findFirst({
+            where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
+            orderBy: { yaradildi: "asc" },
+            select: { id: true },
+          }) ?? await tx.maliye_hesablari.findFirst({
+            where: { sahibkar_id: sahibkarId, aktiv: true },
+            orderBy: { yaradildi: "asc" },
+            select: { id: true },
+          });
           await tx.finance_operations.create({
             data: {
               sahibkar_id: sahibkarId,
@@ -478,6 +490,7 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
               tarix: d.tarix ? new Date(d.tarix) : new Date(),
               meblegh: d.mebleg,
               azn_meblegh: d.mebleg,
+              hesab_id: defHesab?.id ?? null,
               kontragent_id: d.kontragent_id,
               satis_id: primarySaleId,
               qeyd:
@@ -489,6 +502,10 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
               yaradan_id: istifadeciId,
             },
           });
+          if (defHesab?.id) {
+            const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+            await recalculateAccountBalance(defHesab.id, tx);
+          }
         }
       });
 

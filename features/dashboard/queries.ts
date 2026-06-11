@@ -49,7 +49,8 @@ async function fetchDashboardKpisRaw(sahibkarId: string) {
       _sum: { miqdar: true },
     }),
     prismaUnscoped.kontragentler.aggregate({
-      where: { sahibkar_id: sahibkarId, nov: "musteri", alacaq: { gt: 0 } },
+      // QA-K31: her_ikisi nov-u da müştəridir — vahid mənbə (alacaq SoT)
+      where: { sahibkar_id: sahibkarId, nov: { in: ["musteri", "her_ikisi"] }, alacaq: { gt: 0 } },
       _sum: { alacaq: true },
     }),
     prismaUnscoped.$queryRaw<{ count: bigint }[]>`

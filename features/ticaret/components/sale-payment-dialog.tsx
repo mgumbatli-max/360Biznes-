@@ -60,6 +60,8 @@ export function SalePaymentDialog({
         return;
       }
       toast.success("Ödəniş əlavə edildi");
+      // QA-K33: maliyyə hesabına bağlanmayan ödəniş artıq səssiz deyil
+      if (res.warning) toast.warning(res.warning, { duration: 9000 });
       setOpen(false);
       setQeyd("");
       setMebleg(0);
