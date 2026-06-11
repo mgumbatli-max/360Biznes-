@@ -111,7 +111,10 @@ export async function calculateCommission(
       // Find or insert salary row
       const existing = await prisma.maas_hesablamalar.findFirst({
         where: { istifadeci_id: r.istifadeci_id, il: year, ay: month },
-        select: { id: true, status: true, kpi_bonus: true },
+        select: {
+          id: true, status: true, kpi_bonus: true,
+          prorata_maas: true, manual_bonus: true, cerime: true, avans: true, detal: true,
+        },
       });
       if (existing && existing.status && existing.status !== "cernovik") {
         skipped += 1;
@@ -119,18 +122,52 @@ export async function calculateCommission(
       }
       const totalBonus = r.commission_mebleg + r.bonus_mebleg;
       if (existing) {
+        // QA-K27: əvvəl yalnız kpi_bonus yazılırdı — son_meblegh (NET)
+        // dbgenerated default UPDATE-də yenilənmir, komissiya işçiyə heç vaxt
+        // çatmırdı. adjustBordro ilə EYNİ düsturla tam yenidən hesabla.
+        const prorata = Number(existing.prorata_maas ?? 0);
+        const manualBonus = Number(existing.manual_bonus ?? 0);
+        const cerime = Number(existing.cerime ?? 0);
+        const avans = Number(existing.avans ?? 0);
+        const detal = (existing.detal as Record<string, unknown> | null) ?? {};
+        const komisyon = Number((detal as { satis_komisyon?: number }).satis_komisyon ?? 0);
+        const gross = prorata + totalBonus + manualBonus + komisyon;
+        const vergi = gross * 0.14;
+        const sosial = gross * 0.03;
+        const son = gross - cerime - avans - vergi - sosial;
         await prisma.maas_hesablamalar.update({
           where: { id: existing.id },
-          data: { kpi_bonus: totalBonus, yenilendi: new Date() },
+          data: {
+            kpi_bonus: totalBonus,
+            son_meblegh: son,
+            detal: { ...detal, vergi, sosial_sigorta: sosial, gross },
+            yenilendi: new Date(),
+          },
         });
       } else {
+        // QA-K28: əvvəl create-də esas_maas/prorata boş qalırdı — natamam
+        // bordro (baz maaş 0, NET=vergi-siz yalnız komissiya). İşçinin aylıq
+        // maaşı ilə tam doldur.
+        const isci = await prisma.istifadeciler.findFirst({
+          where: { id: r.istifadeci_id },
+          select: { aylik_maas: true },
+        });
+        const esas = Number(isci?.aylik_maas ?? 0);
+        const gross = esas + totalBonus;
+        const vergi = gross * 0.14;
+        const sosial = gross * 0.03;
+        const son = gross - vergi - sosial;
         await prisma.maas_hesablamalar.create({
           data: {
             sahibkar_id: sahibkarId,
             istifadeci_id: r.istifadeci_id,
             il: year,
             ay: month,
+            esas_maas: esas,
+            prorata_maas: esas,
             kpi_bonus: totalBonus,
+            son_meblegh: son,
+            detal: { vergi, sosial_sigorta: sosial, gross },
             status: "cernovik",
           },
         });

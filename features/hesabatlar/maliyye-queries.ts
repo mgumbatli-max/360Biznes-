@@ -44,6 +44,8 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
           FROM qaytarma_sifarisleri
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND tarix BETWEEN ${range.from} AND ${range.to}
+           -- QA-K30: təsdiqlənməmiş/ləğv edilmiş qaytarmalar P&L-ə düşməsin
+           AND status NOT IN ('legv','tesdiqlenmemis')
       `.catch(() => [{ total: 0 }]),
     ]);
 

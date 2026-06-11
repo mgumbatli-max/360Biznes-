@@ -74,6 +74,8 @@ export async function getSalesKpi(f: SalesFilter): Promise<SalesKpi> {
           FROM qaytarma_sifarisleri
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND tarix BETWEEN ${f.range.from} AND ${f.range.to}
+           -- QA-K30: təsdiqlənməmiş/ləğv edilmiş qaytarmalar KPI-yə düşməsin
+           AND status NOT IN ('legv','tesdiqlenmemis')
       `.catch(silentFallback("getSatisKpi.qaytarma", [{ say: 0n, mebleg: 0 }])),
     ]);
 

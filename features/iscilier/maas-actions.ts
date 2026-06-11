@@ -13,7 +13,7 @@ import { safeUserMessage } from "@/lib/error/user-message";
 // Extended prisma client-in transaction client tipini extension-aware şəkildə çıxar.
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
-type Result = { ok: true; count?: number } | { ok: false; error: string };
+type Result = { ok: true; count?: number; warning?: string } | { ok: false; error: string };
 
 /**
  * Helper: Maaş ödənişində kassa/bank qalığını azaldıb maliyə əməliyyatı yarat.
@@ -485,6 +485,12 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
       if (financeFailCount > 0) {
         console.warn(`[bulkPayBordro] ${financeFailCount}/${count} ödəniş hesab-a bağlanmadı (default kassa/bank yox)`);
       }
+      // QA-K29: maliyyə leg-i alınmayan ödənişlər əvvəl SƏSSİZ udulurdu —
+      // istifadəçi indi açıq xəbərdarlıq görür (hesab balansı azalmayıb!).
+      const warning =
+        financeFailCount > 0
+          ? `${financeFailCount}/${count} ödəniş heç bir kassa/bank hesabına bağlanmadı — hesab balansı dəyişmədi. Maliyyə → Hesablar bölməsində default hesab yoxlayın.`
+          : undefined;
       revalidatePath("/maliyye");
       await audit("yarat", "maas_odenis_bulk", null, {
         yeni_data: {
@@ -495,7 +501,7 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
       });
       revalidatePath("/iscilier/maas");
       bustHrCache();
-      return { ok: true, count };
+      return { ok: true, count, warning };
     } catch (e) {
       console.error("[bulkPayBordro]", e);
       const msg = e instanceof Error ? e.message : "naməlum səhv";

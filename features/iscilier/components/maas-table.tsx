@@ -62,8 +62,11 @@ export function MaasTable({ month, rows, totals }: Props) {
       fd.set("il", String(month.il));
       fd.set("ay", String(month.ay));
       const res = await bulkPayBordro(fd);
-      if (res.ok) toast.success(`${res.count ?? 0} bordro ödənildi`);
-      else toast.error(res.error);
+      if (res.ok) {
+        toast.success(`${res.count ?? 0} bordro ödənildi`);
+        // QA-K29: maliyyə hesabına bağlanmayan ödənişlər artıq səssiz deyil
+        if (res.warning) toast.warning(res.warning, { duration: 9000 });
+      } else toast.error(res.error);
       router.refresh();
     });
   }

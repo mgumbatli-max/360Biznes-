@@ -27,7 +27,7 @@ export async function getMarjaKpi(range: DateRange): Promise<MarjaKpi> {
           JOIN mehsullar m ON m.id = sls.mehsul_id
          WHERE sls.sahibkar_id = ${sahibkarId}::uuid
            AND ss.tarix BETWEEN ${range.from} AND ${range.to}
-           AND ss.status != 'legv'
+           AND ss.status NOT IN ('legv','qaytarilib')
            AND ss.qaralama IS NOT TRUE
       `,
       prisma.$queryRaw<{ c: bigint }[]>`
@@ -38,7 +38,7 @@ export async function getMarjaKpi(range: DateRange): Promise<MarjaKpi> {
             JOIN mehsullar m ON m.id = sls.mehsul_id
            WHERE sls.sahibkar_id = ${sahibkarId}::uuid
              AND ss.tarix BETWEEN ${range.from} AND ${range.to}
-             AND ss.status != 'legv'
+             AND ss.status NOT IN ('legv','qaytarilib')
            GROUP BY sls.mehsul_id
           HAVING SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) < 0
         ) sub
@@ -88,7 +88,7 @@ export async function getMarjaByCategory(range: DateRange): Promise<MarjaCategor
         LEFT JOIN kateqoriyalar c ON c.id = m.kateqoriya_id
        WHERE sls.sahibkar_id = ${sahibkarId}::uuid
          AND ss.tarix BETWEEN ${range.from} AND ${range.to}
-         AND ss.status != 'legv'
+         AND ss.status NOT IN ('legv','qaytarilib')
          AND ss.qaralama IS NOT TRUE
        GROUP BY c.ad
        ORDER BY margin DESC
@@ -145,7 +145,7 @@ export async function getMarjaProducts(
         LEFT JOIN kateqoriyalar c ON c.id = m.kateqoriya_id
        WHERE sls.sahibkar_id = $1::uuid
          AND ss.tarix BETWEEN $2 AND $3
-         AND ss.status != 'legv'
+         AND ss.status NOT IN ('legv','qaytarilib')
          AND ss.qaralama IS NOT TRUE
        GROUP BY m.id, m.ad, m.kod, c.ad
        HAVING SUM(sls.miqdar) > 0
@@ -196,7 +196,7 @@ export async function getMarjaByCustomer(range: DateRange, limit = 20): Promise<
         JOIN kontragentler k ON k.id = ss.musteri_id
        WHERE sls.sahibkar_id = ${sahibkarId}::uuid
          AND ss.tarix BETWEEN ${range.from} AND ${range.to}
-         AND ss.status != 'legv'
+         AND ss.status NOT IN ('legv','qaytarilib')
          AND ss.qaralama IS NOT TRUE
        GROUP BY k.id, k.ad
        ORDER BY margin DESC
@@ -232,7 +232,7 @@ export async function getMarjaBuckets(range: DateRange): Promise<MarjaBucket[]> 
           JOIN mehsullar m ON m.id = sls.mehsul_id
          WHERE sls.sahibkar_id = ${sahibkarId}::uuid
            AND ss.tarix BETWEEN ${range.from} AND ${range.to}
-           AND ss.status != 'legv'
+           AND ss.status NOT IN ('legv','qaytarilib')
          GROUP BY sls.mehsul_id
       )
       , bucketed AS (
