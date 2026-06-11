@@ -136,7 +136,7 @@ const RolePermsSchema = z.object({
 });
 
 export async function saveRolePerms(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.rol_idare");
+  const __g = await requireAyarActionPerm(["ayar.rol_idare", "rol.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = RolePermsSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
@@ -212,7 +212,7 @@ const RoleSchema = z.object({
 export async function saveRole(
   input: FormData,
 ): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
-  const __g = await requireAyarActionPerm("ayar.rol_idare");
+  const __g = await requireAyarActionPerm(["ayar.rol_idare", "rol.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = RoleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
@@ -302,7 +302,7 @@ const TEMPLATE_PERMISSIONS: Record<string, RegExp[]> = {
 export async function createRoleFromTemplate(
   input: FormData,
 ): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
-  const __g = await requireAyarActionPerm("ayar.rol_idare");
+  const __g = await requireAyarActionPerm(["ayar.rol_idare", "rol.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = RoleTemplateSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Şablon yanlışdır" };
@@ -361,7 +361,7 @@ const RoleCloneSchema = z.object({
 export async function cloneRole(
   input: FormData,
 ): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
-  const __g = await requireAyarActionPerm("ayar.rol_idare");
+  const __g = await requireAyarActionPerm(["ayar.rol_idare", "rol.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = RoleCloneSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -400,7 +400,7 @@ export async function cloneRole(
 }
 
 export async function deleteRole(formData: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.rol_idare");
+  const __g = await requireAyarActionPerm(["ayar.rol_idare", "rol.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
@@ -705,7 +705,7 @@ const PermSchema = z.object({
 
 export async function saveFilialUserPerm(input: FormData): Promise<ActionResult> {
   // QA-K2: icazə guard-ı (əvvəl YOX idi — istənilən autentifikasiyalı istifadəçi çağıra bilirdi)
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = PermSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
@@ -757,7 +757,7 @@ const UserCreateSchema = z.object({
 });
 
 export async function createUser(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = UserCreateSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
@@ -811,7 +811,7 @@ const UserProfileSchema = z.object({
 });
 
 export async function updateUserProfile(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = UserProfileSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -861,7 +861,7 @@ const ToggleUserSchema = z.object({
 });
 
 export async function toggleUserField(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = ToggleUserSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
@@ -898,7 +898,7 @@ const ChangeUserRoleSchema = z.object({
 });
 
 export async function changeUserRole(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.rol_idare");
+  const __g = await requireAyarActionPerm(["ayar.rol_idare", "rol.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = ChangeUserRoleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
@@ -931,7 +931,7 @@ const ResetUserPasswordSchema = z.object({
 });
 
 export async function resetUserPassword(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = ResetUserPasswordSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -962,7 +962,7 @@ export async function resetUserPassword(input: FormData): Promise<ActionResult> 
 }
 
 export async function deleteUser(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const id = String(input.get("id") ?? "");
   if (!id) return { ok: false, error: "Id yanlışdır" };
@@ -999,7 +999,7 @@ const IpRestrictionSchema = z.object({
 });
 
 export async function updateUserIpRestriction(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = IpRestrictionSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
@@ -1034,7 +1034,7 @@ const UserSessionLimitSchema = z.object({
 });
 
 export async function setUserSessionLimit(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm("ayar.idare");
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = UserSessionLimitSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };

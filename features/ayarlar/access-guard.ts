@@ -29,7 +29,10 @@ export type AyarPerm =
   | "ayar.backup"
   | "ayar.abune"
   | "ayar.kanal"
-  | "ayar.qiymet";
+  | "ayar.qiymet"
+  // Rollarda faktiki təyin olunan (seed edilmiş) açarlar — guard ayar.* ilə yanaşı bunları da qəbul edir (#5).
+  | "istifadeci.idare"
+  | "rol.idare";
 
 export function isAyarPrivileged(rolAd: string | undefined | null): boolean {
   const r = (rolAd ?? "").toLowerCase();
