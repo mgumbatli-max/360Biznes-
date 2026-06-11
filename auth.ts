@@ -14,7 +14,17 @@ const PUBLIC_ROUTES = new Set([
   "/faq",
 ]);
 
-const PUBLIC_PREFIXES = ["/api/auth", "/api/webhook/v1", "/zemanet", "/servis-track", "/_next", "/favicon.ico", "/assets", "/uploads"];
+const PUBLIC_PREFIXES = [
+  "/api/auth",
+  "/api/webhook/v1",
+  "/api/mobile", // mobil REST — route öz Bearer token-ini yoxlayır (NextAuth cookie tələb etmir)
+  "/zemanet",
+  "/servis-track",
+  "/_next",
+  "/favicon.ico",
+  "/assets",
+  "/uploads",
+];
 
 const config = {
   session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 }, // 7 days
