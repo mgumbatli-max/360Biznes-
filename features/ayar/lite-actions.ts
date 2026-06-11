@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import {
   LITE_CONFIG_GROUP,
   LITE_CONFIG_KEY,
+  liteConfigCacheTag,
   defaultLiteConfig,
   type LiteConfig,
 } from "@/lib/lite/config";
@@ -84,7 +85,8 @@ export async function saveLiteConfig(
       },
       update: { deyer: JSON.stringify(clean), yenilendi: new Date() },
     });
-    // Config bütün səhifələrə təsir edir — hamısını yenilə.
+    // Config bütün səhifələrə təsir edir — hamısını yenilə + cross-request cache tag.
+    revalidateTag(liteConfigCacheTag(sahibkarId), "max");
     revalidatePath("/", "layout");
     return { ok: true };
   });

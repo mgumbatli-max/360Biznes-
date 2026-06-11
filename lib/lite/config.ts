@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { auth } from "@/auth";
 import { getAppMode } from "@/lib/app-mode";
 import { prismaUnscoped } from "@/lib/db/prisma";
@@ -91,16 +92,32 @@ export const getLiteConfig = cache(async (): Promise<LiteConfig> => {
     const session = await auth();
     const sahibkarId = session?.user?.sahibkar_id;
     if (!sahibkarId) return def;
-    const row = await prismaUnscoped.ayarlar.findFirst({
-      where: { sahibkar_id: sahibkarId, qrup: COOKIE_GROUP, acar: CONFIG_KEY },
-      select: { deyer: true },
-    });
-    if (!row?.deyer) return def;
-    return mergeConfig(def, JSON.parse(row.deyer) as Partial<LiteConfig>);
+    // SÜRƏT: config nadir dəyişir, amma hər səhifədə (layout) oxunur. Cross-request
+    // unstable_cache hər naviqasiyada 1 DB round-trip-i aradan qaldırır (prod-da Neon
+    // latency × hər səhifə). saveLiteConfig revalidateTag(`lite-config:<id>`) çağırır.
+    const readDeyer = unstable_cache(
+      async () => {
+        const row = await prismaUnscoped.ayarlar.findFirst({
+          where: { sahibkar_id: sahibkarId, qrup: COOKIE_GROUP, acar: CONFIG_KEY },
+          select: { deyer: true },
+        });
+        return row?.deyer ?? null;
+      },
+      ["lite-config", sahibkarId],
+      { revalidate: 300, tags: [`lite-config:${sahibkarId}`] },
+    );
+    const deyer = await readDeyer();
+    if (!deyer) return def;
+    return mergeConfig(def, JSON.parse(deyer) as Partial<LiteConfig>);
   } catch {
     return def;
   }
 });
+
+/** saveLiteConfig sonrası cache-i dərhal təzələmək üçün (tag adı tək mənbədən). */
+export function liteConfigCacheTag(sahibkarId: string): string {
+  return `lite-config:${sahibkarId}`;
+}
 
 /**
  * Bir blokun Lite-da göstərilməsi.
