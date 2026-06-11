@@ -9,6 +9,7 @@ import { requireElaqeActionPerm } from "./access-guard";
 import { audit, diffObjects } from "@/lib/audit/log";
 import { normalizePhone } from "@/lib/utils/normalize-phone";
 import { checkSmsRateLimit } from "./sms-limit";
+import { randomUUID } from "node:crypto";
 
 /** Maximum bulk emeliyyat say. */
 const BULK_MAX = 1000;
@@ -49,7 +50,7 @@ const ContactSchema = z.object({
   menecer_id: z.string().uuid().optional().or(z.literal("")),
 });
 
-type ActionResult = { ok: true; id: string } | { ok: false; error: string };
+type ActionResult = { ok: true; id: string; warning?: string } | { ok: false; error: string };
 
 export async function saveContact(input: FormData): Promise<ActionResult> {
   const raw = Object.fromEntries(input.entries());
@@ -129,6 +130,29 @@ export async function saveContact(input: FormData): Promise<ActionResult> {
         const diff = diffObjects(before as Record<string, unknown> | null, data as unknown as Record<string, unknown>);
         if (diff) await audit("yenile", "kontragent", id, { evvelki_data: diff.before, yeni_data: diff.after });
       } else {
+        // QA-orta: yaratma yolunda dublikat yoxlaması yox idi — eyni telefon/voen
+        // ilə təkrar müştəri yaranırdı. importContacts/quickCreateCustomer ilə
+        // eyni davranış: normallaşdırılmış telefon (son 9 rəqəm) və/və ya voen
+        // üzrə cari tenant-da mövcudluq yoxlanır.
+        const telefonNorm = normalizePhone(data.telefon);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const dupOr: any[] = [];
+        if (data.voen) dupOr.push({ voen: data.voen });
+        if (telefonNorm) {
+          const last9 = telefonNorm.slice(-9);
+          if (last9.length >= 7) dupOr.push({ telefon: { endsWith: last9 } });
+          else if (data.telefon) dupOr.push({ telefon: data.telefon });
+        }
+        if (dupOr.length > 0) {
+          const dup = await prisma.kontragentler.findFirst({
+            where: { sahibkar_id: sahibkarId, aktiv: true, OR: dupOr },
+            select: { id: true, ad: true, telefon: true, voen: true },
+          });
+          if (dup) {
+            const sebeb = data.voen && dup.voen === data.voen ? "VÖEN" : "telefon";
+            return { ok: false, error: `Bu ${sebeb} artıq "${dup.ad}" üçün qeydiyyatdadır` };
+          }
+        }
         // getirdi_id — yaradılma anında qeyd olunur, sonradan dəyişmir
         const created = await prisma.kontragentler.create({
           data: { sahibkar_id: sahibkarId, getirdi_id: istifadeciId, ...data },
@@ -147,18 +171,34 @@ export async function saveContact(input: FormData): Promise<ActionResult> {
             // Default: avto-aktiv (sahibkar söndürə bilər)
             const autoEnabled = autoCfg?.deyer !== "false";
             if (autoEnabled) {
-              const kartKod = `LK${Date.now().toString().slice(-9)}`;
-              await prisma.loyalty_cards.create({
-                data: {
-                  sahibkar_id: sahibkarId,
-                  kontragent_id: id,
-                  kart_kod: kartKod,
-                  tier: "bronze",
-                },
-              }).catch((e) => {
-                // Unique constraint xətası — kart artıq mövcuddursa səssiz keç
-                console.warn("[saveContact loyalty]", e);
-              });
+              // QA-minor: əvvəl kart_kod Date.now() əsaslı idi — eyni millisaniyədə
+              // yaranan ikinci müştəri kart_kod kolliziyasına düşüb kartsız qalırdı.
+              // İndi crypto random suffix + kart_kod kolliziyasında retry. Yalnız
+              // kontragent_id @@unique (kart artıq var) halında səssiz keçirik.
+              const genKartKod = () =>
+                `LK${Date.now().toString(36).toUpperCase()}${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`.slice(0, 60);
+              for (let attempt = 0; attempt < 4; attempt++) {
+                try {
+                  await prisma.loyalty_cards.create({
+                    data: {
+                      sahibkar_id: sahibkarId,
+                      kontragent_id: id,
+                      kart_kod: genKartKod(),
+                      tier: "bronze",
+                    },
+                  });
+                  break;
+                } catch (e) {
+                  const code = (e as { code?: string })?.code;
+                  const target = String((e as { meta?: { target?: unknown } })?.meta?.target ?? "");
+                  // kontragent_id artıq kartı var — təkrar cəhd mənasız, səssiz keç
+                  if (code === "P2002" && target.includes("kontragent_id")) break;
+                  // kart_kod kolliziyası — yeni kod ilə yenidən cəhd et
+                  if (code === "P2002" && attempt < 3) continue;
+                  console.warn("[saveContact loyalty]", e);
+                  break;
+                }
+              }
             }
           } catch (e) {
             console.warn("[saveContact loyalty auto]", e);
@@ -382,50 +422,69 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
       });
       if (!k) return { ok: false, error: "Kontragent tapılmadı" };
 
-      // FIFO ALLOCATION — bütün açıq qaimələrə ardıcıl tətbiq et
-      const openSales = await prisma.satis_sifarisleri.findMany({
-        where: {
-          sahibkar_id: sahibkarId,
-          musteri_id: d.kontragent_id,
-          status: { not: "legv" },
-          qaralama: { not: true },
-          odenis_nov: { in: ["nisye", "borc"] },
-        },
-        select: { id: true, son_mebleg: true, odenilmis: true, nomre: true, tarix: true },
-        // QA-orta: tarix @db.Date — eyni günün qaimələrində FIFO sırası deterministik olsun
-        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
-      });
-      const openWithQalig = openSales
-        .map((s) => ({
-          id: s.id,
-          nomre: s.nomre,
-          son_mebleg: Number(s.son_mebleg ?? 0),
-          odenilmis: Number(s.odenilmis ?? 0),
-          qalig: +(Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0)).toFixed(2),
-        }))
-        .filter((s) => s.qalig > 0.01);
+      // QA-K(Ödəniş): Bu axın YALNIZ müştəri ödənişidir — açıq satış qaimələrinə
+      // FIFO tətbiq edib `daxil` maliyyə əməliyyatı yaradır. Təchizatçıda borc
+      // bizim ona borcumuzdur (mexaric) və alış sənədinə bağlanmalıdır; bu axına
+      // düşsə pul səhvən MƏDAXİL kimi yazılır və borc azalmır. Ona görə bloklayırıq
+      // və düzgün axına (Maliyyə → Kreditor / alış sənədi ödənişi) yönləndiririk.
+      if (k.nov === "techizatci") {
+        return {
+          ok: false,
+          error:
+            "Bu təchizatçıdır — ödəniş bu pəncərədən qəbul olunmur. Təchizatçıya ödəniş üçün Maliyyə → Kreditor (və ya alış sənədinin ödəniş düyməsi) bölməsindən istifadə edin.",
+        };
+      }
 
       // Paylama: hər qaiməyə qalıq qədər ödəniş yazılır, artıq məbləğ növbətiyə.
       // Bütün qaimələr bağlandıqdan sonra qalan məbləğ avansa düşür.
-      let remain = d.mebleg;
       const distribution: Array<{
         sale_id: string; nomre: string; applied: number; closed: boolean;
       }> = [];
-      for (const inv of openWithQalig) {
-        if (remain <= 0.001) break;
-        const apply = Math.min(remain, inv.qalig);
-        distribution.push({
-          sale_id: inv.id,
-          nomre: inv.nomre,
-          applied: +apply.toFixed(2),
-          closed: apply >= inv.qalig - 0.001,
-        });
-        remain -= apply;
-      }
-      const toAdvance = +Math.max(0, remain).toFixed(2);
+      let toAdvance = 0;
 
       // Atomic update — bütün qaimələr + müştəri balansı + finance_op
       await prisma.$transaction(async (tx) => {
+        // 🔒 FOR UPDATE LOCK — açıq qaimələri tx daxilində kilidləyib YENİDƏN oxu.
+        // QA-K(Ödəniş): əvvəl açıq satışlar tranzaksiyadan KƏNAR oxunurdu, sonra
+        // tx daxilində increment edilirdi → paralel/double-submit eyni qalığı
+        // ikiqat ödəyib over-pay yaradırdı. İndi qaliq tx daxilində, kilidli oxunur.
+        const lockedSales = await tx.$queryRaw<Array<{
+          id: string; nomre: string; son_mebleg: number; odenilmis: number;
+        }>>`
+          SELECT id, nomre,
+                 COALESCE(son_mebleg, 0)::float AS son_mebleg,
+                 COALESCE(odenilmis, 0)::float AS odenilmis
+          FROM satis_sifarisleri
+          WHERE sahibkar_id = ${sahibkarId}::uuid
+            AND musteri_id = ${d.kontragent_id}::uuid
+            AND status IS DISTINCT FROM 'legv'
+            AND (qaralama IS NULL OR qaralama = false)
+            AND odenis_nov IN ('nisye', 'borc')
+          ORDER BY tarix ASC, yaradildi ASC, nomre ASC
+          FOR UPDATE
+        `;
+        const openWithQalig = lockedSales
+          .map((s) => ({
+            id: s.id,
+            nomre: s.nomre,
+            qalig: +(Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0)).toFixed(2),
+          }))
+          .filter((s) => s.qalig > 0.01);
+
+        let remain = d.mebleg;
+        for (const inv of openWithQalig) {
+          if (remain <= 0.001) break;
+          const apply = Math.min(remain, inv.qalig);
+          distribution.push({
+            sale_id: inv.id,
+            nomre: inv.nomre,
+            applied: +apply.toFixed(2),
+            closed: apply >= inv.qalig - 0.001,
+          });
+          remain -= apply;
+        }
+        toAdvance = +Math.max(0, remain).toFixed(2);
+
         // 1. Hər seçilmiş qaiməyə ödəniş tətbiq et
         for (const dist of distribution) {
           await tx.satis_sifarisleri.update({
@@ -534,7 +593,15 @@ export async function recordContactPayment(input: FormData): Promise<ActionResul
       revalidatePath(`/elaqe/techizatcilar/${d.kontragent_id}`);
       revalidatePath("/ticaret/satislar");
       revalidatePath("/maliyye");
-      return { ok: true, id: d.kontragent_id };
+      // QA-K(Ödəniş): over-pay artıq səssizcə avansa düşmür — istifadəçi açıq
+      // xəbərdarlıq görür ki, səhv rəqəmi anlasın (recordSalePayment pattern-i).
+      const warning =
+        toAdvance > 0
+          ? distribution.length === 0
+            ? `Açıq qaimə yoxdur — ${toAdvance.toFixed(2)} ₼ tam avans kimi saxlanıldı.`
+            : `Ödəniş açıq borcdan çoxdur — ${toAdvance.toFixed(2)} ₼ avansa keçdi.`
+          : undefined;
+      return { ok: true, id: d.kontragent_id, ...(warning ? { warning } : {}) };
     } catch (e) {
       console.error("[recordContactPayment]", e);
       return { ok: false, error: e instanceof Error ? e.message : "Ödəniş qeyd edilmədi" };
@@ -928,8 +995,49 @@ export async function bulkSetStatus(
 
 export async function bulkDeactivate(
   ids: string[]
-): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
-  return bulkSetStatus(ids, false);
+): Promise<{ ok: true; count: number; skipped: number } | { ok: false; error: string }> {
+  // QA-orta: bulkSetStatus(ids,false) raw updateMany idi — borclu/açıq sənədli
+  // kontragentləri blocker yoxlamadan gizlədirdi. İndi hər id üçün
+  // findContactBlockers işlədilir; blockerli olanlar atılır (skipped), yalnız
+  // təmiz olanlar deaktiv edilir (deactivateContact ilə eyni qayda).
+  const permCheck = await requireElaqeActionPerm("musteri.sil");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  if (!ids.length) return { ok: false, error: "Seçim yoxdur" };
+  if (ids.length > BULK_MAX) return { ok: false, error: `Bir dəfəyə ${BULK_MAX}-dən çox kontragent ola bilməz` };
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    try {
+      const { findContactBlockers } = await import("@/lib/blockers/find-contact-blockers");
+      const clean: string[] = [];
+      let skipped = 0;
+      for (const id of ids) {
+        const blockers = await findContactBlockers(id, sahibkarId);
+        if (blockers.length > 0) {
+          skipped++;
+          continue;
+        }
+        clean.push(id);
+      }
+      let count = 0;
+      if (clean.length > 0) {
+        const res = await prisma.kontragentler.updateMany({
+          where: { id: { in: clean } },
+          data: { aktiv: false },
+        });
+        count = res.count;
+      }
+      revalidatePath("/elaqe");
+      bustElaqeCache();
+      await audit("bulk_deaktivlesh", "kontragent", null, {
+        yeni_data: { kontragent_say: count, secilen_say: ids.length, atilan_say: skipped },
+      });
+      return { ok: true, count, skipped };
+    } catch (e) {
+      console.error("[bulkDeactivate]", e);
+      const msg = e instanceof Error ? e.message : "naməlum səhv";
+      return { ok: false, error: `Toplu deaktivləşdirmə alınmadı: ${msg}` };
+    }
+  });
 }
 
 /* ------------------------------------------------------------------ */

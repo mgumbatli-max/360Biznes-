@@ -41,7 +41,7 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
   const d = parsed.data;
 
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
       // Rol bilərəkdən burada təyin edilmir — yalnız Ayarlar > İstifadəçi
       // bölməsindən təyin oluna bilər. Yeni işçi yaradılarkən sxemdəki
@@ -66,11 +66,28 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
       if (d.id) {
         const before = await prisma.istifadeciler.findUnique({
           where: { id: d.id },
-          select: { ad_soyad: true, email: true, telefon: true, vezife: true, aylik_maas: true, aktiv: true, default_filial_id: true },
+          select: { ad_soyad: true, email: true, telefon: true, vezife: true, aylik_maas: true, aktiv: true, default_filial_id: true, deleted_at: true },
         });
+        if (!before) return { ok: false as const, error: "İşçi tapılmadı" };
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data: any = { ...baseData };
         if (d.sifre) data.sifre_hash = await hashPassword(d.sifre);
+        // SOFT-DELETE GUARD: silinmiş işçi adi redaktə ilə dəyişdirilə bilməz.
+        // Yalnız aktiv=true seçilibsə bunu "bərpa" niyyəti kimi qəbul edib
+        // soft-delete bayraqlarını təmizləyirik (xəyal işçi qarşısı).
+        if (before.deleted_at) {
+          if (!d.aktiv) {
+            return {
+              ok: false as const,
+              error: "Bu işçi silinib. Redaktə üçün əvvəlcə işçini bərpa edin.",
+            };
+          }
+          data.deleted_at = null;
+          data.deleted_by = null;
+          data.isden_cixdi = null;
+          data.restored_at = new Date();
+          data.restored_by = istifadeciId;
+        }
         const updated = await prisma.istifadeciler.update({ where: { id: d.id }, data });
         id = updated.id;
         const diff = diffObjects(before as Record<string, unknown> | null, baseData as unknown as Record<string, unknown>);

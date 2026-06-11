@@ -296,7 +296,12 @@ export default async function ContactDetailPage({ params }: { params: Promise<{ 
               variant="gradient"
             />
           )}
-          {borc > 0 && <PaymentDialog kontragentId={c.id} ad={c.ad} maxAmount={borc} variant="button" />}
+          {/* QA-K(Ödəniş): "Ödəniş al" yalnız müştəri borcu üçündür — pure
+              təchizatçıda göstərilən borc bizim ona borcumuzdur, recordContactPayment
+              onu səhvən MƏDAXİL kimi yazır. Təchizatçıya ödəniş Maliyyə → Kreditor
+              axını ilə gedir (server də techizatci-ni bloklayır). her_ikisi-də borc
+              müştəri qalığıdır (isCustomer branch), ona görə müştəri ödənişi düzgündür. */}
+          {borc > 0 && isCustomer && <PaymentDialog kontragentId={c.id} ad={c.ad} maxAmount={borc} variant="button" />}
 
           {isCustomer && (
             <Link

@@ -147,7 +147,11 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
     startTransition(async () => {
       const res = await bulkDeactivate(ids);
       if (res.ok) {
-        toast.success(`${res.count} qeyd silindi`);
+        toast.success(
+          res.skipped > 0
+            ? `${res.count} qeyd silindi, ${res.skipped} qeyd borc/açıq sənəd səbəbindən atlandı`
+            : `${res.count} qeyd silindi`,
+        );
         clearSelection();
         router.refresh();
       } else toast.error(res.error);
@@ -484,7 +488,11 @@ export function ContactsTable({ items, total, defaultNov, managers = [], page, p
                                 <MessageCircle className="h-3.5 w-3.5" />
                               </a>
                             )}
-                            {c.borc > 0 && (
+                            {/* QA-K(Ödəniş): "Ödəniş al" yalnız müştəri borcu üçündür.
+                                Təchizatçıda göstərilən "borc" bizim ona borcumuzdur —
+                                recordContactPayment onu səhvən MƏDAXİL kimi yazırdı.
+                                Təchizatçıya ödəniş Maliyyə → Kreditor axını ilə gedir. */}
+                            {c.borc > 0 && c.nov !== "techizatci" && (
                               <PaymentDialog kontragentId={c.id} ad={c.ad} maxAmount={c.borc} />
                             )}
                             <ContactDialog

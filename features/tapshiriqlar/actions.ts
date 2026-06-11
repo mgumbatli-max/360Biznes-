@@ -178,6 +178,45 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
       }
       const allAssignees = Array.from(assigneeSet);
 
+      // 🔒 Cross-tenant qoruması — mesul_id / icracilar / escalation_to cari
+      // sahibkar-a aid AKTİV istifadəçi olmalıdır. Server action birbaşa
+      // çağırıla bildiyi üçün UI tenant-scope-una etibar etmirik.
+      const candidateUserIds = new Set<string>();
+      if (d.mesul_id) candidateUserIds.add(d.mesul_id);
+      for (const u of d.icracilar ?? []) if (u) candidateUserIds.add(u);
+      const escalationTarget = escalationEnabled && d.escalation_to ? d.escalation_to : null;
+      if (escalationTarget) candidateUserIds.add(escalationTarget);
+      if (candidateUserIds.size > 0) {
+        const validUsers = await prisma.istifadeciler.findMany({
+          where: { id: { in: Array.from(candidateUserIds) }, aktiv: true, sahibkar_id: sahibkarId },
+          select: { id: true },
+        });
+        const validSet = new Set(validUsers.map((u) => u.id));
+        const invalid = Array.from(candidateUserIds).filter((id) => !validSet.has(id));
+        if (invalid.length > 0) {
+          return { ok: false, error: "Seçilmiş istifadəçi(lər) bu hesaba aid deyil və ya aktiv deyil" };
+        }
+      }
+
+      // 🔁 Idempotensiya (qısa pəncərə) — double-submit / double-click eyni
+      // tapşırığı təkrar yaratmasın. client_op_id sütunu olmadığı üçün son
+      // 10 saniyədə eyni (yaradan + başlıq + status='yeni') qeyd varsa onu qaytarırıq.
+      const dupWindow = new Date(Date.now() - 10_000);
+      const dup = await prisma.tapshiriqlar.findFirst({
+        where: {
+          sahibkar_id: sahibkarId,
+          yaradan_id: istifadeciId,
+          basliq: d.basliq,
+          status: "yeni",
+          yaradildi: { gte: dupWindow },
+        },
+        select: { id: true },
+        orderBy: { yaradildi: "desc" },
+      });
+      if (dup) {
+        return { ok: true, id: dup.id };
+      }
+
       // `qeyd_daxili`-yə struktur teqləri yığ
       const tags: string[] = [];
       if (allAssignees.length > 1) {
@@ -189,6 +228,7 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
       const initialQeyd = mergeQeyd(null, ...tags);
 
       const task = await prisma.$transaction(async (tx) => {
+        let reminderNotifiedUid: string | null = null;
         const t = await tx.tapshiriqlar.create({
           data: {
             sahibkar_id: sahibkarId,
@@ -242,15 +282,45 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
 
         // İlk xatırlatma daxiletmə cədvəlinə yaz
         if (d.xatirlatma) {
+          const reminderDate = new Date(d.xatirlatma);
+          const reminderUid = d.mesul_id || istifadeciId;
           await tx.tapshiriq_xatirlatmalar.create({
             data: {
               tapshiriq_id: t.id,
               sahibkar_id: sahibkarId,
-              istifadeci_id: d.mesul_id || istifadeciId,
-              xatirlatma_de: new Date(d.xatirlatma),
+              istifadeci_id: reminderUid,
+              xatirlatma_de: reminderDate,
               kanal: "erp",
             },
           });
+
+          // QA: xatırlatma "indi" və ya keçmişdədirsə — dərhal bildiriş göndər
+          // (setTaskReminder-dəki isNow məntiqi ilə simmetrik). Əks halda keçmiş
+          // tarixli xatırlatma heç vaxt göndərilmir — onu yaradan üçün bildiriş yaranmırdı.
+          const isNow = !Number.isNaN(reminderDate.getTime()) && reminderDate.getTime() <= Date.now() + 60 * 1000;
+          if (isNow) {
+            await tx.bildirisler.create({
+              data: {
+                istifadeci_id: reminderUid,
+                sahibkar_id: sahibkarId,
+                basliq: `Xatırlatma: ${d.basliq}`,
+                metn: d.tesvir ?? null,
+                nov: "tapshiriq_xatirlatma",
+                link: `/tapshiriqlar/${t.id}`,
+                resurs_nov: "tapshiriq",
+                resurs_id: t.id,
+              },
+            });
+            await tx.tapshiriq_xatirlatmalar.updateMany({
+              where: { tapshiriq_id: t.id, istifadeci_id: reminderUid, xatirlatma_de: reminderDate },
+              data: { gonderildi: true, gonderildi_de: new Date() },
+            });
+            await tx.tapshiriqlar.update({
+              where: { id: t.id },
+              data: { xatirlatma_gonderildi: true },
+            });
+            reminderNotifiedUid = reminderUid;
+          }
         }
 
         // Bildirişlər — yaradılan tapşırıq haqqında bütün icraçılara xəbər
@@ -274,12 +344,16 @@ export async function createTask(input: FormData | z.input<typeof CreateTaskSche
           notifiedIds.push(...Array.from(notifyUsers));
         }
 
-        return { t, notifiedIds };
+        return { t, notifiedIds, reminderNotifiedUid };
       });
 
       // Hər bildiriş alanın bell-i dərhal yenilənsin
       for (const uid of task.notifiedIds) {
         revalidateTag(`bildirisler:${sahibkarId}:${uid}`, "max");
+      }
+      // Dərhal göndərilən xatırlatmanın alanı (yaradanın özü ola bilər) də yenilənsin
+      if (task.reminderNotifiedUid && !task.notifiedIds.includes(task.reminderNotifiedUid)) {
+        revalidateTag(`bildirisler:${sahibkarId}:${task.reminderNotifiedUid}`, "max");
       }
 
       // Telegram bildirişi — sahibkar konfiqurasiyası varsa, fire-and-forget
@@ -366,9 +440,28 @@ export async function changeTaskStatus(
       if (!access.ok) return access;
       const existing = await prisma.tapshiriqlar.findFirst({
         where: { id: taskId, sahibkar_id: sahibkarId },
-        select: { status: true, yaradan_id: true, basliq: true, mesul_id: true },
+        select: { status: true, yaradan_id: true, basliq: true, mesul_id: true, requires_approval: true, approved_by: true },
       });
       if (!existing) return { ok: false, error: "Tapşırıq tapılmadı" };
+
+      // 🔒 requires_approval gate — rəhbər təsdiqi tələb edən tapşırıq icraçı
+      // tərəfindən birbaşa "tamamlandi"-yə keçirilə bilməz. Yalnız yaradan və ya
+      // imtiyazlı rol (sahibkar/owner/admin) tamamlaya bilər və eyni anda təsdiqi möhürləyir.
+      let approvalStamp: { approved_by: string; approved_at: Date } | null = null;
+      if (status === "tamamlandi" && existing.requires_approval && !existing.approved_by) {
+        const sess = await auth();
+        const rolAd = (sess?.user?.rol_ad ?? "").toLowerCase();
+        const canApprove =
+          rolAd.includes("sahibkar") || rolAd.includes("owner") || rolAd.includes("admin") ||
+          existing.yaradan_id === istifadeciId;
+        if (!canApprove) {
+          return {
+            ok: false,
+            error: "Bu tapşırıq rəhbər təsdiqi tələb edir — birbaşa tamamlana bilməz. Status «Yoxlanılır»a keçirilməlidir.",
+          };
+        }
+        approvalStamp = { approved_by: istifadeciId, approved_at: new Date() };
+      }
 
       // 🛑 Ləğv/tamamlandı statusuna keçəndə açıq checklist varsa — blocker
       if ((status === "legv" || status === "tamamlandi") && !force) {
@@ -386,7 +479,23 @@ export async function changeTaskStatus(
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const patch: any = { status, yenilendi: new Date() };
-      if (status === "tamamlandi") patch.tamamlandi_de = new Date();
+      if (status === "tamamlandi") {
+        patch.tamamlandi_de = new Date();
+        if (approvalStamp) {
+          patch.approved_by = approvalStamp.approved_by;
+          patch.approved_at = approvalStamp.approved_at;
+        }
+      } else {
+        // Terminal statusdan (tamamlandi/legv) geri açılışda tamamlandi_de sıfırlanır —
+        // əks halda hesabat/KPI köhnə tamamlanma vaxtını qalıq saxlayır.
+        patch.tamamlandi_de = null;
+        // requires_approval tapşırıq yenidən açılırsa təsdiq də sıfırlanır ki,
+        // növbəti tamamlanmada gate yenidən işləsin.
+        if (existing.requires_approval) {
+          patch.approved_by = null;
+          patch.approved_at = null;
+        }
+      }
       if (status === "icrada") patch.baslandi_de = new Date();
 
       await prisma.tapshiriqlar.update({ where: { id: taskId }, data: patch });
@@ -605,6 +714,18 @@ export async function setTaskReminder(input: z.input<typeof SetReminderSchema>):
 
       // Effektiv hədəf — kime_id verilibsə həmin istifadəçi, əks halda mesul/yaradan
       const targetUserId = kime_id || null;
+
+      // 🔒 Cross-tenant qoruması — kime_id verilibsə cari sahibkar-a aid aktiv
+      // istifadəçi olmalıdır (action birbaşa çağırıla bilər).
+      if (targetUserId) {
+        const validTarget = await prisma.istifadeciler.findFirst({
+          where: { id: targetUserId, aktiv: true, sahibkar_id: sahibkarId },
+          select: { id: true },
+        });
+        if (!validTarget) {
+          return { ok: false, error: "Xatırlatma hədəfi bu hesaba aid deyil və ya aktiv deyil" };
+        }
+      }
 
       await prisma.$transaction(async (tx) => {
         const existing = await tx.tapshiriqlar.findFirst({

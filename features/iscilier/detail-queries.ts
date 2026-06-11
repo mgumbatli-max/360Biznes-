@@ -5,8 +5,9 @@ import { requireTenant } from "@/lib/db/tenant-context";
 
 export async function getEmployeeFullDetail(id: string) {
   return withTenant(async () => {
-    return prisma.istifadeciler.findUnique({
-      where: { id },
+    // Soft-delete guard: silinmiş işçinin detalı açılmamalı (notFound axını).
+    return prisma.istifadeciler.findFirst({
+      where: { id, deleted_at: null },
       include: {
         roles: { select: { ad: true } },
         filiallar_istifadeciler_default_filial_idTofiliallar: { select: { ad: true } },

@@ -162,17 +162,18 @@ export async function getEmployeeStats() {
     threeMonthAgo.setMonth(threeMonthAgo.getMonth() - 3);
 
     const [total, aktiv, salaryAgg, onLeaveToday, newThisMonth, leftLast3M] = await Promise.all([
-      prisma.istifadeciler.count(),
-      prisma.istifadeciler.count({ where: { aktiv: true, isden_cixdi: null } }),
+      // Soft-delete standart: silinmiş işçilər saylara daxil olmamalı.
+      prisma.istifadeciler.count({ where: { deleted_at: null } }),
+      prisma.istifadeciler.count({ where: { aktiv: true, isden_cixdi: null, deleted_at: null } }),
       prisma.istifadeciler.aggregate({
-        where: { aktiv: true, isden_cixdi: null },
+        where: { aktiv: true, isden_cixdi: null, deleted_at: null },
         _sum: { aylik_maas: true },
       }),
       prisma.isci_mezuniyyet
         .count({ where: { baslama: { lte: today }, bitme: { gte: today }, status: "tesdiq" } })
         .catch(() => 0),
-      prisma.istifadeciler.count({ where: { ise_baslama: { gte: monthStart } } }),
-      prisma.istifadeciler.count({ where: { isden_cixdi: { gte: threeMonthAgo } } }),
+      prisma.istifadeciler.count({ where: { ise_baslama: { gte: monthStart }, deleted_at: null } }),
+      prisma.istifadeciler.count({ where: { isden_cixdi: { gte: threeMonthAgo }, deleted_at: null } }),
     ]);
 
     return {
