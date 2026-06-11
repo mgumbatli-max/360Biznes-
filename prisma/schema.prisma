@@ -5237,6 +5237,13 @@ model satis_sifarisleri {
   vergi_cekleri                                                    vergi_cekleri[]
   zemanetler                                                       zemanetler[]
 
+  // QA-K24 QEYD: webhook idempotentliyi DB-dəki PARTIAL unique indexə söykənir:
+  //   satis_external_id_uniq ON (sahibkar_id, external_id) WHERE external_id IS NOT NULL
+  // (scripts/migrations/2026-06-08-audit-fix-columns.sql). Prisma partial
+  // unique-i ifadə edə bilmir; @@unique əlavə etmək build-dəki `db push`-u
+  // non-interactive data-loss xəbərdarlığında SINDIRIR — ona görə drift
+  // ŞÜURLU saxlanılır. `prisma db push` partial indexlərə toxunmur (prod-da
+  // 2026-06-08-dən bəri çoxsaylı push ilə təsdiqlənib). Bu indexi əl ilə SİLMƏ.
   @@index([anbar_id], map: "idx_satis_anbar")
   @@index([filial_id], map: "idx_satis_filial")
   @@index([kassa_id], map: "idx_satis_kassa")

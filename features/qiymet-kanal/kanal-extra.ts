@@ -1,5 +1,5 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
@@ -41,7 +41,9 @@ export async function getAllKanalExtra(): Promise<Record<string, KanalExtra>> {
 
 /** SERVER-ONLY (API endpoint daxili) — bir kanalın əlavə ayarlarını gətirir. */
 export async function getKanalExtraServer(sahibkarId: string, kanal: string): Promise<KanalExtra> {
-  const row = await prisma.ayarlar.findUnique({
+  // QA-K3: public webhook/API-dən tenant kontekstsiz çağırılır — unscoped
+  // + açıq sahibkar_id filtri (tenant onsuz da parametrlə verilir).
+  const row = await prismaUnscoped.ayarlar.findUnique({
     where: { sahibkar_id_qrup_acar: { sahibkar_id: sahibkarId, qrup: QRUP, acar: kanal } },
     select: { deyer: true },
   });

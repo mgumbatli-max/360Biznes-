@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { generateApiKey, hashApiKey } from "@/lib/api-key";
@@ -122,7 +122,10 @@ export async function verifyApiKey(plaintext: string, kanal: string): Promise<st
   const hash = hashApiKey(plaintext);
   // Bütün sahibkarlarda axtar (key özündə sahibkarın prefix-ini saxlayır
   // amma çoxlu sahibkar üçün eyni prefix ola bilər, ona görə hash ilə dəqiqləşdiririk)
-  const rows = await prisma.ayarlar.findMany({
+  // QA-K3: public API axınında tenant kontekst YOXDUR — scoped client
+  // tenant-guard ilə çökürdü (hər sorğu 500). Bu funksiya tenanti TƏYİN
+  // etmək üçündür, ona görə unscoped + hash ilə dəqiqləşdirmə düzgündür.
+  const rows = await prismaUnscoped.ayarlar.findMany({
     where: { qrup: AYARLAR_QRUP, acar: kanal },
     select: { sahibkar_id: true, deyer: true },
   });

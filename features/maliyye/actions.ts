@@ -1387,34 +1387,38 @@ export async function markPayoutReceived(input: FormData): Promise<ActionResult>
           },
         });
 
-        // 2) Hesab balansı artımı
-        await tx.maliye_hesablari.updateMany({
-          where: { id: d.hesab_id, sahibkar_id: sahibkarId },
-          data: { qaliq: { increment: d.faktiki_mebleg } },
-        });
-
-        // 3) finance_operations qeyd
-        const type = await tx.finance_operation_types
+        // 2-3) QA-K18: əvvəl manual qaliq increment + (type yoxdursa) finance_op
+        // YARANMIRDI → gələcək recalc balansı silirdi. İndi layihə standartı:
+        // type findOrCreate → finance_operations → recalculateAccountBalance
+        // (manual increment YOX — balans yalnız source-of-truth-dan).
+        let type = await tx.finance_operation_types
           .findUnique({ where: { kod: "marketplace_payout" } })
           .catch(() => null);
-        if (type) {
-          await tx.finance_operations.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              type_id: type.id,
-              type_kod: "marketplace_payout",
-              y_n: "daxil",
-              tarix: payoutTarix,
-              meblegh: d.faktiki_mebleg,
-              azn_meblegh: d.faktiki_mebleg,
-              hesab_id: d.hesab_id,
-              status: "aktiv",
-              qarsi_teref_ad: payout.platforma,
-              qeyd: `[PAYOUT:${payout.id}] ${payout.platforma} payout (gözlənən ${gozlenen.toFixed(2)} ₼, faktiki ${d.faktiki_mebleg.toFixed(2)} ₼)`,
-              yaradan_id: userId ?? null,
-              sened_nomresi: `MP-${payout.id}`,
-            },
+        if (!type) {
+          type = await tx.finance_operation_types.create({
+            data: { kod: "marketplace_payout", ad: "Marketplace payout", qrup: "marketplace", y_n: "daxil" },
           });
+        }
+        await tx.finance_operations.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            type_id: type.id,
+            type_kod: "marketplace_payout",
+            y_n: "daxil",
+            tarix: payoutTarix,
+            meblegh: d.faktiki_mebleg,
+            azn_meblegh: d.faktiki_mebleg,
+            hesab_id: d.hesab_id,
+            status: "aktiv",
+            qarsi_teref_ad: payout.platforma,
+            qeyd: `[PAYOUT:${payout.id}] ${payout.platforma} payout (gözlənən ${gozlenen.toFixed(2)} ₼, faktiki ${d.faktiki_mebleg.toFixed(2)} ₼)`,
+            yaradan_id: userId ?? null,
+            sened_nomresi: `MP-${payout.id}`,
+          },
+        });
+        {
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          await recalculateAccountBalance(d.hesab_id, tx);
         }
 
         await safeAuditLog({

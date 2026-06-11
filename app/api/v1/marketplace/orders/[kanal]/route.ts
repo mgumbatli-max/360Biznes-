@@ -165,6 +165,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
       }
       const itemResults: Array<{ sku: string | null; resolved_id: string | null; miqdar: number; stok_catismir: boolean; azaldilan: number }> = [];
 
+      // QA-K22: manual axınla (createMarketSatis) EYNİ komissiya tətbiqi —
+      // əvvəl webhook satışı komisyon/xalis yazmır, payout YARATMIRDI
+      // (gross net kimi görünürdü, payout izlənmirdi).
+      const { getDefaultCommission } = await import("@/features/maliyye/marketplace-commission");
+      const komissiyaFaiz = await getDefaultCommission(kanal).catch(() => 0);
+      const komissiyaMebleg = +(cem * (komissiyaFaiz / 100)).toFixed(2);
+      const netMebleg = +(cem - komissiyaMebleg).toFixed(2);
+
       let satisId: string;
       try {
         satisId = await prisma.$transaction(
@@ -182,12 +190,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
                 umumi_mebleg: cem,
                 son_mebleg: cem,
                 odenilmis: cem,
+                komisyon_meblegh: komissiyaMebleg,
+                xalis_meblegh: netMebleg,
                 qaralama: false,
                 marketplace_platform: kanal,
                 qeyd: `Webhook · external_id: ${body.external_id}${body.qeyd ? ` · ${body.qeyd}` : ""}`,
               },
               select: { id: true },
             });
+
+            // QA-K22: gözləyən payout — bank yalnız payout qəbul ediləndə artır
+            if (body.status !== "legv") {
+              const today = new Date();
+              await tx.finance_marketplace_payments.create({
+                data: {
+                  sahibkar_id: sahibkarId,
+                  platforma: kanal,
+                  magaza: kanal,
+                  donem_baslama: today,
+                  donem_bitme: today,
+                  gozlenen_meblegh: netMebleg,
+                  komissiya: komissiyaMebleg,
+                  status: "gozleyir",
+                  qeyd: `[ORDER:${kanal}:${body.external_id}] Webhook satış`,
+                },
+              });
+            }
 
             for (const it of body.items) {
               const p = (it.sku && bySku.get(it.sku)) || (it.barkod && byBarkod.get(it.barkod)) || null;
