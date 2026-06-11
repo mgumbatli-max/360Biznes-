@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
 import { useIcmalOn } from "@/features/shared/use-icmal";
