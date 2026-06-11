@@ -6535,3 +6535,17 @@ model defekt_qeydleri {
   @@index([anbar_id], map: "idx_defekt_anbar")
   @@index([mehsul_id], map: "idx_defekt_mehsul")
 }
+
+model mobil_refresh_tokens {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sahibkar_id   String    @db.Uuid
+  istifadeci_id String    @db.Uuid
+  token_hash    String    @unique @db.VarChar(64)
+  cihaz         String?   @db.VarChar(120)
+  expires_at    DateTime  @db.Timestamptz(6)
+  revoked_at    DateTime? @db.Timestamptz(6)
+  yaradildi     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([istifadeci_id])
+  @@index([sahibkar_id])
+}
