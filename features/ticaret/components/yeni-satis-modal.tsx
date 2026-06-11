@@ -22,7 +22,7 @@
  * Only essential fields — full feature set still lives at /ticaret/satis-yeni.
  */
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -108,6 +108,9 @@ export function YeniSatisModal({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // Idempotentlik açarı — double-submit / F9+F10 cüt tıklamada eyni satışın
+  // iki dəfə yaranmasının qarşısını alır. Hər uğurlu saxlamadan sonra yenilənir.
+  const clientOpIdRef = useRef<string>(crypto.randomUUID());
 
   /* ── Header fields ───────────────────────────────── */
   const [barcode, setBarcode] = useState("");
@@ -191,6 +194,8 @@ export function YeniSatisModal({
     setZemanetTalon(false);
     setSifarisKodu("");
     setPlatform("");
+    // Hər açılışda təzə idempotentlik açarı.
+    clientOpIdRef.current = crypto.randomUUID();
   }, [open]);
 
   /* ── Customer search ─────────────────────────────── */
@@ -384,9 +389,15 @@ export function YeniSatisModal({
       reserve_stock: false,
       satis_meneceri_id: saticiId || null,
       odenis_nov: effectiveOdenisNov,
-      kassa_id: accountPicked ? (kassaId || hesabId) : null,
-      // Hissəvi ödəniş: server bu məbləği kassaya qəbul edir, qalıq borc olur
+      // QA-kritik: kassa_id və hesab_id AYRI sahələrdir. Əvvəl hesab seçimi də
+      // `kassa_id`-yə yığılırdı (kassaId || hesabId) → server onu kassa FK kimi
+      // işlədib pulu heç bir hesaba yazmırdı (pul yox olurdu). İndi hər biri
+      // öz sahəsinə gedir; server hesab_id-dən maliye hesabını həll edir.
+      kassa_id: kassaId || null,
+      hesab_id: hesabId || null,
+      // Hissəvi ödəniş: server bu məbləği kassaya/hesaba qəbul edir, qalıq borc olur
       odenilen_mebleg: effectiveOdenilen,
+      client_op_id: clientOpIdRef.current,
       lines: lines.map((l) => ({
         mehsul_id: l.mehsul_id,
         anbar_id: l.anbar_id || anbarId,
@@ -432,6 +443,8 @@ export function YeniSatisModal({
         return;
       }
       toast.success(`Satış yaradıldı: ${res.nomre}`);
+      // Növbəti satış üçün yeni idempotentlik açarı — köhnə açar dublikat tutmasın.
+      clientOpIdRef.current = crypto.randomUUID();
       onOpenChange(false);
       router.refresh();
       if (printAfter) {

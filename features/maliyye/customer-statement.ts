@@ -79,13 +79,6 @@ export async function getCustomerStatement(opts: {
            AND type_kod IN ('qaime', 'borc_silinme')
            -- QA-orta: [AVANS] tətbiqi reklassifikasiyadır, yeni pul daxilolması deyil — ikiqat kredit sayılmasın
            AND COALESCE(qeyd, '') NOT LIKE '%[AVANS]%'
-        UNION ALL
-        SELECT 0 AS debet, geri_qaytarildi AS kredit, tarix::timestamp
-          FROM qaytarma_sifarisleri
-         WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND kontragent_id = ${opts.musteri_id}::uuid
-           AND nov = 'musteri'
-           AND COALESCE(status, '') <> 'legv'
       )
       SELECT COALESCE(SUM(debet), 0)::float AS debet,
              COALESCE(SUM(kredit), 0)::float AS kredit
@@ -124,7 +117,10 @@ export async function getCustomerStatement(opts: {
         where: {
           sahibkar_id: sahibkarId,
           kontragent_id: opts.musteri_id,
-          nov: "musteri",
+          // QA-K: createReturn manual qaytarmalar `satis_qaytarma`, fastReturn/
+          // returnFullSale isə `musteri` yazır — statement hər iki konvensiyanı
+          // tutmalıdır (əks halda manual qaytarmalar tarixçədə görünmür).
+          nov: { in: ["musteri", "satis_qaytarma"] },
           status: { not: "legv" },
           tarix: { gte: from, lte: to },
         },
@@ -183,9 +179,13 @@ export async function getCustomerStatement(opts: {
         nov: "qaytarma",
         sened_nomresi: r.nomre,
         qaime_nomresi: null,
-        tesvir: r.sebeb ?? "Qaytarma",
+        // QA-K: qaytarma qəbul olunanda orijinal satışın `son_mebleg`-i artıq
+        // azaldılır (və ya status `qaytarilib` olur) → kredit balansda dəjə
+        // əks olunub. Burada ikinci dəfə kredit yazılsa eyni məbləğ İKİ DƏFƏ
+        // azalardı (debet düşüb + kredit). Net-zero məlumat sətri kimi göstərilir.
+        tesvir: `${r.sebeb ?? "Qaytarma"} (${Number(r.geri_qaytarildi ?? 0).toFixed(2)} ₼ — məlumat)`,
         debet: 0,
-        kredit: Number(r.geri_qaytarildi ?? 0),
+        kredit: 0,
         qaliq: 0,
         ref_id: r.original_id,
         ref_link: r.original_id ? `/ticaret/satislar/${r.original_id}` : `/ticaret/qaytarma`,

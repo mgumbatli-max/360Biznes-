@@ -10,7 +10,9 @@ import { Prisma, prisma } from "@/lib/db/prisma";
  *   borc = SUM (aktiv nisyə alışların qalığı: umumi_mebleg - odenilmis)
  *
  *  Burada YALNIZ aktiv alışlar nəzərə alınır:
- *   - `status != 'legv'`
+ *   - `status NOT IN ('legv', 'tesdiq_gozleyir')` — təsdiq gözləyən alış
+ *     təsdiqlənənə qədər borca düşmür (təsdiqdən sonra status `gozlemede`-yə
+ *     keçir və qalığa əlavə olunur).
  *   - `deleted_at IS NULL`
  *   - Servis qeydləri də `kontragentler.borc`-u artıra bilər
  *     (məs. ehtiyat hissə satın alarkən), lakin onlar üçün ayrıca model lazımdır.
@@ -50,7 +52,7 @@ export async function calculateSupplierBalance(
     FROM alis_sifarisleri a
     WHERE a.techiazatci_id = ${supplierId}::uuid
       AND a.deleted_at IS NULL
-      AND a.status NOT IN ('legv')
+      AND a.status NOT IN ('legv', 'tesdiq_gozleyir')
   `;
 
   const r = rows[0] ?? { alis_cemi: 0, odenilmis_cemi: 0, acik_alis_sayi: 0n };

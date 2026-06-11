@@ -73,13 +73,6 @@ export async function getSupplierStatement(opts: {
            AND status = 'aktiv'
            AND "yön" = 'mexaric'
            AND type_kod = 'alis_odenis'
-        UNION ALL
-        SELECT geri_qaytarildi AS debet, 0 AS kredit, tarix::timestamp
-          FROM qaytarma_sifarisleri
-         WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND kontragent_id = ${opts.techizatci_id}::uuid
-           AND nov = 'techizatci'
-           AND COALESCE(status, '') <> 'legv'
       )
       SELECT COALESCE(SUM(debet), 0)::float AS debet,
              COALESCE(SUM(kredit), 0)::float AS kredit
@@ -116,7 +109,9 @@ export async function getSupplierStatement(opts: {
         where: {
           sahibkar_id: sahibkarId,
           kontragent_id: opts.techizatci_id,
-          nov: "techizatci",
+          // QA-K: createReturn təchizatçı qaytarmasını `alis_qaytarma`, digər
+          // axınlar `techizatci` yaza bilir — hər iki konvensiya tutulmalıdır.
+          nov: { in: ["techizatci", "alis_qaytarma"] },
           status: { not: "legv" },
           tarix: { gte: from, lte: to },
         },
@@ -160,8 +155,11 @@ export async function getSupplierStatement(opts: {
         nov: "qaytarma",
         sened_nomresi: r.nomre,
         qaime_nomresi: null,
-        tesvir: r.sebeb ?? "Qaytarma",
-        debet: Number(r.geri_qaytarildi ?? 0),
+        // QA-K: təchizatçıya qaytarma qəbul olunanda orijinal alışın
+        // `umumi_mebleg`-i azaldılır → bizim borcumuz onsuz da düşür. Burada
+        // ikinci dəfə debet yazılsa borc İKİ DƏFƏ azalardı. Net-zero məlumat.
+        tesvir: `${r.sebeb ?? "Qaytarma"} (${Number(r.geri_qaytarildi ?? 0).toFixed(2)} ₼ — məlumat)`,
+        debet: 0,
         kredit: 0,
         qaliq: 0,
         ref_id: r.original_id,

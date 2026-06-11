@@ -35,7 +35,9 @@ export function PaymentDialog({ kontragentId, ad, maxAmount, variant = "icon" }:
       const res = await recordContactPayment(fd);
       if (!res.ok) setError(res.error);
       else {
-        toast.success("Ödəniş qeydə alındı");
+        // QA-K(Ödəniş): over-pay halında avansa keçən məbləğ açıq göstərilir
+        if (res.warning) toast.warning(res.warning, { duration: 9000 });
+        else toast.success("Ödəniş qeydə alındı");
         setOpen(false);
         router.refresh();
       }

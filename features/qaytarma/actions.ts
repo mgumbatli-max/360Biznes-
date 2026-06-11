@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldApproveRefund } from "@/features/tesdiq/create";
 import { audit } from "@/lib/audit/log";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 // QA-orta: raw Prisma/DB mesajı UI toast-una sızmasın — mərkəzi sanitizer
 import { logAndFriendly } from "@/lib/error/user-message";
 import { requireTicaretActionPerm } from "@/features/ticaret/access-guard";
@@ -24,24 +25,14 @@ const CreateReturnSchema = z.object({
   nov: z.enum(["musteri", "techizatci"]),
   anbar_id: z.coerce.number().int().positive(),
   kontragent_id: z.string().uuid().nullable(),
+  // QA-K: orijinal satış/alış sənədinə bağlama — verilibsə acceptReturn
+  // qəbul zamanı sənədin son_mebleg/umumi_mebleg-ini korreksiya edir.
+  // Verilməyəndə (sərbəst manual qaytarma) köhnə davranış qalır.
+  original_id: z.string().uuid().nullable().optional(),
   sebeb: z.string().trim().min(3, "Səbəb tələb olunur"),
   qeyd: z.string().trim().max(2000).nullable().optional(),
   lines: z.array(LineSchema).min(1, "Ən az 1 sətir olmalıdır"),
 });
-
-async function nextReturnNumber(): Promise<string> {
-  // Pattern: Q-YYMMDD-NNNN
-  const now = new Date();
-  const ymd = `${String(now.getFullYear()).slice(2)}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-  const prefix = `Q-${ymd}-`;
-  const last = await prisma.qaytarma_sifarisleri.findFirst({
-    where: { nomre: { startsWith: prefix } },
-    orderBy: { nomre: "desc" },
-    select: { nomre: true },
-  });
-  const seq = last ? Number(last.nomre.split("-").pop() ?? "0") + 1 : 1;
-  return `${prefix}${String(seq).padStart(4, "0")}`;
-}
 
 /**
  * Create a return order. Stock movement is applied only when the return is
@@ -62,31 +53,36 @@ export async function createReturn(
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const nomre = await nextReturnNumber();
       const umumi = data.lines.reduce((s, l) => s + l.miqdar * l.vahid_qiymet, 0);
 
-      const created = await prisma.qaytarma_sifarisleri.create({
-        data: {
-          nomre,
-          nov: data.nov === "musteri" ? "satis_qaytarma" : "alis_qaytarma",
-          anbar_id: data.anbar_id,
-          kontragent_id: data.kontragent_id,
-          sebeb: data.sebeb,
-          qeyd: data.qeyd ?? null,
-          umumi_mebleg: new Prisma.Decimal(Math.round(umumi * 100) / 100),
-          status: "tesdiqlenmemis",
-          yaradan_id: istifadeciId,
-          sahibkar_id: sahibkarId,
-          qaytarma_satirlari: {
-            create: data.lines.map((l) => ({
-              mehsul_id: l.mehsul_id,
-              miqdar: new Prisma.Decimal(l.miqdar),
-              vahid_qiymet: new Prisma.Decimal(l.vahid_qiymet),
-              sahibkar_id: sahibkarId,
-            })),
+      // QA-K (race): nomre atomik counter ilə yaradılır — paralel/double-submit
+      // eyni Q-YYMMDD-NNNN-i almağa cəhd etmir (nextReturnNumber findFirst+1 idi).
+      const created = await prisma.$transaction(async (tx) => {
+        const nomre = await nextDocNumber(tx, sahibkarId, "qaytarma");
+        return tx.qaytarma_sifarisleri.create({
+          data: {
+            nomre,
+            nov: data.nov === "musteri" ? "satis_qaytarma" : "alis_qaytarma",
+            anbar_id: data.anbar_id,
+            kontragent_id: data.kontragent_id,
+            original_id: data.original_id ?? null,
+            sebeb: data.sebeb,
+            qeyd: data.qeyd ?? null,
+            umumi_mebleg: new Prisma.Decimal(Math.round(umumi * 100) / 100),
+            status: "tesdiqlenmemis",
+            yaradan_id: istifadeciId,
+            sahibkar_id: sahibkarId,
+            qaytarma_satirlari: {
+              create: data.lines.map((l) => ({
+                mehsul_id: l.mehsul_id,
+                miqdar: new Prisma.Decimal(l.miqdar),
+                vahid_qiymet: new Prisma.Decimal(l.vahid_qiymet),
+                sahibkar_id: sahibkarId,
+              })),
+            },
           },
-        },
-        select: { id: true, nomre: true },
+          select: { id: true, nomre: true },
+        });
       });
 
       // Təsdiq tələbi — qaytarma kind, mövcud threshold helper-i istifadə et
@@ -223,10 +219,19 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
         if (ret.nov === "satis_qaytarma" && ret.original_id) {
           const original = await tx.satis_sifarisleri.findUnique({
             where: { id: ret.original_id },
-            select: { id: true, son_mebleg: true, odenilmis: true, musteri_id: true },
+            select: {
+              id: true,
+              nomre: true,
+              son_mebleg: true,
+              odenilmis: true,
+              musteri_id: true,
+              odenis_nov: true,
+              kassa_id: true,
+            },
           });
           if (original) {
-            const yeniSonMebleg = Math.max(0, Number(original.son_mebleg ?? 0) - Number(ret.umumi_mebleg ?? 0));
+            const refundTotal = Number(ret.umumi_mebleg ?? 0);
+            const yeniSonMebleg = Math.max(0, Number(original.son_mebleg ?? 0) - refundTotal);
             const odenilmis = Number(original.odenilmis ?? 0);
             // Status: tam qaytarmadasa "qaytarilib", qismən qaytarmada əvvəlki status qalır
             const tamGeri = yeniSonMebleg < 0.01;
@@ -240,6 +245,30 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
                 ...(tamGeri ? { status: "qaytarilib" } : {}),
               },
             });
+
+            // QA-K (kassa refund): nəğd/kart satışın qaytarılmasında kassadan pul
+            // çıxışı — fastReturn/returnFullSale-da var idi, acceptReturn-da YOX idi.
+            // Yalnız real daxil olmuş pul qədər geri çıx (hissəvi ödəniş müdafiəsi).
+            const isNisye = original.odenis_nov === "nisye" || original.odenis_nov === "borc";
+            if (!isNisye && original.kassa_id) {
+              const refund = Math.min(refundTotal, odenilmis > 0 ? odenilmis : refundTotal);
+              if (refund > 0.001) {
+                await tx.kassa_emeliyyatlari.create({
+                  data: {
+                    sahibkar_id: sahibkarId,
+                    kassa_id: original.kassa_id,
+                    emeliyyat_nov: "qaytarma",
+                    odenis_nov: original.odenis_nov ?? "negd",
+                    mebleg: new Prisma.Decimal(-refund),
+                    ref_nov: "qaytarma_qebul",
+                    ref_id: ret.id,
+                    istifadeci_id: istifadeciId,
+                    qeyd: `Qaytarma refund: ${ret.nomre} (satis #${original.nomre})`,
+                  },
+                });
+              }
+            }
+
             // Müştəri balansını source-of-truth ilə yenilə
             if (original.musteri_id) {
               const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");

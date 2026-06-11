@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -111,6 +111,8 @@ export function SatisYeniClient({
   const icazeler = usePermissions();
   const canOverrideStock = icazeler.includes("pos.sell_no_stock");
   const canOverCredit = icazeler.includes("sales.over_credit");
+  // Idempotentlik açarı — double-submit dublikat satışın qarşısını alır.
+  const clientOpIdRef = useRef<string>(crypto.randomUUID());
 
   // Header
   const [musteri, setMusteri] = useState<CustomerRow | null>(null);
@@ -554,6 +556,11 @@ export function SatisYeniClient({
         hesab_id: odenisNov === "nisye" ? null : hesabId || null,
         valyuta,
         valyuta_kurs: valyutaKurs,
+        // Server-side kredit limiti override icazəsi olan istifadəçi üçün ötür
+        // (client-side artıq yuxarıda yoxlanır; server də ikinci xətt qoruma edir).
+        override_credit_limit: canOverCredit,
+        // Idempotentlik — yalnız aktiv satışda (qaralama təkrar saxlanıla bilər).
+        client_op_id: asDraft ? undefined : clientOpIdRef.current,
         lines: lines.map((l) => ({
           mehsul_id: l.mehsul_id,
           anbar_id: l.anbar_id,
@@ -566,6 +573,8 @@ export function SatisYeniClient({
         toast.error(res.error);
         return;
       }
+      // Növbəti satış üçün təzə idempotentlik açarı.
+      clientOpIdRef.current = crypto.randomUUID();
       if (asDraft) {
         toast.success(`Qaralama saxlanıldı: ${res.nomre}`);
         if (isEmbedded()) closePageModal();

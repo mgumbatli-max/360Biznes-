@@ -64,6 +64,24 @@ export async function scanLookup(query: string): Promise<ScanLookupResult> {
         },
       });
 
+      // QA-K (ikiqat qaytarma): miqdar_qaliq artıq qaytarılmış miqdarı çıxarmalıdır
+      // ki, UI satılan miqdardan çox qaytarma təklif etməsin (server-side guard
+      // fastReturn/returnFullSale-da da var, bu yalnız düzgün default üçündür).
+      let miqdarQaliq = recent ? Number(recent.miqdar) : 0;
+      if (recent) {
+        const returnedAgg = await prisma.qaytarma_satirlari.aggregate({
+          where: {
+            mehsul_id: mehsul.id,
+            qaytarma_sifarisleri: {
+              original_id: recent.satis_sifarisleri!.id,
+              status: { notIn: ["legv"] },
+            },
+          },
+          _sum: { miqdar: true },
+        });
+        miqdarQaliq = Math.max(0, Number(recent.miqdar) - Number(returnedAgg._sum.miqdar ?? 0));
+      }
+
       return {
         ok: true,
         mehsul: {
@@ -82,7 +100,7 @@ export async function scanLookup(query: string): Promise<ScanLookupResult> {
               anbar_id: recent.satis_sifarisleri!.anbar_id,
               anbar_ad: recent.satis_sifarisleri!.anbarlar?.ad ?? null,
               vahid_qiymet: Number(recent.vahid_qiymet),
-              miqdar_qaliq: Number(recent.miqdar),
+              miqdar_qaliq: miqdarQaliq,
             }
           : null,
       };
@@ -141,6 +159,42 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           anbarId = first?.id ?? null;
         }
         if (!anbarId) throw new Error("Anbar tapılmadı (heç bir anbar yoxdur)");
+
+        // QA-K (ikiqat qaytarma bloku): orijinal satışa bağlı tez qaytarmada
+        // satılan miqdardan artıq qaytarmaq olmaz (artıq_qaytarılan + indiki <= satılan).
+        if (input.original_sale_id) {
+          const soldAgg = await tx.satis_sifaris_satirlari.aggregate({
+            where: {
+              sahibkar_id: sahibkarId,
+              sifaris_id: input.original_sale_id,
+              mehsul_id: input.mehsul_id,
+            },
+            _sum: { miqdar: true },
+          });
+          const sold = Number(soldAgg._sum.miqdar ?? 0);
+          // satılan sətir tapılırsa (sold > 0) məhdudiyyət tətbiq olunur;
+          // tapılmazsa (manual/uyğunsuz) köhnə davranış pozulmasın deyə bloklamırıq.
+          if (sold > 0) {
+            const returnedAgg = await tx.qaytarma_satirlari.aggregate({
+              where: {
+                sahibkar_id: sahibkarId,
+                mehsul_id: input.mehsul_id,
+                qaytarma_sifarisleri: {
+                  original_id: input.original_sale_id,
+                  status: { notIn: ["legv"] },
+                },
+              },
+              _sum: { miqdar: true },
+            });
+            const already = Number(returnedAgg._sum.miqdar ?? 0);
+            const remaining = sold - already;
+            if (input.miqdar > remaining + 0.001) {
+              throw new Error(
+                `Qaytarıla bilən miqdar aşıldı (satılan: ${sold}, artıq qaytarılan: ${already}, qalan: ${Math.max(0, remaining)})`,
+              );
+            }
+          }
+        }
 
         // Generate return number
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -378,6 +432,49 @@ export async function returnFullSale(
         if (lines.length === 0) throw new Error("Qaytarılacaq sətir tapılmadı");
         const fullReturn = lines.length === sale.satis_sifaris_satirlari.length;
 
+        // QA-K (ikiqat qaytarma bloku): bu satış üçün artıq qaytarılmış miqdarları
+        // (məhsul başına) topla — eyni satışı/sətri dəfələrlə qaytarmaq stoku şişirir,
+        // pulu/borcu ikiqat azaldırdı. Qaytarılacaq miqdar (satılan − artıq_qaytarılan)
+        // ilə məhdudlaşdırılır.
+        const priorReturns = await tx.qaytarma_satirlari.findMany({
+          where: {
+            sahibkar_id: sahibkarId,
+            mehsul_id: { in: lines.map((l) => l.mehsul_id).filter((x): x is string => !!x) },
+            qaytarma_sifarisleri: {
+              original_id: sale.id,
+              status: { notIn: ["legv"] },
+            },
+          },
+          select: { mehsul_id: true, miqdar: true },
+        });
+        const returnedByMehsul = new Map<string, number>();
+        for (const pr of priorReturns) {
+          if (!pr.mehsul_id) continue;
+          returnedByMehsul.set(pr.mehsul_id, (returnedByMehsul.get(pr.mehsul_id) ?? 0) + Number(pr.miqdar ?? 0));
+        }
+        // Satılan miqdar — məhsul başına (eyni məhsul bir neçə sətirdə ola bilər)
+        const soldByMehsul = new Map<string, number>();
+        for (const l of sale.satis_sifaris_satirlari) {
+          if (!l.mehsul_id) continue;
+          soldByMehsul.set(l.mehsul_id, (soldByMehsul.get(l.mehsul_id) ?? 0) + Number(l.miqdar ?? 0));
+        }
+        // Bu sorğuda tələb olunan miqdar — məhsul başına
+        const requestedByMehsul = new Map<string, number>();
+        for (const l of lines) {
+          if (!l.mehsul_id) continue;
+          requestedByMehsul.set(l.mehsul_id, (requestedByMehsul.get(l.mehsul_id) ?? 0) + Number(l.miqdar ?? 0));
+        }
+        for (const [mehsulId, requested] of requestedByMehsul) {
+          const sold = soldByMehsul.get(mehsulId) ?? 0;
+          const already = returnedByMehsul.get(mehsulId) ?? 0;
+          const remaining = sold - already;
+          if (requested > remaining + 0.001) {
+            throw new Error(
+              `Bu məhsul üçün qaytarıla bilən miqdar aşıldı (satılan: ${sold}, artıq qaytarılan: ${already}, qalan: ${Math.max(0, remaining)})`,
+            );
+          }
+        }
+
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
         const suffix = Math.random().toString(16).slice(2, 6).toUpperCase();
         const nomre = `QF-${dateStr}-${suffix}`;
@@ -449,13 +546,14 @@ export async function returnFullSale(
               vahid_qiymet: qiymet,
             },
           });
-          await tx.stok.updateMany({
-            where: {
-              sahibkar_id: sahibkarId,
-              mehsul_id: l.mehsul_id,
-              anbar_id: targetAnbar,
-            },
-            data: { miqdar: { increment: miqdar } },
+          // QA-K: stok sətri yoxdursa updateMany səssiz keçirdi (medaxil hərəkəti
+          // yazılır, stok artmırdı). stockIncrement upsert ilə sətir yaradılır.
+          await stockIncrement(tx, {
+            sahibkarId,
+            mehsulId: l.mehsul_id,
+            anbarId: targetAnbar,
+            miqdar,
+            sonQiymet: qiymet,
           });
           await tx.anbar_hereketleri.create({
             data: {
@@ -600,6 +698,22 @@ export async function returnFullSale(
                 },
               });
             }
+          } else {
+            // QA-K: NƏĞD/KART (qeyri-nisyə) hissəvi qaytarmada son_mebleg azalmırdı
+            // → gəlir şişik qalırdı. Pul artıq kassadan refund olundu (yuxarıda),
+            // burada satışın faktiki məbləğini (son_mebleg) və ödənilmiş hissəni
+            // qaytarılan məbləğ qədər azaldırıq ki, gəlir hesabatı uyğun olsun.
+            const sonMebleg = Number(sale.son_mebleg ?? 0);
+            const odenilmis = Number(sale.odenilmis ?? 0);
+            const yeniSon = Math.max(0, sonMebleg - total);
+            await tx.satis_sifarisleri.update({
+              where: { id: sale.id },
+              data: {
+                son_mebleg: yeniSon,
+                odenilmis: Math.min(odenilmis, yeniSon),
+                yenilendi: new Date(),
+              },
+            });
           }
         }
 

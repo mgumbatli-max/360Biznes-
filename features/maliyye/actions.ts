@@ -234,16 +234,58 @@ export async function deleteExpense(id: string, sebeb?: string): Promise<ActionR
         select: { mebleg: true, tesvir: true, tarix: true },
       });
       if (!before) return { ok: false, error: "Xərc tapılmadı və ya artıq ləğv edilib" };
-      // Soft delete — hard delete əvəzinə legv_de timestamp qoy
-      const r = await prisma.xercl_r.updateMany({
-        where: { id, sahibkar_id: sahibkarId, legv_de: null },
-        data: {
-          legv_de: new Date(),
-          legv_sebeb: sebeb?.trim() || "Manual silinmə",
-          legv_eden_id: istifadeciId,
-        },
+
+      // ⚛️ Atomik: xərci soft-delete et + saveExpense-in yaratdığı bağlı
+      // [XERC:id] finance_operation-u da ləğv et, sonra hesab qaliqını geri qaytar.
+      // Yalnız xercl_r soft-delete kifayət deyildi — pul finance_operations-da
+      // qalıb, hesab balansı həmişəlik aşağı qalırdı (cancelFinanceOperation pattern).
+      const touchedHesab = new Set<string>();
+      await prisma.$transaction(async (tx) => {
+        // Soft delete — hard delete əvəzinə legv_de timestamp qoy
+        const r = await tx.xercl_r.updateMany({
+          where: { id, sahibkar_id: sahibkarId, legv_de: null },
+          data: {
+            legv_de: new Date(),
+            legv_sebeb: sebeb?.trim() || "Manual silinmə",
+            legv_eden_id: istifadeciId,
+          },
+        });
+        if (r.count === 0) throw new Error("Xərc tapılmadı");
+
+        // Bağlı finance_operation-ları tap və ləğv et (status='legv' + deleted_at)
+        const linkedOps = await tx.finance_operations.findMany({
+          where: {
+            sahibkar_id: sahibkarId,
+            qeyd: { contains: `[XERC:${id}]` },
+            status: { not: "legv" },
+            deleted_at: null,
+          },
+          select: { id: true, hesab_id: true },
+        });
+        for (const op of linkedOps) {
+          await tx.finance_operations.update({
+            where: { id: op.id },
+            data: {
+              status: "legv",
+              legv_eden_id: istifadeciId,
+              legv_de: new Date(),
+              legv_sebeb: sebeb?.trim() || "Xərc silindi",
+              deleted_at: new Date(),
+              yenilendi: new Date(),
+            },
+          });
+          if (op.hesab_id) touchedHesab.add(op.hesab_id);
+        }
+
+        // Hesab qaliqlarını source-of-truth-dan geri qaytar
+        if (touchedHesab.size > 0) {
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          for (const hesabId of touchedHesab) {
+            await recalculateAccountBalance(hesabId, tx);
+          }
+        }
       });
-      if (r.count === 0) return { ok: false, error: "Xərc tapılmadı" };
+      revalidatePath("/maliyye/emeliyyat");
       revalidatePath("/maliyye/xercler");
       bustMaliyyeCache();
       try {
@@ -537,6 +579,15 @@ export async function saveQuickOperation(input: FormData): Promise<ActionResult>
       const threshold = thresholdMap[tKey] ?? thresholdMap.default ?? 0;
       const needsApproval = threshold > 0 && aznMebleg >= threshold;
       const opStatus = needsApproval ? "gozleyen_tesdiq" : "aktiv";
+
+      // 💰 Qaliq yetərlilik — yalnız dərhal aktivləşən xaric/transfer əməliyyatları
+      // mənbə hesabdan pul çıxarır (digər action-larla — maas/paySupplier — uyğun).
+      // Təsdiq gözləyən əməliyyat hələ balansa təsir etmir, ona görə yoxlanmır.
+      if (!needsApproval && (meta.yon === "xaric" || meta.yon === "transfer") && d.hesab_id) {
+        const { checkAccountSufficient } = await import("@/lib/balance/account-balance");
+        const sufficient = await checkAccountSufficient(d.hesab_id, aznMebleg);
+        if (!sufficient.ok) return { ok: false, error: sufficient.error };
+      }
 
       const created = await prisma.finance_operations.create({
         data: {
@@ -835,6 +886,11 @@ export async function approveOperation(id: string): Promise<ActionResult> {
     const { sahibkarId, istifadeciId: userId } = requireTenant();
     try {
       // 🔒 Açıq sahibkar_id qoruması — yalnız öz əməliyyatını təsdiqləmək olar
+      const op = await prisma.finance_operations.findFirst({
+        where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
+        select: { id: true, hesab_id: true, hesab_id2: true, kontragent_id: true },
+      });
+      if (!op) return { ok: false, error: "Əməliyyat tapılmadı və ya artıq təsdiqlənib" };
       const r = await prisma.finance_operations.updateMany({
         where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
         data: {
@@ -845,6 +901,22 @@ export async function approveOperation(id: string): Promise<ActionResult> {
         },
       });
       if (r.count === 0) return { ok: false, error: "Əməliyyat tapılmadı və ya artıq təsdiqlənib" };
+      // Təsdiqdən sonra əməliyyat 'aktiv' oldu → balanslar source-of-truth-dan yenilənməlidir
+      // (cancelFinanceOperation-dakı recalc pattern-i). Əks halda yüksək məbləğli
+      // əməliyyat aktivləşir, hesab/kontragent qaliqı köhnə qalır.
+      try {
+        const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+        if (op.hesab_id) await recalculateAccountBalance(op.hesab_id);
+        if (op.hesab_id2) await recalculateAccountBalance(op.hesab_id2);
+        if (op.kontragent_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+          await recalculateCustomerBalance(op.kontragent_id);
+          await recalculateSupplierBalance(op.kontragent_id);
+        }
+      } catch (e) {
+        console.warn("[approveOperation] recalc skipped:", e);
+      }
       revalidatePath("/maliyye/emeliyyat");
       revalidatePath("/maliyye");
       revalidatePath("/tesdiq");
@@ -876,8 +948,12 @@ export async function rejectOperation(id: string, sebeb?: string): Promise<Actio
   return withTenant(async () => {
     const { sahibkarId, istifadeciId: userId } = requireTenant();
     try {
+      // 🔒 Status guard — yalnız təsdiq gözləyən əməliyyat rədd edilə bilər.
+      // Aktiv əməliyyat 'redd' edilsəydi balans/allocation geri qaytarılmadan
+      // pul balansdan çıxar (qaliq drift). Aktiv əməliyyatın ləğvi üçün
+      // cancelFinanceOperation istifadə olunmalıdır.
       const r = await prisma.finance_operations.updateMany({
-        where: { id, sahibkar_id: sahibkarId },
+        where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
         data: {
           status: "redd",
           legv_eden_id: userId ?? null,
@@ -886,7 +962,7 @@ export async function rejectOperation(id: string, sebeb?: string): Promise<Actio
           yenilendi: new Date(),
         },
       });
-      if (r.count === 0) return { ok: false, error: "Əməliyyat tapılmadı" };
+      if (r.count === 0) return { ok: false, error: "Yalnız təsdiq gözləyən əməliyyat rədd edilə bilər (aktiv əməliyyat üçün ləğv istifadə edin)" };
       revalidatePath("/maliyye/emeliyyat");
       revalidatePath("/maliyye");
       revalidatePath("/tesdiq");
@@ -2570,6 +2646,9 @@ export async function runRecurringCheck(): Promise<{ ok: true; yaradilan: number
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       let yaradilan = 0;
+      // Yaradılan instansiyaların təsir etdiyi subyektlər — batch sonunda recalc
+      const touchedHesab = new Set<string>();
+      const touchedKontragent = new Set<string>();
       // Group rules by qeyd-template to find chain — use simpler heuristic: each finance_operations with RECUR is itself the template.
       // For each, find latest copy in chain (same type_kod + same recur_tag + same hesab_id).
       for (const rule of rules) {
@@ -2627,11 +2706,30 @@ export async function runRecurringCheck(): Promise<{ ok: true; yaradilan: number
             },
           });
           yaradilan++;
+          if (rule.hesab_id) touchedHesab.add(rule.hesab_id);
+          if (rule.hesab_id2) touchedHesab.add(rule.hesab_id2);
+          if (rule.kontragent_id) touchedKontragent.add(rule.kontragent_id);
         } catch (e) {
           console.warn("[runRecurringCheck] create skipped:", e);
         }
       }
+      // Yaradılan aktiv instansiyalar üçün təsirlənmiş hesab/kontragent qaliqlarını
+      // source-of-truth-dan yenilə (əks halda yeni recurring əməliyyat balansa düşmür)
       if (yaradilan > 0) {
+        try {
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          for (const hesabId of touchedHesab) await recalculateAccountBalance(hesabId);
+          if (touchedKontragent.size > 0) {
+            const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+            const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+            for (const kId of touchedKontragent) {
+              await recalculateCustomerBalance(kId);
+              await recalculateSupplierBalance(kId);
+            }
+          }
+        } catch (e) {
+          console.warn("[runRecurringCheck] recalc skipped:", e);
+        }
         revalidatePath("/maliyye/emeliyyat");
         revalidatePath("/maliyye");
         revalidatePath("/maliyye/recurring");

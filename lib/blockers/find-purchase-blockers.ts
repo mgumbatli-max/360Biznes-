@@ -19,24 +19,27 @@ export async function findPurchaseBlockers(
 ): Promise<Blocker[]> {
   const blockers: Blocker[] = [];
 
-  // 1) Təsdiq sorğusu
+  // 1) Təsdiq sorğusu — alış qaiməsi təsdiqi `tesdiq_telep` cədvəlində
+  //    (resurs_nov/resurs_id, status='gozleyir') saxlanır. Köhnə kod yanlış
+  //    cədvələ (tesdiq_sorgulari, hedef_nov/status='gozlemede') sorğu vururdu
+  //    və blocker heç vaxt tapılmırdı.
   try {
-    const tesdiq = await tx.tesdiq_sorgulari.findFirst({
+    const tesdiq = await tx.tesdiq_telep.findFirst({
       where: {
-        hedef_nov: "alis_sifarisi",
-        hedef_id: purchaseId,
-        status: "gozlemede",
+        resurs_nov: "alis_sifarisi",
+        resurs_id: purchaseId,
+        status: "gozleyir",
       },
       select: { id: true, yaradildi: true },
     });
     if (tesdiq) {
       blockers.push({
         type: "alis",
-        id: tesdiq.id,
+        id: String(tesdiq.id),
         label: `Təsdiq sorğusu — gözlənilir`,
         href: `/tesdiq/${tesdiq.id}`,
         tarix: tesdiq.yaradildi ?? undefined,
-        badge: "gozlemede",
+        badge: "gozleyir",
       });
     }
   } catch { /* model yoxdursa skip */ }

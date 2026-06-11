@@ -39,8 +39,6 @@ export type CreatePurchaseResult =
   | { ok: true; id: string; nomre: string; warning?: string }
   | { ok: false; error: string };
 
-const PURCHASE_PREFIX = "ALS";
-
 export async function createPurchase(input: CreatePurchaseInput): Promise<CreatePurchaseResult> {
   const permCheck = await requireTicaretActionPerm("alis.yarat");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
@@ -69,14 +67,10 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
         if (d.diger_xerc > 0) xercParts.push(`Digər: ${d.diger_xerc.toFixed(2)} ₼`);
         const xercQeyd = xercParts.length > 0 ? xercParts.join(" · ") : null;
 
-        const year = new Date().getFullYear();
-        const last = await tx.alis_sifarisleri.findFirst({
-          where: { nomre: { startsWith: `${PURCHASE_PREFIX}-${year}-` } },
-          orderBy: { nomre: "desc" },
-          select: { nomre: true },
-        });
-        const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-        const nomre = `${PURCHASE_PREFIX}-${year}-${String(lastNum + 1).padStart(5, "0")}`;
+        // Atomik, tenant-aware sənəd nömrəsi — sened_nomre_counter UPSERT
+        // (POS/satış axını ilə eyni pattern). Köhnə findFirst+1 race-unsafe idi
+        // və qlobal max-dan saydığı üçün çoxkirayəçi toqquşmasına yol açırdı.
+        const nomre = await nextDocNumber(tx, sahibkarId, "alis");
 
         const purchase = await tx.alis_sifarisleri.create({
           data: {
@@ -104,10 +98,21 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
           },
         });
 
+        // subtotal=0 (bütün sətir qiymətləri 0) halında əlavə xərc miqdara görə
+        // bərabər paylanır — əks halda gömrük/çatdırılma maya hesabından itir,
+        // amma umumi_mebleg-ə daxil olur (drift). totalMiqdar 0 ola bilməz, çünki
+        // LineSchema miqdar.positive() tələb edir.
+        const totalMiqdar = d.lines.reduce((s, l) => s + l.miqdar, 0);
         for (const line of d.lines) {
-          // Proporsional əlavə xərc paylanması — line subtotal ÷ ümumi subtotal × elave_xerc
+          // Proporsional əlavə xərc paylanması — line subtotal ÷ ümumi subtotal × elave_xerc.
+          // subtotal=0 olduqda miqdar payına görə paylanır.
           const lineSubtotal = line.miqdar * line.qiymet;
-          const paylananXerc = subtotal > 0 ? (lineSubtotal / subtotal) * elaveXerc : 0;
+          const paylananXerc =
+            subtotal > 0
+              ? (lineSubtotal / subtotal) * elaveXerc
+              : totalMiqdar > 0
+                ? (line.miqdar / totalMiqdar) * elaveXerc
+                : 0;
           const realMayaEded = line.qiymet + paylananXerc / line.miqdar;
 
           await tx.alis_sifaris_satirlari.create({

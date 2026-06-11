@@ -73,6 +73,14 @@ const HeaderSchema = z.object({
    * - 0 < N < sonMebleg: hissəvi — N kassaya/hesaba düşür, qalıq nisyəyə
    */
   odenilen_mebleg: z.coerce.number().min(0).nullish(),
+  /**
+   * Idempotentlik açarı (POS sale-action pattern-i) — double-submit /
+   * təkrar göndərişdə dublikat satış yaratmamaq üçün. DB-də partial unique
+   * index `satis_client_op_uniq (sahibkar_id, client_op_id)` race-i bağlayır.
+   */
+  client_op_id: z.string().max(80).nullish(),
+  /** Müştəri kredit limitini menecer override etdi (nisyə/hissəvi-borc) */
+  override_credit_limit: z.coerce.boolean().optional(),
 });
 
 const CreateSchema = HeaderSchema.extend({
@@ -100,8 +108,21 @@ export async function createOrUpdateSatisYeni(
 ): Promise<CreateSatisResult> {
   // Redaktə-mi yarat-mı — id varsa duzelt icazəsi, yoxsa yarat
   const inputId = (input as { id?: string } | undefined)?.id;
+  const inputQaralamaId = (input as { qaralama_id?: string } | undefined)?.qaralama_id;
   const permCheck = await requireTicaretActionPerm(inputId ? "satis.duzelt" : "satis.yarat");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
+  // QA-major: `id` ötürülübsə bu "redaktə" niyyətidir, lakin bu action yalnız
+  // qaralama-nı `qaralama_id` ilə yenidən saxlaya bilir; əsl finalize olunmuş
+  // satışı düzəltmir. Əvvəl `id` icazə üçün oxunub, sonra Zod tərəfindən strip
+  // edilirdi → CREATE branch-ına düşüb DUBLİKAT satış (qoşa stok azalması +
+  // qoşa ödəniş) yaranırdı. Açıq xəta qaytar ki, səssiz dublikat olmasın.
+  if (inputId && !inputQaralamaId) {
+    return {
+      ok: false,
+      error: "Mövcud satışın redaktəsi bu axında dəstəklənmir — yalnız qaralama yenidən saxlanıla bilər. Düzəliş üçün satışı ləğv edib yenidən yaradın.",
+    };
+  }
 
   const parsed = CreateSchema.safeParse(input);
   if (!parsed.success) {
@@ -178,10 +199,53 @@ export async function createOrUpdateSatisYeni(
     };
   }
 
+  // 💳 Kredit limiti enforce (server-side) — POS sale-action pattern-i.
+  // Nisyə / hissəvi-borc satışda müştərinin açıq borcuna qalıq əlavə olunanda
+  // limit aşılırsa bloklanır (menecer override edə bilər). Əvvəl yalnız
+  // read-only getCustomerCreditStatus var idi, backend enforce yox idi.
+  if (!data.qaralama && data.musteri_id && !data.override_credit_limit) {
+    const subtotalRaw = data.lines.reduce(
+      (s, l) => s + l.miqdar * l.qiymet * (1 - l.endirim_faiz / 100),
+      0,
+    );
+    const afterDiscountRaw = Math.max(0, subtotalRaw - data.endirim_mebleg);
+    const preSonMebleg = afterDiscountRaw + afterDiscountRaw * (data.vat_faiz / 100) + data.catdirma_xerc;
+    // Bu satışdan müştəri borcuna qalan hissə (nisyə → tam, hissəvi → qalıq).
+    const defaultOdenilen = data.odenis_nov === "nisye" ? 0 : preSonMebleg;
+    const odenilenPre = Math.max(0, Math.min(preSonMebleg,
+      data.odenilen_mebleg == null ? defaultOdenilen : Number(data.odenilen_mebleg),
+    ));
+    const borcaQalan = Math.max(0, preSonMebleg - odenilenPre);
+    if (borcaQalan > 0.001) {
+      const { checkCustomerCreditLimit } = await import("./customer-tier");
+      const credit = await checkCustomerCreditLimit(data.musteri_id, borcaQalan);
+      if (!credit.ok) {
+        return {
+          ok: false,
+          error: `Müştəri kredit limiti aşılır (${credit.current.toFixed(2)} + ${credit.addAmount.toFixed(2)} > ${credit.limit.toFixed(2)} AZN). Menecer override edə bilər.`,
+        };
+      }
+    }
+  }
+
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const result = await prisma.$transaction(async (tx) => {
+        // Idempotentlik (POS sale-action pattern-i): eyni client_op_id ilə satış
+        // artıq varsa dublikat yaratma — mövcudu qaytar (double-submit / təkrar
+        // göndəriş). DB-də partial-unique `satis_client_op_uniq` race-i bağlayır.
+        // Yalnız yeni yaratmada — qaralama yenidən saxlamada (qaralama_id) tətbiq olunmur.
+        if (data.client_op_id && !data.qaralama_id) {
+          const dup = await tx.satis_sifarisleri.findFirst({
+            where: { sahibkar_id: sahibkarId, client_op_id: data.client_op_id },
+            select: { id: true, nomre: true },
+          });
+          if (dup) {
+            return { id: dup.id, nomre: dup.nomre, affectedMehsulIds: [] as string[], isDuplicate: true };
+          }
+        }
+
         // Compute totals
         let umumi = 0;
         for (const line of data.lines) {
@@ -258,6 +322,7 @@ export async function createOrUpdateSatisYeni(
             data: {
               sahibkar_id: sahibkarId,
               nomre,
+              client_op_id: data.client_op_id ?? null,
               musteri_id: data.musteri_id ?? null,
               anbar_id: primaryAnbar,
               tarix: parseSaleDate(data.tarix),
@@ -377,92 +442,104 @@ export async function createOrUpdateSatisYeni(
               },
             });
 
-            // Kassa/hesab əməliyyatı — yalnız ödənilən hissə üçün
-            if (odenilen > 0 && data.kassa_id) {
-              try {
-                await tx.kassa_emeliyyatlari.create({
-                  data: {
-                    sahibkar_id: sahibkarId,
-                    kassa_id: data.kassa_id,
-                    emeliyyat_nov: "satis",
-                    odenis_nov: data.odenis_nov === "nisye" ? "negd" : data.odenis_nov,
-                    mebleg: new Prisma.Decimal(odenilen.toFixed(2)),
-                    ref_nov: "satis_sifarisi",
-                    ref_id: saleId,
-                    istifadeci_id: istifadeciId,
-                    qeyd: isPartial
-                      ? `Satış #${nomre} — hissəvi (${odenilen.toFixed(2)} / ${sonMebleg.toFixed(2)})`
-                      : `Satış #${nomre}`,
-                  },
+            // Kassa/hesab əməliyyatı — yalnız ödənilən hissə üçün.
+            // QA-kritik: əvvəl bütün blok `data.kassa_id` ilə gate olunurdu.
+            // Adi satış UI-si `hesab_id` göndərir (kassa_id YOX) → ödənilən
+            // hissə HEÇ YERƏ DÜŞMÜRDÜ, amma satış "tamamlandi" görünürdü (pul
+            // yox olurdu). İndi gate yalnız `odenilen > 0`-dır; pulun gedəcəyi
+            // maliye hesabı (hesab_id → kassa hesabı → ödəniş növünə default)
+            // MƏCBURİ həll olunur, tapılmazsa satış rədd edilir.
+            if (odenilen > 0) {
+              // Hesab seçimi prioriteti:
+              // 1) İstifadəçi formada konkret hesab seçibsə — o
+              // 2) Kassanın bağlı olduğu maliye hesabı (varsa)
+              // 3) Ödəniş növünə görə default (nağd/kart/bank)
+              let hesabIdForOp: string | null = data.hesab_id ?? null;
+              if (!hesabIdForOp && data.kassa_id) {
+                const kassaRow = await tx.kassalar.findFirst({
+                  where: { id: data.kassa_id, sahibkar_id: sahibkarId },
+                  select: { maliye_hesab_id: true },
                 });
-              } catch (e) {
-                console.warn("[createOrUpdateSatisYeni] kassa_emeliyyati skipped:", e);
+                hesabIdForOp = kassaRow?.maliye_hesab_id ?? null;
+              }
+              if (!hesabIdForOp) {
+                const fallbackNov =
+                  data.odenis_nov === "kart" ? "kart" :
+                  data.odenis_nov === "kecirme" ? "bank" : "negd";
+                const def = await tx.maliye_hesablari.findFirst({
+                  where: { sahibkar_id: sahibkarId, aktiv: true, nov: fallbackNov },
+                  orderBy: { yaradildi: "asc" },
+                  select: { id: true },
+                });
+                hesabIdForOp = def?.id ?? null;
+              }
+              // QA-kritik/minor: pulun gedəcəyi hesab tapılmasa finance_op
+              // hesab_id=null ilə yazılardı (kassa hesabatı vs hesab balansı
+              // uyğunsuzluğu) — ya da ümumiyyətlə yazılmazdı. İkisi də pul
+              // itkisidir. Hesab tapılmazsa satışı RƏDD et.
+              if (!hesabIdForOp) {
+                throw new Error("Ödəniş üçün maliyə hesabı (nağd/kart/bank) tapılmadı — hesab seçin və ya Nisyə işarələyin. Pul heç bir hesaba düşmədən satış tamamlana bilməz.");
               }
 
-              // finance_operations — ödənilən hissə daxil + hesab balansı sinxron
-              try {
-                let type = await tx.finance_operation_types
-                  .findUnique({ where: { kod: "qaime" } })
-                  .catch(() => null);
-                if (!type) {
-                  type = await tx.finance_operation_types.create({
-                    data: { kod: "qaime", ad: "Qaimə", qrup: "qaime", y_n: "daxil", link_satish: true },
-                  });
-                }
-                if (type) {
-                  // Hesab seçimi prioriteti:
-                  // 1) İstifadəçi formada konkret hesab seçibsə — o
-                  // 2) POS kassasının bağlı olduğu maliye hesabı (varsa)
-                  // 3) Ödəniş növünə görə default (nağd/kart/bank)
-                  let hesabIdForOp: string | null = data.hesab_id ?? null;
-                  if (!hesabIdForOp && data.kassa_id) {
-                    const kassaRow = await tx.kassalar.findFirst({
-                      where: { id: data.kassa_id, sahibkar_id: sahibkarId },
-                      select: { maliye_hesab_id: true },
-                    });
-                    hesabIdForOp = kassaRow?.maliye_hesab_id ?? null;
-                  }
-                  if (!hesabIdForOp) {
-                    const fallbackNov =
-                      data.odenis_nov === "kart" ? "kart" :
-                      data.odenis_nov === "kecirme" ? "bank" : "negd";
-                    const def = await tx.maliye_hesablari.findFirst({
-                      where: { sahibkar_id: sahibkarId, aktiv: true, nov: fallbackNov },
-                      orderBy: { yaradildi: "asc" },
-                      select: { id: true },
-                    });
-                    hesabIdForOp = def?.id ?? null;
-                  }
-                  await tx.finance_operations.create({
+              // Kassa əməliyyatı yalnız real kassa sessiyası varsa (kassa_id
+              // gerçək kassa FK-sıdır; hesab_id deyil).
+              if (data.kassa_id) {
+                try {
+                  await tx.kassa_emeliyyatlari.create({
                     data: {
                       sahibkar_id: sahibkarId,
-                      type_id: type.id,
-                      type_kod: type.kod,
-                      y_n: "daxil",
-                      tarix: parseSaleDate(data.tarix),
-                      meblegh: new Prisma.Decimal(odenilen.toFixed(2)),
-                      valyuta: "AZN",
-                      mezenne: 1,
-                      azn_meblegh: new Prisma.Decimal(odenilen.toFixed(2)),
-                      hesab_id: hesabIdForOp,
-                      kontragent_id: data.musteri_id ?? null,
-                      satis_id: saleId,
-                      sened_nomresi: nomre,
+                      kassa_id: data.kassa_id,
+                      emeliyyat_nov: "satis",
+                      odenis_nov: data.odenis_nov === "nisye" ? "negd" : data.odenis_nov,
+                      mebleg: new Prisma.Decimal(odenilen.toFixed(2)),
+                      ref_nov: "satis_sifarisi",
+                      ref_id: saleId,
+                      istifadeci_id: istifadeciId,
                       qeyd: isPartial
-                        ? `Satış #${nomre} hissəvi (qalıq: ${(sonMebleg - odenilen).toFixed(2)} ₼ borc)`
-                        : `Satış #${nomre} — ${data.odenis_nov}`,
-                      yaradan_id: istifadeciId,
+                        ? `Satış #${nomre} — hissəvi (${odenilen.toFixed(2)} / ${sonMebleg.toFixed(2)})`
+                        : `Satış #${nomre}`,
                     },
                   });
-                  // Source-of-truth-dan hesab qaliqını yenilə
-                  if (hesabIdForOp) {
-                    const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
-                    await recalculateAccountBalance(hesabIdForOp, tx);
-                  }
+                } catch (e) {
+                  console.warn("[createOrUpdateSatisYeni] kassa_emeliyyati skipped:", e);
                 }
-              } catch (e) {
-                console.warn("[createOrUpdateSatisYeni] finance_operations skipped:", e);
               }
+
+              // finance_operations — ödənilən hissə daxil + hesab balansı sinxron.
+              // Best-effort DEYİL: hesab həll olunub, yazılmalıdır; xəta olarsa
+              // satış rollback olunsun (pul yox olmasın).
+              let type = await tx.finance_operation_types
+                .findUnique({ where: { kod: "qaime" } })
+                .catch(() => null);
+              if (!type) {
+                type = await tx.finance_operation_types.create({
+                  data: { kod: "qaime", ad: "Qaimə", qrup: "qaime", y_n: "daxil", link_satish: true },
+                });
+              }
+              await tx.finance_operations.create({
+                data: {
+                  sahibkar_id: sahibkarId,
+                  type_id: type.id,
+                  type_kod: type.kod,
+                  y_n: "daxil",
+                  tarix: parseSaleDate(data.tarix),
+                  meblegh: new Prisma.Decimal(odenilen.toFixed(2)),
+                  valyuta: "AZN",
+                  mezenne: 1,
+                  azn_meblegh: new Prisma.Decimal(odenilen.toFixed(2)),
+                  hesab_id: hesabIdForOp,
+                  kontragent_id: data.musteri_id ?? null,
+                  satis_id: saleId,
+                  sened_nomresi: nomre,
+                  qeyd: isPartial
+                    ? `Satış #${nomre} hissəvi (qalıq: ${(sonMebleg - odenilen).toFixed(2)} ₼ borc)`
+                    : `Satış #${nomre} — ${data.odenis_nov}`,
+                  yaradan_id: istifadeciId,
+                },
+              });
+              // Source-of-truth-dan hesab qaliqını yenilə
+              const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+              await recalculateAccountBalance(hesabIdForOp, tx);
             }
           }
 
@@ -496,7 +573,7 @@ export async function createOrUpdateSatisYeni(
           });
         }
 
-        return { id: saleId, nomre, affectedMehsulIds };
+        return { id: saleId, nomre, affectedMehsulIds, isDuplicate: false };
       });
 
       // 4. Stock-alert check (post-commit so it can read fresh stok totals)
@@ -505,7 +582,8 @@ export async function createOrUpdateSatisYeni(
       }
 
       // 5. Təsdiq tələbi yarat — yalnız yeni satışlar (qaralama yox + təsdiq aktiv)
-      const effectiveApprovalNeeded = needsApproval || mayaAltiNeedsApproval;
+      // Idempotent dublikatda təkrar təsdiq sorğusu YARATMA.
+      const effectiveApprovalNeeded = !result.isDuplicate && (needsApproval || mayaAltiNeedsApproval);
       if (effectiveApprovalNeeded) {
         const sonMebleg = await prisma.satis_sifarisleri.findUnique({
           where: { id: result.id },
