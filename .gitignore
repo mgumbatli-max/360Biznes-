@@ -51,3 +51,6 @@ next-env.d.ts
 
 # barkod skaneri WASM — build/postinstall-da node_modules-dan kopyalanır
 /public/wasm/
+
+# Visual brainstorm mockups
+.superpowers/
