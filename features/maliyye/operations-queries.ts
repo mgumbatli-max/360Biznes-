@@ -63,8 +63,15 @@ export async function getOperations(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
     const rs = filter.recordStatus ?? "aktiv";
-    if (rs === "aktiv") where.deleted_at = null;
-    else if (rs === "silinmis") where.deleted_at = { not: null };
+    // QA-standart: "Aktiv" = silinməmiş VƏ ləğv edilməmiş; "Silinmişlər"
+    // seçimi ləğvliləri də göstərir (istifadəçi tələbi — bütün modullar).
+    if (rs === "aktiv") {
+      where.deleted_at = null;
+      if (!filter.status) where.status = { not: "legv" };
+    } else if (rs === "silinmis") {
+      // AND-wrap: aşağıdakı hesab_id/search OR-ları bunu üstələməsin
+      where.AND = [...(where.AND ?? []), { OR: [{ deleted_at: { not: null } }, { status: "legv" }] }];
+    }
     if (filter.status) where.status = filter.status;
     if (filter.yon) where.y_n = filter.yon;
     if (filter.hesab_id) {
@@ -178,6 +185,15 @@ export async function getOperationsSummary(filter: OperationFilter) {
   return withTenant(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
+    // QA-standart: xülasə də siyahı ilə EYNİ rejimdə — Aktiv = silinməmiş
+    // və ləğv edilməmiş (əvvəl heç bir filtr yox idi: silinmiş+ləğv sayılırdı).
+    const rsS = filter.recordStatus ?? "aktiv";
+    if (rsS === "aktiv") {
+      where.deleted_at = null;
+      if (!filter.status) where.status = { not: "legv" };
+    } else if (rsS === "silinmis") {
+      where.AND = [...(where.AND ?? []), { OR: [{ deleted_at: { not: null } }, { status: "legv" }] }];
+    }
     if (filter.status) where.status = filter.status;
     if (filter.yon) where.y_n = filter.yon;
     if (filter.hesab_id) where.OR = [{ hesab_id: filter.hesab_id }, { hesab_id2: filter.hesab_id }];

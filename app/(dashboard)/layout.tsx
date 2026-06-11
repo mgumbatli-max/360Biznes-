@@ -8,6 +8,7 @@ import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { getAppMode } from "@/lib/app-mode";
 import { getLiteConfig, getModuleEntry } from "@/lib/lite/config";
 import { LiteThemeScript, IcmalAttrScript } from "@/components/layout/lite-theme";
+import { LiteThemeSync } from "@/components/layout/lite-theme-sync";
 import { gateRoute } from "@/lib/auth/route-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -164,6 +165,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         {/* Lite dizayn forması — SSR inline script, ilk paint-dən əvvəl (FOUC yox) */}
         <LiteThemeScript design={liteDesign} active={appMode === "lite"} />
         <IcmalAttrScript modules={icmalModules} />
+        <LiteThemeSync design={liteDesign} active={appMode === "lite"} icmal={icmalModules} />
         <EmbedDetector />
         <NavigationTracker />
         <RouteProgress />

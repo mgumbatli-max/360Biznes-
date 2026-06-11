@@ -156,6 +156,9 @@ export async function getSales(
     const recordStatus = filter.recordStatus ?? "aktiv";
     if (recordStatus === "aktiv") {
       where.deleted_at = null;
+      // QA-standart: Aktiv = ləğv edilməmiş də (cancelSale köhnə sətirlərdə
+      // yalnız status=legv qoyub deleted_at qoymamış ola bilər — hər ikisi örtülür)
+      if (!filter.status || filter.status.length === 0) where.status = { not: "legv" };
     } else if (recordStatus === "silinmis") {
       where.deleted_at = { not: null };
     }

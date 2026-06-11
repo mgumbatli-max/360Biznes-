@@ -27,8 +27,15 @@ export async function getTransfers(filter: TransferFilter = {}): Promise<Transfe
   return withTenant(async () => {
     const where: Record<string, unknown> = {};
     const rs = filter.recordStatus ?? "aktiv";
-    if (rs === "aktiv") where.deleted_at = null;
-    else if (rs === "silinmis") where.deleted_at = { not: null };
+    if (rs === "aktiv") {
+      where.deleted_at = null;
+      // QA-standart: Aktiv = ləğv edilməmiş də (istifadəçi seçsə görünür)
+      if (!filter.status || (Array.isArray(filter.status) && filter.status.length === 0)) where.status = { not: "legv" };
+    }
+    else if (rs === "silinmis") {
+      // ləğvlilər də "silinmişlər"də görünür
+      (where as Record<string, unknown>).AND = [ { OR: [ { deleted_at: { not: null } }, { status: "legv" } ] } ];
+    }
     if (filter.status) where.status = filter.status;
     if (filter.kaynakId) where.kaynak_anbar_id = filter.kaynakId;
     if (filter.hedefId) where.hedef_anbar_id = filter.hedefId;

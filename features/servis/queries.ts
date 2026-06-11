@@ -52,8 +52,15 @@ export async function getServisRequests(filter: ServisListFilter = {}): Promise<
     const where: Prisma.servis_qeydleriWhereInput = {};
     // SOFT-DELETE: standart filter
     const rs = filter.recordStatus ?? "aktiv";
-    if (rs === "aktiv") (where as Record<string, unknown>).deleted_at = null;
-    else if (rs === "silinmis") (where as Record<string, unknown>).deleted_at = { not: null };
+    if (rs === "aktiv") {
+      (where as Record<string, unknown>).deleted_at = null;
+      // QA-standart: Aktiv = ləğv edilməmiş də (istifadəçi seçsə görünür)
+      if (!filter.status || (Array.isArray(filter.status) && filter.status.length === 0)) (where as Record<string, unknown>).status = { not: "legv" };
+    }
+    else if (rs === "silinmis") {
+      // ləğvlilər də "silinmişlər"də görünür
+      ((where as Record<string, unknown>) as Record<string, unknown>).AND = [ { OR: [ { deleted_at: { not: null } }, { status: "legv" } ] } ];
+    }
     if (filter.status) where.status = filter.status;
     if (filter.iscisi_id) where.servis_iscisi_id = filter.iscisi_id;
     if (filter.zemanet_only) where.zemanet_var = true;
