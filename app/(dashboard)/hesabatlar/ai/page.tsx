@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buildAiInsights } from "@/features/hesabatlar/ai-insights";
 import { AiGenerateButton } from "@/features/hesabatlar/components/ai-generate-button";
+import { ReportChat } from "@/features/hesabatlar/components/report-chat";
 
 export const metadata: Metadata = { title: "AI Insights" };
 
@@ -39,6 +40,9 @@ export default async function AiInsightsPage() {
           <p className="mt-1 text-sm text-muted-foreground">Biznes göstəricilərə əsaslanan AI tövsiyə və müşahidələr.</p>
         </div>
       </header>
+
+      {/* #14 Faza A — təbii dildə hesabat soruş (real datadan, oxu-only AI agent) */}
+      <ReportChat />
 
       <section className="space-y-3">
         {insights.length === 0 ? (
