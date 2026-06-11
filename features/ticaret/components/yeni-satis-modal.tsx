@@ -120,14 +120,11 @@ export function YeniSatisModal({
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [tarix, setTarix] = useState<string>(today);
-  // Default: NİSYƏ — adi satışda istifadəçi kassa seçməsə avtomatik borca düşür.
-  // POS-dan fərqli olaraq adi satış əməliyyatlarında nisyə standart davranışdır.
-  const [odenisNov, setOdenisNov] = useState<string>("nisye");
+  // Default: SEÇİLMƏYİB — istifadəçi "Pul hara daxil oldu" sahəsində ya kassa/hesab,
+  // ya da açıq "Nisyə" seçməlidir (əvvəl default "nisye" idi → səssizcə borca düşürdü).
+  const [odenisNov, setOdenisNov] = useState<string>("");
   const [kassaId, setKassaId] = useState<string>("");
   const [hesabId, setHesabId] = useState<string>("");
-  // Hybrid ödəniş: istifadəçi 100 AZN-lik satışa 30 AZN ödəniş edə bilər
-  // (rest borc qalır). Boş = ya tam ödəniş, ya tam borc.
-  const [odenilenManual, setOdenilenManual] = useState<string>("");
   const [sifarisKodu, setSifarisKodu] = useState<string>("");
 
   /* ── Marketplace block (visible when sifaris kodu or platform set) ── */
@@ -299,7 +296,18 @@ export function YeniSatisModal({
       clearTimeout(t);
     };
   }, [open, effectiveEndirimPct]);
-  const qaytarilacaq = Math.max(0, musteriVerir - yekun);
+  // ── Ödəniş hesablanması (TƏK mənbə: "Müştəri verir") ──────────────────
+  // Əvvəl iki qopuq giriş vardı: "Müştəri verir/Qaytarılacaq" (dekorativ, serverə
+  // getmirdi) + "Ödənilən məbləğ" (əsl). Kassa seçilməyəndə isə satış səssizcə tam
+  // nisyəyə düşürdü — yəni eyni anda "qaytarılacaq 8" göstərib borca yazırdı.
+  const accountPicked = !!(kassaId || hesabId);
+  // Hesab/kassa seçiləndə "Müştəri verir" = verilən nağd/məbləğ. Boş (0) = tam ödəniş.
+  const appliedNow = accountPicked
+    ? (musteriVerir > 0 ? Math.min(musteriVerir, yekun) : yekun)
+    : 0;
+  // Qaytarma yalnız nağd verilən yekundan çox olduqda — və qalıq borc qarşılıqlı istisnadır.
+  const qaytarilacaq = accountPicked && musteriVerir > 0 ? Math.max(0, musteriVerir - yekun) : 0;
+  const qaliqBorc = Math.max(0, yekun - appliedNow);
 
   /* ── Handlers ────────────────────────────────────── */
   function addProduct(p: ProductRow) {
@@ -355,22 +363,14 @@ export function YeniSatisModal({
       .join(" ");
     const daxili = [qeyd, checks].filter(Boolean).join("\n");
 
-    // Hybrid ödəniş məntiqi:
-    // - Hesab/kassa seçilməyibsə → nisyə (full debt)
-    // - Hesab/kassa seçilibsə, odenilenManual boşdursa → tam ödəniş
-    // - odenilenManual = 0 → tam borc (account ignore)
-    // - 0 < odenilenManual < yekun → hissəvi: ödənilən hissə hesaba, qalıq borc
-    const accountPicked = !!(kassaId || hesabId);
-    const odenilenInput = odenilenManual ? Number(odenilenManual) : null;
-    const effectiveOdenilen =
-      !accountPicked ? 0 // hesab yox → nisyə (full debt)
-      : odenilenInput === null ? yekun // boş → tam ödəniş
-      : Math.max(0, Math.min(yekun, odenilenInput));
-    const isPartial = accountPicked && effectiveOdenilen > 0 && effectiveOdenilen < yekun;
-    const isFullDebt = effectiveOdenilen === 0;
-    // Sale-in semantik tipi: əgər qaliq var → nisyə (FIFO ilə bağlana bilsin)
+    // Ödəniş: tək mənbə "Müştəri verir" (yuxarıda hesablanmış appliedNow/qaliqBorc).
+    // appliedNow = bu satışa qəbul olunan (kassaya düşən), qaliqBorc = nisyə qalan.
+    // Qaytarma (musteriVerir > yekun) odenilen_mebleg-ə təsir etmir — yalnız ekranda.
+    const effectiveOdenilen = appliedNow;
+    const hasDebt = qaliqBorc > 0.001;
+    // Semantik tip: qalıq borc varsa nisyə (FIFO bağlanması üçün), tam ödənişdə hesab növü
     const effectiveOdenisNov: "negd" | "kart" | "kecirme" | "nisye" =
-      isFullDebt || isPartial ? "nisye" : (odenisNov as "negd" | "kart" | "kecirme" | "nisye");
+      !accountPicked || hasDebt ? "nisye" : (odenisNov as "negd" | "kart" | "kecirme" | "nisye");
 
     return {
       musteri_id: musteri?.id ?? null,
@@ -401,23 +401,20 @@ export function YeniSatisModal({
     if (lines.length === 0) return "Ən az 1 məhsul əlavə et";
     if (!anbarId) return "Anbar seç";
 
-    // Adi satış default nisyədir — kassa/hesab seçilməsə borc gedir.
-    // Nisyə satışda müştəri tələb olunur.
-    if (odenisNov === "nisye" && !musteri) {
-      return "Nisyə satış üçün müştəri seçilməlidir";
+    // "Pul hara daxil oldu" mütləq seçilməlidir — ya kassa/hesab, ya açıq nisyə.
+    if (!accountPicked && odenisNov !== "nisye") {
+      return "Pul hara daxil oldu? Kassa/hesab seçin və ya «Nisyə» işarələyin";
     }
-
-    // Hybrid ödəniş yoxlama — kassa seçilibsə, ödənilən məbləğ də doğru olmalı
-    const odenilen = Number(odenilenManual || 0);
-    if (odenilenManual && (isNaN(odenilen) || odenilen < 0)) {
-      return "Ödənilən məbləğ yanlışdır";
+    // Nağd/məbləğ yazılıbsa, mütləq kassa/hesab seçilməlidir (pul hara düşəcək).
+    if (!accountPicked && musteriVerir > 0) {
+      return "Ödəniş üçün əvvəlcə kassa/hesab seçin (pul hara düşəcək?)";
     }
-    if (odenilen > yekun + 0.001) {
-      return `Ödənilən məbləğ ümumi məbləğdən çox ola bilməz (${yekun.toFixed(2)} AZN)`;
-    }
-    if (odenilen > 0 && odenilen < yekun && !musteri) {
-      // Hissəvi ödəniş = qalıq borc → müştəri seçilməlidir
-      return "Hissəvi ödənişdə qalan məbləğ borc olur — müştəri seçilməlidir";
+    if (musteriVerir < 0) return "«Müştəri verir» məbləği yanlışdır";
+    // Qalıq borc (tam nisyə və ya hissəvi ödəniş) → müştəri tələb olunur.
+    if (qaliqBorc > 0.001 && !musteri) {
+      return accountPicked
+        ? "Hissəvi ödənişdə qalıq borc olur — müştəri seçilməlidir"
+        : "Nisyə satış üçün müştəri seçilməlidir";
     }
     return null;
   }
@@ -719,43 +716,39 @@ export function YeniSatisModal({
         </div>
       </div>
 
-      {/* Hybrid (hissəvi) ödəniş — kassa/hesab seçilibsə görünür */}
-      {(kassaId || hesabId) && (
+      {/* Ödəniş — kassa/hesab seçiləndə görünür. "Müştəri verir" TƏK mənbədir:
+          qaytarma və qalıq borc bundan hesablanır (qarşılıqlı istisna). */}
+      {accountPicked && (
         <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50/40 dark:bg-emerald-500/5 dark:border-emerald-500/30 p-2.5">
-          <div className="mb-1.5 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-              Hissəvi ödəniş (opsional)
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              Boş = tam ödəniş ({yekun.toFixed(2)} AZN)
-            </span>
-          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label1>Ödənilən məbləğ</Label1>
+              <Label1>Müştəri verir (₼)</Label1>
               <Input
                 type="number"
-                value={odenilenManual}
-                onChange={(e) => setOdenilenManual(e.target.value)}
+                value={musteriVerir > 0 ? musteriVerir : ""}
+                onChange={(e) => setMusteriVerir(Number(e.target.value) || 0)}
                 min={0}
-                max={yekun}
                 step="0.01"
                 placeholder={`${yekun.toFixed(2)} (tam)`}
-                className="h-8 text-xs"
+                className="h-8 text-xs tabular-nums"
               />
+              <p className="mt-0.5 text-[10px] text-muted-foreground">
+                Boş = tam ödəniş ({yekun.toFixed(2)} ₼)
+              </p>
             </div>
-            <div className="flex flex-col justify-end">
-              {odenilenManual && Number(odenilenManual) > 0 && Number(odenilenManual) < yekun ? (
-                <div className="rounded-md border border-amber-400/50 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
-                  ⚠ Qalıq borc: <span className="font-bold">{(yekun - Number(odenilenManual)).toFixed(2)} AZN</span> — müştəri lazımdır
+            <div className="flex flex-col justify-end gap-1">
+              {qaytarilacaq > 0 && (
+                <div className="rounded-md border border-sky-400/50 bg-sky-50 dark:bg-sky-500/10 px-2 py-1 text-[11px] text-sky-700 dark:text-sky-300">
+                  Qaytarılacaq: <span className="font-bold">{qaytarilacaq.toFixed(2)} ₼</span>
                 </div>
-              ) : odenilenManual && Number(odenilenManual) === 0 ? (
+              )}
+              {qaliqBorc > 0.001 ? (
                 <div className="rounded-md border border-amber-400/50 bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
-                  Tam borc ({yekun.toFixed(2)} AZN)
+                  ⚠ Qalıq borc: <span className="font-bold">{qaliqBorc.toFixed(2)} ₼</span> — müştəri lazımdır
                 </div>
               ) : (
                 <div className="rounded-md border border-emerald-400/50 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-400">
-                  ✓ Tam ödəniş
+                  ✓ Tam ödənildi
                 </div>
               )}
             </div>
@@ -1092,27 +1085,8 @@ export function YeniSatisModal({
         </div>
       )}
 
-      {/* Customer pays / change */}
-      <div className="mb-3 grid grid-cols-2 gap-2">
-        <div>
-          <Label1>Müştəri verir (₼)</Label1>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            value={musteriVerir > 0 ? musteriVerir : ""}
-            placeholder="0"
-            onChange={(e) => setMusteriVerir(Number(e.target.value) || 0)}
-            className="h-8 text-xs tabular-nums"
-          />
-        </div>
-        <div>
-          <Label1>Qaytarılacaq</Label1>
-          <div className="flex h-8 items-center text-sm font-semibold tabular-nums">
-            {formatMoney(qaytarilacaq)}
-          </div>
-        </div>
-      </div>
+      {/* "Müştəri verir / Qaytarılacaq" yuxarıda — Pul hara daxil oldu blokunda
+          (tək mənbə). Burada təkrar göstərilmir. */}
 
       {/* Qeyd */}
       <div className="mb-3">
