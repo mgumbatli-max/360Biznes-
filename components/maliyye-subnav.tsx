@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
+import { useIcmalOn } from "@/features/shared/use-icmal";
 import { OpPickerTrigger } from "@/features/maliyye/components/op-picker-dialog";
 import {
   Activity,
@@ -70,7 +71,7 @@ export type FinQuickKey =
  */
 const DASHBOARD_TAB: Tab = {
   href: "/maliyye",
-  label: "Dashboard",
+  label: "İcmal",
   Icon: LayoutDashboard,
 };
 
@@ -142,6 +143,7 @@ function findActiveGroup(active: string): Group | null {
 export function MaliyyeSubNav({ active }: { active: string }) {
   const activeGroup = findActiveGroup(active);
   const isDashboard = active === DASHBOARD_TAB.href;
+  const icmalOn = useIcmalOn("maliyye");
 
   return (
     <div className="space-y-2 mb-4" data-subnav>
@@ -149,6 +151,7 @@ export function MaliyyeSubNav({ active }: { active: string }) {
         {/* Primary group bar */}
         <div className="flex min-w-0 flex-1 rounded-xl border border-border bg-secondary/40 p-1">
           <ScrollActiveIntoView className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
+            {(icmalOn || isDashboard) && (
             <Link
               href={DASHBOARD_TAB.href}
               data-active={isDashboard ? "true" : undefined}
@@ -161,6 +164,7 @@ export function MaliyyeSubNav({ active }: { active: string }) {
               <DASHBOARD_TAB.Icon className="h-3.5 w-3.5" />
               <span>{DASHBOARD_TAB.label}</span>
             </Link>
+            )}
 
             {MALIYYE_GROUPS.map((g) => {
               const isOn = activeGroup?.key === g.key;

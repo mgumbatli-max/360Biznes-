@@ -5,6 +5,7 @@ import { getAppMode } from "@/lib/app-mode";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import {
   LITE_MODULES,
+  MODULE_LANDINGS,
   type Density,
   type FontScale,
   type MobileLayout,
@@ -26,6 +27,8 @@ export type LiteDesign = {
 export type LiteModuleConfig = {
   enabled: boolean;
   blocks: Record<string, boolean>;
+  /** İcmal bağlı olanda modulun açıldığı səhifə (MODULE_LANDINGS-dən). */
+  landing?: string;
 };
 
 export type LiteConfig = {
@@ -49,7 +52,11 @@ export function defaultLiteConfig(): LiteConfig {
   for (const m of LITE_MODULES) {
     const blocks: Record<string, boolean> = {};
     for (const b of m.bloklar) blocks[b.kod] = b.liteDefault;
-    modules[m.kod] = { enabled: true, blocks };
+    modules[m.kod] = {
+      enabled: true,
+      blocks,
+      landing: MODULE_LANDINGS[m.kod]?.[0]?.href,
+    };
   }
   return { design: { ...DEFAULT_DESIGN }, modules };
 }
@@ -61,9 +68,14 @@ function mergeConfig(def: LiteConfig, saved: Partial<LiteConfig> | null): LiteCo
   const modules: Record<string, LiteModuleConfig> = {};
   for (const [kod, defMod] of Object.entries(def.modules)) {
     const savedMod = saved.modules?.[kod];
+    const allowedLandings = (MODULE_LANDINGS[kod] ?? []).map((l) => l.href);
     modules[kod] = {
       enabled: savedMod?.enabled ?? defMod.enabled,
       blocks: { ...defMod.blocks, ...(savedMod?.blocks ?? {}) },
+      landing:
+        savedMod?.landing && allowedLandings.includes(savedMod.landing)
+          ? savedMod.landing
+          : defMod.landing,
     };
   }
   return { design, modules };
@@ -116,3 +128,30 @@ export async function liteGate(modul: string): Promise<(blok: string) => boolean
 }
 
 export { COOKIE_GROUP as LITE_CONFIG_GROUP, CONFIG_KEY as LITE_CONFIG_KEY };
+
+/**
+ * Modul girişi — HƏR İKİ rejimdə (Lite və Pro) işləyir.
+ * İcmal (modulun öz dashboardu) görünür YALNIZ:
+ *   1) Ayarlarda "Modulun öz dashboardu" bloku AÇIQdırsa, VƏ
+ *   2) Rolda icazə varsa (`icmal.<modul>`); sahibkar/admin/direktor bypass.
+ * Bağlıdırsa modul `landing` səhifəsinə (ayarlardan seçilir) açılır.
+ */
+export async function getModuleEntry(
+  modul: string,
+): Promise<{ icmalOn: boolean; landing: string }> {
+  const cfg = await getLiteConfig();
+  const m = cfg.modules[modul];
+  const landing = m?.landing ?? MODULE_LANDINGS[modul]?.[0]?.href ?? "/dashboard";
+  if (m?.blocks?.dashboard !== true) return { icmalOn: false, landing };
+
+  const session = await auth();
+  const rolAd = ((session?.user as { rol_ad?: string } | undefined)?.rol_ad ?? "").toLowerCase();
+  const privileged =
+    rolAd.includes("sahibkar") || rolAd.includes("admin") ||
+    rolAd.includes("owner") || rolAd.includes("direktor");
+  if (privileged) return { icmalOn: true, landing };
+
+  const { getRequestPermissions } = await import("@/lib/auth/get-permissions");
+  const icazeler = await getRequestPermissions();
+  return { icmalOn: icazeler.includes(`icmal.${modul}`), landing };
+}

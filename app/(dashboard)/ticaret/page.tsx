@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { liteGate } from "@/lib/lite/config";
+import { getModuleEntry } from "@/lib/lite/config";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
@@ -262,12 +262,12 @@ async function TopProductsAndFunnelSection() {
 }
 
 export default async function TicaretHubPage() {
-  // QA (istifadəçi istəyi): "ümumi 1 dashboard olur" — Lite-da modulun öz
-  // icmal/KPI səhifəsi DEFAULT bağlıdır → birbaşa iş siyahısına yönlənir.
-  // Ayarlar → Görünüş-də "Modulun öz dashboardu" bloku ilə açıla bilər.
+  // Modul Giriş Sistemi: icmal (modulun öz dashboardu) HƏR İKİ rejimdə yalnız
+  // ayar AÇIQ + rolda icazə (icmal.ticaret) olduqda görünür; əks halda modul
+  // birbaşa iş səhifəsinə (ayarlardan seçilən landing) açılır.
   {
-    const __lite = await liteGate("ticaret");
-    if (!__lite("dashboard")) redirect("/ticaret/satislar");
+    const __entry = await getModuleEntry("ticaret");
+    if (!__entry.icmalOn) redirect(__entry.landing);
   }
 
   const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");

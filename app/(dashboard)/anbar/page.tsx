@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { liteGate } from "@/lib/lite/config";
+import { getModuleEntry } from "@/lib/lite/config";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -287,12 +287,12 @@ function BreakdownFallback() {
 }
 
 export default async function AnbarDashboardPage() {
-  // QA (istifadəçi istəyi): "ümumi 1 dashboard olur" — Lite-da modulun öz
-  // icmal/KPI səhifəsi DEFAULT bağlıdır → birbaşa iş siyahısına yönlənir.
-  // Ayarlar → Görünüş-də "Modulun öz dashboardu" bloku ilə açıla bilər.
+  // Modul Giriş Sistemi: icmal (modulun öz dashboardu) HƏR İKİ rejimdə yalnız
+  // ayar AÇIQ + rolda icazə (icmal.anbar) olduqda görünür; əks halda modul
+  // birbaşa iş səhifəsinə (ayarlardan seçilən landing) açılır.
   {
-    const __lite = await liteGate("anbar");
-    if (!__lite("dashboard")) redirect("/anbar/mehsullar");
+    const __entry = await getModuleEntry("anbar");
+    if (!__entry.icmalOn) redirect(__entry.landing);
   }
 
   await requireAnbarPerm();

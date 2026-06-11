@@ -114,6 +114,30 @@ export const LITE_MODULES: LiteModuleDef[] = [
   },
 ];
 
+/* ── Modul giriş səhifəsi seçimləri ──────────────────────────────────────
+   İcmal (modul dashboardu) bağlı olanda modul bu səhifəyə açılır.
+   Ayarlarda seçilir; ilk element default-dur. */
+export const MODULE_LANDINGS: Record<string, { href: string; ad: string }[]> = {
+  ticaret: [
+    { href: "/ticaret/emeliyyat", ad: "Əməliyyatlar (hamısı)" },
+    { href: "/ticaret/satislar", ad: "Satışlar" },
+    { href: "/ticaret/alislar", ad: "Alışlar" },
+  ],
+  anbar: [
+    { href: "/anbar/mehsullar", ad: "Məhsullar" },
+    { href: "/anbar/stok", ad: "Stok vəziyyəti" },
+    { href: "/anbar/hereketler", ad: "Hərəkətlər" },
+  ],
+  maliyye: [
+    { href: "/maliyye/emeliyyat", ad: "Əməliyyatlar (jurnal)" },
+    { href: "/maliyye/debitor", ad: "Debitorlar" },
+  ],
+  elaqe: [
+    { href: "/elaqe/musteriler", ad: "Müştərilər" },
+    { href: "/elaqe/techizatcilar", ad: "Təchizatçılar" },
+  ],
+};
+
 /* ── Dizayn forması seçimləri ─────────────────────────────────────────── */
 
 export const DENSITY_OPTIONS = [

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ScrollActiveIntoView } from "@/components/scroll-active-into-view";
+import { useIcmalOn } from "@/features/shared/use-icmal";
 import {
   LayoutDashboard,
   Package,
@@ -48,7 +49,7 @@ type AnbarGroup = {
  */
 const DASHBOARD_TAB: AnbarTab = {
   href: "/anbar",
-  label: "Dashboard",
+  label: "İcmal",
   Icon: LayoutDashboard,
 };
 
@@ -111,6 +112,7 @@ function findActiveGroup(active: string): AnbarGroup | null {
 export function AnbarSubNav({ active }: { active: string }) {
   const activeGroup = findActiveGroup(active);
   const isDashboard = active === DASHBOARD_TAB.href;
+  const icmalOn = useIcmalOn("anbar");
 
   return (
     <div className="space-y-2 mb-4" data-subnav>
@@ -118,6 +120,7 @@ export function AnbarSubNav({ active }: { active: string }) {
       <div className="flex min-w-0 rounded-xl border border-border bg-secondary/40 p-1">
         <ScrollActiveIntoView className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto scrollbar-thin">
           {/* Dashboard solo button */}
+          {(icmalOn || isDashboard) && (
           <Link
             href={DASHBOARD_TAB.href}
             data-active={isDashboard ? "true" : undefined}
@@ -130,6 +133,7 @@ export function AnbarSubNav({ active }: { active: string }) {
             <DASHBOARD_TAB.Icon className="h-3.5 w-3.5" />
             <span>{DASHBOARD_TAB.label}</span>
           </Link>
+          )}
 
           {/* Group buttons */}
           {ANBAR_GROUPS.map((g) => {

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   LITE_MODULES,
+  MODULE_LANDINGS,
   DENSITY_OPTIONS,
   FONT_OPTIONS,
   MOBILE_LAYOUT_OPTIONS,
@@ -87,6 +88,12 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
           blocks: { ...c.modules[m].blocks, [b]: !c.modules[m].blocks[b] },
         },
       },
+    }));
+
+  const setLanding = (m: string, href: string) =>
+    setCfg((c) => ({
+      ...c,
+      modules: { ...c.modules, [m]: { ...c.modules[m], landing: href } },
     }));
 
   function save() {
@@ -196,6 +203,20 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
                   />
                 </label>
               </div>
+              {MODULE_LANDINGS[m.kod] && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">Giriş səhifəsi (icmal bağlı olanda):</span>
+                  <select
+                    value={mc.landing ?? MODULE_LANDINGS[m.kod][0].href}
+                    onChange={(e) => setLanding(m.kod, e.target.value)}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  >
+                    {MODULE_LANDINGS[m.kod].map((l) => (
+                      <option key={l.href} value={l.href}>{l.ad}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {mc.enabled && (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {m.bloklar.map((b) => (

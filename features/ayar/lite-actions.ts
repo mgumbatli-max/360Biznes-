@@ -13,6 +13,7 @@ import {
 } from "@/lib/lite/config";
 import {
   ACCENT_OPTIONS,
+  MODULE_LANDINGS,
   DENSITY_OPTIONS,
   FONT_OPTIONS,
   LITE_MODULES,
@@ -42,9 +43,11 @@ function sanitize(input: any): LiteConfig {
       blocks[b.kod] =
         typeof sm.blocks?.[b.kod] === "boolean" ? sm.blocks[b.kod] : b.liteDefault;
     }
+    const allowedL = (MODULE_LANDINGS[m.kod] ?? []).map((l) => l.href);
     modules[m.kod] = {
       enabled: typeof sm.enabled === "boolean" ? sm.enabled : true,
       blocks,
+      landing: allowedL.includes(String(sm.landing)) ? String(sm.landing) : allowedL[0],
     };
   }
   return { design, modules };

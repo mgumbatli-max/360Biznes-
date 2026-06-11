@@ -6,8 +6,8 @@ import { auth } from "@/auth";
 import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { getAppMode } from "@/lib/app-mode";
-import { getLiteConfig } from "@/lib/lite/config";
-import { LiteThemeScript } from "@/components/layout/lite-theme";
+import { getLiteConfig, getModuleEntry } from "@/lib/lite/config";
+import { LiteThemeScript, IcmalAttrScript } from "@/components/layout/lite-theme";
 import { gateRoute } from "@/lib/auth/route-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -121,6 +121,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const appMode = await getAppMode();
   const liteDesign = appMode === "lite" ? (await getLiteConfig()).design : null;
 
+  // Modul icmalları (ayar + icazə) — subnav İcmal tabları üçün (hər iki rejim)
+  const icmalModules = (
+    await Promise.all(
+      ["ticaret", "anbar", "maliyye", "elaqe"].map(async (m) =>
+        (await getModuleEntry(m)).icmalOn ? m : null,
+      ),
+    )
+  ).filter(Boolean) as string[];
+
   // Mərkəzi route gate — kassir /maliyye URL-ə yaza bilməsin və s.
   // Sahibkar/admin/owner rolları onsuz da bypass-ed olunur (gateRoute içində).
   try {
@@ -154,6 +163,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <PermissionsProvider icazeler={icazeler}>
         {/* Lite dizayn forması — SSR inline script, ilk paint-dən əvvəl (FOUC yox) */}
         <LiteThemeScript design={liteDesign} active={appMode === "lite"} />
+        <IcmalAttrScript modules={icmalModules} />
         <EmbedDetector />
         <NavigationTracker />
         <RouteProgress />

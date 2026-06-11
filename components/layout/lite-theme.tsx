@@ -8,6 +8,17 @@ import type { LiteDesign } from "@/lib/lite/config";
  *
  * `active=false` (Pro) → atributlar silinir. Server Component-dir.
  */
+/**
+ * Görünən modul-icmalları `<html data-icmal="ticaret,anbar">` kimi yazır —
+ * client subnavlar İcmal tabını bu atributdan oxuyur (rejimdən asılı deyil).
+ */
+export function IcmalAttrScript({ modules }: { modules: string[] }) {
+  const js =
+    `(function(){try{document.documentElement.dataset.icmal=` +
+    `${JSON.stringify(modules.join(","))};}catch(_){}})();`;
+  return <script dangerouslySetInnerHTML={{ __html: js }} />;
+}
+
 export function LiteThemeScript({
   design,
   active,
