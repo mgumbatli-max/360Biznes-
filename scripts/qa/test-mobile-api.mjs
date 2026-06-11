@@ -21,5 +21,8 @@ console.log("me (yanlış token):", badtok.s, "(401 olmalı)");
 const ref = await j("/api/mobile/v1/auth/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: refresh }) });
 console.log("refresh:", ref.s, ref.b.accessToken ? "yeni access ✓" : JSON.stringify(ref.b));
 
+const list = await j("/api/mobile/v1/mehsullar?q=", { headers: { Authorization: "Bearer " + tok } });
+console.log("mehsullar:", list.s, "say:", list.b?.total, "ilk:", list.b?.items?.[0]?.ad ?? "(boş)");
+
 const out = await j("/api/mobile/v1/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: ref.b.refreshToken || refresh }) });
 console.log("logout:", out.s, out.b.ok ? "✓" : "");
