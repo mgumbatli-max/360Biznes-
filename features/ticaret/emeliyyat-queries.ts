@@ -42,6 +42,8 @@ export type OperationFilter = {
   from?: Date;
   to?: Date;
   search?: string;
+  /** Soft-delete standartı: aktiv = silinməmiş+ləğvsiz (default); silinmis = yalnız onlar; hamisi = hər ikisi */
+  recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
 
 export async function getTradeOperations(
@@ -59,6 +61,19 @@ export async function getTradeOperations(
 
     const q = filter.search?.trim();
 
+    // Soft-delete standartı (maliyyə bölməsindəki kimi) — 4 sənəd növünə də tətbiq olunur.
+    // aktiv: silinməmiş VƏ ləğvsiz; silinmis: silinmiş VƏ YA ləğvli; hamisi: filtr yox.
+    const rs = filter.recordStatus ?? "aktiv";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const applyRecordStatus = (where: any) => {
+      if (rs === "aktiv") {
+        where.deleted_at = null;
+        if (!filter.status?.length) where.status = { not: "legv" };
+      } else if (rs === "silinmis") {
+        where.AND = [...(where.AND ?? []), { OR: [{ deleted_at: { not: null } }, { status: "legv" }] }];
+      }
+    };
+
     const result: OperationRow[] = [];
 
     if (want("satis")) {
@@ -74,6 +89,7 @@ export async function getTradeOperations(
           { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
         ];
       }
+      applyRecordStatus(where);
       const rows = await prisma.satis_sifarisleri.findMany({
         where,
         orderBy: [{ tarix: "desc" }, { yaradildi: "desc" }],
@@ -139,6 +155,7 @@ export async function getTradeOperations(
           { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
         ];
       }
+      applyRecordStatus(where);
       const rows = await prisma.alis_sifarisleri.findMany({
         where,
         orderBy: [{ tarix: "desc" }, { yaradildi: "desc" }],
@@ -242,6 +259,7 @@ export async function getTradeOperations(
           { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
         ];
       }
+      applyRecordStatus(where);
       const rows = await prisma.qaytarma_sifarisleri.findMany({
         where,
         orderBy: [{ tarix: "desc" }, { yaradildi: "desc" }],
@@ -304,6 +322,7 @@ export async function getTradeOperations(
       if (q) {
         where.AND = [{ nomre: { contains: q, mode: "insensitive" } }];
       }
+      applyRecordStatus(where);
       const rows = await prisma.anbar_transferleri.findMany({
         where,
         orderBy: [{ tarix: "desc" }, { yaradildi: "desc" }],

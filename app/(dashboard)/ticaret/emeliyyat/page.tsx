@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { TicaretSubNav } from "@/components/ticaret-subnav";
 import { RefreshButton } from "@/components/refresh-button";
+import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import { OperationsTable } from "@/features/ticaret/components/operations-table";
 import { OperationsFilters } from "@/features/ticaret/components/operations-filters";
 import {
@@ -39,6 +40,12 @@ export default async function TicaretEmeliyyatPage({
     .map((s) => s.trim())
     .filter(Boolean) as OperationKind[];
 
+  // SOFT-DELETE STANDARTI (#13): standartda silinmiş/ləğv görünmür; icazə ilə "Hamısı"
+  const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
+  const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(
+    sp as Record<string, string | string[] | undefined>,
+  );
+
   const [items, opts] = await Promise.all([
     getTradeOperations({
       novlar: novlar.length ? novlar : undefined,
@@ -48,6 +55,7 @@ export default async function TicaretEmeliyyatPage({
       anbar_id: sp.anbar ? Number(sp.anbar) : undefined,
       kontragent_id: sp.kontragent || undefined,
       status: sp.status ? sp.status.split(",") : undefined,
+      recordStatus,
     }),
     getOperationFilterOptions(),
   ]);
@@ -63,6 +71,7 @@ export default async function TicaretEmeliyyatPage({
         </div>
         <div className="flex items-center gap-2">
           {/* «Yeni əməliyyat» düyməsi indi TicaretSubNav-da sabit görünür */}
+          <RecordStatusFilter canSeeDeleted={canSeeDeleted} />
           <RefreshButton />
         </div>
       </div>
