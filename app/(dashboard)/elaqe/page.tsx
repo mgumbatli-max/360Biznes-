@@ -17,13 +17,15 @@ import {
   Moon,
   UserX,
   CreditCard,
+  FileSpreadsheet,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
 import { ContactsTable } from "@/features/elaqe/components/contacts-table";
-import { ImportContactsDialog } from "@/features/elaqe/components/import-dialog";
+// QA #11: ayrıca import dialoqu çıxarıldı — idxal yalnız Ayarlar > İnteqrasiyada
 import {
   getContacts,
   getManagers,
@@ -103,7 +105,12 @@ export default async function ElaqeHubPage({ searchParams }: { searchParams: Pro
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ImportContactsDialog defaultNov="musteri" />
+          {/* İmport mərkəzləşdirildi → Ayarlar > İnteqrasiya (#11) */}
+          <Link href="/ayarlar/inteqrasiya?key=musteri">
+            <Button variant="outline" size="sm">
+              <FileSpreadsheet className="h-3.5 w-3.5" /> Excel idxal
+            </Button>
+          </Link>
           <ContactDialog defaultNov="musteri" managers={managers} />
         </div>
       </header>
