@@ -7,7 +7,8 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { audit } from "@/lib/audit/log";
-import { requireAyarActionPerm } from "@/features/ayarlar/access-guard";
+import { requireAyarActionPerm, isAyarPrivileged } from "@/features/ayarlar/access-guard";
+import { auth } from "@/auth";
 
 // Form data only has strings; `z.coerce.boolean()` treats "false" as true
 // (any non-empty string is truthy). Use this helper instead for live toggles.
@@ -164,20 +165,27 @@ export async function saveRolePerms(input: FormData): Promise<ActionResult> {
       });
       const prevIds = prevPerms.map((p) => p.icaze_id);
 
+      // Uydurma/yanlış icaze_id-lər createMany-də FK xətası ilə bütün rolu
+      // icazəsiz qoya bilər — ona görə yalnız real mövcud icaze_id-ləri yazırıq.
+      const validPerms = ids.length
+        ? await prisma.icazeler.findMany({ where: { id: { in: ids } }, select: { id: true } })
+        : [];
+      const validIds = validPerms.map((p) => p.id);
+
       await prisma.$transaction([
         prisma.rol_icazeleri.deleteMany({ where: { rol_id: rolId } }),
         prisma.rol_icazeleri.createMany({
-          data: ids.map((icazeId) => ({ rol_id: rolId, icaze_id: icazeId })),
+          data: validIds.map((icazeId) => ({ rol_id: rolId, icaze_id: icazeId })),
           skipDuplicates: true,
         }),
       ]);
       await audit("icaze_dəyişdir", "rol", rolId, {
         evvelki_data: { icaze_ids: prevIds.sort((a, b) => a - b), count: prevIds.length },
         yeni_data: {
-          icaze_ids: ids.sort((a, b) => a - b),
-          count: ids.length,
-          added: ids.filter((i) => !prevIds.includes(i)),
-          removed: prevIds.filter((i) => !ids.includes(i)),
+          icaze_ids: validIds.sort((a, b) => a - b),
+          count: validIds.length,
+          added: validIds.filter((i) => !prevIds.includes(i)),
+          removed: prevIds.filter((i) => !validIds.includes(i)),
         },
         sebeb: `Rol icazələri yeniləndi (${rol.ad})`,
       });
@@ -355,7 +363,11 @@ export async function createRoleFromTemplate(
 
 const RoleCloneSchema = z.object({
   source_id: z.coerce.number().int().positive(),
-  ad: z.string().min(2).max(50),
+  ad: z
+    .string()
+    .min(2)
+    .max(50)
+    .refine((s) => !RESERVED_ROLE_NAME.test(s), "Bu ad sistem rolları üçün qorunur — başqa ad seçin"),
 });
 
 export async function cloneRole(
@@ -783,7 +795,7 @@ export async function createUser(input: FormData): Promise<ActionResult> {
     const { sahibkarId } = requireTenant();
     try {
       const existing = await prisma.istifadeciler.findFirst({
-        where: { sahibkar_id: sahibkarId, email: d.email.toLowerCase() },
+        where: { sahibkar_id: sahibkarId, email: d.email.toLowerCase(), deleted_at: null },
       });
       if (existing) return { ok: false, error: "Bu email artıq mövcuddur" };
 
@@ -913,22 +925,42 @@ const ChangeUserRoleSchema = z.object({
 });
 
 export async function changeUserRole(input: FormData): Promise<ActionResult> {
-  const __g = await requireAyarActionPerm(["ayar.rol_idare", "rol.idare"]);
+  // Rol təyini istifadəçi idarəsi səviyyəsində icazə tələb edir (yalnız rol.idare
+  // yetərli deyildi — privilege boundary istifadəçi idarəsidir).
+  const __g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
   if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = ChangeUserRoleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
+  const session = await auth();
+  const actorPrivileged = isAyarPrivileged(session?.user?.rol_ad);
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const [user, rol] = await Promise.all([
-        prisma.istifadeciler.findFirst({ where: { id: d.id, sahibkar_id: sahibkarId } }),
+        prisma.istifadeciler.findFirst({
+          where: { id: d.id, sahibkar_id: sahibkarId },
+          include: { roles: { select: { ad: true } } },
+        }),
         prisma.roles.findFirst({
           where: { id: d.rol_id, OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
         }),
       ]);
       if (!user) return { ok: false, error: "İstifadəçi tapılmadı" };
       if (!rol) return { ok: false, error: "Rol tapılmadı" };
+      // Self-escalation: istifadəçi öz rolunu dəyişə bilməz.
+      if (d.id === istifadeciId) {
+        return { ok: false, error: "Öz rolunuzu dəyişə bilməzsiniz" };
+      }
+      // Lockout müdafiəsi: sahibkar/owner səviyyəli istifadəçinin rolu yalnız
+      // imtiyazlı (sahibkar/admin/owner/direktor) tərəfindən dəyişdirilə bilər.
+      if (isAyarPrivileged(user.roles?.ad) && !actorPrivileged) {
+        return { ok: false, error: "Bu istifadəçinin rolunu dəyişmək üçün icazəniz çatmır" };
+      }
+      // Escalation: imtiyazlı rol yalnız imtiyazlı istifadəçi tərəfindən təyin oluna bilər.
+      if (isAyarPrivileged(rol.ad) && !actorPrivileged) {
+        return { ok: false, error: "İcazə səviyyənizdən yuxarı rol təyin edə bilməzsiniz" };
+      }
       await prisma.istifadeciler.update({ where: { id: d.id }, data: { rol_id: d.rol_id } });
       revalidatePath("/ayarlar/istifadeci");
       return { ok: true };
@@ -989,13 +1021,22 @@ export async function deleteUser(input: FormData): Promise<ActionResult> {
         where: { id, sahibkar_id: sahibkarId },
       });
       if (!u) return { ok: false, error: "İstifadəçi tapılmadı" };
-      // Soft delete by deactivating instead of hard delete (preserves audit)
+      // Soft delete by deactivating instead of hard delete (preserves audit).
+      // Email-i arxivləyirik (suffikslə) ki, @@unique([sahibkar_id, email]) yeni
+      // hesabı bloklamasın; deleted_* sütunları digər modullarla uyğun doldurulur.
+      const archivedEmail = u.email && !u.email.startsWith("deleted+")
+        ? `deleted+${Date.now()}+${u.email}`.slice(0, 150)
+        : u.email;
       await prisma.istifadeciler.update({
         where: { id },
         data: {
           aktiv: false,
+          email: archivedEmail,
           deaktiv_tarix: new Date(),
           deaktiv_sebeb: "Silindi (deaktiv olundu)",
+          deleted_at: new Date(),
+          deleted_by: istifadeciId ?? null,
+          delete_reason: "İstifadəçi silindi",
         },
       });
       revalidatePath("/ayarlar/istifadeci");
