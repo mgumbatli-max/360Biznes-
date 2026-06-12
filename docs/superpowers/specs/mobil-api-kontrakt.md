@@ -42,7 +42,18 @@ Auth: Bearer + `mehsul.yarat`. Body: ProductSchema sahələri (məcburi: `ad`; `
 200: `{ "ok": true, "id": string, "pending_approval"?: boolean }`
 
 ### GET `/api/mobile/v1/mehsullar/[id]`
-Auth: Bearer + `mehsul.oxu`/`anbar.oxu`. 200: `{ "item": ProductDetail }` (detal — qiymət pillələri, stok, və s.).
+Auth: Bearer + `mehsul.oxu`/`anbar.oxu`. 200: zəngin paket (detal ekranı akkordeonları üçün):
+```
+{
+  "item": { ...məhsul sahələri (qiymət/Decimal-lar number, tarixlər ISO), kateqoriyalar, markalar, olcu_vahidleri },
+  "stok": [{ anbar_id, anbar_ad, miqdar, son_qiymet }],            // anbar üzrə stok
+  "hereketler": [{ id, tarix, nov, anbar_ad, miqdar, qiymet, edilen_ad, qeyd, ref_nov }],  // son 30 hərəkət
+  "son_satislar": [{ sale_id, nomre, tarix, miqdar, vahid_qiymet, cemi, musteri_ad }],     // son 20 satış
+  "stats": { "bu_ay": { qty, mebleg }, "son_30": { qty, mebleg }, "toplam": { qty, mebleg, sifaris_say } },
+  "servis": { "rows": [{ id, nomre, yaradildi, musteri_ad, musteri_telefon, problem_tesviri, status, temir_xerci, musteriden_alinan, qapanma_tarixi, texniki_ad, qebul_eden_ad }], "stats": { total, thisYear, active } }
+}
+```
+Boş bölmələr (məs. servis qeydi yoxdursa) `rows: []` / boş massiv qaytarır — client uyğun akkordeonu gizlədir.
 
 ### PUT `/api/mobile/v1/mehsullar/[id]`
 Auth: Bearer + `mehsul.duzelt`. Body: ProductSchema sahələri. Qiymət dəyişikliyi `qiymet.duzelt` tələb edir (yoxdursa qiymət sahələri mövcud dəyərdə saxlanır).

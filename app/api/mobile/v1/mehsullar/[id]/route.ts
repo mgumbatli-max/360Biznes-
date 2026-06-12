@@ -1,9 +1,26 @@
 import { NextRequest } from "next/server";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
-import { getProductDetail } from "@/features/anbar/detail-queries";
-import { ProductSchema, saveProductCore } from "@/features/anbar/save-product-core";
+import {
+  getProductDetail,
+  getStockByWarehouse,
+  getStockMovements,
+  getRecentSalesForProduct,
+  getProductSalesStats,
+} from "@/features/anbar/detail-queries";
+import { getServisHistoryForProduct } from "@/features/servis/queries";
+import {
+  ProductSchema,
+  saveProductCore,
+  serializeForJson,
+} from "@/features/anbar/save-product-core";
 
-/** GET — məhsul detalı (oxu). */
+/**
+ * GET — məhsul detalı (oxu).
+ * Mobil detal ekranı üçün zəngin paket: baza məhsul + anbar üzrə stok +
+ * son anbar hərəkətləri + son satışlar + satış statistikası + servis tarixçəsi.
+ * `item`-dəki Decimal/Date sahələri `serializeForJson` ilə number/ISO-ya çevrilir
+ * (siyahı endpoint-i ilə tip uyğunluğu üçün); qalan paketlər artıq JSON-safe-dir.
+ */
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -15,7 +32,21 @@ export async function GET(
     }
     const item = await getProductDetail(id);
     if (!item) return { error: "Məhsul tapılmadı" };
-    return { item };
+    const [stok, hereketler, son_satislar, stats, servis] = await Promise.all([
+      getStockByWarehouse(id),
+      getStockMovements(id, 30),
+      getRecentSalesForProduct(id, 20),
+      getProductSalesStats(id),
+      getServisHistoryForProduct(id),
+    ]);
+    return {
+      item: serializeForJson(item as unknown as Record<string, unknown>),
+      stok,
+      hereketler,
+      son_satislar,
+      stats,
+      servis,
+    };
   });
 }
 
