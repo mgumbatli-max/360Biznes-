@@ -842,50 +842,59 @@ export type DailyInsight = {
   tone: "success" | "warning" | "danger" | "info";
 };
 
+async function fetchDailyInsightRaw(sahibkarId: string): Promise<DailyInsight> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  try {
+    const [today_sales, yesterday_sales, today_cust] = await Promise.all([
+      prismaUnscoped.satis_sifarisleri.aggregate({
+        where: { sahibkar_id: sahibkarId, tarix: { gte: today }, status: { not: "legv" }, qaralama: { not: true } },
+        _sum: { son_mebleg: true },
+        _count: { _all: true },
+      }),
+      prismaUnscoped.satis_sifarisleri.aggregate({
+        where: { sahibkar_id: sahibkarId, tarix: { gte: yesterday, lt: today }, status: { not: "legv" }, qaralama: { not: true } },
+        _sum: { son_mebleg: true },
+        _count: { _all: true },
+      }),
+      prismaUnscoped.kontragentler.count({
+        where: { sahibkar_id: sahibkarId, yaradildi: { gte: today }, nov: { in: ["musteri", "her_ikisi"] } },
+      }),
+    ]);
+
+    const todayTotal = Number(today_sales._sum.son_mebleg ?? 0);
+    const yesterdayTotal = Number(yesterday_sales._sum.son_mebleg ?? 0);
+    const cnt = today_sales._count._all;
+
+    if (cnt === 0) {
+      return { emoji: "🌅", text: "Bu gün hələ heç bir satış yoxdur — başlayaq?", tone: "info" };
+    }
+    if (yesterdayTotal > 0 && todayTotal > yesterdayTotal * 1.2) {
+      return { emoji: "🚀", text: `Bu gün ${cnt} satış, dünəndən ${(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100).toFixed(0)}% daha yaxşı!`, tone: "success" };
+    }
+    if (yesterdayTotal > 0 && todayTotal < yesterdayTotal * 0.7) {
+      return { emoji: "⚠️", text: `Bu gün ${cnt} satış — dünəndən ${(((yesterdayTotal - todayTotal) / yesterdayTotal) * 100).toFixed(0)}% azdır`, tone: "warning" };
+    }
+    if (today_cust > 0) {
+      return { emoji: "👋", text: `Bu gün ${today_cust} yeni müştəri qoşuldu, ${cnt} satış edildi`, tone: "success" };
+    }
+    return { emoji: "📊", text: `Bu gün ${cnt} satış işlənib. Trend stabil.`, tone: "info" };
+  } catch {
+    return { emoji: "✨", text: "Yeni iş gününüz xeyirli olsun", tone: "info" };
+  }
+}
+
 export async function getDailyInsight(): Promise<DailyInsight> {
   return withTenant(async () => {
     const sahibkarId = getCurrentTenantId();
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    try {
-      const [today_sales, yesterday_sales, today_cust] = await Promise.all([
-        prisma.satis_sifarisleri.aggregate({
-          where: { tarix: { gte: today }, status: { not: "legv" }, qaralama: { not: true } },
-          _sum: { son_mebleg: true },
-          _count: { _all: true },
-        }),
-        prisma.satis_sifarisleri.aggregate({
-          where: { tarix: { gte: yesterday, lt: today }, status: { not: "legv" }, qaralama: { not: true } },
-          _sum: { son_mebleg: true },
-          _count: { _all: true },
-        }),
-        prisma.kontragentler.count({
-          where: { sahibkar_id: sahibkarId, yaradildi: { gte: today }, nov: { in: ["musteri", "her_ikisi"] } },
-        }),
-      ]);
-
-      const todayTotal = Number(today_sales._sum.son_mebleg ?? 0);
-      const yesterdayTotal = Number(yesterday_sales._sum.son_mebleg ?? 0);
-      const cnt = today_sales._count._all;
-
-      if (cnt === 0) {
-        return { emoji: "🌅", text: "Bu gün hələ heç bir satış yoxdur — başlayaq?", tone: "info" };
-      }
-      if (yesterdayTotal > 0 && todayTotal > yesterdayTotal * 1.2) {
-        return { emoji: "🚀", text: `Bu gün ${cnt} satış, dünəndən ${(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100).toFixed(0)}% daha yaxşı!`, tone: "success" };
-      }
-      if (yesterdayTotal > 0 && todayTotal < yesterdayTotal * 0.7) {
-        return { emoji: "⚠️", text: `Bu gün ${cnt} satış — dünəndən ${(((yesterdayTotal - todayTotal) / yesterdayTotal) * 100).toFixed(0)}% azdır`, tone: "warning" };
-      }
-      if (today_cust > 0) {
-        return { emoji: "👋", text: `Bu gün ${today_cust} yeni müştəri qoşuldu, ${cnt} satış edildi`, tone: "success" };
-      }
-      return { emoji: "📊", text: `Bu gün ${cnt} satış işlənib. Trend stabil.`, tone: "info" };
-    } catch {
-      return { emoji: "✨", text: "Yeni iş gününüz xeyirli olsun", tone: "info" };
-    }
+    const cached = unstable_cache(
+      () => fetchDailyInsightRaw(sahibkarId),
+      ["dashboard-daily-insight", sahibkarId],
+      { revalidate: 60, tags: [`dashboard:${sahibkarId}`] },
+    );
+    return cached();
   });
 }

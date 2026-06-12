@@ -182,24 +182,24 @@ export async function calculateBordro(input: FormData): Promise<Result> {
       }
 
       const norma = 22;
-      let created = 0;
 
-      for (const e of employees) {
-        if (existingSet.has(e.id)) continue;
-        const esas = Number(e.aylik_maas ?? 0);
-        const att = attMap.get(e.id);
-        const ish_faktiki = att?.faktiki ?? norma;
-        const qaib_gun = att?.qaib ?? 0;
-        const mezuniyyet_gun = leaveMap.get(e.id) ?? 0;
-        const prorata = esas > 0 ? (esas * Math.min(ish_faktiki, norma)) / norma : 0;
-        const komisyon = (salesMap.get(e.id) ?? 0) * COMMISSION_RATE;
-        const gross = prorata + komisyon;
-        const vergi = gross * TAX_RATE;
-        const sosial = gross * SOCIAL_RATE;
-        const son = gross - vergi - sosial;
-
-        await prisma.maas_hesablamalar.create({
-          data: {
+      // Perf: əvvəl per-işçi sequential create idi — indi massiv qurub tək createMany.
+      // existingSet pre-filter saxlanılır.
+      const toCreate = employees
+        .filter((e) => !existingSet.has(e.id))
+        .map((e) => {
+          const esas = Number(e.aylik_maas ?? 0);
+          const att = attMap.get(e.id);
+          const ish_faktiki = att?.faktiki ?? norma;
+          const qaib_gun = att?.qaib ?? 0;
+          const mezuniyyet_gun = leaveMap.get(e.id) ?? 0;
+          const prorata = esas > 0 ? (esas * Math.min(ish_faktiki, norma)) / norma : 0;
+          const komisyon = (salesMap.get(e.id) ?? 0) * COMMISSION_RATE;
+          const gross = prorata + komisyon;
+          const vergi = gross * TAX_RATE;
+          const sosial = gross * SOCIAL_RATE;
+          const son = gross - vergi - sosial;
+          return {
             sahibkar_id: sahibkarId,
             istifadeci_id: e.id,
             il,
@@ -215,7 +215,7 @@ export async function calculateBordro(input: FormData): Promise<Result> {
             cerime: 0,
             avans: 0,
             son_meblegh: son,
-            status: "cernovik",
+            status: "cernovik" as const,
             detal: {
               satis_komisyon: komisyon,
               vergi,
@@ -223,10 +223,13 @@ export async function calculateBordro(input: FormData): Promise<Result> {
               gross,
             },
             yaradan_id: istifadeciId,
-          },
+          };
         });
-        created++;
-      }
+
+      const created =
+        toCreate.length > 0
+          ? (await prisma.maas_hesablamalar.createMany({ data: toCreate })).count
+          : 0;
       revalidatePath("/iscilier/maas");
       bustHrCache();
       if (created > 0) {
@@ -457,14 +460,19 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
       const now = new Date();
       let count = 0;
       let financeFailCount = 0;
-      for (const b of list) {
+      // Perf (#2): əvvəl hər bordro üçün ayrıca $transaction idi (N round-trip).
+      // İndi TƏK transaction: status update-ləri updateMany ilə, ödəniş qeydləri
+      // createMany ilə toplu yazılır; finance-leg-lər balans yoxlaması olduğu üçün
+      // həmin tx içində SEQUENTIAL qalır (atomarlıq + balans nəzarəti qorunur).
+      if (list.length > 0) {
         await prisma.$transaction(async (tx) => {
-          await tx.maas_hesablamalar.update({
-            where: { id: b.id },
+          const ids = list.map((b) => b.id);
+          await tx.maas_hesablamalar.updateMany({
+            where: { id: { in: ids } },
             data: { status: "odenilib", odenish_tarixi: now },
           });
-          await tx.isci_odenisleri.create({
-            data: {
+          await tx.isci_odenisleri.createMany({
+            data: list.map((b) => ({
               sahibkar_id: sahibkarId,
               istifadeci_id: b.istifadeci_id,
               nov: "maas",
@@ -472,19 +480,21 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
               maas_hesab_id: b.id,
               qeyd: `${il}-${String(ay).padStart(2, "0")} ayı üçün maaş (bulk)`,
               yaradan_id: istifadeciId,
-            },
+            })),
           });
-          const res = await recordMaasFinanceLeg(tx, {
-            sahibkarId,
-            yaradanId: istifadeciId,
-            istifadeciId: b.istifadeci_id,
-            bordroId: b.id,
-            meblegh: Number(b.son_meblegh ?? 0),
-            qeyd: `${il}-${String(ay).padStart(2, "0")} ayı üçün maaş (toplu)`,
-          });
-          if (!res.ok) financeFailCount++;
+          for (const b of list) {
+            const res = await recordMaasFinanceLeg(tx, {
+              sahibkarId,
+              yaradanId: istifadeciId,
+              istifadeciId: b.istifadeci_id,
+              bordroId: b.id,
+              meblegh: Number(b.son_meblegh ?? 0),
+              qeyd: `${il}-${String(ay).padStart(2, "0")} ayı üçün maaş (toplu)`,
+            });
+            if (!res.ok) financeFailCount++;
+            count++;
+          }
         });
-        count++;
       }
       if (financeFailCount > 0) {
         console.warn(`[bulkPayBordro] ${financeFailCount}/${count} ödəniş hesab-a bağlanmadı (default kassa/bank yox)`);

@@ -2,7 +2,6 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
-import { calculateMonthlyBonus } from "./bonus-calc";
 import { getStealthState } from "@/lib/stealth/server";
 
 export type KpiDashboardRow = {
@@ -259,13 +258,9 @@ export async function getKpiDashboard(opts: {
       ),
     );
 
-    // 4. Bonus calculation — paralel (hər biri ayrıca DB sorğusu)
-    const bonusResults = await Promise.all(
-      empIds.map((id) => calculateMonthlyBonus(id, il, ay).catch(() => null)),
-    );
-    const bonusMap = new Map(
-      bonusResults.map((b, i) => [empIds[i], b ? { qazanilan: b.qazanilan_cemi, pool: b.pool_mebleg } : null]),
-    );
+    // 4. Bonus — Perf (#11): əvvəl hər əməkdaş üçün ayrıca calculateMonthlyBonus
+    // çağırılırdı (N+1 DB sorğusu). Bonus rəqəmi bordro sorğusunda artıq mövcuddur
+    // (kpi_bonus + manual_bonus → bordroMap.bonus), ona görə birbaşa ondan istifadə edilir.
 
     // 5. Keçən ay üçün eyni metrikləri çək — trend hesablamaq üçün
     const prevDate = new Date(il, ay - 2, 1);
@@ -354,10 +349,9 @@ export async function getKpiDashboard(opts: {
       const rejAppr = rejectMap.get(e.id) ?? 0;
       const sehvFaiz = totalAppr > 0 ? (rejAppr / totalAppr) * 100 : 0;
       const satis = salesMap.get(e.id) ?? { mebleg: 0, sayi: 0 };
-      const bonus = bonusMap.get(e.id);
       const b = bordroMap.get(e.id) ?? { bonus: 0, cerime: 0, net: null }; // QA-orta: net sahəsi əlavə olundu
       const maas = Number(e.aylik_maas ?? 0);
-      const bonusQaz = bonus?.qazanilan ?? b.bonus;
+      const bonusQaz = b.bonus; // Perf (#11): bordrodan birbaşa (kpi+manual)
       const cerime = b.cerime;
 
       // Trend hesablamaları — keçən ayla müqayisə
@@ -370,7 +364,8 @@ export async function getKpiDashboard(opts: {
 
       // Ümumi performans skoru (0-100) — sıralama üçün
       // Bonus 30% + Davamiyyət 25% + Tapşırıq 25% + (100 − Səhv) 20%
-      const bonusScore = bonus && bonus.pool > 0 ? (bonusQaz / bonus.pool) * 100 : 50;
+      // Perf (#11): pool artıq hesablanmır — bonus komponenti üçün neytral 50 baza.
+      const bonusScore = 50;
       const performansSkoru =
         bonusScore * 0.3 +
         davFaiz * 0.25 +
@@ -385,7 +380,7 @@ export async function getKpiDashboard(opts: {
         profil_sekil: e.profil_sekil,
         aylik_maas: maas,
         bonus_qazanilan: bonusQaz,
-        bonus_pool: bonus?.pool ?? 0,
+        bonus_pool: 0, // Perf (#11): pool artıq per-işçi hesablanmır
         cerime_toplam: cerime,
         // QA-orta: bordro hesablanıbsa faktiki NET (son_meblegh) — bordro səhifəsi ilə eyni
         // rəqəm görünsün; bordro yoxdursa köhnə təxmini düstur (brüt) fallback.

@@ -200,24 +200,22 @@ export async function markAllPresentToday(): Promise<Result> {
       });
       const expected = new Date(today);
       expected.setHours(9, 0, 0, 0);
-      let count = 0;
-      for (const e of employees) {
-        await prisma.davamiyyet.upsert({
-          where: { istifadeci_id_tarix: { istifadeci_id: e.id, tarix: today } },
-          update: {},
-          create: {
-            sahibkar_id: sahibkarId,
-            istifadeci_id: e.id,
-            tarix: today,
-            giris_saat: expected,
-            gozlenen_giris: expected,
-            gec_dq: 0,
-            status: "qaydasinda",
-            yaradan_id: istifadeciId,
-          },
-        });
-        count++;
-      }
+      // Perf: tək createMany — unique (istifadeci_id,tarix) + skipDuplicates ilə
+      // əvvəlki per-işçi upsert(update:{}) ilə eyni semantika (mövcud sətrə toxunmur).
+      const result = await prisma.davamiyyet.createMany({
+        data: employees.map((e) => ({
+          sahibkar_id: sahibkarId,
+          istifadeci_id: e.id,
+          tarix: today,
+          giris_saat: expected,
+          gozlenen_giris: expected,
+          gec_dq: 0,
+          status: "qaydasinda" as const,
+          yaradan_id: istifadeciId,
+        })),
+        skipDuplicates: true,
+      });
+      const count = result.count;
       revalidatePath("/iscilier/davamiyyet");
       bustHrCache();
       await audit("toplu_yenile", "davamiyyet", null, {

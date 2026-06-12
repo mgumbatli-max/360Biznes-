@@ -1,7 +1,7 @@
 "use server";
 
 import ExcelJS from "exceljs";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
@@ -524,6 +524,12 @@ export async function executeImport(partiyaId: string): Promise<ActionResult<Exe
     revalidatePath("/anbar");
     revalidatePath("/anbar/mehsullar");
     revalidatePath("/ayarlar/inteqrasiya");
+
+    // İdxal yeni kateqoriya/marka/vahid yarada bilər — cache-lənmiş reference
+    // dropdown-ları (unstable_cache, 120s) köhnə qalmasın deyə tag invalidasiya
+    revalidateTag(`ref:${sahibkarId}:units`, "max");
+    revalidateTag(`ref:${sahibkarId}:brands`, "max");
+    revalidateTag(`ref:${sahibkarId}:categories`, "max");
 
     await audit("import", "mehsul_import_execute", partiyaId, {
       yeni_data: { yaradildi, yenilendi, xeta },

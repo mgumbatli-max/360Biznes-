@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 
 /**
@@ -16,10 +17,10 @@ export type AppMode = "lite" | "pro";
 
 export const APP_MODE_COOKIE = "app-mode";
 
-export async function getAppMode(): Promise<AppMode> {
+export const getAppMode = cache(async (): Promise<AppMode> => {
   const c = (await cookies()).get(APP_MODE_COOKIE)?.value;
   if (c === "lite" || c === "pro") return c;
   // Cookie hələ yoxdursa (ilk request — proxy cavabda təyin edir): UA fallback.
   const ua = (await headers()).get("user-agent") ?? "";
   return /Mobile|Android|iPhone|iPad|iPod|Mobi/i.test(ua) ? "lite" : "pro";
-}
+});
