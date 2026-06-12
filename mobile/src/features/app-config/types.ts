@@ -1,0 +1,21 @@
+/** Web `lib/lite/config.ts LiteConfig` tipinin mobil güzgüsü (JSON-safe). */
+export type LiteModuleConfig = {
+  visible: boolean;
+  enabled: boolean;
+  blocks: Record<string, boolean>;
+  landing?: string;
+};
+
+export type LiteDesign = {
+  density: string;
+  mobileLayout: string;
+  fontScale: string;
+  accent: string;
+};
+
+export type LiteConfig = {
+  design: LiteDesign;
+  modules: Record<string, LiteModuleConfig>;
+};
+
+export type AppConfigResponse = { lite: LiteConfig };
