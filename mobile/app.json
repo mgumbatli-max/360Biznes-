@@ -27,6 +27,9 @@
       "expo-status-bar",
       "expo-secure-store",
       "expo-image"
-    ]
+    ],
+    "extra": {
+      "apiBase": "http://localhost:3500"
+    }
   }
 }
