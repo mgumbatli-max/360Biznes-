@@ -57,7 +57,7 @@ async function SidebarShell({ user, hiddenModules }: { user: SessionUser; hidden
   );
 }
 
-async function TopbarShell({ user }: { user: SessionUser }) {
+async function TopbarShell({ user, hiddenModules }: { user: SessionUser; hiddenModules: string[] }) {
   const [alertsData, myNotifs, myWork, appMode] = await Promise.all([
     getRecentAlerts(7).catch(() => ({ items: [], unreadCount: 0 })),
     getMyNotifications(7).catch(() => ({ items: [], unreadCount: 0 })),
@@ -103,6 +103,7 @@ async function TopbarShell({ user }: { user: SessionUser }) {
       unreadCount={totalUnread}
       myWork={myWork}
       appMode={appMode}
+      hiddenModules={hiddenModules}
     />
   );
 }
@@ -183,7 +184,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <StealthBanner />
             <div data-topbar-container>
               <Suspense fallback={<TopbarFallback />}>
-                <TopbarShell user={session.user} />
+                <TopbarShell user={session.user} hiddenModules={hiddenModules} />
               </Suspense>
             </div>
             {/* overflow-x-CLIP (hidden DEYİL): `hidden` overflow-y-ni `auto`-ya

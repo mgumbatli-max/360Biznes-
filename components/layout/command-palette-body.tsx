@@ -97,9 +97,11 @@ const TYPE_ORDER: GlobalSearchType[] = [
 export default function CommandPaletteBody({
   open,
   onOpenChange,
+  hiddenModules = [],
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  hiddenModules?: string[];
 }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -180,11 +182,14 @@ export default function CommandPaletteBody({
     if (!user) return [];
     return NAV_SECTIONS.map((section) => ({
       label: section.label,
-      items: section.items.filter((i) =>
-        canSeeNavItem(i, { rolId: user.rol_id, icazeler }),
-      ),
+      items: section.items.filter((i) => {
+        // Lite-da gizlədilmiş modul (sidebar ilə eyni məntiq) — Cmd+K-da da gizlət.
+        const modul = i.href.split("/")[1] ?? "";
+        if (hiddenModules.includes(modul)) return false;
+        return canSeeNavItem(i, { rolId: user.rol_id, icazeler });
+      }),
     })).filter((s) => s.items.length > 0);
-  }, [user, icazeler]);
+  }, [user, icazeler, hiddenModules]);
 
   const filteredModules = useMemo(() => {
     const tq = q.trim().toLowerCase();

@@ -59,6 +59,8 @@ type Props = {
   unreadCount?: number;
   myWork?: MyWorkData;
   appMode?: AppMode;
+  /** Lite-da gizlədilmiş modul kodları — command palette də sidebar kimi gizlətsin. */
+  hiddenModules?: string[];
 };
 
 const EMPTY_MY_WORK: MyWorkData = {
@@ -69,7 +71,7 @@ const EMPTY_MY_WORK: MyWorkData = {
   totals: { tasks: 0, reminders: 0, approvals: 0 },
 };
 
-function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK, appMode }: Props) {
+function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY_WORK, appMode, hiddenModules }: Props) {
   const setMobileOpen = useSidebar((s) => s.setMobileOpen);
   const setLiteMenuOpen = useLiteMenu((s) => s.setOpen);
   const clientMode = useAppMode((s) => s.mode);
@@ -106,7 +108,7 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
           {/* Qlobal Lite/Pro keçidi — hər səhifədə görünür */}
           <AppModeToggle serverMode={appMode} />
           {/* Axtarış həmişə görünür — mobildə kompakt ikon, md+-də enli qutu (komponentin öz daxili variantı) */}
-          <CommandPaletteTrigger />
+          <CommandPaletteTrigger hiddenModules={hiddenModules} />
           {/* Tema mobildə gizli — user dropdown-da var */}
           <div className="hidden md:contents">
             <ThemeToggle />

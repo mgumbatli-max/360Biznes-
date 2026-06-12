@@ -10,7 +10,7 @@ const CommandPaletteBody = dynamic(() => import("./command-palette-body"), {
   ssr: false,
 });
 
-export function CommandPaletteTrigger() {
+export function CommandPaletteTrigger({ hiddenModules }: { hiddenModules?: string[] } = {}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -56,7 +56,9 @@ export function CommandPaletteTrigger() {
         <Search className="h-4 w-4" />
       </button>
 
-      {mounted && <CommandPaletteBody open={open} onOpenChange={setOpen} />}
+      {mounted && (
+        <CommandPaletteBody open={open} onOpenChange={setOpen} hiddenModules={hiddenModules} />
+      )}
     </>
   );
 }
