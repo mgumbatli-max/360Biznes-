@@ -46,6 +46,7 @@ function sanitize(input: any): LiteConfig {
     }
     const allowedL = (MODULE_LANDINGS[m.kod] ?? []).map((l) => l.href);
     modules[m.kod] = {
+      visible: m.kod === "dashboard" ? true : (typeof sm.visible === "boolean" ? sm.visible : true),
       enabled: typeof sm.enabled === "boolean" ? sm.enabled : true,
       blocks,
       landing: allowedL.includes(String(sm.landing)) ? String(sm.landing) : allowedL[0],

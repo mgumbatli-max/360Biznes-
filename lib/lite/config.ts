@@ -26,6 +26,8 @@ export type LiteDesign = {
 };
 
 export type LiteModuleConfig = {
+  /** Lite-da naviqasiyada görünsün/görünməsin. Default true. Pro-da nəzərə alınmır. */
+  visible: boolean;
   enabled: boolean;
   blocks: Record<string, boolean>;
   /** İcmal bağlı olanda modulun açıldığı səhifə (MODULE_LANDINGS-dən). */
@@ -54,6 +56,7 @@ export function defaultLiteConfig(): LiteConfig {
     const blocks: Record<string, boolean> = {};
     for (const b of m.bloklar) blocks[b.kod] = b.liteDefault;
     modules[m.kod] = {
+      visible: true,
       enabled: true,
       blocks,
       landing: MODULE_LANDINGS[m.kod]?.[0]?.href,
@@ -71,6 +74,7 @@ function mergeConfig(def: LiteConfig, saved: Partial<LiteConfig> | null): LiteCo
     const savedMod = saved.modules?.[kod];
     const allowedLandings = (MODULE_LANDINGS[kod] ?? []).map((l) => l.href);
     modules[kod] = {
+      visible: kod === "dashboard" ? true : (savedMod?.visible ?? defMod.visible),
       enabled: savedMod?.enabled ?? defMod.enabled,
       blocks: { ...defMod.blocks, ...(savedMod?.blocks ?? {}) },
       landing:
@@ -86,12 +90,14 @@ function mergeConfig(def: LiteConfig, saved: Partial<LiteConfig> | null): LiteCo
  * Cari sahibkarın Lite config-i. `cache()` — bir render-də bir DB sorğusu.
  * Tenant-context-dən asılı olmamaq üçün sahibkar_id session-dan + prismaUnscoped.
  */
-export const getLiteConfig = cache(async (): Promise<LiteConfig> => {
+/**
+ * Verilmiş sahibkar üçün Lite config — session/tenant-context-dən asılı deyil.
+ * Web (`getLiteConfig`, auth()) və mobil (`/app-config`, token tenant-context)
+ * bunu paylaşır. Eyni `unstable_cache` açarı/tag-i → web nəticəsi 1:1.
+ */
+export async function getLiteConfigForTenant(sahibkarId: string): Promise<LiteConfig> {
   const def = defaultLiteConfig();
   try {
-    const session = await auth();
-    const sahibkarId = session?.user?.sahibkar_id;
-    if (!sahibkarId) return def;
     // SÜRƏT: config nadir dəyişir, amma hər səhifədə (layout) oxunur. Cross-request
     // unstable_cache hər naviqasiyada 1 DB round-trip-i aradan qaldırır (prod-da Neon
     // latency × hər səhifə). saveLiteConfig revalidateTag(`lite-config:<id>`) çağırır.
@@ -112,6 +118,21 @@ export const getLiteConfig = cache(async (): Promise<LiteConfig> => {
   } catch {
     return def;
   }
+}
+
+/**
+ * Cari sahibkarın Lite config-i (web — session-dan sahibkar_id). `cache()` —
+ * bir render-də bir DB sorğusu. Nüvə `getLiteConfigForTenant`-dadır.
+ */
+export const getLiteConfig = cache(async (): Promise<LiteConfig> => {
+  try {
+    const session = await auth();
+    const sahibkarId = session?.user?.sahibkar_id;
+    if (!sahibkarId) return defaultLiteConfig();
+    return await getLiteConfigForTenant(sahibkarId);
+  } catch {
+    return defaultLiteConfig();
+  }
 });
 
 /** saveLiteConfig sonrası cache-i dərhal təzələmək üçün (tag adı tək mənbədən). */
@@ -129,6 +150,26 @@ export function liteBlockOn(config: LiteConfig, modul: string, blok: string): bo
   if (!m) return true;
   if (!m.enabled) return true; // sadələşdirilməyən modul tam görünür
   return m.blocks[blok] ?? false;
+}
+
+/** Lite-da modul naviqasiyada görünürmü (dashboard həmişə true). Pro üçün çağıran gate yoxlayır. */
+export function liteModuleVisible(config: LiteConfig, modul: string): boolean {
+  if (modul === "dashboard") return true;
+  return config.modules[modul]?.visible !== false;
+}
+
+/** Lite-da gizlədilmiş modul kodları (dashboard heç vaxt daxil deyil). */
+export function hiddenLiteModules(config: LiteConfig): string[] {
+  return Object.entries(config.modules)
+    .filter(([kod, m]) => kod !== "dashboard" && m.visible === false)
+    .map(([kod]) => kod);
+}
+
+/** Server gate: Pro → həmişə true; Lite → liteModuleVisible. */
+export async function moduleVisibleGate(modul: string): Promise<boolean> {
+  const mode = await getAppMode();
+  if (mode !== "lite") return true;
+  return liteModuleVisible(await getLiteConfig(), modul);
 }
 
 /**

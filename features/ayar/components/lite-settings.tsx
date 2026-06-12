@@ -25,7 +25,7 @@ function buildDefaultConfig(): LiteConfig {
   for (const m of LITE_MODULES) {
     const blocks: Record<string, boolean> = {};
     for (const b of m.bloklar) blocks[b.kod] = b.liteDefault;
-    modules[m.kod] = { enabled: true, blocks };
+    modules[m.kod] = { visible: true, enabled: true, blocks };
   }
   return {
     design: { density: "rahat", mobileLayout: "kart", fontScale: "normal", accent: "rose" },
@@ -76,6 +76,12 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
     setCfg((c) => ({
       ...c,
       modules: { ...c.modules, [m]: { ...c.modules[m], enabled: !c.modules[m].enabled } },
+    }));
+
+  const toggleVisible = (m: string) =>
+    setCfg((c) => ({
+      ...c,
+      modules: { ...c.modules, [m]: { ...c.modules[m], visible: !c.modules[m].visible } },
     }));
 
   const toggleBlock = (m: string, b: string) =>
@@ -184,26 +190,45 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
         <p className="text-xs text-muted-foreground">
           Hər modulu Lite-da sadələşdirin və hansı blokların görünəcəyini seçin.
           <span className="font-medium"> Sadələşdirmə söndürülübsə</span>, həmin modul Lite-da
-          da tam görünür. Pro rejimi həmişə tam funksionaldır.
+          da tam görünür. <span className="font-medium">"Görünür" keçidini söndürsəniz</span>, modul
+          Lite naviqasiyasından tamamilə çıxır. Pro rejimi həmişə tam funksionaldır.
         </p>
         {LITE_MODULES.map((m) => {
           const mc = cfg.modules[m.kod];
           if (!mc) return null;
           return (
             <div key={m.kod} className="rounded-xl border border-border bg-card p-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <span className="text-sm font-semibold">{m.ad}</span>
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                  {mc.enabled ? "Lite-da sadələşdir" : "Tam göstərilir"}
-                  <input
-                    type="checkbox"
-                    checked={mc.enabled}
-                    onChange={() => toggleModule(m.kod)}
-                    className="h-4 w-4 accent-primary"
-                  />
-                </label>
+                <div className="flex items-center gap-3">
+                  {m.kod !== "dashboard" && (
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                      {mc.visible ? "Görünür" : "Gizli"}
+                      <input
+                        type="checkbox"
+                        checked={mc.visible}
+                        onChange={() => toggleVisible(m.kod)}
+                        className="h-4 w-4 accent-primary"
+                      />
+                    </label>
+                  )}
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    {mc.enabled ? "Lite-da sadələşdir" : "Tam göstərilir"}
+                    <input
+                      type="checkbox"
+                      checked={mc.enabled}
+                      onChange={() => toggleModule(m.kod)}
+                      className="h-4 w-4 accent-primary"
+                    />
+                  </label>
+                </div>
               </div>
-              {MODULE_LANDINGS[m.kod] && (
+              {!mc.visible && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Bu modul Lite rejimində naviqasiyada görünməyəcək (Pro-da görünür).
+                </p>
+              )}
+              {mc.visible && MODULE_LANDINGS[m.kod] && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                   <span className="text-muted-foreground">Giriş səhifəsi (icmal bağlı olanda):</span>
                   <select
@@ -217,7 +242,7 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
                   </select>
                 </div>
               )}
-              {mc.enabled && (
+              {mc.visible && mc.enabled && (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {m.bloklar.map((b) => (
                     <label
