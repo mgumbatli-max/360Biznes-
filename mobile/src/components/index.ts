@@ -7,3 +7,5 @@ export { ErrorState } from "./ErrorState";
 export { Skeleton, ProductCardSkeleton, ListSkeleton } from "./LoadingSkeleton";
 export { OfflineBanner } from "./OfflineBanner";
 export { Accordion } from "./Accordion";
+export { ImagePickerRow } from "./ImagePickerRow";
+export { BarcodeScanner } from "./BarcodeScanner";

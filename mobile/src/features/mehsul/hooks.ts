@@ -4,6 +4,7 @@ import type {
   ProductsPage,
   ProductDetailResponse,
   SaveProductBody,
+  ReferencesResponse,
 } from "./types";
 
 // ─── Sonsuz siyahı (infinite scroll) ─────────────────────────────────────────
@@ -41,6 +42,16 @@ export function useSaveProduct() {
       b.id
         ? (await api.put(`/mehsullar/${b.id}`, b)).data
         : (await api.post("/mehsullar", b)).data,
+  });
+}
+
+// ─── Kateqoriya / Marka / Vahid referansları ──────────────────────────────────
+export function useReferences() {
+  return useQuery({
+    queryKey: ["referanslar"],
+    queryFn: async () =>
+      (await api.get<ReferencesResponse>("/referanslar")).data,
+    staleTime: 5 * 60_000,
   });
 }
 

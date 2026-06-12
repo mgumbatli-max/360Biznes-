@@ -1,3 +1,13 @@
+// ─── Referanslar (GET /referanslar) ──────────────────────────────────────────
+export type RefCategory = { id: number; ad: string; ust_id: number | null };
+export type RefBrand = { id: number; ad: string };
+export type RefUnit = { id: number; ad: string; qisa_ad: string | null };
+export type ReferencesResponse = {
+  kateqoriyalar: RefCategory[];
+  markalar: RefBrand[];
+  vahidler: RefUnit[];
+};
+
 // ─── Anbar bölgüsü ───────────────────────────────────────────────────────────
 export type AnbarBreakdown = {
   anbar_id: number;
