@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 import { C } from "../theme";
@@ -11,6 +11,8 @@ type ScreenProps = {
   showBack?: boolean;
   right?: React.ReactNode;
   scroll?: boolean;
+  /** Ekranın altına sabitlənən panel (ScrollView-dan KƏNARDA — scroll ilə sürüşmür). */
+  footer?: React.ReactNode;
   className?: string;
 };
 
@@ -20,9 +22,11 @@ export function Screen({
   showBack = false,
   right,
   scroll = false,
+  footer,
   className = "",
 }: ScreenProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const showHeader = title != null || showBack || right != null;
 
   return (
@@ -56,6 +60,14 @@ export function Screen({
         </ScrollView>
       ) : (
         <View className={`flex-1 ${className}`}>{children}</View>
+      )}
+      {footer != null && (
+        <View
+          className="bg-white border-t border-line px-4 pt-3"
+          style={{ paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }}
+        >
+          {footer}
+        </View>
       )}
     </SafeAreaView>
   );

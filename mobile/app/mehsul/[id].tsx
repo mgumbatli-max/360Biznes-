@@ -160,9 +160,32 @@ export default function MehsulDetailScreen() {
     item.ad.length > 30 ? item.ad.slice(0, 28) + "…" : item.ad;
 
   return (
-    <Screen title={screenTitle} showBack scroll>
-      {/* ── Məzmun bölgəsi (alt paneli üçün padding) ── */}
-      <View className="pb-24">
+    <Screen
+      title={screenTitle}
+      showBack
+      scroll
+      footer={
+        <View className="flex-row gap-3">
+          <View className="flex-1">
+            <Button
+              title="Redaktə"
+              variant="primary"
+              icon={<Pencil size={16} color="#fff" strokeWidth={2} />}
+              onPress={() => router.push(`/mehsul/form?id=${id}`)}
+            />
+          </View>
+          <View className="flex-1">
+            <Button
+              title="Sat"
+              variant="outline"
+              disabled
+              icon={<ShoppingCart size={16} color={C.brand} strokeWidth={2} />}
+            />
+          </View>
+        </View>
+      }
+    >
+      <View>
         {/* ───── Hero kart ───────────────────────────────────────────── */}
         <Card className="mb-4 p-0 overflow-hidden">
           {/* Şəkil */}
@@ -493,31 +516,6 @@ export default function MehsulDetailScreen() {
         </Card>
       </View>
 
-      {/* ───── Altdaki sərt panel ────────────────────────────────────── */}
-      {/* Not: Screen scroll mode-da contentContainerStyle={padding:16} var,
-          buna görə "absolute" istifadə etmək olmaz. Alt panel scroll sonunda göstərilir
-          — pb-24 yuxarıda verildi ki görünsün. */}
-      <View
-        style={{ position: "absolute", bottom: 0, left: 0, right: 0 }}
-        className="bg-white border-t border-line px-4 py-3 flex-row gap-3"
-      >
-        <View className="flex-1">
-          <Button
-            title="Redaktə"
-            variant="primary"
-            icon={<Pencil size={16} color="#fff" strokeWidth={2} />}
-            onPress={() => router.push(`/mehsul/form?id=${id}`)}
-          />
-        </View>
-        <View className="flex-1">
-          <Button
-            title="Sat"
-            variant="outline"
-            disabled
-            icon={<ShoppingCart size={16} color={C.brand} strokeWidth={2} />}
-          />
-        </View>
-      </View>
     </Screen>
   );
 }

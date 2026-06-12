@@ -6,7 +6,7 @@
  * Tam qalereya persistensiyası backend follow-up üçün saxlanılır.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -208,7 +208,7 @@ function SwitchRow({ label, value, onChange }: SwitchRowProps) {
 // ─── Əsas forma ───────────────────────────────────────────────────────────────
 
 export default function MehsulForm() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, scan } = useLocalSearchParams<{ id?: string; scan?: string }>();
   const editing = !!id;
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -254,9 +254,16 @@ export default function MehsulForm() {
   // Barkod scanner
   const [scannerVisible, setScannerVisible] = useState(false);
 
-  // ─── Edit prefill ─────────────────────────────────────────────────────────
+  // Home "Skan" kafelindən gəlibsə (?scan=1) skaneri avtomatik aç
   useEffect(() => {
-    if (!detail?.item) return;
+    if (scan === "1") setScannerVisible(true);
+  }, [scan]);
+
+  // ─── Edit prefill (yalnız BİR dəfə — arxa plan refetch istifadəçi dəyişikliyini silməsin) ──
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (!detail?.item || prefilled.current) return;
+    prefilled.current = true;
     const it = detail.item;
     if (it.ad) setAd(it.ad);
     if (it.satis_qiymeti != null) setSatisQiymeti(String(it.satis_qiymeti));

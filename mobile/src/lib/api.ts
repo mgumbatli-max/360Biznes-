@@ -54,9 +54,12 @@ api.interceptors.response.use(undefined, async (err: AxiosError) => {
     | undefined;
   if (err.response?.status === 401 && cfg && !cfg._retry) {
     cfg._retry = true;
-    refreshing = refreshing || doRefresh();
-    const newA = await refreshing;
-    refreshing = null;
+    // Eyni anda gələn 401-lər tək refresh promise-ini paylaşır; yalnız həmin
+    // promise-i sıfırla ki, sonradan başlayan yeni refresh-i təsadüfən silməyək.
+    refreshing = refreshing ?? doRefresh();
+    const p = refreshing;
+    const newA = await p;
+    if (refreshing === p) refreshing = null;
     if (newA) {
       cfg.headers.Authorization = "Bearer " + newA;
       return api(cfg);
