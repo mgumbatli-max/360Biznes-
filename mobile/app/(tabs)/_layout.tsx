@@ -107,6 +107,11 @@ export default function TabsLayout() {
           ),
         }}
       />
+      {/* mehsullar — tab bar-da görünməsin, yalnız naviqasiya üçün */}
+      <Tabs.Screen
+        name="mehsullar"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }
