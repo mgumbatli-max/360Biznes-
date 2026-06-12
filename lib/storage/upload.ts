@@ -29,7 +29,10 @@ export async function saveUploadFile(
   key: string,
   contentType: string,
 ): Promise<string> {
-  if (hasBlob()) {
+  // Blob YALNIZ prod-da işlədilir. Lokal dev özünə-yetərlidir (public/uploads),
+  // beləcə .env.local-a prod blob tokeni pull olunsa belə dev cloud store-dan
+  // (suspend/limit/şəbəkə) asılı qalmır.
+  if (hasBlob() && process.env.NODE_ENV === "production") {
     const { put } = await import("@vercel/blob");
     const blob = await put(key, buf, {
       access: "public",
