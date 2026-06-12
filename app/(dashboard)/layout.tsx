@@ -6,7 +6,7 @@ import { auth } from "@/auth";
 import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { getAppMode } from "@/lib/app-mode";
-import { getLiteConfig, getModuleEntry } from "@/lib/lite/config";
+import { getLiteConfig, getModuleEntry, hiddenLiteModules } from "@/lib/lite/config";
 import { LiteThemeScript, IcmalAttrScript } from "@/components/layout/lite-theme";
 import { LiteThemeSync } from "@/components/layout/lite-theme-sync";
 import { gateRoute } from "@/lib/auth/route-gate";
@@ -36,7 +36,7 @@ import type { SessionUser } from "@/lib/auth/types";
 
 type SidebarBadges = Record<string, { count: number; tone?: "rose" | "emerald" | "amber" }>;
 
-async function SidebarShell({ user }: { user: SessionUser }) {
+async function SidebarShell({ user, hiddenModules }: { user: SessionUser; hiddenModules: string[] }) {
   const [reminderCount, nezaretBadge, sahibkarVisible] = await Promise.all([
     getMyActiveReminders().catch(() => 0),
     getNezaretSidebarTotal().catch(() => ({ count: 0, tone: "emerald" as const })),
@@ -52,6 +52,7 @@ async function SidebarShell({ user }: { user: SessionUser }) {
       user={user}
       badges={Object.keys(badges).length > 0 ? badges : undefined}
       sahibkarVisible={sahibkarVisible}
+      hiddenModules={hiddenModules}
     />
   );
 }
@@ -120,7 +121,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // Lite dizayn forması — yalnız Lite rejimində <html>-ə tətbiq olunur.
   const appMode = await getAppMode();
-  const liteDesign = appMode === "lite" ? (await getLiteConfig()).design : null;
+  const liteCfg = appMode === "lite" ? await getLiteConfig() : null;
+  const liteDesign = liteCfg?.design ?? null;
+  // Lite-da gizlədilmiş modullar (Pro-da boş) — sidebar nav-dan çıxarılır.
+  const hiddenModules = liteCfg ? hiddenLiteModules(liteCfg) : [];
 
   // Modul icmalları (ayar + icazə) — subnav İcmal tabları üçün (hər iki rejim)
   const icmalModules = (
@@ -172,7 +176,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <div className="flex min-h-screen bg-background" data-app-shell>
           <div data-sidebar-container>
             <Suspense fallback={<SidebarFallback />}>
-              <SidebarShell user={session.user} />
+              <SidebarShell user={session.user} hiddenModules={hiddenModules} />
             </Suspense>
           </div>
           <div className="flex min-w-0 flex-1 flex-col">

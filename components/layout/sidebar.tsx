@@ -69,9 +69,11 @@ type Props = {
   badges?: Record<string, { count: number; tone?: "rose" | "emerald" | "amber" }>;
   /** When false, the "Sahibkar bölməsi" item is removed from the sidebar entirely. */
   sahibkarVisible?: boolean;
+  /** Lite-da gizlədilmiş modul kodları (href ilk seqmenti); Pro-da boş. */
+  hiddenModules?: string[];
 };
 
-function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
+function SidebarComponent({ user, badges, sahibkarVisible = true, hiddenModules = [] }: Props) {
   const pathname = usePathname();
   const icazeler = usePermissions();
   const { collapsed, mobileOpen, setMobileOpen, toggleCollapsed } = useSidebar();
@@ -84,12 +86,15 @@ function SidebarComponent({ user, badges, sahibkarVisible = true }: Props) {
     return NAV_SECTIONS.map((sec) => ({
       ...sec,
       items: sec.items.filter((i) => {
+        // Lite-da gizlədilmiş modul (href ilk seqmenti registry kodu ilə uyğun).
+        const modul = i.href.split("/")[1] ?? "";
+        if (hiddenModules.includes(modul)) return false;
         if (!canSeeNavItem(i, ctx)) return false;
         if (i.href === "/sahibkar" && !sahibkarVisible) return false;
         return true;
       }),
     })).filter((sec) => sec.items.length > 0);
-  }, [user.rol_id, user.rol_ad, icazeler, sahibkarVisible]);
+  }, [user.rol_id, user.rol_ad, icazeler, sahibkarVisible, hiddenModules]);
 
   return (
     <>
