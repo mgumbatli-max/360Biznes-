@@ -38,12 +38,15 @@ const THRESHOLD_DEFAULTS: Record<string, number> = {
 
 async function getThresholdMap(): Promise<Record<string, number>> {
   const { sahibkarId } = requireTenant();
-  const rows = await prisma.ayarlar
-    .findMany({
+  let rows: { acar: string; deyer: string | null }[] = [];
+  try {
+    rows = await prisma.ayarlar.findMany({
       where: { sahibkar_id: sahibkarId, qrup: "maliyye_threshold" },
       select: { acar: true, deyer: true },
-    })
-    .catch(() => [] as { acar: string; deyer: string | null }[]);
+    });
+  } catch (e) {
+    console.error("[getThresholdMap] ayarlar query failed, using defaults:", e);
+  }
   const out: Record<string, number> = { ...THRESHOLD_DEFAULTS };
   for (const r of rows) {
     const n = Number(r.deyer);
@@ -164,7 +167,9 @@ export async function saveExpense(input: FormData): Promise<ActionResult> {
               },
             });
             // Source-of-truth-dan hesab qaliqını yenilə
-            await recalculateAccountBalance(d.hesab_id, tx);
+            const recalcResult = await recalculateAccountBalance(d.hesab_id, tx);
+            if (!recalcResult.ok)
+              throw new Error("Hesab balansı hesablana bilmədi: " + recalcResult.error);
           }
         }
       });
@@ -891,31 +896,46 @@ export async function approveOperation(id: string): Promise<ActionResult> {
         select: { id: true, hesab_id: true, hesab_id2: true, kontragent_id: true },
       });
       if (!op) return { ok: false, error: "Əməliyyat tapılmadı və ya artıq təsdiqlənib" };
-      const r = await prisma.finance_operations.updateMany({
-        where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
-        data: {
-          status: "aktiv",
-          tesdiq_eden_id: userId ?? null,
-          tesdiq_de: new Date(),
-          yenilendi: new Date(),
-        },
-      });
-      if (r.count === 0) return { ok: false, error: "Əməliyyat tapılmadı və ya artıq təsdiqlənib" };
-      // Təsdiqdən sonra əməliyyat 'aktiv' oldu → balanslar source-of-truth-dan yenilənməlidir
-      // (cancelFinanceOperation-dakı recalc pattern-i). Əks halda yüksək məbləğli
-      // əməliyyat aktivləşir, hesab/kontragent qaliqı köhnə qalır.
+      // ⚛️ Atomik: status dəyişikliyi + balans recalc bir $transaction içində.
+      // Əks halda recalc uğursuz olsa, əməliyyat 'aktiv' qalıb hesab/kontragent
+      // qaliqı köhnə qalardı (high-amount drift). Recalc xətası status-u geri qaytarır.
+      const NOT_PENDING = "__NOT_PENDING__";
+      const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+      const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+      const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
       try {
-        const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
-        if (op.hesab_id) await recalculateAccountBalance(op.hesab_id);
-        if (op.hesab_id2) await recalculateAccountBalance(op.hesab_id2);
-        if (op.kontragent_id) {
-          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
-          const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
-          await recalculateCustomerBalance(op.kontragent_id);
-          await recalculateSupplierBalance(op.kontragent_id);
-        }
+        await prisma.$transaction(async (tx) => {
+          const r = await tx.finance_operations.updateMany({
+            where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
+            data: {
+              status: "aktiv",
+              tesdiq_eden_id: userId ?? null,
+              tesdiq_de: new Date(),
+              yenilendi: new Date(),
+            },
+          });
+          if (r.count === 0) throw new Error(NOT_PENDING);
+          // Təsdiqdən sonra əməliyyat 'aktiv' oldu → balanslar source-of-truth-dan yenilənməlidir.
+          if (op.hesab_id) {
+            const res = await recalculateAccountBalance(op.hesab_id, tx);
+            if (!res.ok) throw new Error("Hesab balansı hesablana bilmədi: " + res.error);
+          }
+          if (op.hesab_id2) {
+            const res = await recalculateAccountBalance(op.hesab_id2, tx);
+            if (!res.ok) throw new Error("Hesab balansı hesablana bilmədi: " + res.error);
+          }
+          if (op.kontragent_id) {
+            const cRes = await recalculateCustomerBalance(op.kontragent_id, tx);
+            if (!cRes.ok) throw new Error("Kontragent balansı hesablana bilmədi: " + cRes.error);
+            const sRes = await recalculateSupplierBalance(op.kontragent_id, tx);
+            if (!sRes.ok) throw new Error("Kontragent balansı hesablana bilmədi: " + sRes.error);
+          }
+        });
       } catch (e) {
-        console.warn("[approveOperation] recalc skipped:", e);
+        if (e instanceof Error && e.message === NOT_PENDING) {
+          return { ok: false, error: "Əməliyyat tapılmadı və ya artıq təsdiqlənib" };
+        }
+        throw e;
       }
       revalidatePath("/maliyye/emeliyyat");
       revalidatePath("/maliyye");

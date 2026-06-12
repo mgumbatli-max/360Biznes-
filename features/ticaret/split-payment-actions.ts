@@ -48,6 +48,7 @@ export async function applySplitPayment(input: z.infer<typeof InputSchema>): Pro
             kassa_id: true,
             musteri_id: true,
             status: true,
+            odenis_nov: true,
           },
         });
         if (!sale) throw new Error("Satış tapılmadı");
@@ -94,6 +95,17 @@ export async function applySplitPayment(input: z.infer<typeof InputSchema>): Pro
             yenilendi: new Date(),
           },
         });
+
+        // Nisyə hissəsi varsa, satış borc/nisyə kimi qeyd olunmalıdır ki,
+        // recalculateCustomerBalance (yalnız odenis_nov IN ('nisye','borc'))
+        // bu hissəni müştəri borcuna daxil etsin. Əks halda nəğd/kart satışda
+        // nisyə payı heç vaxt borca yazılmazdı.
+        if (nisyeSum > 0.001 && sale.odenis_nov !== "nisye" && sale.odenis_nov !== "borc") {
+          await tx.satis_sifarisleri.update({
+            where: { id: sale.id },
+            data: { odenis_nov: "borc" },
+          });
+        }
 
         // Müştəri balansı — source-of-truth recalc
         if (sale.musteri_id) {

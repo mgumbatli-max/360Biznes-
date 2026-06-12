@@ -189,6 +189,7 @@ export function ServisDialog({
       if (!res.ok) setError(res.error);
       else {
         toast.success("Servis sifarişi yaradıldı");
+        if (res.warning) toast.warning(res.warning, { duration: 10000 });
         setOpen(false);
         resetForm();
         if (res.id) router.push(`/servis/${res.id}`);

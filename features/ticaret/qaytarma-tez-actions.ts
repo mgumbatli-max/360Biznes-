@@ -577,74 +577,70 @@ export async function returnFullSale(
         let reversedFinance = false;
         const komisyon = Number(sale.komisyon_meblegh ?? 0);
         if (sale.marketplace_platform && komisyon > 0) {
-          try {
-            const saleTotal = Number(sale.son_mebleg ?? 0);
-            const ratio = fullReturn || saleTotal <= 0 ? 1 : Math.min(1, total / saleTotal);
-            const origOp = await tx.finance_operations.findFirst({
+          const saleTotal = Number(sale.son_mebleg ?? 0);
+          const ratio = fullReturn || saleTotal <= 0 ? 1 : Math.min(1, total / saleTotal);
+          const origOp = await tx.finance_operations.findFirst({
+            where: {
+              sahibkar_id: sahibkarId,
+              satis_id: sale.id,
+              type_kod: "marketplace_payout",
+            },
+            orderBy: { tarix: "desc" },
+          });
+          if (origOp) {
+            const netOrig = Number(origOp.azn_meblegh ?? origOp.meblegh ?? 0);
+            const netReverse = +(netOrig * ratio).toFixed(2);
+            const komisyonReverse = +(komisyon * ratio).toFixed(2);
+            await tx.finance_operations.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                type_id: origOp.type_id,
+                type_kod: origOp.type_kod,
+                y_n: "xaric",
+                tarix: new Date(),
+                meblegh: -Math.abs(netReverse),
+                valyuta: origOp.valyuta,
+                mezenne: origOp.mezenne,
+                azn_meblegh: -Math.abs(netReverse),
+                komissiya: -Math.abs(komisyonReverse),
+                hesab_id: origOp.hesab_id,
+                satis_id: sale.id,
+                sened_nomresi: `${origOp.sened_nomresi ?? sale.nomre}-RET`,
+                qarsi_teref_ad: origOp.qarsi_teref_ad,
+                qeyd: fullReturn
+                  ? `Qaytarma əksinə əməliyyat — ${ret.nomre}`
+                  : `Hissəvi qaytarma əksinə (${(ratio * 100).toFixed(1)}%) — ${ret.nomre}`,
+                yaradan_id: istifadeciId,
+              },
+            });
+            reversedFinance = true;
+          } else {
+            // QA-orta: payout hələ GÖZLƏYİRSƏ (marketplace_payout op-u yoxdur) pending
+            // qeyd korreksiya olunur — əvvəl gozlenen_meblegh/komissiya dəyişmirdi və
+            // markPayoutReceived qaytarılmış satışı nəzərə almadan tam kreditləyirdi.
+            const pending = await tx.finance_marketplace_payments.findFirst({
               where: {
                 sahibkar_id: sahibkarId,
-                satis_id: sale.id,
-                type_kod: "marketplace_payout",
+                status: "gozleyir",
+                qeyd: { contains: `Satış #${sale.id}` },
               },
-              orderBy: { tarix: "desc" },
+              select: { id: true },
             });
-            if (origOp) {
-              const netOrig = Number(origOp.azn_meblegh ?? origOp.meblegh ?? 0);
-              const netReverse = +(netOrig * ratio).toFixed(2);
+            if (pending) {
+              // Orijinal satış net-indən hesabla — ardıcıl hissəvi qaytarmalarda düzgün qalır
+              const saleNet = Math.max(0, saleTotal - komisyon);
+              const netReverse = +(saleNet * ratio).toFixed(2);
               const komisyonReverse = +(komisyon * ratio).toFixed(2);
-              await tx.finance_operations.create({
+              await tx.finance_marketplace_payments.update({
+                where: { id: pending.id },
                 data: {
-                  sahibkar_id: sahibkarId,
-                  type_id: origOp.type_id,
-                  type_kod: origOp.type_kod,
-                  y_n: "xaric",
-                  tarix: new Date(),
-                  meblegh: -Math.abs(netReverse),
-                  valyuta: origOp.valyuta,
-                  mezenne: origOp.mezenne,
-                  azn_meblegh: -Math.abs(netReverse),
-                  komissiya: -Math.abs(komisyonReverse),
-                  hesab_id: origOp.hesab_id,
-                  satis_id: sale.id,
-                  sened_nomresi: `${origOp.sened_nomresi ?? sale.nomre}-RET`,
-                  qarsi_teref_ad: origOp.qarsi_teref_ad,
-                  qeyd: fullReturn
-                    ? `Qaytarma əksinə əməliyyat — ${ret.nomre}`
-                    : `Hissəvi qaytarma əksinə (${(ratio * 100).toFixed(1)}%) — ${ret.nomre}`,
-                  yaradan_id: istifadeciId,
+                  gozlenen_meblegh: { decrement: netReverse },
+                  komissiya: { decrement: komisyonReverse },
+                  qaytarma_meblegh: { increment: total },
                 },
               });
               reversedFinance = true;
-            } else {
-              // QA-orta: payout hələ GÖZLƏYİRSƏ (marketplace_payout op-u yoxdur) pending
-              // qeyd korreksiya olunur — əvvəl gozlenen_meblegh/komissiya dəyişmirdi və
-              // markPayoutReceived qaytarılmış satışı nəzərə almadan tam kreditləyirdi.
-              const pending = await tx.finance_marketplace_payments.findFirst({
-                where: {
-                  sahibkar_id: sahibkarId,
-                  status: "gozleyir",
-                  qeyd: { contains: `Satış #${sale.id}` },
-                },
-                select: { id: true },
-              });
-              if (pending) {
-                // Orijinal satış net-indən hesabla — ardıcıl hissəvi qaytarmalarda düzgün qalır
-                const saleNet = Math.max(0, saleTotal - komisyon);
-                const netReverse = +(saleNet * ratio).toFixed(2);
-                const komisyonReverse = +(komisyon * ratio).toFixed(2);
-                await tx.finance_marketplace_payments.update({
-                  where: { id: pending.id },
-                  data: {
-                    gozlenen_meblegh: { decrement: netReverse },
-                    komissiya: { decrement: komisyonReverse },
-                    qaytarma_meblegh: { increment: total },
-                  },
-                });
-                reversedFinance = true;
-              }
             }
-          } catch (err) {
-            console.error("[returnFullSale] finance reverse skipped:", err);
           }
         }
 

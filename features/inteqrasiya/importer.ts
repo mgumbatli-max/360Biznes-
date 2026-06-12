@@ -207,13 +207,16 @@ async function importMehsul(rows: ParsedRow[]): Promise<ImportResult> {
       const barcodes = barcodeStr.split("|").map((b) => b.trim()).filter(Boolean);
       if (barcodes.length > 1) {
         for (const bk of barcodes.slice(1)) {
-          await prisma.mehsul_barkodlar
-            .upsert({
+          // İkincili barkod uğursuzluğu məhsulun uğurunu pozmur, amma səssiz udulmur
+          try {
+            await prisma.mehsul_barkodlar.upsert({
               where: { sahibkar_id_barkod: { sahibkar_id: sahibkarId, barkod: bk } },
               create: { mehsul_id: mehsulId, barkod: bk, sahibkar_id: sahibkarId },
               update: {},
-            })
-            .catch(() => {});
+            });
+          } catch (e) {
+            console.warn("[ImportMehsul] Secondary barcode upsert failed:", bk, e);
+          }
         }
       }
 
@@ -637,6 +640,7 @@ async function importStok(rows: ParsedRow[]): Promise<ImportResult> {
         throw new Error(`Yanlış miqdar: ${r.values.miqdar}`);
       }
       const maya = r.values.maya != null ? Number(r.values.maya) : null;
+      if (maya != null && !Number.isFinite(maya)) throw new Error("Yanlış maya qiymət: " + r.values.maya);
 
       // SET mode: mövcud stok bu rəqəmlə əvəzlənir (sayım sonrası tipik istifadə)
       const existing = await prisma.stok.findFirst({
@@ -647,51 +651,57 @@ async function importStok(rows: ParsedRow[]): Promise<ImportResult> {
       if (existing) {
         const oldMiqdar = Number(existing.miqdar);
         const ferq = miqdar - oldMiqdar;
-        await prisma.stok.update({
-          where: { id: existing.id },
-          data: { miqdar, ...(maya != null && maya >= 0 ? { son_qiymet: maya } : {}) },
+        // Stok yazısı + anbar hərəkəti atomik: biri uğursuz olsa, ikisi də geri qaytarılır
+        await prisma.$transaction(async (tx) => {
+          await tx.stok.update({
+            where: { id: existing.id },
+            data: { miqdar, ...(maya != null && maya >= 0 ? { son_qiymet: maya } : {}) },
+          });
+          // Hərəkət qeydi (inventar correction)
+          if (ferq !== 0) {
+            await tx.anbar_hereketleri.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                anbar_id: anbarId,
+                mehsul_id: mehsul.id,
+                nov: "inventar",
+                miqdar: Math.abs(ferq),
+                qiymet: maya ?? null,
+                ref_nov: "excel_import",
+                edilen_id: istifadeciId,
+                qeyd: `Excel idxal: ${oldMiqdar} → ${miqdar}`,
+              },
+            });
+          }
         });
-        // Hərəkət qeydi (inventar correction)
-        if (ferq !== 0) {
-          await prisma.anbar_hereketleri.create({
+        yenile++;
+        log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `${mehsul.ad}: ${oldMiqdar} → ${miqdar}` });
+      } else {
+        // Stok yazısı + anbar hərəkəti atomik: biri uğursuz olsa, ikisi də geri qaytarılır
+        await prisma.$transaction(async (tx) => {
+          await tx.stok.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              mehsul_id: mehsul.id,
+              anbar_id: anbarId,
+              miqdar,
+              son_qiymet: maya ?? null,
+            },
+          });
+          await tx.anbar_hereketleri.create({
             data: {
               sahibkar_id: sahibkarId,
               anbar_id: anbarId,
               mehsul_id: mehsul.id,
-              nov: "inventar",
-              miqdar: Math.abs(ferq),
+              nov: "medaxil",
+              miqdar,
               qiymet: maya ?? null,
               ref_nov: "excel_import",
               edilen_id: istifadeciId,
-              qeyd: `Excel idxal: ${oldMiqdar} → ${miqdar}`,
+              qeyd: "Excel idxal: ilkin stok",
             },
-          }).catch(() => {});
-        }
-        yenile++;
-        log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `${mehsul.ad}: ${oldMiqdar} → ${miqdar}` });
-      } else {
-        await prisma.stok.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            mehsul_id: mehsul.id,
-            anbar_id: anbarId,
-            miqdar,
-            son_qiymet: maya ?? null,
-          },
+          });
         });
-        await prisma.anbar_hereketleri.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            anbar_id: anbarId,
-            mehsul_id: mehsul.id,
-            nov: "medaxil",
-            miqdar,
-            qiymet: maya ?? null,
-            ref_nov: "excel_import",
-            edilen_id: istifadeciId,
-            qeyd: "Excel idxal: ilkin stok",
-          },
-        }).catch(() => {});
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `${mehsul.ad}: ${miqdar} vahid əlavə edildi` });
       }

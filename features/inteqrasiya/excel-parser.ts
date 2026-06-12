@@ -318,6 +318,7 @@ function runTemplateChecks(
       break;
     case "stok":
       nonNeg("miqdar", "Miqdar");
+      nonNeg("maya", "Maya qiymət");
       break;
     case "emekdas":
       nonNeg("maas", "Maaş");

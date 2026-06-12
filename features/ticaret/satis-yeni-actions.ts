@@ -590,7 +590,7 @@ export async function createOrUpdateSatisYeni(
           select: { son_mebleg: true },
         });
         const mebleg = Number(sonMebleg?.son_mebleg ?? 0);
-        await createApprovalRequest({
+        const approvalResult = await createApprovalRequest({
           emeliyyat_nov: "satis_qaime",
           resurs_nov: "satis_sifarisi",
           resurs_id: result.id,
@@ -607,6 +607,16 @@ export async function createOrUpdateSatisYeni(
             maya_alti_lines: mayaAltiLines,
           },
         });
+        // Satış artıq commit olunub və istifadəçiyə uğur bildirilir; təsdiq
+        // sorğusunun yaradılması uğursuz olarsa kənar əməliyyatı SINDIRMA,
+        // sadəcə xəbərdarlıq logla (satış tesdiq_gozleyir-də qalır).
+        if (!approvalResult.ok) {
+          console.warn(
+            "[createOrUpdateSatisYeni] Approval request creation failed for sale",
+            result.id,
+            approvalResult.error,
+          );
+        }
       }
 
       revalidatePath("/ticaret/satislar");

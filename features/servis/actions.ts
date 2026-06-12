@@ -47,7 +47,7 @@ const STATUSES = [
 ] as const;
 
 type Status = (typeof STATUSES)[number];
-type ActionResult<T = undefined> = { ok: true; id?: string; data?: T } | { ok: false; error: string };
+type ActionResult<T = undefined> = { ok: true; id?: string; data?: T; warning?: string } | { ok: false; error: string };
 
 const SERVIS_PREFIX = "SR";
 
@@ -150,6 +150,7 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
       // ÖNƏMLİ: Əgər hesab seçilməyibsə default aktiv nağd kassanı tapırıq ki,
       // ödəniş qaib qalmasın. Heç bir kassa yoxdursa, yalnız o zaman skip
       // edilir və audit log-a xəbərdarlıq yazılır.
+      let paymentWarning: string | undefined;
       if (d.musteriden_alinan > 0) {
         let hesabId = d.xidmet_hesab_id;
         if (!hesabId) {
@@ -171,14 +172,30 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
             fd.set("kassaya_elave_et", "true");
             fd.set("satis_kimi_qeyd_et", "true");
             fd.set("qeyd", `İlkin ödəniş: ${d.mehsul_ad}`);
-            await recordPayment(fd);
+            const payRes = await recordPayment(fd);
+            if (!payRes.ok) {
+              // recordPayment uğursuz oldu (icazə/validasiya və s.) — pul itkisi riski.
+              console.error(
+                `[createServisRequest] ${created.id}: ${d.musteriden_alinan} AZN ödənişi yazılmadı — ${payRes.error}`,
+              );
+              await writeServisAudit("ODENIS_ITKI_RISKI", created.id, {
+                mebleg: d.musteriden_alinan,
+                hesab_id: hesabId,
+                sebeb: `Ödəniş kassaya yazılmadı: ${payRes.error}`,
+              });
+              paymentWarning = `Diqqət: ${d.musteriden_alinan} AZN ödəniş kassaya yazılmadı (${payRes.error}). Zəhmət olmasa ödənişi əl ilə qeyd edin.`;
+            }
           } catch (err) {
-            console.error("[createServisRequest] auto-payment failed:", err);
+            console.error(
+              `[createServisRequest] ${created.id}: auto-payment failed (${d.musteriden_alinan} AZN):`,
+              err,
+            );
             await writeServisAudit("ODENIS_XETA", created.id, {
               mebleg: d.musteriden_alinan,
               hesab_id: hesabId,
               error: err instanceof Error ? err.message : String(err),
             });
+            paymentWarning = `Diqqət: ${d.musteriden_alinan} AZN ödəniş kassaya yazılmadı (xəta baş verdi). Zəhmət olmasa ödənişi əl ilə qeyd edin.`;
           }
         } else {
           // Heç bir kassa yoxdur — istifadəçi xəbərdarlandırılır audit log-da
@@ -189,6 +206,7 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
             mebleg: d.musteriden_alinan,
             sebeb: "Aktiv nağd kassa tapılmadı — ödəniş kassaya yazılmadı",
           });
+          paymentWarning = `Diqqət: ${d.musteriden_alinan} AZN ödəniş kassaya yazılmadı (aktiv nağd kassa tapılmadı). Zəhmət olmasa əvvəlcə kassa yaradıb ödənişi əl ilə qeyd edin.`;
         }
       }
 
@@ -214,7 +232,7 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
 
       revalidatePath("/servis");
       bustServisCache();
-      return { ok: true, id: created.id };
+      return { ok: true, id: created.id, warning: paymentWarning };
     } catch (e) {
       console.error("[createServisRequest]", e);
       return { ok: false, error: e instanceof Error ? e.message : "Xəta" };
