@@ -92,9 +92,12 @@ export function serializeForJson<T extends Record<string, unknown>>(
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(o)) {
     if (v == null) out[k] = null;
-    else if (typeof v === "object" && "toString" in v && v.constructor.name === "Decimal") out[k] = Number(v.toString());
     else if (v instanceof Date) out[k] = v.toISOString();
-    else out[k] = v;
+    // Prisma Decimal (decimal.js): minified runtime-da constructor.name "Decimal"
+    // DEYİL (məs. "i") — duck-typing işlədirik: toNumber() metodu olan obyekt Decimal-dir.
+    else if (typeof v === "object" && typeof (v as { toNumber?: unknown }).toNumber === "function") {
+      out[k] = (v as { toNumber: () => number }).toNumber();
+    } else out[k] = v;
   }
   return out;
 }
