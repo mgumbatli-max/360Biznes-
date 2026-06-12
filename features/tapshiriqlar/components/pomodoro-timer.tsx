@@ -29,7 +29,7 @@ export function PomodoroTimer() {
   const [remaining, setRemaining] = useState(DURATIONS.focus);
   const [running, setRunning] = useState(false);
   const [cycle, setCycle] = useState(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!running) {

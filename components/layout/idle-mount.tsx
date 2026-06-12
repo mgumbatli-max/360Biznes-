@@ -49,7 +49,7 @@ export function IdleMount({
       if (typeof handle === "number" && "cancelIdleCallback" in window) {
         (window as Window & { cancelIdleCallback: (h: number) => void }).cancelIdleCallback(handle);
       } else {
-        clearTimeout(handle as NodeJS.Timeout);
+        clearTimeout(handle as unknown as NodeJS.Timeout);
       }
     };
   }, [timeoutMs]);
