@@ -66,6 +66,11 @@ Auth: Bearer. Barkod/kod üzrə məhsul tapır (scanLookup). 200: scan nəticəs
 Auth: Bearer (xüsusi icazə tələb olunmur — referans siyahıları). Forma seçimləri.
 200: `{ "kateqoriyalar": [{ id:number, ad:string, ust_id:number|null }], "markalar": [{ id:number, ad:string }], "vahidler": [{ id:number, ad:string, qisa_ad:string|null }] }`
 
+### GET `/api/mobile/v1/app-config`
+Auth: Bearer. Tenant-ın Lite/Pro fərdiləşdirməsi (mobil mode CİHAZ-LOKALdır — bu endpoint mode qaytarmır).
+200: `{ "lite": { "design": { density, mobileLayout, fontScale, accent }, "modules": { "<kod>": { "visible": bool, "enabled": bool, "blocks": { "<blok>": bool }, "landing"?: string } } } }`
+Mobil: Pro-da config nəzərə alınmır (hamısı açıq); Lite-da `modules.<kod>.visible=false` → modul gizli, `blocks` → funksiya gating.
+
 ---
 
 ## Şəkil yükləmə
