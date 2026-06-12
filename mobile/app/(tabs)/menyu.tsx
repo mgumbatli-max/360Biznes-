@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { ChevronRight, LogOut, Settings, User } from "lucide-react-native";
 import { Screen, Card } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
+import { useAppModeStore } from "../../src/lib/app-mode-store";
 import { api } from "../../src/lib/api";
 import { C } from "../../src/theme";
 
@@ -57,6 +58,8 @@ function MenuRow({ icon, label, onPress, danger = false }: MenuRowProps) {
 export default function MenyuScreen() {
   const router = useRouter();
   const user = useAuth((s) => s.user);
+  const mode = useAppModeStore((s) => s.mode);
+  const setMode = useAppModeStore((s) => s.setMode);
 
   const onLogout = async () => {
     const rt = useAuth.getState().refresh;
@@ -155,6 +158,51 @@ export default function MenyuScreen() {
                 )}
               </View>
             </View>
+          </Card>
+        </View>
+
+        {/* Rejim — Lite / Pro */}
+        <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+          <Card>
+            <Text style={{ color: C.sub, fontSize: 12, fontWeight: "600", marginBottom: 8 }}>
+              Rejim
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                backgroundColor: C.bg,
+                borderRadius: 12,
+                padding: 4,
+              }}
+            >
+              {(["lite", "pro"] as const).map((m) => (
+                <Pressable
+                  key={m}
+                  onPress={() => setMode(m)}
+                  style={{
+                    flex: 1,
+                    borderRadius: 8,
+                    paddingVertical: 8,
+                    alignItems: "center",
+                    backgroundColor: mode === m ? C.brand : "transparent",
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: "600",
+                      color: mode === m ? "#fff" : C.sub,
+                    }}
+                  >
+                    {m === "lite" ? "Lite (sadə)" : "Pro (tam)"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={{ color: C.sub, fontSize: 12, marginTop: 8 }}>
+              Lite — yalnız vacib funksiyalar (web ayarlarına görə). Pro — hər şey aktiv.
+            </Text>
           </Card>
         </View>
 

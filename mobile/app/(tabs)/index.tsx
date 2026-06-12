@@ -5,6 +5,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Package, Plus, ScanLine } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
+import { useAppModeStore } from "../../src/lib/app-mode-store";
+import { useAppConfig } from "../../src/features/app-config/hooks";
+import { moduleVisible } from "../../src/lib/gating";
 import { C } from "../../src/theme";
 
 type Tile = {
@@ -16,6 +19,10 @@ type Tile = {
 export default function HomeScreen() {
   const router = useRouter();
   const user = useAuth((s) => s.user);
+  const mode = useAppModeStore((s) => s.mode);
+  const { data: appCfg } = useAppConfig();
+  // Anbar/Məhsul modulu Lite-da gizlədilibsə sürətli-əməl tile-ları göstərilmir.
+  const anbarOn = moduleVisible(appCfg?.lite, mode, "anbar");
 
   const tiles: Tile[] = [
     {
@@ -70,28 +77,42 @@ export default function HomeScreen() {
           )}
         </LinearGradient>
 
-        {/* Quick action tiles */}
-        <Text
-          style={{
-            marginHorizontal: 16,
-            marginTop: 24,
-            marginBottom: 12,
-            fontSize: 15,
-            fontWeight: "700",
-            color: C.ink,
-          }}
-        >
-          Sürətli əməliyyat
-        </Text>
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            marginHorizontal: 12,
-            gap: 10,
-          }}
-        >
-          {tiles.map((tile) => (
+        {/* Quick action tiles — Lite-da anbar gizlidirsə göstərilmir */}
+        {!anbarOn ? (
+          <Text
+            style={{
+              marginHorizontal: 16,
+              marginTop: 24,
+              color: C.sub,
+              fontSize: 14,
+            }}
+          >
+            Lite rejimində modullar gizlədilib. Menyu → Pro ilə hamısını aça
+            bilərsiniz.
+          </Text>
+        ) : (
+          <>
+            <Text
+              style={{
+                marginHorizontal: 16,
+                marginTop: 24,
+                marginBottom: 12,
+                fontSize: 15,
+                fontWeight: "700",
+                color: C.ink,
+              }}
+            >
+              Sürətli əməliyyat
+            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                marginHorizontal: 12,
+                gap: 10,
+              }}
+            >
+              {tiles.map((tile) => (
             <Pressable
               key={tile.label}
               onPress={tile.onPress}
@@ -130,8 +151,10 @@ export default function HomeScreen() {
                 {tile.label}
               </Text>
             </Pressable>
-          ))}
-        </View>
+              ))}
+            </View>
+          </>
+        )}
       </ScrollView>
     </Screen>
   );
