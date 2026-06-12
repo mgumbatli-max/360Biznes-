@@ -29,10 +29,12 @@ export async function saveUploadFile(
   key: string,
   contentType: string,
 ): Promise<string> {
-  // Blob YALNIZ prod-da işlədilir. Lokal dev özünə-yetərlidir (public/uploads),
-  // beləcə .env.local-a prod blob tokeni pull olunsa belə dev cloud store-dan
-  // (suspend/limit/şəbəkə) asılı qalmır.
-  if (hasBlob() && process.env.NODE_ENV === "production") {
+  // Blob YALNIZ Vercel mühitində (prod + preview) işlədilir. Lokal (dev VƏ
+  // `npm run start`) özünə-yetərlidir (public/uploads) — .env.local-a prod blob
+  // tokeni pull olunsa belə dev cloud store-dan (suspend/limit/şəbəkə) asılı
+  // qalmır VƏ lokal-dan prod blob-a təsadüfi yazma olmur. `VERCEL` həm build,
+  // həm runtime-da yalnız Vercel-də "1"-dir (NODE_ENV-dən daha etibarlı siqnal).
+  if (hasBlob() && process.env.VERCEL === "1") {
     const { put } = await import("@vercel/blob");
     const blob = await put(key, buf, {
       access: "public",
