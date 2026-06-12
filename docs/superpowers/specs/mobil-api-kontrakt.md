@@ -62,6 +62,10 @@ Auth: Bearer + `mehsul.duzelt`. Body: ProductSchema sahələri. Qiymət dəyişi
 ### GET `/api/mobile/v1/mehsullar/barkod/[code]`
 Auth: Bearer. Barkod/kod üzrə məhsul tapır (scanLookup). 200: scan nəticəsi (məhsul və ya null).
 
+### GET `/api/mobile/v1/referanslar`
+Auth: Bearer (xüsusi icazə tələb olunmur — referans siyahıları). Forma seçimləri.
+200: `{ "kateqoriyalar": [{ id:number, ad:string, ust_id:number|null }], "markalar": [{ id:number, ad:string }], "vahidler": [{ id:number, ad:string, qisa_ad:string|null }] }`
+
 ---
 
 ## Şəkil yükləmə
