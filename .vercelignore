@@ -1,0 +1,4 @@
+# RN mobil app (Expo) web deploy-a aid deyil — Vercel Next build-i üçün lazımsız.
+# Həm upload-u kiçildir, həm də root tsconfig (mobile exclude) ilə birgə
+# mobil RN fayllarının web build-də tip-yoxlanmasının qarşısını alır.
+mobile
