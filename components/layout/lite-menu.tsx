@@ -55,6 +55,7 @@ const TILES: Tile[] = [
 export function LiteMenu() {
   const open = useLiteMenu((s) => s.open);
   const setOpen = useLiteMenu((s) => s.setOpen);
+  const hiddenModules = useLiteMenu((s) => s.hiddenModules);
   const pathname = usePathname();
 
   // Naviqasiya baş verəndə bağla
@@ -113,9 +114,9 @@ export function LiteMenu() {
           </span>
         </Link>
 
-        {/* Modul grid — 2 sütun, böyük kartlar */}
+        {/* Modul grid — 2 sütun, böyük kartlar (Lite-da gizli modullar çıxarılır) */}
         <div className="grid grid-cols-2 gap-3">
-          {TILES.map((t) => {
+          {TILES.filter((t) => !hiddenModules.includes(t.href.split("/")[1] ?? "")).map((t) => {
             const Icon = t.icon;
             return (
               <Link

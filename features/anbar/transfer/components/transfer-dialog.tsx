@@ -52,7 +52,12 @@ export function TransferDialog({
     let alive = true;
     getStockForAnbar(anbarId, ids).then((m) => {
       if (alive) setStockMap(m);
-    }).catch(() => {});
+    }).catch((e) => {
+      if (alive) {
+        console.error("Failed to load stock:", e);
+        toast.error("Stok yükləmə başarısız oldu");
+      }
+    });
     return () => { alive = false; };
   }, [kaynak, lines]);
 

@@ -168,8 +168,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
       // QA-K22: manual axınla (createMarketSatis) EYNİ komissiya tətbiqi —
       // əvvəl webhook satışı komisyon/xalis yazmır, payout YARATMIRDI
       // (gross net kimi görünürdü, payout izlənmirdi).
-      const { getDefaultCommission } = await import("@/features/maliyye/marketplace-commission");
-      const komissiyaFaiz = await getDefaultCommission(kanal).catch(() => 0);
+      const { getDefaultCommission, PLATFORM_DEFAULTS } = await import("@/features/maliyye/marketplace-commission");
+      let komissiyaFaiz: number;
+      try {
+        komissiyaFaiz = await getDefaultCommission(kanal);
+      } catch (error) {
+        // Komissiya axtarışı uğursuz olarsa səssizcə 0% ilə davam etmə —
+        // maliyyə uyğunsuzluğu yaranır. Loglayıb platforma default-una düş.
+        console.error("[webhook] commission lookup failed:", { kanal, error });
+        komissiyaFaiz = PLATFORM_DEFAULTS[kanal] ?? 0;
+      }
       const komissiyaMebleg = +(cem * (komissiyaFaiz / 100)).toFixed(2);
       const netMebleg = +(cem - komissiyaMebleg).toFixed(2);
 

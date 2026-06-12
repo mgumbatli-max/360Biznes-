@@ -13,6 +13,6 @@ export async function POST(req: NextRequest) {
     select: { id: true, rol_id: true, sahibkar_id: true, roles: { select: { ad: true } } },
   });
   if (!u) return NextResponse.json({ error: "İstifadəçi aktiv deyil" }, { status: 401 });
-  const accessToken = signAccessToken({ sahibkar_id: u.sahibkar_id, istifadeci_id: u.id, rol_id: u.rol_id ?? 0, rol_ad: u.roles?.ad ?? "" });
+  const accessToken = signAccessToken({ sahibkar_id: u.sahibkar_id, istifadeci_id: u.id, rol_id: u.rol_id ?? 3, rol_ad: u.roles?.ad ?? "" });
   return NextResponse.json({ accessToken, refreshToken: r.newRaw });
 }

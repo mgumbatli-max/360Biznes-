@@ -14,6 +14,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { LiteMenu } from "@/components/layout/lite-menu";
+import { LiteMenuHydrator } from "@/components/layout/lite-menu-hydrator";
 import { PullToRefresh } from "@/components/layout/pull-to-refresh";
 import { PwaInstallPrompt } from "@/components/layout/pwa-install-prompt";
 import { OfflineIndicator } from "@/components/layout/offline-indicator";
@@ -195,6 +196,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           <BottomNav />
           <LiteMenu />
+          <LiteMenuHydrator hiddenModules={hiddenModules} />
   {/* Critical olmayan widget-lər — interactive olduqdan sonra mount olur.
               Bu, ilk paint-i bloklayan client JS-i ~3-5 komponent həcmində azaldır. */}
           <IdleMount>

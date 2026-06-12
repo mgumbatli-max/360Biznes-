@@ -533,7 +533,7 @@ export async function executeAgentTool(
         yeni_data: { satis_qiymeti: yeniQiymet },
         sebeb: "AI agent ilə qiymət dəyişikliyi",
         status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, mehsul: mehsul.ad, kohne_qiymet: kohne, yeni_qiymet: yeniQiymet };
     }
 
@@ -579,7 +579,7 @@ export async function executeAgentTool(
         yeni_data: { ad, satis_qiymeti: satisQiymeti, barkod, kod },
         sebeb: "AI agent ilə məhsul yaradılması",
         status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, mehsul_id: created.id, ad: created.ad, satis_qiymeti: Number(created.satis_qiymeti ?? 0) };
     }
 
@@ -637,7 +637,7 @@ export async function executeAgentTool(
         yeni_data: { ad, telefon, dogum_tarixi: dogum?.toISOString().slice(0, 10) ?? null },
         sebeb: "AI agent ilə müştəri yaradılması",
         status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, musteri_id: created.id, ad: created.ad, telefon: created.telefon };
     }
 
@@ -710,7 +710,7 @@ export async function executeAgentTool(
         yeni_data: { nomre: res.nomre, lines: lines.length, odenis_nov: odenisNov },
         sebeb: "AI agent ilə satış",
         status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return {
         ok: true,
         satis_id: res.satis_id,
@@ -845,7 +845,7 @@ export async function executeAgentTool(
         sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
         emeliyyat: "ai_xerc_yarat", resurs_nov: "xerc", resurs_id: res.id ?? null,
         yeni_data: { mebleg, tesvir, hesab: hesabAd }, sebeb: "AI agent ilə xərc", status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, mebleg, tesvir, hesab: hesabAd };
     }
 
@@ -932,7 +932,7 @@ export async function executeAgentTool(
         emeliyyat: "ai_stok_duzelis", resurs_nov: "mehsul", resurs_id: m.id,
         evvelki_data: { miqdar: kohneMiqdar }, yeni_data: { miqdar: yeniMiqdar, sebeb },
         sebeb: "AI agent ilə stok düzəlişi", status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, mehsul: m.ad, kohne: kohneMiqdar, yeni: yeniMiqdar };
     }
 
@@ -950,7 +950,7 @@ export async function executeAgentTool(
         sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
         emeliyyat: "ai_mehsul_sil", resurs_nov: "mehsul", resurs_id: m.id,
         yeni_data: { aktiv: false }, sebeb: "AI agent ilə məhsul deaktivasiyası", status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, mehsul: m.ad, status: "deaktiv" };
     }
 
@@ -1040,7 +1040,7 @@ export async function executeAgentTool(
         sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,
         emeliyyat: "ai_servis_yarat", resurs_nov: "servis", resurs_id: (res as { id?: string }).id ?? null,
         yeni_data: { musteri: musteriAd, mehsul: mehsulAd }, sebeb: "AI agent ilə servis qəbulu", status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, musteri: musteriAd, mehsul: mehsulAd };
     }
 
@@ -1067,7 +1067,7 @@ export async function executeAgentTool(
         emeliyyat: "ai_qaytarma", resurs_nov: "qaytarma", resurs_id: res.id,
         yeni_data: { satis_nomre: sale.nomre, qaytarma_nomre: res.nomre, sebeb },
         sebeb: "AI agent ilə qaytarma", status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return { ok: true, qaytarma_nomre: res.nomre, satis_nomre: sale.nomre };
     }
 
@@ -1113,7 +1113,7 @@ export async function executeAgentTool(
         emeliyyat: "ai_transfer_yarat", resurs_nov: "anbar_transferi", resurs_id: res.data?.id ?? null,
         yeni_data: { kaynak: kAd, hedef: hAd, setir: satirlar.length },
         sebeb: "AI agent ilə transfer", status: "ugur",
-      }).catch(() => {});
+      }).catch((e) => console.error("[AI agent] audit log failed:", e));
       return {
         ok: true,
         kaynak: kAd,
