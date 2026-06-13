@@ -245,6 +245,10 @@ function SidebarLink({
 }) {
   const Icon = item.icon;
   const showBadge = badge && badge.count > 0;
+  // Performans: bütün sidebar linklərini birdən prefetch ETMƏ (zəif komputerdə
+  // RAM/şəbəkə yüklənməsi → donma). Yalnız hover/fokus zamanı prefetch et —
+  // Next 16 sənədinin böyük link siyahıları üçün tövsiyə etdiyi pattern.
+  const [hover, setHover] = useState(false);
   const toneClass =
     badge?.tone === "emerald"
       ? "bg-emerald-500 text-white"
@@ -255,7 +259,9 @@ function SidebarLink({
     <li>
       <Link
         href={item.href}
-        prefetch={item.external ? false : true}
+        prefetch={item.external ? false : hover ? null : false}
+        onMouseEnter={() => setHover(true)}
+        onFocus={() => setHover(true)}
         onClick={onClick}
         title={collapsed ? item.label : undefined}
         target={item.external ? "_blank" : undefined}
