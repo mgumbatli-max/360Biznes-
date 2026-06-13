@@ -55,8 +55,19 @@ export async function authorizeUser(
 
   // `select` ilə yalnız lazımi sahələr — Prisma daha az JOIN edir,
   // payload kiçik olur. `include` bütün sütunları gətirir.
-  const user = await prismaUnscoped.istifadeciler.findFirst({
-    where: { email: email.toLowerCase().trim(), aktiv: true },
+  //
+  // DİQQƏT (hesab-qarışması fix): istifadeciler.email YALNIZ tenant-üzrə
+  // unikaldır (@@unique([sahibkar_id, email])). Eyni email bir neçə tenant-da
+  // ola bilər (məs. bir tenant-da işçi kimi dəvət, başqasında sahib). Köhnə
+  // `findFirst` ARBİTRAR birini seçirdi → şifrə başqa sətrə uyğun gəlsə "giriş
+  // alınmır", düşdüyü tenant səhv olsa "loginlər qarışır" idi. Həll: bütün aktiv
+  // namizədləri gətir, şifrəyə UYĞUN GƏLƏN hesabı seç (adətən tək namizəd olur).
+  // case-INSENSITIVE axtarış: saxlanan email-in registri normalizə olunmaya
+  // bilər (komanda dəvəti / import / miqrasiya signup-dan fərqli yolla yaradıb).
+  // Postgres `=` registr-həssasdır → `M.Gumbatli@` saxlanmışsa, `m.gumbatli@`
+  // sorğusu tapmazdı və "giriş alınmır" olardı. ILIKE bunu həll edir.
+  const candidates = await prismaUnscoped.istifadeciler.findMany({
+    where: { email: { equals: email.trim(), mode: "insensitive" }, aktiv: true },
     select: {
       id: true,
       email: true,
@@ -83,21 +94,29 @@ export async function authorizeUser(
     },
   });
   const tDb = Date.now();
-  if (!user) {
+  if (candidates.length === 0) {
     await recordLoginAttempt({ success: false, email, ip, ua, sebeb: "user_not_found" });
     return { ok: false, reason: "user_not_found" };
   }
 
-  const ok = await verifyPassword(password, user.sifre_hash);
+  // Şifrəyə görə düzgün hesabı seç.
+  let user: (typeof candidates)[number] | null = null;
+  for (const c of candidates) {
+    if (await verifyPassword(password, c.sifre_hash)) {
+      user = c;
+      break;
+    }
+  }
   const tBcrypt = Date.now();
-  if (!ok) {
+  if (!user) {
+    const first = candidates[0];
     await recordLoginAttempt({
       success: false,
       email,
       ip,
       ua,
-      sahibkarId: user.sahibkar_id,
-      istifadeciId: user.id,
+      sahibkarId: first.sahibkar_id,
+      istifadeciId: first.id,
       sebeb: "wrong_password",
     });
     return { ok: false, reason: "wrong_password" };

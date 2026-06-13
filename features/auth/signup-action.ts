@@ -28,10 +28,12 @@ export async function signupAction(_prev: SignupActionResult | null, formData: F
   const data = parsed.data;
   const email = data.email.toLowerCase().trim();
 
-  // Email uniqueness check across both sahibkarlar and istifadeciler
+  // Email uniqueness check across both sahibkarlar and istifadeciler.
+  // case-INSENSITIVE — legacy/import datası mixed-case email saxlaya bilər;
+  // case-sensitive yoxlama dublikatı buraxardı (login isə insensitive axtarır).
   const [existingSahibkar, existingUser] = await Promise.all([
-    prismaUnscoped.sahibkarlar.findUnique({ where: { email } }),
-    prismaUnscoped.istifadeciler.findFirst({ where: { email } }),
+    prismaUnscoped.sahibkarlar.findFirst({ where: { email: { equals: email, mode: "insensitive" } } }),
+    prismaUnscoped.istifadeciler.findFirst({ where: { email: { equals: email, mode: "insensitive" } } }),
   ]);
   if (existingSahibkar || existingUser) {
     return { ok: false, error: "Bu email artıq qeydiyyatdan keçib.", fieldErrors: { email: ["İstifadədədir"] } };
