@@ -6,7 +6,9 @@ import Constants from "expo-constants";
 import { useAuth } from "./auth-store";
 
 const BASE =
-  (Constants.expoConfig?.extra?.apiBase as string) || "http://localhost:3500";
+  process.env.EXPO_PUBLIC_API_BASE ||
+  (Constants.expoConfig?.extra?.apiBase as string) ||
+  "http://localhost:3500";
 
 export const api = axios.create({
   baseURL: BASE + "/api/mobile/v1",

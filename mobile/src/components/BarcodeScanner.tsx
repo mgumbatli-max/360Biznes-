@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   frameContainer: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
   },

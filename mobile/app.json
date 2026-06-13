@@ -33,9 +33,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-status-bar",
-      "expo-secure-store",
-      "expo-image",
       ["expo-camera", { "cameraPermission": "Barkod skan etmək və məhsul şəkli çəkmək üçün kameradan istifadə olunur." }],
       ["expo-image-picker", { "photosPermission": "Məhsula şəkil əlavə etmək üçün qalereyaya giriş istənilir.", "cameraPermission": "Məhsul şəkli çəkmək üçün kameradan istifadə olunur." }]
     ],

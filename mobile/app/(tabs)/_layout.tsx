@@ -9,9 +9,8 @@ import {
   Menu,
 } from "lucide-react-native";
 import { C } from "../../src/theme";
-import type { BottomTabBarButtonProps } from "expo-router/build/react-navigation/bottom-tabs/types";
 
-function CenterFAB(_props: BottomTabBarButtonProps) {
+function CenterFAB() {
   const router = useRouter();
   return (
     <Pressable
@@ -86,7 +85,7 @@ export default function TabsLayout() {
         options={{
           title: "",
           tabBarIcon: () => null,
-          tabBarButton: (props) => <CenterFAB {...props} />,
+          tabBarButton: () => <CenterFAB />,
         }}
       />
       <Tabs.Screen
