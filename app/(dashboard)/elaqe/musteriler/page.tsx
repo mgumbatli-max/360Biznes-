@@ -39,6 +39,7 @@ type SearchParams = {
   qara?: string;
   yeni?: string;
   filter?: string;
+  tip?: string;
   page?: string;
 };
 
@@ -131,6 +132,7 @@ async function SearchBlock({
   return (
     <ContactSearch
       basePath="/elaqe/musteriler"
+      showTip
       managers={managers}
       countries={segments.countries}
       cities={segments.cities}
@@ -173,7 +175,12 @@ export default async function MusterilerPage({ searchParams }: { searchParams: P
     sp as Record<string, string | string[] | undefined>,
   );
   const filter: ContactFilter = {
-    nov: "musteri",
+    // TİP filtri (Müştəri/Təchizatçı/Hər ikisi) seçiləndə nov override olunur;
+    // seçilməyəndə default müştəri. Beləcə eyni səhifədə kontakt tipini ayırmaq olur.
+    nov:
+      sp.tip === "techizatci" || sp.tip === "her_ikisi" || sp.tip === "musteri"
+        ? (sp.tip as ContactFilter["nov"])
+        : "musteri",
     recordStatus,
     search: sp.q,
     borc: (sp.borc as ContactFilter["borc"]) ?? (f === "borclu" ? "var" : "any"),

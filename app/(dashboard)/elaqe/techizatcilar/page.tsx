@@ -30,6 +30,7 @@ type SearchParams = {
   sheher?: string;
   sort?: string;
   dir?: string;
+  tip?: string;
   page?: string;
 };
 
@@ -45,7 +46,11 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
     sp as Record<string, string | string[] | undefined>,
   );
   const filter: ContactFilter = {
-    nov: "techizatci",
+    // TİP filtri seçiləndə nov override (default təchizatçı) — kontakt tipini ayırmaq üçün.
+    nov:
+      sp.tip === "musteri" || sp.tip === "her_ikisi" || sp.tip === "techizatci"
+        ? (sp.tip as ContactFilter["nov"])
+        : "techizatci",
     search: sp.q,
     borc: (sp.borc as ContactFilter["borc"]) ?? "any",
     qiymet_tipi: sp.qiymet,
@@ -116,6 +121,7 @@ export default async function TechizatcilarPage({ searchParams }: { searchParams
 
       <ContactSearch
         basePath="/elaqe/techizatcilar"
+        showTip
         managers={managers}
         countries={segments.countries}
         cities={segments.cities}
