@@ -124,6 +124,15 @@ const LABELS: Record<string, string> = {
   "sistem-saglamligi": "Sistem sağlamlığı",
 };
 
+/**
+ * Səhifəsi olmayan "qruplaşdırıcı" ara-yollar — breadcrumb-da klikləyici link YOX,
+ * sadə mətn kimi göstərilir (əks halda 404 link yaranır).
+ */
+const NON_NAVIGABLE = new Set<string>([
+  "/ticaret/hesabat",
+  "/kampaniyalar/kart",
+]);
+
 function labelFor(seg: string): string {
   if (LABELS[seg]) return LABELS[seg];
   // UUID — "Detal" göstər
@@ -173,11 +182,18 @@ export function Breadcrumb({ compact = false }: Props) {
       {crumbs.map((c, i) => {
         const isLast = i === crumbs.length - 1;
         if (compact && i < crumbs.length - 2) return null;
+        const navigable = !isLast && !NON_NAVIGABLE.has(c.href);
         return (
           <span key={c.href} className="flex items-center gap-1">
             <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
-            {isLast ? (
-              <span className="truncate font-semibold text-foreground" aria-current="page">
+            {!navigable ? (
+              <span
+                className={cn(
+                  "truncate",
+                  isLast ? "font-semibold text-foreground" : "text-muted-foreground",
+                )}
+                aria-current={isLast ? "page" : undefined}
+              >
                 {c.label}
               </span>
             ) : (
