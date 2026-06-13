@@ -58,7 +58,7 @@ export function OperationRowActions({
   const [cancelOpenDialog, setCancelOpenDialog] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  const isPending = op.status === "gozleyen_tesdiq";
+  const isPending = op.status === "tesdiq_gozleyir" || op.status === "gozleyir";
   const isActive = op.status === "aktiv";
   const isCancelled = op.status === "legv" || op.status === "redd";
 

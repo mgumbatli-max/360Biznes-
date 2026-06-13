@@ -139,10 +139,15 @@ export async function bulkChangeLeadStage(
   }
   return withTenant(async () => {
     try {
+      // QA #38: tenant-daxili scope — adi user yalnız öz lead-lərini dəyişə bilər
+      const scope = await getCrmScopeFilter();
       const data: Record<string, unknown> = { status, yenilendi: new Date() };
       if (status === "itirdi" && sebeb) data.imtina_sebeb = sebeb;
       const res = await prisma.leads.updateMany({
-        where: { id: { in: ids } },
+        where: {
+          id: { in: ids },
+          ...(!scope.privileged && scope.istifadeciId ? { menecer_id: scope.istifadeciId } : {}),
+        },
         data,
       });
       revalidatePath("/crm/leadler");

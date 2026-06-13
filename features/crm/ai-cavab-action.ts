@@ -223,7 +223,7 @@ export async function sendAutoReply(input: FormData): Promise<
     try {
       // Son 2 çıxan mesaj — AI yaradılmışdırsa, eskalasiya qoy
       const recent = await prisma.inbox_mesajlari.findMany({
-        where: { sohbet_id: d.sohbet_id, istiqamet: "out" },
+        where: { sohbet_id: d.sohbet_id, istiqamet: "xaric" },
         orderBy: { yaradildi: "desc" },
         take: 2,
         select: { ai_yaradilan: true },
@@ -234,7 +234,8 @@ export async function sendAutoReply(input: FormData): Promise<
         data: {
           sahibkar_id: sahibkarId,
           sohbet_id: d.sohbet_id,
-          istiqamet: "out",
+          // DB CHECK yalnız {daxil,xaric} qəbul edir — çıxan mesaj "xaric"
+          istiqamet: "xaric",
           metn: d.metn.trim(),
           status: "gonderildi",
           ai_yaradilan: true,

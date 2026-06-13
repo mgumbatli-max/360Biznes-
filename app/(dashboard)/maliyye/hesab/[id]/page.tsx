@@ -174,7 +174,7 @@ export default async function HesabDetailPage({ params }: { params: Promise<{ id
                       <td className="px-3 py-2 text-[10.5px]">
                         {op.status === "aktiv" ? (
                           <span className="text-emerald-600">Aktiv</span>
-                        ) : op.status === "gozleyen_tesdiq" ? (
+                        ) : op.status === "tesdiq_gozleyir" || op.status === "gozleyen_tesdiq" ? (
                           <span className="text-amber-600">Gözləyir</span>
                         ) : (
                           <span className="text-muted-foreground">{op.status}</span>

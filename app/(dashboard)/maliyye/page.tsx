@@ -96,7 +96,7 @@ export default async function MaliyyePage({ searchParams }: { searchParams?: Pro
       return {
         tone: "warning" as const,
         text: `${kpis.gozleyen_odenis} ödəniş təsdiq gözləyir — yoxlayıb təsdiqləyin`,
-        href: "/maliyye/emeliyyat?status=gozleyen_tesdiq",
+        href: "/maliyye/emeliyyat?status=tesdiq_gozleyir",
       };
     }
     return null;

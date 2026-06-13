@@ -63,6 +63,7 @@ export async function cancelFinanceOperation(
             hesab_id: true,
             hesab_id2: true,
             azn_meblegh: true,
+            meblegh: true,
             meblegh2: true,
             kontragent_id: true,
             isci_id: true,
@@ -114,6 +115,33 @@ export async function cancelFinanceOperation(
               data: { odenilmis: { decrement: Number(a.mebleg) } },
             });
             touchedAlis.add(a.alish_id);
+          }
+        }
+
+        // QA-kritik (#16b): allocation-suz BİRBAŞA bağlı satış/alış ödənişi.
+        // Satış ödənişi çox vaxt finance_operations.satis_id ilə birbaşa yazılır
+        // (allocation cədvəlinə düşmür). Bu halda yuxarıdakı loop boş qalır və
+        // satis_sifarisleri.odenilmis heç vaxt azalmırdı → əməliyyat ləğv görünsə də
+        // satışda odenilmis >0 qalırdı. Burada birbaşa bağlamanı işləyirik.
+        // Yalnız allocation YOXDURSA tətbiq edirik ki, ikiqat çıxma olmasın.
+        const opMebleg = Number(op.azn_meblegh ?? op.meblegh ?? 0);
+        if (allocations.length === 0 && opMebleg > 0) {
+          if (op.satis_id && !touchedSatis.has(op.satis_id)) {
+            // odenilmis-i op məbləği qədər azalt, 0-dan aşağı düşməsin (clamp)
+            await tx.$executeRaw`
+              UPDATE satis_sifarisleri
+              SET odenilmis = GREATEST(0, COALESCE(odenilmis, 0) - ${opMebleg}::numeric)
+              WHERE id = ${op.satis_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid
+            `;
+            touchedSatis.add(op.satis_id);
+          }
+          if (op.alish_id && !touchedAlis.has(op.alish_id)) {
+            await tx.$executeRaw`
+              UPDATE alis_sifarisleri
+              SET odenilmis = GREATEST(0, COALESCE(odenilmis, 0) - ${opMebleg}::numeric)
+              WHERE id = ${op.alish_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid
+            `;
+            touchedAlis.add(op.alish_id);
           }
         }
 

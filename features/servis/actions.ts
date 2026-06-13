@@ -819,7 +819,9 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
               musteri_id: servis.musteri_id ?? null,
               tarix: new Date(),
               status: "tamamlandi",
-              odenis_nov: d.odenis_nov,
+              // satis_sifarisleri_odenis_nov_check: negd/kart/kecirme/nisye/kredit (bank YOX).
+              // payment-form 'bank' göndərir → 23514. Bank köçürməsini 'kecirme'-yə map et.
+              odenis_nov: d.odenis_nov === "bank" ? "kecirme" : d.odenis_nov,
               umumi_mebleg: d.meblegh,
               endirim_mebleg: 0,
               son_mebleg: d.meblegh,

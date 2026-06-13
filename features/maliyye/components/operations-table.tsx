@@ -40,6 +40,8 @@ const STORAGE_KEY = "maliyye-emeliyyat-cols-v1";
 
 const STATUS_LABEL: Record<string, { ad: string; cls: string }> = {
   aktiv: { ad: "Aktiv", cls: "border-success/30 bg-success/10 text-success" },
+  tesdiq_gozleyir: { ad: "Təsdiq gözləyir", cls: "border-warning/30 bg-warning/10 text-warning" },
+  // Köhnə data uyğunluğu üçün saxlanılır (yeni yazı tesdiq_gozleyir)
   gozleyen_tesdiq: { ad: "Təsdiq gözləyir", cls: "border-warning/30 bg-warning/10 text-warning" },
   legv: { ad: "Ləğv", cls: "border-muted text-muted-foreground" },
   redd: { ad: "Rədd", cls: "border-danger/30 bg-danger/10 text-danger" },

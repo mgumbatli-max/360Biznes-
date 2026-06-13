@@ -386,7 +386,15 @@ export async function bulkApprove(ids: number[]): Promise<BulkResult> {
       // Per-kind icazə yoxlanışı — hər ID üçün ayrı
       const docs = await prisma.tesdiq_telep.findMany({
         where: { id: { in: ids } },
-        select: { id: true, emeliyyat_nov: true, yaradan_id: true },
+        select: {
+          id: true,
+          emeliyyat_nov: true,
+          yaradan_id: true,
+          status: true,
+          resurs_nov: true,
+          resurs_id: true,
+          detay_json: true,
+        },
       });
       // Bütün unikal növlər üçün icazəni paralel yoxla
       const uniqueKinds = Array.from(new Set(docs.map((d) => d.emeliyyat_nov)));
@@ -417,6 +425,17 @@ export async function bulkApprove(ids: number[]): Promise<BulkResult> {
       await Promise.all(
         validIds.map((id) => logTransition(id, istifadeciId, "gozleyir", "tesdiq", "bulk_tesdiq", "Bulk təsdiq"))
       );
+      // BUG #26 fix: tək-yol approveRequest kimi original sənədi MATERİALLAŞDIR.
+      // updateMany yalnız status="gozleyir" olanları dəyişir, ona görə yalnız
+      // həqiqətən "gozleyir" olub indi təsdiqlənmiş sənədlər üçün propagate edirik.
+      // Materializasiya idempotent + ayrı-tx olduğu üçün bulk-da təhlükəsizdir.
+      const validIdSet = new Set(validIds);
+      const approvedDocs = docs.filter((d) => validIdSet.has(d.id) && d.status === "gozleyir");
+      for (const d of approvedDocs) {
+        if (d.resurs_nov && d.resurs_id) {
+          await propagateDocumentApproval(d.emeliyyat_nov, d.resurs_nov, d.resurs_id, d.detay_json);
+        }
+      }
       // Audit log — bulk təsdiq əməliyyatı
       await audit("tesdiq", "tesdiq_telep_bulk", null, {
         yeni_data: { ids: validIds, affected: result.count, status: "tesdiq" },
@@ -440,7 +459,15 @@ export async function bulkReject(ids: number[], reason: string): Promise<BulkRes
     try {
       const docs = await prisma.tesdiq_telep.findMany({
         where: { id: { in: ids } },
-        select: { id: true, emeliyyat_nov: true, yaradan_id: true },
+        select: {
+          id: true,
+          emeliyyat_nov: true,
+          yaradan_id: true,
+          status: true,
+          resurs_nov: true,
+          resurs_id: true,
+          detay_json: true,
+        },
       });
       const uniqueKinds = Array.from(new Set(docs.map((d) => d.emeliyyat_nov)));
       const allowedKindEntries = await Promise.all(
@@ -465,6 +492,17 @@ export async function bulkReject(ids: number[], reason: string): Promise<BulkRes
       await Promise.all(
         validRejectIds.map((id) => logTransition(id, istifadeciId, "gozleyir", "red", "bulk_red", reason.trim()))
       );
+      // BUG #27 fix: tək-yol rejectRequest kimi original sənədi LƏĞV et.
+      // updateMany yalnız status="gozleyir" olanları dəyişir — eyni şəkildə
+      // yalnız həqiqətən "gozleyir" olub indi rədd edilmiş sənədlər üçün
+      // propagate edirik (yoxsa rədd edilən sənəd tesdiq_gozleyir-də ilişib qalır).
+      const validRejectIdSet = new Set(validRejectIds);
+      const rejectedDocs = docs.filter((d) => validRejectIdSet.has(d.id) && d.status === "gozleyir");
+      for (const d of rejectedDocs) {
+        if (d.resurs_nov && d.resurs_id) {
+          await propagateDocumentReject(d.emeliyyat_nov, d.resurs_nov, d.resurs_id, d.detay_json);
+        }
+      }
       await audit("redd", "tesdiq_telep_bulk", null, {
         yeni_data: { ids: validRejectIds, affected: result.count, status: "red" },
         sebeb: reason.trim(),

@@ -54,6 +54,8 @@ export async function getLeadsListRows(opts?: {
   return withTenant(async () => {
     const where: Record<string, unknown> = {};
     if (opts?.status) where.status = opts.status;
+    // QA #13: status açıq verilməyibsə, silinmiş lead-ləri gizlət
+    else where.status = { not: "silinib" };
     if (opts?.menecer_id) where.menecer_id = opts.menecer_id;
     if (opts?.menbe) where.menbe = opts.menbe;
     if (opts?.q && opts.q.trim()) {

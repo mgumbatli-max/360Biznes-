@@ -8,6 +8,7 @@ import { findSaleByCode, type SaleByCodeResult } from "./sale-lookup";
 import { requireTicaretActionPerm, bustTicaretCache } from "./access-guard";
 import { audit } from "@/lib/audit/log";
 import { stockIncrement } from "@/lib/db/stock-guards";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 
 export type ScanLookupResult =
   | {
@@ -196,10 +197,9 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           }
         }
 
-        // Generate return number
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-        const suffix = Math.random().toString(16).slice(2, 6).toUpperCase();
-        const nomre = `QT-${dateStr}-${suffix}`;
+        // #30: sənəd nömrəsi atomik counter ilə (təsadüfi suffix əvəzinə) —
+        // ardıcıl, təkrarsız QAYTARMA-YYYY-NNNNNN formatı.
+        const nomre = await nextDocNumber(tx, sahibkarId, "qaytarma");
 
         const total = input.miqdar * input.vahid_qiymet;
 
@@ -207,7 +207,9 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           data: {
             sahibkar_id: sahibkarId,
             nomre,
-            nov: "musteri",
+            // #4: qaytarma_sifarisleri_nov_check yalnız satis_qaytarma/alis_qaytarma
+            // qəbul edir — "musteri" 23514 atırdı.
+            nov: "satis_qaytarma",
             anbar_id: anbarId,
             tarix: new Date(),
             status: "tamamlandi",
@@ -291,13 +293,19 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
                 },
               });
             } else if (!isNisye && origSale.kassa_id) {
+              // #25: yalnız real nağd kassa axını (negd/kart/kecirme) kassaya yazılır.
+              // kredit kimi nağd-olmayan ödənişlər negd-ə map olunur ki, kassa
+              // əməliyyatına yararsız odenis_nov düşməsin.
+              const kassaOdenisNov = ["negd", "kart", "kecirme"].includes(origSale.odenis_nov ?? "")
+                ? origSale.odenis_nov!
+                : "negd";
               // Nəğd/kart: kassaya mənfi əməliyyat (refund)
               await tx.kassa_emeliyyatlari.create({
                 data: {
                   sahibkar_id: sahibkarId,
                   kassa_id: origSale.kassa_id,
                   emeliyyat_nov: "qaytarma",
-                  odenis_nov: origSale.odenis_nov ?? "negd",
+                  odenis_nov: kassaOdenisNov,
                   mebleg: new Prisma.Decimal(-total),
                   ref_nov: "qaytarma_tez",
                   ref_id: ret.id,
@@ -338,7 +346,8 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
       await audit("yarat", "qaytarma_sifarisi", result.id, {
         yeni_data: {
           nomre: result.nomre,
-          nov: "musteri",
+          // #4: audit qeydi faktiki yazılan dəyəri əks etdirir.
+          nov: "satis_qaytarma",
           mehsul_id: input.mehsul_id,
           miqdar: input.miqdar,
           vahid_qiymet: input.vahid_qiymet,
@@ -475,9 +484,8 @@ export async function returnFullSale(
           }
         }
 
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-        const suffix = Math.random().toString(16).slice(2, 6).toUpperCase();
-        const nomre = `QF-${dateStr}-${suffix}`;
+        // #30: sənəd nömrəsi atomik counter ilə (təsadüfi suffix əvəzinə).
+        const nomre = await nextDocNumber(tx, sahibkarId, "qaytarma");
 
         let total = 0;
         for (const l of lines) {
@@ -499,7 +507,9 @@ export async function returnFullSale(
           data: {
             sahibkar_id: sahibkarId,
             nomre,
-            nov: "musteri",
+            // #4: qaytarma_sifarisleri_nov_check satis_qaytarma/alis_qaytarma
+            // tələb edir — "musteri" 23514 atırdı.
+            nov: "satis_qaytarma",
             anbar_id: sale.anbar_id,
             tarix: new Date(),
             status: "tamamlandi",
@@ -648,8 +658,13 @@ export async function returnFullSale(
         // fastReturn-da var idi, burada YOX idi (iki qaytarma yolu uyğunsuz).
         // Marketplace satışda kassaya pul düşməyib (payout axını), ona toxunmuruq.
         {
-          const isNisyeSale = sale.odenis_nov === "nisye" || sale.odenis_nov === "borc";
-          if (!isNisyeSale && !sale.marketplace_platform && sale.kassa_id) {
+          // #25: yalnız real nağd kassa axını (negd/kart/kecirme) geri-ödəniş üçün
+          // kassaya yazılır. nisye/kredit/borc ödənişlər kassaya pul gətirmir, ona görə
+          // refund də kassaya yazılmamalıdır — əks halda mənfi qalıq yaranırdı.
+          const kassaOdenisNov = ["negd", "kart", "kecirme"].includes(sale.odenis_nov ?? "")
+            ? sale.odenis_nov!
+            : null;
+          if (kassaOdenisNov && !sale.marketplace_platform && sale.kassa_id) {
             // Yalnız real daxil olmuş pul qədər geri çıx (hissəvi ödəniş müdafiəsi)
             const odenilmisSale = Number(sale.odenilmis ?? 0);
             const refund = Math.min(total, odenilmisSale > 0 ? odenilmisSale : total);
@@ -659,7 +674,7 @@ export async function returnFullSale(
                   sahibkar_id: sahibkarId,
                   kassa_id: sale.kassa_id,
                   emeliyyat_nov: "qaytarma",
-                  odenis_nov: sale.odenis_nov ?? "negd",
+                  odenis_nov: kassaOdenisNov,
                   mebleg: new Prisma.Decimal(-refund),
                   ref_nov: "qaytarma",
                   ref_id: ret.id,

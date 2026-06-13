@@ -92,7 +92,7 @@ export async function bulkApproveOperations(
         where: {
           sahibkar_id: sahibkarId,
           id: { in: ids },
-          status: { in: ["gozleyen_tesdiq", "gozleyir"] },
+          status: { in: ["tesdiq_gozleyir", "gozleyir"] },
         },
         data: {
           status: "aktiv",
@@ -140,10 +140,10 @@ export async function bulkRejectOperations(
         where: {
           sahibkar_id: sahibkarId,
           id: { in: ids },
-          status: { in: ["gozleyen_tesdiq", "gozleyir"] },
+          status: { in: ["tesdiq_gozleyir", "gozleyir"] },
         },
         data: {
-          status: "redd",
+          status: "legv",
           legv_eden_id: istifadeciId ?? null,
           legv_de: new Date(),
           legv_sebeb: cleanSebeb,
@@ -529,7 +529,7 @@ export async function getKassaReconciliationStatus(): Promise<KassaReconStatus> 
         _sum: { acilis_qaligi: true },
       }),
       prisma.finance_operations.count({
-        where: { sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
+        where: { sahibkar_id: sahibkarId, status: { in: ["tesdiq_gozleyir", "gozleyir"] } },
       }),
     ]);
     return {

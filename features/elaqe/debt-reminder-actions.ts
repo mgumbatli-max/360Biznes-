@@ -63,7 +63,7 @@ export async function createDebtReminderTask(input: {
             tesvir,
             prioritet: "yuksek",
             mesul_id: mesul,
-            tekrar_nov: "heftelik",
+            tekrar_nov: "herhefte",
             hefte_gunu: input.weekday,
             saat: input.hour,
             baslangic: new Date(),

@@ -66,7 +66,8 @@ export async function getThread(sohbetId: string): Promise<ChatMessage[]> {
     });
     return rows.map((m) => ({
       id: String(m.id),
-      istiqamet: (m.istiqamet === "out" ? "out" : "in") as "in" | "out",
+      // DB-də "xaric"/"daxil" saxlanır; UI tipi "out"/"in"-ə map olunur
+      istiqamet: (m.istiqamet === "xaric" ? "out" : "in") as "in" | "out",
       metn: m.metn ?? "",
       fayl_url: m.fayl_url,
       yaradildi: m.yaradildi,

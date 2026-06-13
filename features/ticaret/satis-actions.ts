@@ -366,7 +366,14 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
               sahibkar_id: sahibkarId,
               kassa_id: sale.kassa_id,
               emeliyyat_nov: "qaytarma",
-              odenis_nov: sale.odenis_nov ?? "negd",
+              // kassa_emeliyyatlari_odenis_nov_check yalnız negd/kart/kecirme/qariz/bonus
+              // qəbul edir. Satış odenis_nov 'nisye'/'kredit' ola bilər → birbaşa yazsaq
+              // 23514 (CHECK) atır, transaction rollback olur, satış ləğvi tamamilə çökür.
+              // CREATE yolu (satis-yeni-actions.ts:493) ilə eyni: kassa-uyğun olmayanı negd-ə map et.
+              odenis_nov:
+                sale.odenis_nov === "kart" || sale.odenis_nov === "kecirme"
+                  ? sale.odenis_nov
+                  : "negd",
               mebleg: new Prisma.Decimal(-odenilmis),
               ref_nov: "satis_legv",
               ref_id: sale.id,

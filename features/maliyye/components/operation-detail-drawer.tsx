@@ -24,6 +24,8 @@ type Attachment = {
 
 const STATUS_LABEL: Record<string, { ad: string; cls: string }> = {
   aktiv: { ad: "Aktiv", cls: "border-success/30 bg-success/10 text-success" },
+  tesdiq_gozleyir: { ad: "Təsdiq gözləyir", cls: "border-warning/30 bg-warning/10 text-warning" },
+  // Köhnə data uyğunluğu üçün saxlanılır (CHECK qəbul etmir, yeni yazı tesdiq_gozleyir)
   gozleyen_tesdiq: { ad: "Təsdiq gözləyir", cls: "border-warning/30 bg-warning/10 text-warning" },
   legv: { ad: "Ləğv", cls: "border-muted text-muted-foreground" },
   redd: { ad: "Rədd", cls: "border-danger/30 bg-danger/10 text-danger" },
@@ -135,8 +137,8 @@ export function OperationDetailDrawer({
   const yonCls = op.yon === "daxil" ? "text-success" : op.yon === "xaric" ? "text-danger" : "text-primary-light";
   const yonSign = op.yon === "daxil" ? "+" : op.yon === "xaric" ? "−" : "";
 
-  const canApprove = op.status === "gozleyen_tesdiq";
-  const canCancel = op.status === "aktiv" || op.status === "gozleyen_tesdiq";
+  const canApprove = op.status === "tesdiq_gozleyir" || op.status === "gozleyen_tesdiq";
+  const canCancel = op.status === "aktiv" || op.status === "tesdiq_gozleyir" || op.status === "gozleyen_tesdiq";
 
   function runAction(fn: () => Promise<{ ok: boolean; error?: string }>, label: string) {
     startTransition(async () => {

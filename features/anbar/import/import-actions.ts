@@ -469,41 +469,43 @@ export async function executeImport(partiyaId: string): Promise<ActionResult<Exe
           const yeniMiqdar = Number(r.say);
           const ferq = yeniMiqdar - evvelkiMiqdar;
 
-          // ATOMIC upsert — race-safe (findFirst/update vs create race-i önləyir)
-          await prisma.stok.upsert({
-            where: {
-              mehsul_id_anbar_id: { mehsul_id: mehsulId, anbar_id: defaultAnbar.id },
-            },
-            update: {
-              miqdar: yeniMiqdar,
-              son_qiymet: r.alish_qiymeti ?? undefined,
-            },
-            create: {
-              sahibkar_id: sahibkarId,
-              mehsul_id: mehsulId,
-              anbar_id: defaultAnbar.id,
-              miqdar: yeniMiqdar,
-              son_qiymet: r.alish_qiymeti ?? null,
-            },
-          });
+          // Stok yazısı + anbar hərəkəti atomik: biri uğursuz olsa, ikisi də geri qaytarılır.
+          // Upsert race-safe-dir (findFirst/update vs create race-i önləyir).
+          await prisma.$transaction(async (tx) => {
+            await tx.stok.upsert({
+              where: {
+                mehsul_id_anbar_id: { mehsul_id: mehsulId, anbar_id: defaultAnbar.id },
+              },
+              update: {
+                miqdar: yeniMiqdar,
+                son_qiymet: r.alish_qiymeti ?? undefined,
+              },
+              create: {
+                sahibkar_id: sahibkarId,
+                mehsul_id: mehsulId,
+                anbar_id: defaultAnbar.id,
+                miqdar: yeniMiqdar,
+                son_qiymet: r.alish_qiymeti ?? null,
+              },
+            });
 
-          // Audit — anbar_hereketleri yaz ki, ilkin idxal source-of-truth-da görünsün
-          if (Math.abs(ferq) > 0.001) {
-            try {
-              await prisma.anbar_hereketleri.create({
+            // Audit — anbar_hereketleri yaz ki, ilkin idxal source-of-truth-da görünsün.
+            // qiymet CHECK (>=0) pozulmasın deyə mənfi alış qiymətini 0-a clamp et.
+            if (Math.abs(ferq) > 0.001) {
+              await tx.anbar_hereketleri.create({
                 data: {
                   sahibkar_id: sahibkarId,
                   anbar_id: defaultAnbar.id,
                   mehsul_id: mehsulId,
                   nov: ferq > 0 ? "medaxil" : "mexaric",
                   miqdar: Math.abs(ferq),
-                  qiymet: r.alish_qiymeti ?? null,
+                  qiymet: Math.max(0, r.alish_qiymeti ?? 0),
                   ref_nov: "excel_idxal",
                   qeyd: `Excel idxal — Sıra ${r.sira} (${evvelkiMiqdar} → ${yeniMiqdar})`,
                 },
               });
-            } catch { /* non-fatal */ }
-          }
+            }
+          });
         }
       } catch (e) {
         console.error("[executeImport row]", r.sira, e);

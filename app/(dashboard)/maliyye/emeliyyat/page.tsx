@@ -249,7 +249,7 @@ export default async function EmeliyyatPage({
             {[
               { v: "aktiv", l: "Aktiv" },
               { v: "", l: "Hamısı" },
-              { v: "gozleyen_tesdiq", l: "Təsdiq gözləyir" },
+              { v: "tesdiq_gozleyir", l: "Təsdiq gözləyir" },
               { v: "legv", l: "Ləğv" },
               { v: "redd", l: "Rədd" },
             ].map((p) => {

@@ -487,7 +487,7 @@ function countWeekdays(start: Date, end: Date): number {
   const d = new Date(start);
   while (d <= end) {
     const dow = d.getDay();
-    if (dow !== 0) count++; // Bazar (sunday) hesabdan çıxır
+    if (dow !== 0 && dow !== 6) count++; // Şənbə (6) və Bazar (0) istirahət — hesabdan çıxır
     d.setDate(d.getDate() + 1);
   }
   return count;

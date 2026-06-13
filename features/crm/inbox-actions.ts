@@ -41,7 +41,8 @@ export async function sendReply(input: FormData): Promise<ActionResult> {
         data: {
           sahibkar_id: sahibkarId,
           sohbet_id: d.sohbet_id,
-          istiqamet: "out",
+          // DB CHECK yalnız {daxil,xaric} qəbul edir — çıxan mesaj "xaric"
+          istiqamet: "xaric",
           metn: d.metn.trim(),
           status: "gonderildi",
           ai_yaradilan: d.ai_yaradilan,

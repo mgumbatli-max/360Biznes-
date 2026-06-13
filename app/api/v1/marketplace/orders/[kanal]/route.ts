@@ -225,55 +225,61 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
               });
             }
 
-            for (const it of body.items) {
-              const p = (it.sku && bySku.get(it.sku)) || (it.barkod && byBarkod.get(it.barkod)) || null;
-              const stokQalig = p ? Number(p.stok_cemi ?? 0) : 0;
-              const catismir = !p || stokQalig < it.miqdar;
-              let azaldilan = 0;
-              if (p) {
-                await tx.satis_sifaris_satirlari.create({
-                  data: {
-                    sahibkar_id: sahibkarId,
-                    sifaris_id: sale.id,
-                    mehsul_id: p.id,
-                    miqdar: it.miqdar,
-                    vahid_qiymet: it.qiymet,
-                  },
-                });
-                if (defaultAnbar && stokQalig > 0) {
-                  azaldilan = Math.min(stokQalig, it.miqdar);
-                  const dec = await safeStockDecrement(tx, {
-                    mehsulId: p.id,
-                    anbarId: defaultAnbar.id,
-                    miqdar: azaldilan,
-                    mehsulAd: p.ad ?? undefined,
+            // QA-#24: ləğv sifariş stok düşürməməlidir — yalnız header yazılır.
+            // Bütün satır dövrəsi (satış satırı + stok mexaric + anbar hərəkəti)
+            // yalnız ləğv olmayan sifariş üçün işləyir. Ləğv halında itemResults boş
+            // qalır (audit/notif/emitStockChange sıfır item ilə düzgün işləyir).
+            if (body.status !== "legv") {
+              for (const it of body.items) {
+                const p = (it.sku && bySku.get(it.sku)) || (it.barkod && byBarkod.get(it.barkod)) || null;
+                const stokQalig = p ? Number(p.stok_cemi ?? 0) : 0;
+                const catismir = !p || stokQalig < it.miqdar;
+                let azaldilan = 0;
+                if (p) {
+                  await tx.satis_sifaris_satirlari.create({
+                    data: {
+                      sahibkar_id: sahibkarId,
+                      sifaris_id: sale.id,
+                      mehsul_id: p.id,
+                      miqdar: it.miqdar,
+                      vahid_qiymet: it.qiymet,
+                    },
                   });
-                  if (dec.ok) {
-                    await tx.anbar_hereketleri.create({
-                      data: {
-                        sahibkar_id: sahibkarId,
-                        anbar_id: defaultAnbar.id,
-                        mehsul_id: p.id,
-                        nov: "mexaric",
-                        miqdar: azaldilan,
-                        qiymet: it.qiymet,
-                        ref_nov: "satis_sifarisi",
-                        ref_id: sale.id,
-                        qeyd: `Webhook satış (${kanal} #${body.external_id})`,
-                      },
+                  if (defaultAnbar && stokQalig > 0) {
+                    azaldilan = Math.min(stokQalig, it.miqdar);
+                    const dec = await safeStockDecrement(tx, {
+                      mehsulId: p.id,
+                      anbarId: defaultAnbar.id,
+                      miqdar: azaldilan,
+                      mehsulAd: p.ad ?? undefined,
                     });
-                  } else {
-                    azaldilan = 0;
+                    if (dec.ok) {
+                      await tx.anbar_hereketleri.create({
+                        data: {
+                          sahibkar_id: sahibkarId,
+                          anbar_id: defaultAnbar.id,
+                          mehsul_id: p.id,
+                          nov: "mexaric",
+                          miqdar: azaldilan,
+                          qiymet: it.qiymet,
+                          ref_nov: "satis_sifarisi",
+                          ref_id: sale.id,
+                          qeyd: `Webhook satış (${kanal} #${body.external_id})`,
+                        },
+                      });
+                    } else {
+                      azaldilan = 0;
+                    }
                   }
                 }
+                itemResults.push({
+                  sku: it.sku ?? null,
+                  resolved_id: p?.id ?? null,
+                  miqdar: it.miqdar,
+                  azaldilan,
+                  stok_catismir: catismir,
+                });
               }
-              itemResults.push({
-                sku: it.sku ?? null,
-                resolved_id: p?.id ?? null,
-                miqdar: it.miqdar,
-                azaldilan,
-                stok_catismir: catismir,
-              });
             }
 
             if (musteriId) {

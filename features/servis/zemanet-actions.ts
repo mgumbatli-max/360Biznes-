@@ -120,8 +120,8 @@ export async function deactivateZemanet(id: string): Promise<ActionResult> {
     try {
       // 🔒 Sahibkar yoxlaması + status filtri
       const r = await prisma.zemanetler.updateMany({
-        where: { id, sahibkar_id: sahibkarId, status: { not: "ləğv" } },
-        data: { status: "ləğv", yenilendi: new Date() },
+        where: { id, sahibkar_id: sahibkarId, status: { not: "legv" } },
+        data: { status: "legv", yenilendi: new Date() },
       });
       if (r.count === 0) return { ok: false, error: "Zəmanət tapılmadı və ya artıq ləğv edilib" };
       revalidatePath("/servis/zemanet");
@@ -159,7 +159,7 @@ export async function createServisFromZemanet(zemanetId: string, problem: string
         where: { id: zemanetId, sahibkar_id: sahibkarId },
       });
       if (!z) return { ok: false, error: "Zəmanət tapılmadı" };
-      if (z.status === "ləğv") return { ok: false, error: "Ləğv edilmiş zəmanət" };
+      if (z.status === "legv") return { ok: false, error: "Ləğv edilmiş zəmanət" };
       if (z.bitme_tarixi && z.bitme_tarixi < new Date()) {
         return { ok: false, error: "Zəmanət müddəti bitib" };
       }

@@ -101,7 +101,15 @@ export async function acceptTransfer(id: string): Promise<ActionResult> {
           include: { transfer_satirlari: true },
         });
         if (!t) throw new Error("Tapılmadı");
-        if (t.status === "tesdiqlendi") throw new Error("Artıq qəbul edilib");
+        // Yalnız "tesdiqlenmemis" statuslu transfer qəbul edilə bilər (allowlist).
+        // Əks halda lğv olunmuş və ya artıq (tam/hissəvi) qəbul edilmiş transfer
+        // təkrar emal olunardı → ikiqat stok dəyişikliyi.
+        if (t.status !== "tesdiqlenmemis") {
+          if (t.status === "tesdiqlendi") throw new Error("Artıq qəbul edilib");
+          if (t.status === "legv") throw new Error("Ləğv olunmuş transfer qəbul edilə bilməz");
+          if (t.status === "qebul_qismi") throw new Error("Bu transfer artıq hissəvi qəbul edilib");
+          throw new Error("Bu transfer qəbul edilə bilməz");
+        }
 
         for (const line of t.transfer_satirlari) {
           // Atomic decrement at source — race-safe

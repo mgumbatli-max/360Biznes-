@@ -18,8 +18,18 @@ type Result = { ok: true; count?: number; warning?: string } | { ok: false; erro
 /**
  * Helper: Maaş ödənişində kassa/bank qalığını azaldıb maliyə əməliyyatı yarat.
  *
- * @returns true uğurlu yazıldısa, false hesab yoxdursa (yumşaq fallback — UX-i pozma)
+ * @returns
+ *  - { ok: true, hesabId } — uğurla yazıldı (və ya meblegh<=0, yazmağa ehtiyac yox)
+ *  - { ok: false, reason: "no_account" } — heç bir kassa/bank konfiqurasiya olunmayıb
+ *    (YUMŞAQ hal: ödəniş qeydə alına bilər, lakin balans dəyişməyəcək — çağıran rollback ETMƏMƏLİDİR)
+ *  - { ok: false, reason: "no_type" | "insufficient", error } — atomik səhv;
+ *    çağıran tx-i rollback ETMƏLİDİR (yoxsa pul çıxmadan "ödənilib" görünər)
  */
+type FinanceLegResult =
+  | { ok: true; hesabId?: string }
+  | { ok: false; reason: "no_account" }
+  | { ok: false; reason: "no_type" | "insufficient"; error: string };
+
 async function recordMaasFinanceLeg(
   tx: TxClient,
   opts: {
@@ -31,7 +41,7 @@ async function recordMaasFinanceLeg(
     qeyd: string;
     hesabId?: string | null;
   },
-): Promise<{ ok: boolean; hesabId?: string }> {
+): Promise<FinanceLegResult> {
   if (opts.meblegh <= 0) return { ok: true };
 
   // 1) Hesab seç — manual yoxdursa default kassa, kassa yoxdursa bank
@@ -52,20 +62,21 @@ async function recordMaasFinanceLeg(
       hesabId = defaultBank?.id ?? null;
     }
   }
-  if (!hesabId) return { ok: false };
+  // Heç bir hesab konfiqurasiya olunmayıb — YUMŞAQ hal (rollback yox, sadəcə xəbərdarlıq)
+  if (!hesabId) return { ok: false, reason: "no_account" };
 
-  // 2) Maaş tip-i tap
+  // 2) Maaş tip-i tap — yoxdursa atomik səhv (rollback)
   const maasType = await tx.finance_operation_types.findUnique({
     where: { kod: "maas" },
     select: { id: true },
   });
-  if (!maasType) return { ok: false };
+  if (!maasType) return { ok: false, reason: "no_type", error: "Maaş əməliyyat tipi (maas) tapılmadı" };
 
-  // 3) Source-of-truth ilə yetərlilik yoxlaması — mənfi balansın qarşısı alınır
+  // 3) Source-of-truth ilə yetərlilik yoxlaması — mənfi balansın qarşısı alınır (atomik səhv → rollback)
   const { checkAccountSufficient, recalculateAccountBalance } = await import("@/lib/balance/account-balance");
   const sufficient = await checkAccountSufficient(hesabId, opts.meblegh, tx);
   if (!sufficient.ok) {
-    return { ok: false };
+    return { ok: false, reason: "insufficient", error: sufficient.error };
   }
 
   // 4) finance_operations qeyd
@@ -387,9 +398,42 @@ export async function payBordro(input: FormData): Promise<Result> {
       if (b.status === "odenilib") return { ok: false, error: "Artıq ödənilib" };
 
       const now = new Date();
-      let financeOk = false;
       let usedHesabId: string | undefined;
+      // financeOk: balans azaldıldı?  noAccount: heç bir hesab tapılmadı (yumşaq hal)
+      let financeOk = false;
+      let noAccount = false;
       const meblegh = Number(b.son_meblegh ?? 0);
+
+      // BUG #21: əvvəl balans çatmayanda recordMaasFinanceLeg {ok:false} qaytarırdı,
+      // amma transaction throw olmadığı üçün COMMIT olurdu → "ödənilib" görünür, pul çıxmır.
+      // (1) Transaction-dan ƏVVƏL hesab/balans yoxla — problem varsa heç nə yazmadan {ok:false}.
+      if (meblegh > 0) {
+        const { checkAccountSufficient } = await import("@/lib/balance/account-balance");
+        // Effektiv hesabı tap (manual seçim, yoxsa default kassa→bank).
+        let preHesabId = parsed.data.hesab_id ?? null;
+        if (!preHesabId) {
+          const defKassa = await prisma.maliye_hesablari.findFirst({
+            where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
+            orderBy: { yaradildi: "asc" },
+            select: { id: true },
+          });
+          preHesabId = defKassa?.id ?? null;
+          if (!preHesabId) {
+            const defBank = await prisma.maliye_hesablari.findFirst({
+              where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: ["bank", "kart"] } },
+              orderBy: { yaradildi: "asc" },
+              select: { id: true },
+            });
+            preHesabId = defBank?.id ?? null;
+          }
+        }
+        // Hesab varsa — balans yetərliliyini ƏVVƏLCƏDƏN yoxla (heç nə yazmadan).
+        if (preHesabId) {
+          const pre = await checkAccountSufficient(preHesabId, meblegh);
+          if (!pre.ok) return { ok: false, error: pre.error };
+        }
+        // preHesabId yoxdursa — yumşaq hal, aşağıda warning ilə davam edirik.
+      }
 
       await prisma.$transaction(async (tx) => {
         await tx.maas_hesablamalar.update({
@@ -417,9 +461,20 @@ export async function payBordro(input: FormData): Promise<Result> {
           qeyd: `${b.il}-${String(b.ay).padStart(2, "0")} ayı üçün maaş`,
           hesabId: parsed.data.hesab_id ?? null,
         });
-        financeOk = res.ok;
-        usedHesabId = res.hesabId;
+        if (res.ok) {
+          financeOk = true;
+          usedHesabId = res.hesabId;
+        } else if (res.reason === "no_account") {
+          // (3) Heç bir hesab konfiqurasiya olunmayıb — COMMIT, lakin xəbərdarlıq.
+          noAccount = true;
+        } else {
+          // (2) Atomik səhv (balans çatmır / tip yoxdur) — throw ki status="odenilib" ROLLBACK olsun.
+          throw new Error(res.error);
+        }
       });
+      const warning = noAccount
+        ? "Ödəniş qeydə alındı, lakin heç bir kassa/bank hesabına bağlanmadı — balans dəyişmədi. Maliyyə → Hesablar bölməsində aktiv hesab əlavə edin."
+        : undefined;
       await audit("yarat", "maas_odenis", b.id, {
         yeni_data: {
           istifadeci_id: b.istifadeci_id,
@@ -434,10 +489,7 @@ export async function payBordro(input: FormData): Promise<Result> {
       revalidatePath("/iscilier/maas");
       revalidatePath("/maliyye");
       bustHrCache();
-      return {
-        ok: true,
-        ...(financeOk ? {} : { count: 0 }),
-      };
+      return { ok: true, ...(warning ? { warning } : {}) };
     } catch (e) {
       console.error("[payBordro]", e);
       return { ok: false, error: safeUserMessage(e, "Ödəniş alınmadı") };

@@ -583,7 +583,7 @@ export async function saveQuickOperation(input: FormData): Promise<ActionResult>
       const tKey = pickThresholdKey(d.type_kod);
       const threshold = thresholdMap[tKey] ?? thresholdMap.default ?? 0;
       const needsApproval = threshold > 0 && aznMebleg >= threshold;
-      const opStatus = needsApproval ? "gozleyen_tesdiq" : "aktiv";
+      const opStatus = needsApproval ? "tesdiq_gozleyir" : "aktiv";
 
       // 💰 Qaliq yetərlilik — yalnız dərhal aktivləşən xaric/transfer əməliyyatları
       // mənbə hesabdan pul çıxarır (digər action-larla — maas/paySupplier — uyğun).
@@ -892,7 +892,7 @@ export async function approveOperation(id: string): Promise<ActionResult> {
     try {
       // 🔒 Açıq sahibkar_id qoruması — yalnız öz əməliyyatını təsdiqləmək olar
       const op = await prisma.finance_operations.findFirst({
-        where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
+        where: { id, sahibkar_id: sahibkarId, status: { in: ["tesdiq_gozleyir", "gozleyir"] } },
         select: { id: true, hesab_id: true, hesab_id2: true, kontragent_id: true },
       });
       if (!op) return { ok: false, error: "Əməliyyat tapılmadı və ya artıq təsdiqlənib" };
@@ -906,7 +906,7 @@ export async function approveOperation(id: string): Promise<ActionResult> {
       try {
         await prisma.$transaction(async (tx) => {
           const r = await tx.finance_operations.updateMany({
-            where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
+            where: { id, sahibkar_id: sahibkarId, status: { in: ["tesdiq_gozleyir", "gozleyir"] } },
             data: {
               status: "aktiv",
               tesdiq_eden_id: userId ?? null,
@@ -969,13 +969,13 @@ export async function rejectOperation(id: string, sebeb?: string): Promise<Actio
     const { sahibkarId, istifadeciId: userId } = requireTenant();
     try {
       // 🔒 Status guard — yalnız təsdiq gözləyən əməliyyat rədd edilə bilər.
-      // Aktiv əməliyyat 'redd' edilsəydi balans/allocation geri qaytarılmadan
+      // Aktiv əməliyyat 'legv' (rədd) edilsəydi balans/allocation geri qaytarılmadan
       // pul balansdan çıxar (qaliq drift). Aktiv əməliyyatın ləğvi üçün
       // cancelFinanceOperation istifadə olunmalıdır.
       const r = await prisma.finance_operations.updateMany({
-        where: { id, sahibkar_id: sahibkarId, status: { in: ["gozleyen_tesdiq", "gozleyir"] } },
+        where: { id, sahibkar_id: sahibkarId, status: { in: ["tesdiq_gozleyir", "gozleyir"] } },
         data: {
-          status: "redd",
+          status: "legv",
           legv_eden_id: userId ?? null,
           legv_de: new Date(),
           legv_sebeb: cleanSebeb || null,
@@ -994,7 +994,7 @@ export async function rejectOperation(id: string, sebeb?: string): Promise<Actio
           emeliyyat: "redd",
           resurs_nov: "finance_operations",
           resurs_id: id,
-          yeni_data: { status: "redd", sebeb: cleanSebeb },
+          yeni_data: { status: "legv", sebeb: cleanSebeb },
           status: "ugur",
         });
       } catch { /* non-fatal */ }
@@ -2658,7 +2658,7 @@ export async function runRecurringCheck(): Promise<{ ok: true; yaradilan: number
         where: {
           sahibkar_id: sahibkarId,
           qeyd: { contains: "[RECUR:" },
-          status: { in: ["aktiv", "gozleyen_tesdiq"] },
+          status: { in: ["aktiv", "tesdiq_gozleyir"] },
         },
         orderBy: { tarix: "desc" },
         take: 500,

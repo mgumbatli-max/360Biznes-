@@ -54,3 +54,6 @@ next-env.d.ts
 
 # Visual brainstorm mockups
 .superpowers/
+
+# Böyük import mənbə faylı (175MB) — repoda saxlanmır
+/Məhsullar.xlsx

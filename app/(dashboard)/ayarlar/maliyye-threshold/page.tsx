@@ -22,7 +22,7 @@ export default async function MaliyyeThresholdPage() {
           <div className="flex items-center gap-2 text-sm text-info">
             <ShieldCheck className="h-4 w-4" />
             <span>
-              Təsdiq tələb edən əməliyyat status &ldquo;tesdiq_gozleyir&rdquo; (gozleyen_tesdiq) olur və admin
+              Təsdiq tələb edən əməliyyat status &ldquo;tesdiq_gozleyir&rdquo; olur və admin
               icazəli istifadəçi /tesdiq səhifəsindən təsdiqləyir.
             </span>
           </div>

@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 
 /**
- * Müddəti keçmiş bron-ları "muddet_kecdi" statusuna keçir.
+ * Müddəti keçmiş bron-ları "vaxti_bitdi" statusuna keçir.
  *
  * Sorğularda bitmə tarixinə görə zatən exclude olunur, amma bu funksiya
  * status-u explicit yeniləyir ki, bron siyahısında doğru görünsün.
@@ -24,7 +24,7 @@ export async function expireStaleBronReservations(sahibkarId?: string): Promise<
       status: "aktiv",
       bitme_tarixi: { lt: today },
     },
-    data: { status: "muddet_kecdi" },
+    data: { status: "vaxti_bitdi" },
   });
 
   return { updated: result.count };

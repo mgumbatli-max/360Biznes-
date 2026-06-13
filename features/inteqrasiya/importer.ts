@@ -44,67 +44,91 @@ export async function importByKey(key: string, rows: ParsedRow[], fileName: stri
     const { sahibkarId, istifadeciId } = requireTenant();
     const validRows = rows.filter((r) => r.errors.length === 0);
 
-    // Create batch
-    const partiya = await prisma.import_partiyalari.create({
-      data: {
-        sahibkar_id: sahibkarId,
-        istifadeci_id: istifadeciId ?? undefined,
-        sablon_nov: key,
-        fayl_adi: fileName ?? undefined,
-        cemi_satir: rows.length,
-        xeta_satir: rows.length - validRows.length,
-        status: "icra_edilir",
-        baslandi_de: new Date(),
-      },
-    });
-
+    // İzləmə qeydi (import_partiyalari) — BEST-EFFORT.
+    // KRİTİK: bu cədvəldə köhnə CHECK constraint-lər (status/sablon_nov) DB-də
+    // qala bilər (Prisma `db push` CHECK-ləri idarə etmir). İzləmə qeydinin
+    // yaradılması uğursuz olsa belə, ƏSAS idxal BLOKLANMAMALIDIR — əvvəl
+    // `create` `try`-dan kənarda idi və 23514 (check_violation) BÜTÜN importu
+    // çökdürürdü ("hərşeyi xəta görür"). status="icrada" constraint-ə uyğundur.
+    let partiya: { id: string; xeta_satir: number | null } | null = null;
     try {
-      const r = await fn(validRows);
-      r.partiyaId = partiya.id;
-
-      await prisma.import_partiyalari.update({
-        where: { id: partiya.id },
+      partiya = await prisma.import_partiyalari.create({
         data: {
-          status: r.xeta > 0 && r.yarat + r.yenile === 0 ? "ugursuz" : "tamamlandi",
-          ugurlu_satir: r.yarat + r.yenile,
-          yeni_satir: r.yarat,
-          yenilenecek: r.yenile,
-          xeta_satir: (partiya.xeta_satir ?? 0) + r.xeta,
-          tamamlandi_de: new Date(),
-          xeta_log: r.log.filter((l) => l.emeliyyat === "xeta") as never,
+          sahibkar_id: sahibkarId,
+          istifadeci_id: istifadeciId ?? undefined,
+          sablon_nov: key,
+          fayl_adi: fileName ?? undefined,
+          cemi_satir: rows.length,
+          xeta_satir: rows.length - validRows.length,
+          status: "icrada",
+          baslandi_de: new Date(),
         },
+        select: { id: true, xeta_satir: true },
       });
+    } catch (e) {
+      console.warn("[importByKey] import_partiyalari yaradıla bilmədi (izləmə atlanır):", e);
+    }
 
-      await audit("import", `inteqrasiya:${key}`, partiya.id, {
-        yeni_data: {
-          fayl_adi: fileName,
-          cemi: rows.length,
-          yarat: r.yarat,
-          yenile: r.yenile,
-          xeta: r.xeta,
-          status: r.xeta > 0 && r.yarat + r.yenile === 0 ? "ugursuz" : "tamamlandi",
-        },
-        sebeb: `Inteqrasiya idxalı: ${key}`,
-        status: r.xeta > 0 && r.yarat + r.yenile === 0 ? "ugursuz" : (r.xeta > 0 ? "qismen" : "ugur"),
-      });
-
-      return r;
+    let r: ImportResult;
+    try {
+      r = await fn(validRows);
     } catch (err) {
-      await prisma.import_partiyalari.update({
-        where: { id: partiya.id },
-        data: {
-          status: "ugursuz",
-          tamamlandi_de: new Date(),
-          xeta_log: [{ sira: 0, emeliyyat: "xeta", mesaj: String(err) }] as never,
-        },
-      });
-      await audit("import", `inteqrasiya:${key}`, partiya.id, {
+      // ƏSAS idxal xətası — izləmə + audit best-effort, sonra yenidən throw.
+      if (partiya) {
+        await prisma.import_partiyalari
+          .update({
+            where: { id: partiya.id },
+            data: {
+              status: "xeta",
+              tamamlandi_de: new Date(),
+              xeta_log: [{ sira: 0, emeliyyat: "xeta", mesaj: String(err) }] as never,
+            },
+          })
+          .catch(() => {});
+      }
+      await audit("import", `inteqrasiya:${key}`, partiya?.id ?? key, {
         yeni_data: { fayl_adi: fileName, error: String(err) },
         sebeb: `Inteqrasiya idxalı uğursuz: ${key}`,
         status: "ugursuz",
-      });
+      }).catch(() => {});
       throw err;
     }
+
+    if (partiya) r.partiyaId = partiya.id;
+    const finalStatus = r.xeta > 0 && r.yarat + r.yenile === 0 ? "xeta" : "tamamlandi";
+
+    // Nəticəni izləmə qeydinə yaz + audit — hər ikisi best-effort (idxalı bloklamır).
+    if (partiya) {
+      await prisma.import_partiyalari
+        .update({
+          where: { id: partiya.id },
+          data: {
+            status: finalStatus,
+            ugurlu_satir: r.yarat + r.yenile,
+            yeni_satir: r.yarat,
+            yenilenecek: r.yenile,
+            xeta_satir: (partiya.xeta_satir ?? 0) + r.xeta,
+            tamamlandi_de: new Date(),
+            xeta_log: r.log.filter((l) => l.emeliyyat === "xeta") as never,
+          },
+        })
+        .catch((e) => console.warn("[importByKey] partiya update atlanır:", e));
+    }
+
+    await audit("import", `inteqrasiya:${key}`, partiya?.id ?? key, {
+      yeni_data: {
+        fayl_adi: fileName,
+        cemi: rows.length,
+        yarat: r.yarat,
+        yenile: r.yenile,
+        xeta: r.xeta,
+        status: finalStatus,
+      },
+      sebeb: `Inteqrasiya idxalı: ${key}`,
+      status: r.xeta > 0 && r.yarat + r.yenile === 0 ? "ugursuz" : r.xeta > 0 ? "qismen" : "ugur",
+    }).catch((e) => console.warn("[importByKey] audit atlanır:", e));
+
+    return r;
   });
 }
 
@@ -288,7 +312,11 @@ async function importMusteri(rows: ParsedRow[]): Promise<ImportResult> {
         sheher: r.values.seh_r ? String(r.values.seh_r) : undefined,
         borc_limiti: typeof r.values.borc_limit === "number" ? r.values.borc_limit : undefined,
         huquqi_fiziki: mapHuquqiFiziki(r.values.tip),
-        qiymet_tipi: r.values.qiymet_tipi ? String(r.values.qiymet_tipi) : "adi",
+        // CHECK constraint yalnız {adi,topdan,partnyor,vip} qəbul edir → xam dəyər (boş olmayan/böyük-hərf) 23514 atırdı.
+        // Whitelist + lowercase + trim: tanınmayan dəyər "adi"-yə düşür.
+        qiymet_tipi: ["adi", "topdan", "partnyor", "vip"].includes(String(r.values.qiymet_tipi ?? "").toLowerCase().trim())
+          ? String(r.values.qiymet_tipi).toLowerCase().trim()
+          : "adi",
         qeyd: r.values.qeyd ? String(r.values.qeyd) : null,
         aktiv: r.values.aktiv === 0 ? false : true,
       };
@@ -298,29 +326,33 @@ async function importMusteri(rows: ParsedRow[]): Promise<ImportResult> {
         yenile++;
         log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `Müştəri yeniləndi: ${ad}` });
       } else {
-        const created = await prisma.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
-        // İlkin borc → açıq nisyə satışı (audit #18: əvvəl kontragentler.borc-a
-        // yazılırdı, customer-balance bunu görmürdü). "Açıq qaimə" kimi görünür.
-        const openingBorc = (r.values.borc as number) ?? 0;
-        if (openingBorc > 0) {
-          const nomre = await nextDocNumber(prisma, sahibkarId, "satis");
-          await prisma.satis_sifarisleri.create({
-            data: {
-              nomre,
-              sahibkar_id: sahibkarId,
-              musteri_id: created.id,
-              tarix: new Date(),
-              umumi_mebleg: openingBorc,
-              son_mebleg: openingBorc,
-              odenilmis: 0,
-              odenis_nov: "nisye",
-              status: "tesdiq",
-              qeyd: "İlkin borc (idxal açılış qalığı)",
-            },
-          });
-          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
-          await recalculateCustomerBalance(created.id);
-        }
+        // Atomik: kontragent yaradılması + açılış nisyə satışı + balans yenidən hesablanması
+        // birlikdə geri qaytarılır (əvvəl transaction-suz idi, qismən yazılma riski vardı).
+        const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+        await prisma.$transaction(async (tx) => {
+          const created = await tx.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
+          // İlkin borc → açıq nisyə satışı (audit #18: əvvəl kontragentler.borc-a
+          // yazılırdı, customer-balance bunu görmürdü). "Açıq qaimə" kimi görünür.
+          const openingBorc = (r.values.borc as number) ?? 0;
+          if (openingBorc > 0) {
+            const nomre = await nextDocNumber(tx, sahibkarId, "satis");
+            await tx.satis_sifarisleri.create({
+              data: {
+                nomre,
+                sahibkar_id: sahibkarId,
+                musteri_id: created.id,
+                tarix: new Date(),
+                umumi_mebleg: openingBorc,
+                son_mebleg: openingBorc,
+                odenilmis: 0,
+                odenis_nov: "nisye",
+                status: "tesdiq",
+                qeyd: "İlkin borc (idxal açılış qalığı)",
+              },
+            });
+            await recalculateCustomerBalance(created.id, tx);
+          }
+        });
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `Yeni müştəri: ${ad}` });
       }
@@ -375,27 +407,32 @@ async function importTechizatci(rows: ParsedRow[]): Promise<ImportResult> {
         yenile++;
         log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `Təchizatçı yeniləndi: ${ad}` });
       } else {
-        const created = await prisma.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
-        // İlkin borc → açıq alış sifarişi (audit #18: əvvəl kontragentler.borc-a
-        // yazılırdı, supplier-balance bunu görmürdü).
-        const openingBorc = (r.values.borc as number) ?? 0;
-        if (openingBorc > 0) {
-          const nomre = await nextDocNumber(prisma, sahibkarId, "alis");
-          await prisma.alis_sifarisleri.create({
-            data: {
-              nomre,
-              sahibkar_id: sahibkarId,
-              techiazatci_id: created.id,
-              tarix: new Date(),
-              umumi_mebleg: openingBorc,
-              odenilmis: 0,
-              status: "qebul",
-              qeyd: "İlkin borc (idxal açılış qalığı)",
-            },
-          });
-          const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
-          await recalculateSupplierBalance(created.id);
-        }
+        // Atomik: kontragent yaradılması + açılış alış sifarişi + balans yenidən hesablanması
+        // birlikdə geri qaytarılır (əvvəl transaction-suz idi, qismən yazılma riski vardı).
+        const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");
+        await prisma.$transaction(async (tx) => {
+          const created = await tx.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
+          // İlkin borc → açıq alış sifarişi (audit #18: əvvəl kontragentler.borc-a
+          // yazılırdı, supplier-balance bunu görmürdü).
+          const openingBorc = (r.values.borc as number) ?? 0;
+          if (openingBorc > 0) {
+            const nomre = await nextDocNumber(tx, sahibkarId, "alis");
+            await tx.alis_sifarisleri.create({
+              data: {
+                nomre,
+                sahibkar_id: sahibkarId,
+                techiazatci_id: created.id,
+                tarix: new Date(),
+                umumi_mebleg: openingBorc,
+                odenilmis: 0,
+                // alis_sifarisleri_status_check: gozlemede/qebul_edildi/legv ("qebul" YOX → 23514)
+                status: "qebul_edildi",
+                qeyd: "İlkin borc (idxal açılış qalığı)",
+              },
+            });
+            await recalculateSupplierBalance(created.id, tx);
+          }
+        });
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `Yeni təchizatçı: ${ad}` });
       }
@@ -441,36 +478,40 @@ async function importHesab(rows: ParsedRow[]): Promise<ImportResult> {
         yenile++;
         log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `Hesab yeniləndi: ${ad}` });
       } else {
-        const created = await prisma.maliye_hesablari.create({ data: { ...data, sahibkar_id: sahibkarId } });
-        // İlkin qalıq → finance_operations açılış sətri (audit #18: əvvəl
-        // maliye_hesablari.qaliq-a yazılırdı, account-balance bunu görmürdü).
-        const openingQaliq = (r.values.qaliq as number) ?? 0;
-        if (openingQaliq !== 0) {
-          let opType = await prisma.finance_operation_types.findUnique({ where: { kod: "acilis_balans" } }).catch(() => null);
-          if (!opType) {
-            opType = await prisma.finance_operation_types.create({
-              data: { kod: "acilis_balans", ad: "Açılış qalığı", qrup: "acilis", y_n: "daxil" },
+        // Atomik: hesab yaradılması + açılış finance_operations sətri + balans yenidən hesablanması
+        // birlikdə geri qaytarılır (əvvəl transaction-suz idi, qismən yazılma riski vardı).
+        const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+        await prisma.$transaction(async (tx) => {
+          const created = await tx.maliye_hesablari.create({ data: { ...data, sahibkar_id: sahibkarId } });
+          // İlkin qalıq → finance_operations açılış sətri (audit #18: əvvəl
+          // maliye_hesablari.qaliq-a yazılırdı, account-balance bunu görmürdü).
+          const openingQaliq = (r.values.qaliq as number) ?? 0;
+          if (openingQaliq !== 0) {
+            // upsert: find-then-create P2002 race-i aradan qaldırır (paralel sətirlər eyni kodu yarada bilərdi).
+            const opType = await tx.finance_operation_types.upsert({
+              where: { kod: "acilis_balans" },
+              update: {},
+              create: { kod: "acilis_balans", ad: "Açılış qalığı", qrup: "acilis", y_n: "daxil" },
             });
+            await tx.finance_operations.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                type_id: opType.id,
+                type_kod: opType.kod,
+                y_n: openingQaliq >= 0 ? "daxil" : "mexaric",
+                tarix: new Date(),
+                meblegh: Math.abs(openingQaliq),
+                valyuta: "AZN",
+                mezenne: 1,
+                azn_meblegh: Math.abs(openingQaliq),
+                hesab_id: created.id,
+                qeyd: "İlkin qalıq (idxal açılış balansı)",
+                yaradan_id: istifadeciId,
+              },
+            });
+            await recalculateAccountBalance(created.id, tx);
           }
-          await prisma.finance_operations.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              type_id: opType.id,
-              type_kod: opType.kod,
-              y_n: openingQaliq >= 0 ? "daxil" : "mexaric",
-              tarix: new Date(),
-              meblegh: Math.abs(openingQaliq),
-              valyuta: "AZN",
-              mezenne: 1,
-              azn_meblegh: Math.abs(openingQaliq),
-              hesab_id: created.id,
-              qeyd: "İlkin qalıq (idxal açılış balansı)",
-              yaradan_id: istifadeciId,
-            },
-          });
-          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
-          await recalculateAccountBalance(created.id);
-        }
+        });
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `Yeni hesab: ${ad}` });
       }
@@ -562,14 +603,16 @@ async function importCrm(rows: ParsedRow[]): Promise<ImportResult> {
       const ad = String(r.values.ad);
       const telefon = r.values.telefon ? String(r.values.telefon) : null;
 
+      // BUG #35: telefon ilə nov-FİLTRSİZ axtarış təchizatçını "musteri"-yə çevirirdi.
+      // Yalnız müştəri/hər_ikisi tipli kontaktları tap (təchizatçıya toxunma).
       const existing = telefon
         ? await prisma.kontragentler.findFirst({
-            where: { sahibkar_id: sahibkarId, telefon },
+            where: { sahibkar_id: sahibkarId, telefon, nov: { in: ["musteri", "her_ikisi"] } },
           })
         : null;
 
-      const data = {
-        nov: "musteri",
+      // Yenilənmə üçün nov göndərmə — "her_ikisi" "her_ikisi" qalmalıdır (üstünə "musteri" yazılmasın).
+      const updateData = {
         ad,
         telefon,
         email: r.values.email ? String(r.values.email) : null,
@@ -580,11 +623,12 @@ async function importCrm(rows: ParsedRow[]): Promise<ImportResult> {
       };
 
       if (existing) {
-        await prisma.kontragentler.update({ where: { id: existing.id }, data });
+        await prisma.kontragentler.update({ where: { id: existing.id }, data: updateData });
         yenile++;
         log.push({ sira: r.sira, emeliyyat: "yenile", mesaj: `Lead yeniləndi: ${ad}` });
       } else {
-        await prisma.kontragentler.create({ data: { ...data, sahibkar_id: sahibkarId } });
+        // Müştəri/hər_ikisi tapılmadı → YENİ kontragent (nov="musteri") yarat.
+        await prisma.kontragentler.create({ data: { ...updateData, nov: "musteri", sahibkar_id: sahibkarId } });
         yarat++;
         log.push({ sira: r.sira, emeliyyat: "yarat", mesaj: `Yeni lead: ${ad}` });
       }

@@ -52,7 +52,8 @@ export function LeadRowActions({
   const [pending, startTransition] = useTransition();
 
   const isDeleted = lead.status === "silinib";
-  const isLost = lead.status === "itirildi";
+  // QA #13: əsl status "itirdi"-dir; "itirildi" heç vaxt uyğun gəlmirdi
+  const isLost = lead.status === "itirdi";
 
   function doConvertMusteri() {
     startTransition(async () => {

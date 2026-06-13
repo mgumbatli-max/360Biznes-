@@ -62,6 +62,8 @@ export function BordroPayDialog({ row, open, onOpenChange, onDone }: Props) {
       const res = await payBordro(fd);
       if (res.ok) {
         toast.success(`${row.ad_soyad} — ${formatMoney(row.net_meblegh)} ödənildi`);
+        // BUG #21: hesab bağlanmasa belə ödəniş qeydə alınır — istifadəçi açıq xəbərdarlıq görür.
+        if (res.warning) toast.warning(res.warning);
         onOpenChange(false);
         onDone();
       } else {

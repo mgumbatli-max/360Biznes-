@@ -154,7 +154,7 @@ async function fetchMaliyyeDashboardKpisRaw(sahibkarId: string) {
       _sum: { qaliq: true },
     }),
     prismaUnscoped.finance_operations.count({
-      where: { sahibkar_id: sahibkarId, status: "gozleyen_tesdiq" },
+      where: { sahibkar_id: sahibkarId, status: "tesdiq_gozleyir" },
     }).catch(() => 0),
   ]);
 
