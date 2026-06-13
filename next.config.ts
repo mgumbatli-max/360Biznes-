@@ -1,9 +1,49 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
+// Təhlükəsizlik başlıqları — bütün route-lara tətbiq olunur.
+// CSP qəsdən 'unsafe-inline'/'unsafe-eval' saxlayır (inline style/script + WASM
+// pozulmasın); xarici domendən script/connect inject etməyi isə bloklayır.
+// Gələcək hardening: nonce-əsaslı strict CSP.
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "form-action 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self' https: wss:",
+  "frame-src 'self' https:",
+  "media-src 'self' data: blob:",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "upgrade-insecure-requests",
+].join("; ");
+
+const SECURITY_HEADERS = [
+  { key: "Content-Security-Policy", value: CSP },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(self), payment=(), usb=(), interest-cohort=()" },
+  { key: "X-DNS-Prefetch-Control", value: "on" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+];
+
 const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
+  },
+
+  // Server fingerprint-ini gizlət (X-Powered-By: Next.js başlığını sil)
+  poweredByHeader: false,
+
+  async headers() {
+    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
 
   // Network-level

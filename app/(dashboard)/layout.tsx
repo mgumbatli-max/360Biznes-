@@ -118,7 +118,13 @@ function TopbarFallback() {
 }
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [session, icazeler] = await Promise.all([auth(), getRequestPermissions()]);
+  // Müvəqqəti DB/JWT problemi login olmuş istifadəçiyə xəta səhifəsi göstərməsin:
+  // auth() pozularsa → login-ə yönəlt; icazələr yüklənməzsə → boş (owner/admin
+  // gateRoute-da onsuz da bypass olunur, digər rollar /icaze-yox alır — crash yox).
+  const [session, icazeler] = await Promise.all([
+    auth().catch(() => null),
+    getRequestPermissions().catch(() => [] as string[]),
+  ]);
   if (!session?.user) redirect("/login");
 
   // Lite dizayn forması — yalnız Lite rejimində <html>-ə tətbiq olunur.

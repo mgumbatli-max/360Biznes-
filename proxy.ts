@@ -7,8 +7,21 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 
 export default auth((req) => {
+  const { pathname } = req.nextUrl;
+
+  // Cron endpoint-ləri YALNIZ CRON_SECRET ilə işləsin (fail-closed). Vercel cron
+  // `Authorization: Bearer <CRON_SECRET>` göndərir — env-də CRON_SECRET MÜTLƏQ
+  // qoyulmalıdır. Əvvəl route-lar `if(secret)` idi → CRON_SECRET yoxdursa AÇIQ
+  // idi (istənilən kəs trigger edə bilirdi). İndi bir yerdən qapalı saxlanır.
+  if (pathname.startsWith("/api/cron/")) {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
+  }
+
   const requestHeaders = new Headers(req.headers);
-  requestHeaders.set("x-pathname", req.nextUrl.pathname);
+  requestHeaders.set("x-pathname", pathname);
   const res = NextResponse.next({ request: { headers: requestHeaders } });
 
   // Qlobal Lite/Pro rejimi — cookie yoxdursa cihaza görə ilkin təyin et:

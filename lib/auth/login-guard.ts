@@ -13,15 +13,19 @@ import { sendNewDeviceAlert } from "./new-device-email";
  * eyni cədvəldən rate-limit hesablayırıq.
  *
  * Limitlər:
- * - Email-ə görə: 5 uğursuz cəhd / 15 dəqiqə
- * - IP-yə görə: 20 uğursuz cəhd / 15 dəqiqə
+ * - Email-ə görə: 5 uğursuz cəhd / 15 dəqiqə (konkret hesaba brute-force qoruması)
+ * - IP-yə görə: 12+ FƏRQLİ email-ə uğursuz cəhd / 15 dəqiqə (enumeration hücumu).
+ *   DİQQƏT: əvvəl xam IP-sayı (20) idi — paylaşılan IP-də (ofis, mobil operator
+ *   NAT) günahsız istifadəçiləri bloklayırdı. İndi yalnız "çox sayda FƏRQLİ
+ *   hesaba hücum" pattern-i bloklanır; eyni IP-dən bir neçə real istifadəçinin
+ *   öz şifrəsini səhv yazması bloklamır.
  *
  * Uğurlu giriş tenant məlum olduğu üçün audit_log-a da yazılır.
  */
 
 const WINDOW_MIN = 15;
 const EMAIL_LIMIT = 5;
-const IP_LIMIT = 20;
+const IP_DISTINCT_EMAIL_LIMIT = 12;
 
 export type LoginGate =
   | { allowed: true }
@@ -31,14 +35,18 @@ export async function checkLoginRate(email: string, ip: string | null): Promise<
   const since = new Date(Date.now() - WINDOW_MIN * 60_000);
   const normalizedEmail = email.toLowerCase().trim();
   try {
-    const [emailFails, ipFails] = await Promise.all([
+    const [emailFails, ipDistinctEmails] = await Promise.all([
       prismaUnscoped.giris_cehdleri.count({
         where: { email: normalizedEmail, ugurlu: false, yaradildi: { gte: since } },
       }),
       ip
-        ? prismaUnscoped.giris_cehdleri.count({
-            where: { ip_adres: ip, ugurlu: false, yaradildi: { gte: since } },
-          })
+        ? prismaUnscoped.giris_cehdleri
+            .findMany({
+              where: { ip_adres: ip, ugurlu: false, yaradildi: { gte: since } },
+              distinct: ["email"],
+              select: { email: true },
+            })
+            .then((rows) => rows.length)
         : Promise.resolve(0),
     ]);
 
@@ -49,10 +57,12 @@ export async function checkLoginRate(email: string, ip: string | null): Promise<
         retryAfterSec: WINDOW_MIN * 60,
       };
     }
-    if (ipFails >= IP_LIMIT) {
+    // Yalnız ENUMERATION pattern-i: bir IP-dən çox sayda FƏRQLİ hesaba hücum.
+    // Paylaşılan IP-dəki bir neçə real istifadəçi bundan təsirlənmir.
+    if (ipDistinctEmails >= IP_DISTINCT_EMAIL_LIMIT) {
       return {
         allowed: false,
-        reason: `Bu IP-dən çox sayda uğursuz cəhd. Müvəqqəti olaraq bloklandı.`,
+        reason: `Bu IP-dən şübhəli aktivlik aşkarlandı. Müvəqqəti olaraq bloklandı.`,
         retryAfterSec: WINDOW_MIN * 60,
       };
     }
