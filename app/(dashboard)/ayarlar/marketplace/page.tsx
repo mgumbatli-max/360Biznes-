@@ -113,7 +113,7 @@ export default async function Page() {
               <Store className="mx-auto h-6 w-6 text-muted-foreground/50" />
               <div className="mt-2 text-sm text-muted-foreground">Hələ heç bir marketplace qoşulması yoxdur</div>
               <Link
-                href="/marketplace/hesab/yeni"
+                href="/marketplace"
                 className="mt-3 inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-secondary"
               >
                 İlk qoşulmanı əlavə et

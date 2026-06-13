@@ -239,7 +239,7 @@ export async function HeroSection({
           subline={`${ceo.netProfitPct.toFixed(1)}% marja · keçən: ${formatMoney(monthly.previous.profit)}`}
           trend={{ dir: prfD.dir, label: `${prfD.val.toFixed(0)}%` }}
           tone={ceo.netProfitPct >= 0 ? "success" : "danger"}
-          href="/maliyye/hesabatlar"
+          href="/maliyye/hesabat"
           sparkline={profitSpark}
         />
         <KpiCard

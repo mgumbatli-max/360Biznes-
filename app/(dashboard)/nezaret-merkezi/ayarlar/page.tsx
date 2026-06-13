@@ -108,7 +108,7 @@ export default async function NezaretAyarlarPage() {
       {/* Quick links to module-specific settings */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SectionLink icon={Workflow} title="Avtomatlaşdırma qaydaları" desc="Trigger, şərt, əməliyyat" color="violet" href="/avtomatlasdirma" />
-        <SectionLink icon={Radar} title="Xəbərdarlıq qaydaları" desc="Kateqoriya, threshold, eskalasiya" color="amber" href="/ayarlar/xeberdarliq" />
+        <SectionLink icon={Radar} title="Xəbərdarlıq qaydaları" desc="Kateqoriya, threshold, eskalasiya" color="amber" href="/ayarlar/risk-qayda" />
         <SectionLink icon={HistoryIcon} title="Audit log" desc="Tarixçə nəzarəti" color="slate" href="/audit-log" />
       </div>
 

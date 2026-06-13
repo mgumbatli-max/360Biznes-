@@ -41,7 +41,7 @@ export default async function Page() {
           <RelatedLink href="/ayarlar/borc-avto" label="Borc avtomatlaşdırması" desc="Gec gələn borca SMS/WhatsApp avto-xatırlatma" />
           <RelatedLink href="/avtomatlasdirma" label="Avtomatlaşdırma qaydaları" desc="Trigger əsaslı bütün qaydalar" />
           <RelatedLink href="/tesdiq" label="Təsdiq mərkəzi" desc="Gözləyən təsdiq sorğularına bax" />
-          <RelatedLink href="/nezaret-merkezi/risk" label="Risk paneli" desc="Aktiv risklər və anomaliyalar" />
+          <RelatedLink href="/xeberdarliqlar" label="Risk paneli" desc="Aktiv risklər və anomaliyalar" />
         </CardContent>
       </Card>
     </div>

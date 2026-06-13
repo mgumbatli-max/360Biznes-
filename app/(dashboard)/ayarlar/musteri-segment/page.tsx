@@ -152,7 +152,7 @@ function SegmentCard({ segment }: { segment: SegmentRow }) {
   const Icon = preset?.icon ?? Users;
   return (
     <Link
-      href={`/crm/seqmentler/${segment.id}`}
+      href={`/crm/segment?seq=${segment.kod}`}
       className={cn(
         "block rounded-xl border bg-card/40 p-4 transition hover:border-primary/40 hover:bg-secondary/30",
         segment.aktiv === false && "opacity-60",

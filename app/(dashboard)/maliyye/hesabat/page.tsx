@@ -89,7 +89,7 @@ export default async function HesabatPage({ searchParams }: { searchParams: Prom
     {
       title: "Mənfəət hesabatı",
       desc: "Gəlir − xərc, marja, EBITDA.",
-      href: "/hesabatlar/menfeet",
+      href: "/hesabatlar/maliyye",
       Icon: TrendingUp,
       stats: [
         { label: "Ay mənfəəti", value: formatMoney(kpis.ay_menfeet) },

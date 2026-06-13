@@ -45,9 +45,9 @@ export function ProductProblemPanel({ stats, baseUrl = "/anbar/mehsullar" }: Pro
     { label: "Şəkilsiz",          value: stats.sekilsiz,      icon: ImageIcon,     href: `${baseUrl}?sekil=false`,         tone: "warning" },
     { label: "Qiymətsiz",         value: stats.qiymetsiz,     icon: DollarSign,    href: `${baseUrl}?qmax=0`,              tone: "warning" },
     { label: "Barkodsuz",         value: stats.barkodsuz,     icon: Barcode,       href: `${baseUrl}?barkod=false`,        tone: "warning" },
-    { label: "Kateqoriyasız",     value: stats.kateqoriyasiz, icon: FolderX,       href: "/anbar/hesabat/problem?tip=kateqoriyasiz", tone: "neutral" },
-    { label: "Dublikat barkod",   value: stats.dublikat_barkod, icon: Copy,        href: "/anbar/hesabat/problem?tip=dublikat_barkod", tone: "danger" },
-    { label: "Yatmış 90+ gün",    value: stats.yatmis_90,     icon: Clock,         href: "/anbar/hesabat/problem?tip=satilmayan_60", tone: "warning" },
+    { label: "Kateqoriyasız",     value: stats.kateqoriyasiz, icon: FolderX,       href: "/anbar/hesabat?mod=kateqoriyasiz", tone: "neutral" },
+    { label: "Dublikat barkod",   value: stats.dublikat_barkod, icon: Copy,        href: "/anbar/hesabat?mod=dublikat_barkod", tone: "danger" },
+    { label: "Yatmış 90+ gün",    value: stats.yatmis_90,     icon: Clock,         href: "/anbar/hesabat?mod=satilmayan_60", tone: "warning" },
   ];
 
   // Chip-stilli kompakt sıra — yorucu olmasın deyə.
