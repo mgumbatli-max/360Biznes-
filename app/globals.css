@@ -21,12 +21,13 @@
   --surface-2: 240 5% 96%;
   --surface-3: 240 6% 92%;
 
-  --primary: 239 84% 60%;
+  /* Emerald-Teal brend (mobil app #0d9488 ilə uyğun) — göz-yormayan yaşıl */
+  --primary: 174 84% 32%;
   --primary-foreground: 0 0% 100%;
-  --primary-light: 234 89% 65%;
-  --primary-dark: 243 75% 52%;
+  --primary-light: 172 76% 41%;
+  --primary-dark: 175 84% 26%;
 
-  --accent: 262 83% 60%;
+  --accent: 160 84% 39%;
   --accent-foreground: 0 0% 100%;
 
   --secondary: 240 5% 96%;
@@ -46,7 +47,7 @@
 
   --border: 240 6% 90%;
   --input: 240 6% 90%;
-  --ring: 239 84% 60%;
+  --ring: 174 84% 32%;
 
   --sidebar: 240 5% 98%;
   --sidebar-foreground: 240 10% 8%;
@@ -59,7 +60,7 @@
   --radius-lg: 0.875rem;
   --radius-xl: 1.125rem;
 
-  --brand-gradient: linear-gradient(135deg, hsl(239 84% 60%), hsl(262 83% 60%), hsl(265 89% 72%));
+  --brand-gradient: linear-gradient(135deg, hsl(175 84% 28%), hsl(170 80% 35%), hsl(158 82% 43%));
   --brand-glow: 0 0 24px hsl(239 84% 60% / 0.30);
 }
 
@@ -80,12 +81,13 @@
   --surface-2: 230 42% 18%;
   --surface-3: 229 43% 22%;
 
-  --primary: 239 84% 67%;
+  /* Emerald-Teal — dark rejimdə kontrast üçün bir az parlaq */
+  --primary: 172 66% 50%;
   --primary-foreground: 220 50% 98%;
-  --primary-light: 234 89% 74%;
-  --primary-dark: 243 75% 59%;
+  --primary-light: 171 70% 58%;
+  --primary-dark: 174 76% 40%;
 
-  --accent: 262 83% 67%;
+  --accent: 160 70% 50%;
   --accent-foreground: 220 50% 98%;
 
   --secondary: 226 38% 18%;
@@ -108,14 +110,14 @@
 
   --border: 228 32% 22%;
   --input: 228 32% 22%;
-  --ring: 239 84% 67%;
+  --ring: 172 66% 50%;
 
   --sidebar: 226 40% 8%;
   --sidebar-foreground: 220 50% 96%;
   --sidebar-accent: 226 38% 14%;
   --sidebar-border: 228 32% 18%;
 
-  --brand-gradient: linear-gradient(135deg, hsl(239 84% 67%), hsl(262 83% 67%), hsl(265 89% 78%));
+  --brand-gradient: linear-gradient(135deg, hsl(174 70% 44%), hsl(167 68% 50%), hsl(157 70% 56%));
   --brand-glow: 0 0 24px hsl(239 84% 67% / 0.35);
 
   color-scheme: dark;
