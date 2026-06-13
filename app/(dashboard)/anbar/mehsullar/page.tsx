@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
-import { FileDown, FileSpreadsheet } from "lucide-react";
+import { FileDown, FileSpreadsheet, ImageDown } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -271,6 +271,11 @@ export default async function MehsullarPage({ searchParams }: { searchParams: Pr
             <Link href="/api/anbar/mehsullar/export" prefetch={false} title="Excel ixrac">
               <Button variant="outline" size="icon-sm" className="h-9 w-9">
                 <FileDown className="h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/api/anbar/mehsullar/export?sekil=1" prefetch={false} title="Excel ixrac (şəkilli)">
+              <Button variant="outline" size="icon-sm" className="h-9 w-9">
+                <ImageDown className="h-4 w-4" />
               </Button>
             </Link>
             <Suspense fallback={<Skeleton className="h-9 w-32 rounded-md" />}>

@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
   }
 
   const sp = req.nextUrl.searchParams;
+  const withImages = sp.get("sekil") === "1";
   const filter: ProductFilter = {
     search: sp.get("q") ?? undefined,
     kateqoriya_id: sp.getAll("kateq").map(Number).filter(Number.isFinite),
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
   const { items } = await getProducts(filter, 1, 10000);
   await withTenant(async () => {
     await audit("export", "mehsul_export", null, {
-      yeni_data: { count: items.length, filter, can_see_cost: canSeeCost },
+      yeni_data: { count: items.length, filter, can_see_cost: canSeeCost, with_images: withImages },
       sebeb: "Məhsul siyahısı Excel-ə ixrac edildi",
     });
   });
@@ -65,7 +66,12 @@ export async function GET(req: NextRequest) {
     { header: "Aktiv", key: "aktiv", width: 8 },
   ];
 
+  const imageColumn: Array<{ header: string; key: string; width: number }> = [
+    { header: "Şəkil", key: "sekil", width: 9 },
+  ];
+
   ws.columns = [
+    ...(withImages ? imageColumn : []),
     ...baseColumns,
     ...(canSeeCost ? costColumns : []),
     ...tailColumns,
@@ -111,8 +117,73 @@ export async function GET(req: NextRequest) {
   // Freeze header
   ws.views = [{ state: "frozen", ySplit: 1 }];
 
+  // === Şəkil gömmə (opt-in: ?sekil=1) ===
+  // Performans/fayl ölçüsü üçün: sharp ilə kiçik PNG thumbnail-a çevirilir,
+  // concurrency-limitli yüklənir və IMG_CAP ilə məhdudlaşır.
+  if (withImages) {
+    const IMG_CAP = 2000;
+    const CONCURRENCY = 12;
+    const THUMB = 56;
+
+    // Data sətirlərinin hündürlüyü — thumbnail sığsın
+    for (let i = 0; i < items.length; i++) {
+      ws.getRow(i + 2).height = 44;
+    }
+
+    // sharp Next.js-in transitive asılılığıdır; yoxdursa şəkilsiz davam edirik
+    let sharpLib: ((input: Buffer) => import("sharp").Sharp) | null = null;
+    try {
+      const mod = await import("sharp");
+      sharpLib = (mod.default ?? mod) as unknown as (input: Buffer) => import("sharp").Sharp;
+    } catch {
+      sharpLib = null;
+    }
+
+    if (sharpLib) {
+      const make = sharpLib;
+      const targets = items
+        .map((p, i) => ({ url: p.sekil_url, rowIdx: i + 1 }))
+        .filter((t): t is { url: string; rowIdx: number } => !!t.url)
+        .slice(0, IMG_CAP);
+
+      async function embedOne(t: { url: string; rowIdx: number }): Promise<void> {
+        try {
+          const ctrl = new AbortController();
+          const to = setTimeout(() => ctrl.abort(), 6000);
+          const resp = await fetch(t.url, { signal: ctrl.signal }).finally(() => clearTimeout(to));
+          if (!resp.ok) return;
+          const input = Buffer.from(await resp.arrayBuffer());
+          const png = await make(input)
+            .resize(THUMB, THUMB, { fit: "inside", withoutEnlargement: true })
+            .png()
+            .toBuffer();
+          // wb.addImage → ws.addImage arasında await YOXDUR (id təhlükəsiz)
+          const imageId = wb.addImage({ buffer: png as unknown as ExcelJS.Buffer, extension: "png" });
+          ws.addImage(imageId, {
+            tl: { col: 0, row: t.rowIdx },
+            ext: { width: THUMB, height: THUMB },
+            editAs: "oneCell",
+          });
+        } catch {
+          /* tək şəkilin uğursuzluğu ixracı dayandırmasın */
+        }
+      }
+
+      let next = 0;
+      async function worker(): Promise<void> {
+        while (next < targets.length) {
+          const cur = targets[next++];
+          await embedOne(cur);
+        }
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, targets.length) }, () => worker()),
+      );
+    }
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
-  const filename = `mehsullar-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const filename = `mehsullar${withImages ? "-sekilli" : ""}-${new Date().toISOString().slice(0, 10)}.xlsx`;
 
   return new NextResponse(buffer as ArrayBuffer, {
     headers: {
