@@ -1,96 +1,150 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Boxes, ShoppingCart, CreditCard, BarChart3, Users, Sparkles,
-  Store, Receipt, Bell, Shield, Database, Bot, Activity, Wallet,
-  Globe, Phone,
+  Boxes, ShoppingCart, CreditCard, BarChart3, Users, Sparkles, Store,
+  Receipt, Bell, Shield, Database, Bot, Activity, Wallet, Globe, Phone,
+  CheckSquare, FolderKanban, UserCog, CalendarClock, Wallet2, Award,
+  Gift, Percent, Wrench, ShieldAlert, ClipboardCheck, History, ArrowRight,
 } from "lucide-react";
+import { MeshHero, PublicFooter } from "@/components/public/ui";
 
-export const metadata: Metadata = { title: "Funksiyalar — 360Biznes" };
+export const metadata: Metadata = {
+  title: "Funksiyalar — 360Biznes",
+  description: "POS, anbar, maliyyə, tapşırıq, HR, CRM, marketplace, AI və daha çoxu — 12 modul, 60+ funksiya bir platformada.",
+};
 
 const SECTIONS = [
   {
-    title: "Əməliyyat və satış",
+    title: "Əməliyyat & Satış",
     items: [
-      { icon: ShoppingCart, title: "POS satış", desc: "Sürətli kassir interfeysi, vergi kassası, kuponlar" },
-      { icon: CreditCard, title: "Kart və nağd ödəniş", desc: "Bütün ödəniş üsulları, hissə-hissə satış" },
-      { icon: Receipt, title: "Faktura və qaimə", desc: "Avtomatik nömrələnmə, PDF eksport" },
-      { icon: Store, title: "Filiallar", desc: "Çoxlu mağaza və anbar idarəsi" },
+      { icon: ShoppingCart, title: "POS satış", desc: "Sürətli kassir, klaviatura kısayolları, kupon" },
+      { icon: CreditCard, title: "Kart, nağd, hissəli", desc: "Bütün ödəniş üsulları, qarışıq ödəniş" },
+      { icon: Receipt, title: "Faktura & qaimə", desc: "Avtomatik nömrələnmə, PDF, çap" },
+      { icon: Store, title: "Çoxlu filial", desc: "Hər filialın öz anbarı, kassası, işçiləri" },
     ],
   },
   {
-    title: "Anbar və mal",
+    title: "Anbar & Mal",
     items: [
-      { icon: Boxes, title: "Anbar idarəsi", desc: "Stok, qalıqlar, transferlər, inventarizasiya" },
-      { icon: Database, title: "Barkod və seriya nömrə", desc: "EAN, custom barkod, seri nömrə izi" },
-      { icon: Activity, title: "Avtomatik sifariş", desc: "Min stok hədinə çatdıqda alqı tövsiyəsi" },
+      { icon: Boxes, title: "Anbar idarəsi", desc: "Stok, qalıq, transfer, inventarizasiya" },
+      { icon: Database, title: "Barkod & seriya", desc: "EAN, custom barkod, seriya nömrə izi" },
+      { icon: Activity, title: "Auto-sifariş", desc: "Min stok hədinə çatanda alqı tövsiyəsi" },
     ],
   },
   {
     title: "Maliyyə",
     items: [
-      { icon: Wallet, title: "Kassa və bank", desc: "Çoxlu hesab, valyuta dönüşümü, mənfəət hesabı" },
-      { icon: BarChart3, title: "Hesabatlar", desc: "Satış, mənfəət, rentabellik, pul axını" },
-      { icon: Receipt, title: "Xərclər", desc: "Kateqoriyalı, filial üzrə, vergi göstəricisi" },
+      { icon: Wallet, title: "Kassa & bank", desc: "Çoxlu hesab, valyuta, gün sonu" },
+      { icon: BarChart3, title: "Mənfəət (P&L)", desc: "Gəlir−xərc, marja, EBITDA, pul axını" },
+      { icon: Receipt, title: "Xərclər & ƏDV", desc: "Kateqoriyalı, filial üzrə, vergi" },
+      { icon: Wallet2, title: "Debitor / kreditor", desc: "Borc izləmə, avto-xatırlatma" },
     ],
   },
   {
-    title: "Müştəri və CRM",
+    title: "Tapşırıq & Layihə",
+    items: [
+      { icon: CheckSquare, title: "Komanda tapşırıqları", desc: "Təyinat, son tarix, status, prioritet" },
+      { icon: FolderKanban, title: "Layihə idarəsi", desc: "Mərhələ, bağlantı, irəliləyiş" },
+      { icon: Bot, title: "AI tapşırıq analizi", desc: "Yükün bölüşdürülməsi, gecikmə riski" },
+      { icon: Activity, title: "Şablon & statistika", desc: "Təkrar tapşırıqlar, performans" },
+    ],
+  },
+  {
+    title: "İşçilər & HR",
+    items: [
+      { icon: UserCog, title: "Əməkdaş kartı", desc: "Profil, rol, icazə, sənədlər" },
+      { icon: Wallet2, title: "Maaş & bordro", desc: "Hesablama, bonus, bordro çapı" },
+      { icon: CalendarClock, title: "Davamiyyət & məzuniyyət", desc: "Giriş-çıxış, məzuniyyət balansı" },
+      { icon: Award, title: "KPI & performans", desc: "Hədəf, satış nəticəsi, reytinq" },
+    ],
+  },
+  {
+    title: "Müştəri & CRM",
     items: [
       { icon: Users, title: "Müştəri kartı", desc: "Tarixçə, segment, loyallıq" },
-      { icon: Phone, title: "Çoxkanallı dəstək", desc: "WhatsApp, Telegram, Instagram inbox" },
-      { icon: Bell, title: "Bildirişlər", desc: "Email, SMS, push, in-app" },
+      { icon: Phone, title: "Çoxkanallı inbox", desc: "WhatsApp, Telegram, Instagram bir yerdə" },
+      { icon: Bell, title: "Broadcast & bildiriş", desc: "Toplu mesaj, email, SMS, push" },
     ],
   },
   {
-    title: "Marketplace və inteqrasiyalar",
+    title: "Kampaniya & Loyallıq",
+    items: [
+      { icon: Percent, title: "Endirim & kampaniya", desc: "Vaxtlı aksiyalar, kupon, qaydalar" },
+      { icon: Gift, title: "Hədiyyə kartı", desc: "Satış, qaliq, çap, izləmə" },
+      { icon: Award, title: "Loyallıq proqramı", desc: "Bal, bonus, müştəri hədəfi" },
+    ],
+  },
+  {
+    title: "Marketplace & İnteqrasiya",
     items: [
       { icon: Globe, title: "Marketplace sinxron", desc: "Bolt, Wolt, Yango, ProGo, Tap.az" },
-      { icon: Activity, title: "Webhook", desc: "Hadisə əsaslı inteqrasiyalar" },
+      { icon: Store, title: "Avto-poster", desc: "Məhsulları platformalara avtomatik yerləşdir" },
+      { icon: Activity, title: "Webhook & API", desc: "Hadisə əsaslı inteqrasiyalar" },
     ],
   },
   {
-    title: "AI və avtomatlaşdırma",
+    title: "AI & Avtomatlaşdırma",
     items: [
-      { icon: Sparkles, title: "Claude AI köməkçi", desc: "Sualınıza canlı cavab, mənfəət təhlili" },
+      { icon: Sparkles, title: "Claude AI köməkçi", desc: "Canlı biznes sualları, mənfəət təhlili" },
       { icon: Bot, title: "Auto cavab", desc: "Müştəri mesajlarına AI cavab" },
       { icon: Activity, title: "Anomali aşkarlama", desc: "Şübhəli əməliyyatları AI tutur" },
+      { icon: Activity, title: "Trigger qaydaları", desc: "Hadisə → avtomatik əməliyyat" },
     ],
   },
   {
-    title: "Təhlükəsizlik və idarəetmə",
+    title: "Servis & Zəmanət",
     items: [
-      { icon: Shield, title: "Rol və icazə", desc: "Granular permission matrisi" },
-      { icon: Database, title: "Backup", desc: "Avtomatik və əl ilə yedək, restore" },
-      { icon: Activity, title: "Audit log", desc: "Hər dəyişikliyin izi, kim, nə vaxt" },
+      { icon: Wrench, title: "Servis qəbulu & SLA", desc: "Qəbul, status, vaxt hədləri" },
+      { icon: Shield, title: "Zəmanət izləmə", desc: "Müddət, qeydiyyat, müştəri track" },
+      { icon: ShieldAlert, title: "Problemli məhsul", desc: "Defekt, qaytarma, statistika" },
+    ],
+  },
+  {
+    title: "Hesabat & Analitika",
+    items: [
+      { icon: BarChart3, title: "Satış & marja hesabatları", desc: "Trend, YoY, top məhsul/satıcı" },
+      { icon: Activity, title: "Saat × gün heatmap", desc: "Pik vaxtlar, boş slotlar" },
+      { icon: Award, title: "KPI & hədəflər", desc: "Filial müqayisəsi, hədəf izləmə" },
+    ],
+  },
+  {
+    title: "Nəzarət & Təhlükəsizlik",
+    items: [
+      { icon: ShieldAlert, title: "Nəzarət mərkəzi", desc: "Real-time anomali, risk siqnalları" },
+      { icon: ClipboardCheck, title: "Təsdiq axını", desc: "Endirim, xərc, əməliyyat təsdiqi" },
+      { icon: Shield, title: "Rol & icazə", desc: "Granular permission matrisi" },
+      { icon: History, title: "Audit log & backup", desc: "Hər dəyişikliyin izi, avto yedək" },
     ],
   },
 ];
 
 export default function FunksiyalarPage() {
   return (
-    <div className="px-6">
-      <section className="mx-auto max-w-5xl pb-10 pt-12 text-center md:pt-16">
-        <h1 className="mx-auto max-w-3xl text-balance text-4xl font-bold tracking-tight md:text-5xl">
-          Biznesiniz üçün
-          <span className="brand-text"> tam toolkit</span>
-        </h1>
-        <p className="mx-auto mt-4 max-w-2xl text-balance text-base text-muted-foreground">
-          Anbardan POS-a, hesabatdan AI-ə — bütün modullar bir platformada inteqrasiya olunub.
-        </p>
-      </section>
+    <>
+      <MeshHero
+        badge="12 modul · 60+ funksiya"
+        title={<>Biznesiniz üçün <span className="bg-gradient-to-r from-emerald-300 via-teal-200 to-emerald-300 bg-clip-text text-transparent">tam toolkit</span></>}
+        sub="Anbardan POS-a, tapşırıqdan HR-a, hesabatdan AI-ə — bütün modullar bir platformada inteqrasiya olunub."
+      >
+        <Link href="/qeydiyyat" className="group inline-flex items-center gap-2 rounded-xl bg-white px-7 py-3.5 text-sm font-bold text-emerald-950 shadow-2xl shadow-black/20 transition hover:scale-[1.02]">
+          Pulsuz başla <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+        </Link>
+      </MeshHero>
 
-      <div className="mx-auto max-w-6xl space-y-10 pb-16">
+      <div className="mx-auto max-w-6xl space-y-12 px-6 py-16 md:py-20">
         {SECTIONS.map((sec) => (
           <section key={sec.title}>
-            <h2 className="mb-4 text-xl font-semibold">{sec.title}</h2>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <h2 className="mb-5 flex items-center gap-3 text-xl font-bold">
+              <span className="h-5 w-1 rounded-full" style={{ background: "var(--brand-gradient)" }} />
+              {sec.title}
+            </h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {sec.items.map((item) => (
-                <div key={item.title} className="glass rounded-xl p-5">
-                  <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary-light">
-                    <item.icon className="h-4 w-4" />
+                <div key={item.title} className="group rounded-xl border border-border bg-card p-5 transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5">
+                  <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/12 text-primary-light transition group-hover:scale-105">
+                    <item.icon className="h-5 w-5" />
                   </div>
-                  <h3 className="mb-1 font-semibold">{item.title}</h3>
+                  <h3 className="mb-1 font-bold">{item.title}</h3>
                   <p className="text-sm text-muted-foreground">{item.desc}</p>
                 </div>
               ))}
@@ -99,17 +153,15 @@ export default function FunksiyalarPage() {
         ))}
       </div>
 
-      <section className="mx-auto max-w-3xl pb-20 text-center">
-        <h2 className="text-2xl font-bold">Hazırsan?</h2>
-        <p className="mt-2 text-sm text-muted-foreground">15 günlük pulsuz sınaq, kart məlumatı tələb olunmur.</p>
-        <Link
-          href="/qeydiyyat"
-          className="mt-6 inline-flex rounded-md px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
-          style={{ background: "var(--brand-gradient)" }}
-        >
-          Pulsuz başla
+      <section className="mx-auto max-w-3xl px-6 pb-20 text-center">
+        <h2 className="text-2xl font-black tracking-tight">Hamısını 15 gün pulsuz sınayın</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Kart məlumatı tələb olunmur. Bütün modullar açıq.</p>
+        <Link href="/qeydiyyat" className="mt-6 inline-flex items-center gap-2 rounded-xl px-7 py-3.5 text-sm font-semibold text-white shadow-lg transition hover:scale-[1.02]" style={{ background: "var(--brand-gradient)", boxShadow: "var(--brand-glow)" }}>
+          Pulsuz başla <ArrowRight className="h-4 w-4" />
         </Link>
       </section>
-    </div>
+
+      <PublicFooter />
+    </>
   );
 }
