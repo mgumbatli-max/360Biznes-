@@ -9,21 +9,21 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { cancelSale } from "../satis-actions";
-import { BlockerList, showActionError } from "@/components/ui/action-error-toast";
-import type { Blocker } from "@/lib/blockers/types";
+import { showActionError } from "@/components/ui/action-error-toast";
+import { LinkedOperationsPanel } from "@/features/emeliyyat/components/linked-operations-panel";
 
 export function CancelSaleDialog({ saleId, nomre }: { saleId: string; nomre: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [blockers, setBlockers] = useState<Blocker[]>([]);
+  const [blocked, setBlocked] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [resolved, setResolved] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setBlockers([]);
     setHint(null);
     const fd = new FormData(e.currentTarget);
     const reason = String(fd.get("reason") ?? "").trim();
@@ -35,7 +35,9 @@ export function CancelSaleDialog({ saleId, nomre }: { saleId: string; nomre: str
       const res = await cancelSale(saleId, reason);
       if (!res.ok) {
         setError(res.error);
-        setBlockers(res.blockers ?? []);
+        const hasBlockers = (res.blockers?.length ?? 0) > 0;
+        setBlocked(hasBlockers);
+        if (hasBlockers) setResolved(false);
         setHint(res.hint ?? null);
         showActionError(res);
       } else {
@@ -71,14 +73,23 @@ export function CancelSaleDialog({ saleId, nomre }: { saleId: string; nomre: str
               <AlertDescription>
                 <div>{error}</div>
                 {hint && <p className="mt-1.5 text-xs opacity-90">{hint}</p>}
-                {blockers.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-[11px] font-medium mb-1 opacity-90">Bağlı sənədlər:</p>
-                    <BlockerList blockers={blockers} />
-                  </div>
-                )}
               </AlertDescription>
             </Alert>
+          )}
+
+          {blocked && (
+            <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+              <LinkedOperationsPanel
+                target={{ type: "satis", id: saleId }}
+                mode="resolve"
+                onResolved={() => setResolved(true)}
+              />
+              {resolved && (
+                <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  Bağlı əməliyyatlar həll olundu — yenidən «Ləğv et» basın.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="space-y-2">
