@@ -52,8 +52,11 @@ function asArray(v: string | string[] | undefined): string[] {
 }
 
 function parseBool(v: string | undefined): boolean | undefined {
-  if (v === "true") return true;
-  if (v === "false") return false;
+  // Həm dropdown (true/false) həm sürətli-filtr chip (yes/no) həm 1/0/var/yox qəbul et.
+  // Əvvəl yalnız true/false idi → "Şəkilsiz"/"Barkodsuz" chip-ləri (?sekil=no) tanınmırdı
+  // → filtr tətbiq olunmurdu → şəkilsiz seçəndə şəkilli məhsullar görünürdü.
+  if (v === "true" || v === "1" || v === "yes" || v === "var") return true;
+  if (v === "false" || v === "0" || v === "no" || v === "yox") return false;
   return undefined;
 }
 

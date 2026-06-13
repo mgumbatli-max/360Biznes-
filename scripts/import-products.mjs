@@ -32,7 +32,7 @@ const LIVE = args.includes("--live");
 const DRY = !LIVE; // default dry-run
 const positional = args.filter((a) => !a.startsWith("--"));
 const SRC = positional[0] || "Məhsullar.xlsx";
-const SAHIBKAR_ID = positional[1] || process.env.SAHIBKAR_ID || null;
+let SAHIBKAR_ID = positional[1] || process.env.SAHIBKAR_ID || "MAGAZAM";
 const MANIFEST = "/tmp/mehsul-import-manifest.json"; // row → {blobUrl, mehsulId}
 
 const num = (v) => {
@@ -113,6 +113,24 @@ const { PrismaClient } = await import("@prisma/client");
 const prisma = new PrismaClient();
 let blobPut = null;
 if (hasBlob) ({ put: blobPut } = await import("@vercel/blob"));
+
+// sahibkar_id həll et — UUID deyilsə ad üzrə tap (default "MAGAZAM")
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+if (!UUID_RE.test(SAHIBKAR_ID)) {
+  const sah = await prisma.sahibkarlar.findFirst({
+    where: { ad: { contains: SAHIBKAR_ID, mode: "insensitive" } },
+    select: { id: true, ad: true },
+  });
+  if (!sah) {
+    const all = await prisma.sahibkarlar.findMany({ select: { id: true, ad: true }, take: 30 });
+    console.error(`XƏTA: «${SAHIBKAR_ID}» adlı sahibkar tapılmadı. Mövcudlar:`);
+    for (const s of all) console.error(`  ${s.id}  ${s.ad}`);
+    await prisma.$disconnect();
+    process.exit(1);
+  }
+  console.log(`Sahibkar: ${sah.ad} (${sah.id})`);
+  SAHIBKAR_ID = sah.id;
+}
 
 // manifest (resume) yüklə
 let manifest = {};
