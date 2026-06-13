@@ -6,11 +6,35 @@ import { LEAD_STAGES, type LeadStatus, type LeadCard, type LeadListRow } from ".
 export { LEAD_STAGES };
 export type { LeadStatus, LeadCard, LeadListRow };
 
-export async function getLeadsByStage(filter?: { menecer_id?: string | null; menbe?: string | null }): Promise<Record<LeadStatus, LeadCard[]>> {
+function buildDateRange(tarixDan?: string | null, tarixaDek?: string | null): Record<string, Date> | null {
+  const range: Record<string, Date> = {};
+  if (tarixDan) {
+    const d = new Date(tarixDan);
+    if (!Number.isNaN(d.getTime())) range.gte = d;
+  }
+  if (tarixaDek) {
+    const d = new Date(tarixaDek);
+    if (!Number.isNaN(d.getTime())) {
+      // gün sonuna qədər daxil et (23:59:59.999)
+      d.setHours(23, 59, 59, 999);
+      range.lte = d;
+    }
+  }
+  return Object.keys(range).length ? range : null;
+}
+
+export async function getLeadsByStage(filter?: {
+  menecer_id?: string | null;
+  menbe?: string | null;
+  tarix_dan?: string | null;
+  tarixa_dek?: string | null;
+}): Promise<Record<LeadStatus, LeadCard[]>> {
   return withTenant(async () => {
     const where: Record<string, unknown> = {};
     if (filter?.menecer_id) where.menecer_id = filter.menecer_id;
     if (filter?.menbe) where.menbe = filter.menbe;
+    const yaradildiRange = buildDateRange(filter?.tarix_dan, filter?.tarixa_dek);
+    if (yaradildiRange) where.yaradildi = yaradildiRange;
 
     const rows = await prisma.leads.findMany({
       where,
@@ -50,6 +74,8 @@ export async function getLeadsListRows(opts?: {
   status?: LeadStatus | null;
   menecer_id?: string | null;
   menbe?: string | null;
+  tarix_dan?: string | null;
+  tarixa_dek?: string | null;
 }): Promise<LeadListRow[]> {
   return withTenant(async () => {
     const where: Record<string, unknown> = {};
@@ -58,6 +84,8 @@ export async function getLeadsListRows(opts?: {
     else where.status = { not: "silinib" };
     if (opts?.menecer_id) where.menecer_id = opts.menecer_id;
     if (opts?.menbe) where.menbe = opts.menbe;
+    const yaradildiRange = buildDateRange(opts?.tarix_dan, opts?.tarixa_dek);
+    if (yaradildiRange) where.yaradildi = yaradildiRange;
     if (opts?.q && opts.q.trim()) {
       const q = opts.q.trim();
       where.OR = [

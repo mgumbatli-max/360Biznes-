@@ -11,6 +11,12 @@ export type EmployeeFilter = {
   vezife?: string[];
   status?: EmployeeStatus[];
   aktiv?: boolean;
+  /** Aylıq maaş aralığı (₼) */
+  maas_min?: number;
+  maas_max?: number;
+  /** İşə qəbul (ise_baslama) tarix aralığı (ISO yyyy-mm-dd) */
+  ise_baslama_min?: string;
+  ise_baslama_max?: string;
   /** Soft-delete standart filter */
   recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
@@ -45,6 +51,24 @@ export async function getEmployees(filter: EmployeeFilter): Promise<EmployeeRow[
     if (filter.rol_id?.length) where.rol_id = { in: filter.rol_id };
     if (filter.vezife?.length) where.vezife = { in: filter.vezife };
     if (filter.filial_id?.length) where.default_filial_id = { in: filter.filial_id };
+    if (filter.maas_min !== undefined || filter.maas_max !== undefined) {
+      const maas: { gte?: number; lte?: number } = {};
+      if (filter.maas_min !== undefined) maas.gte = filter.maas_min;
+      if (filter.maas_max !== undefined) maas.lte = filter.maas_max;
+      where.aylik_maas = maas;
+    }
+    if (filter.ise_baslama_min || filter.ise_baslama_max) {
+      const ise: { gte?: Date; lte?: Date } = {};
+      if (filter.ise_baslama_min) {
+        const d = new Date(filter.ise_baslama_min);
+        if (!Number.isNaN(d.getTime())) ise.gte = d;
+      }
+      if (filter.ise_baslama_max) {
+        const d = new Date(filter.ise_baslama_max);
+        if (!Number.isNaN(d.getTime())) ise.lte = d;
+      }
+      if (ise.gte || ise.lte) where.ise_baslama = ise;
+    }
     if (filter.search) {
       const q = filter.search.trim();
       where.OR = [

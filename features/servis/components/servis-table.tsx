@@ -88,6 +88,9 @@ type TableFilters = {
   zemanet: boolean;
   gecikme: boolean;
   odenilmis: boolean;
+  xarici: boolean;
+  iscisi: string;
+  defekt: string;
   filial: string;
   marka: string;
   kateqoriya: string;
@@ -102,6 +105,9 @@ const DEFAULT_FILTERS: TableFilters = {
   zemanet: false,
   gecikme: false,
   odenilmis: false,
+  xarici: false,
+  iscisi: "",
+  defekt: "",
   filial: "",
   marka: "",
   kateqoriya: "",
@@ -114,12 +120,16 @@ export function ServisTable({
   filiallar = [],
   markalar = [],
   kateqoriyalar = [],
+  texniki = [],
+  defektKateq = [],
   initial: initialFilters,
 }: {
   rows: ServisRow[];
   filiallar?: { id: number; ad: string }[];
   markalar?: { id: number; ad: string }[];
   kateqoriyalar?: { id: number; ad: string }[];
+  texniki?: { id: string; ad: string }[];
+  defektKateq?: { id: number; ad: string; qrup: string | null }[];
   initial?: Partial<TableFilters>;
 }) {
   const router = useRouter();
@@ -137,6 +147,9 @@ export function ServisTable({
     if (filters.zemanet) sp.set("zemanet", "1");
     if (filters.gecikme) sp.set("gecikme", "1");
     if (filters.odenilmis) sp.set("odenilmis", "1");
+    if (filters.xarici) sp.set("xarici", "1");
+    if (filters.iscisi) sp.set("iscisi", filters.iscisi);
+    if (filters.defekt) sp.set("defekt", filters.defekt);
     if (filters.filial) sp.set("filial", filters.filial);
     if (filters.marka) sp.set("marka", filters.marka);
     if (filters.kateqoriya) sp.set("kateqoriya", filters.kateqoriya);
@@ -168,6 +181,9 @@ export function ServisTable({
     filters.zemanet ||
     filters.gecikme ||
     filters.odenilmis ||
+    filters.xarici ||
+    !!filters.iscisi ||
+    !!filters.defekt ||
     !!filters.filial ||
     !!filters.marka ||
     !!filters.kateqoriya ||
@@ -204,6 +220,34 @@ export function ServisTable({
             <option key={k} value={k}>{v.label}</option>
           ))}
         </select>
+        {texniki.length > 0 && (
+          <select
+            value={filters.iscisi}
+            onChange={(e) => setFilters((f) => ({ ...f, iscisi: e.target.value }))}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            title="Məsul texniki"
+          >
+            <option value="">Məsul texniki</option>
+            {texniki.map((t) => (
+              <option key={t.id} value={t.id}>{t.ad}</option>
+            ))}
+          </select>
+        )}
+        {defektKateq.length > 0 && (
+          <select
+            value={filters.defekt}
+            onChange={(e) => setFilters((f) => ({ ...f, defekt: e.target.value }))}
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            title="Defekt kateqoriyası"
+          >
+            <option value="">Defekt növü</option>
+            {defektKateq.map((d) => (
+              <option key={d.id} value={String(d.id)}>
+                {d.qrup ? `${d.qrup} · ${d.ad}` : d.ad}
+              </option>
+            ))}
+          </select>
+        )}
         {markalar.length > 0 && (
           <select
             value={filters.marka}
@@ -280,6 +324,15 @@ export function ServisTable({
             className="h-3.5 w-3.5 accent-primary"
           />
           Ödənilmiş
+        </label>
+        <label className="flex items-center gap-1.5 text-xs">
+          <input
+            type="checkbox"
+            checked={filters.xarici}
+            onChange={(e) => setFilters((f) => ({ ...f, xarici: e.target.checked }))}
+            className="h-3.5 w-3.5 accent-primary"
+          />
+          Xarici servis
         </label>
         {hasFilter && (
           <button

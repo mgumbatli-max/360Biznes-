@@ -17,7 +17,15 @@ import { formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Kreditor — təchizatçı borcları" };
 
-type SearchParams = { q?: string; gecik?: string; sort?: string };
+type SearchParams = {
+  q?: string;
+  gecik?: string;
+  sort?: string;
+  mn?: string;
+  mx?: string;
+  df?: string;
+  dt?: string;
+};
 
 export default async function KreditorPage({
   searchParams,
@@ -32,7 +40,22 @@ export default async function KreditorPage({
   const gecik = Number(sp.gecik ?? 0);
   const sort = sp.sort ?? "borc_h";
 
-  const [allRows, refs] = await Promise.all([getCreditors(), getQuickRefs()]);
+  // Yeni filtrlər — query where-ə ötürülür (param → where)
+  const minBorc = sp.mn != null && sp.mn !== "" ? Number(sp.mn) : undefined;
+  const maxBorc = sp.mx != null && sp.mx !== "" ? Number(sp.mx) : undefined;
+  const dateFrom = sp.df ? new Date(sp.df) : undefined;
+  const dateTo = sp.dt ? new Date(`${sp.dt}T23:59:59.999`) : undefined;
+
+  const [allRows, refs] = await Promise.all([
+    getCreditors({
+      search: sp.q?.trim() || undefined,
+      min: Number.isFinite(minBorc) ? minBorc : undefined,
+      max: Number.isFinite(maxBorc) ? maxBorc : undefined,
+      from: dateFrom && !Number.isNaN(dateFrom.getTime()) ? dateFrom : undefined,
+      to: dateTo && !Number.isNaN(dateTo.getTime()) ? dateTo : undefined,
+    }),
+    getQuickRefs(),
+  ]);
 
   let rows = allRows;
   if (q) {
@@ -205,6 +228,8 @@ export default async function KreditorPage({
       {/* FILTERS */}
       <section className="rounded-2xl border border-border bg-card/40 p-3">
         <form className="flex flex-wrap items-center gap-2">
+          {/* Pill ilə seçilən gecikmə filtrini submit-də qoru */}
+          {gecik > 0 && <input type="hidden" name="gecik" value={String(gecik)} />}
           <div className="relative min-w-[240px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -225,6 +250,10 @@ export default async function KreditorPage({
               const params = new URLSearchParams();
               if (q) params.set("q", q);
               if (sort && sort !== "borc_h") params.set("sort", sort);
+              if (sp.mn) params.set("mn", sp.mn);
+              if (sp.mx) params.set("mx", sp.mx);
+              if (sp.df) params.set("df", sp.df);
+              if (sp.dt) params.set("dt", sp.dt);
               if (o.v > 0) params.set("gecik", String(o.v));
               const active = gecik === o.v;
               return (
@@ -242,6 +271,46 @@ export default async function KreditorPage({
               );
             })}
           </div>
+          {/* Borc aralığı (min/max) — query where-ə bağlıdır */}
+          <div className="flex items-center gap-1" title="Borc aralığı (₼)">
+            <input
+              type="number"
+              name="mn"
+              defaultValue={sp.mn ?? ""}
+              min={0}
+              step="0.01"
+              placeholder="min ₼"
+              className="h-9 w-24 rounded-lg border border-input bg-background px-2 text-xs shadow-sm focus:border-primary focus:outline-none"
+            />
+            <span className="text-muted-foreground">–</span>
+            <input
+              type="number"
+              name="mx"
+              defaultValue={sp.mx ?? ""}
+              min={0}
+              step="0.01"
+              placeholder="max ₼"
+              className="h-9 w-24 rounded-lg border border-input bg-background px-2 text-xs shadow-sm focus:border-primary focus:outline-none"
+            />
+          </div>
+
+          {/* Son alış tarix aralığı — query where-ə bağlıdır */}
+          <div className="flex items-center gap-1" title="Son alış tarix aralığı">
+            <input
+              type="date"
+              name="df"
+              defaultValue={sp.df ?? ""}
+              className="h-9 rounded-lg border border-input bg-background px-2 text-xs shadow-sm focus:border-primary focus:outline-none"
+            />
+            <span className="text-muted-foreground">–</span>
+            <input
+              type="date"
+              name="dt"
+              defaultValue={sp.dt ?? ""}
+              className="h-9 rounded-lg border border-input bg-background px-2 text-xs shadow-sm focus:border-primary focus:outline-none"
+            />
+          </div>
+
           <select
             name="sort"
             defaultValue={sort}
@@ -267,9 +336,11 @@ export default async function KreditorPage({
             <Truck className="h-6 w-6 text-muted-foreground" />
           </div>
           <h3 className="font-semibold">
-            {q || gecik ? "Filterə uyğun borc yoxdur" : "Borclu olduğunuz təchizatçı yoxdur"}
+            {q || gecik || sp.mn || sp.mx || sp.df || sp.dt
+              ? "Filterə uyğun borc yoxdur"
+              : "Borclu olduğunuz təchizatçı yoxdur"}
           </h3>
-          {!q && !gecik && (
+          {!q && !gecik && !sp.mn && !sp.mx && !sp.df && !sp.dt && (
             <p className="mt-1 text-sm text-muted-foreground">
               Bütün alışlar ödənilib.
             </p>

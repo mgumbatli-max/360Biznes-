@@ -93,6 +93,8 @@ export default async function ServisPage({
   const filialId = pickInt(sp, "filial");
   const markaId = pickInt(sp, "marka");
   const kateqoriyaId = pickInt(sp, "kateqoriya");
+  const defektId = pickInt(sp, "defekt");
+  const xarici = pickStr(sp, "xarici") === "1";
 
   if (q) filter.q = q;
   if (status === "acig") filter.acig_only = true;
@@ -102,9 +104,11 @@ export default async function ServisPage({
   if (gecikme) filter.gecikme_only = true;
   if (odenilmis) filter.odenilmis_only = true;
   if (zemanet) filter.zemanet_only = true;
+  if (xarici) filter.xarici_only = true;
   if (filialId != null) filter.filial_id = filialId;
   if (markaId != null) filter.marka_id = markaId;
   if (kateqoriyaId != null) filter.kateqoriya_id = kateqoriyaId;
+  if (defektId != null) filter.defekt_kateq_id = defektId;
   if (to) filter.to = to;
 
   if (fromKey === "7d") {
@@ -227,9 +231,11 @@ export default async function ServisPage({
           filiallarP={filiallarP}
           markalarP={markalarP}
           kateqoriyalarP={kateqoriyalarP}
+          texnikiP={texnikiP}
+          defektKateqP={defektKateqP}
           view={view}
           sp={sp}
-          filterParams={{ q, status, prioritet, zemanet, gecikme, odenilmis, filialId, markaId, kateqoriyaId }}
+          filterParams={{ q, status, prioritet, zemanet, gecikme, odenilmis, xarici, filialId, markaId, kateqoriyaId, defektId, iscisi }}
         />
       </Suspense>
 
@@ -462,6 +468,8 @@ async function TableBlock({
   filiallarP,
   markalarP,
   kateqoriyalarP,
+  texnikiP,
+  defektKateqP,
   view,
   sp,
   filterParams,
@@ -470,6 +478,8 @@ async function TableBlock({
   filiallarP: ReturnType<typeof getFiliallar>;
   markalarP: ReturnType<typeof getMarkaOptionsForServis>;
   kateqoriyalarP: ReturnType<typeof getKateqoriyaOptionsForServis>;
+  texnikiP: ReturnType<typeof getTexnikiUsers>;
+  defektKateqP: ReturnType<typeof getDefektKategoriyalar>;
   view: "list" | "kanban";
   sp: SP;
   filterParams: {
@@ -479,15 +489,18 @@ async function TableBlock({
     zemanet: boolean;
     gecikme: boolean;
     odenilmis: boolean;
+    xarici: boolean;
     filialId: number | undefined;
     markaId: number | undefined;
     kateqoriyaId: number | undefined;
+    defektId: number | undefined;
+    iscisi: string | undefined;
   };
 }) {
-  const [rows, filiallar, markalar, kateqoriyalar] = await Promise.all([
-    rowsP, filiallarP, markalarP, kateqoriyalarP,
+  const [rows, filiallar, markalar, kateqoriyalar, texniki, defektKateq] = await Promise.all([
+    rowsP, filiallarP, markalarP, kateqoriyalarP, texnikiP, defektKateqP,
   ]);
-  const { q, status, prioritet, zemanet, gecikme, odenilmis, filialId, markaId, kateqoriyaId } = filterParams;
+  const { q, status, prioritet, zemanet, gecikme, odenilmis, xarici, filialId, markaId, kateqoriyaId, defektId, iscisi } = filterParams;
   if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
@@ -504,6 +517,8 @@ async function TableBlock({
       filiallar={filiallar.map((f) => ({ id: f.id, ad: f.ad }))}
       markalar={markalar.map((m) => ({ id: m.id, ad: m.ad }))}
       kateqoriyalar={kateqoriyalar.map((k) => ({ id: k.id, ad: k.ad }))}
+      texniki={texniki.map((t) => ({ id: t.id, ad: t.ad_soyad }))}
+      defektKateq={defektKateq.map((d) => ({ id: d.id, ad: d.ad, qrup: d.qrup ?? null }))}
       initial={{
         q: q ?? "",
         status: status ?? "",
@@ -511,9 +526,12 @@ async function TableBlock({
         zemanet,
         gecikme,
         odenilmis,
+        xarici,
+        iscisi: iscisi ?? "",
         filial: filialId != null ? String(filialId) : "",
         marka: markaId != null ? String(markaId) : "",
         kateqoriya: kateqoriyaId != null ? String(kateqoriyaId) : "",
+        defekt: defektId != null ? String(defektId) : "",
         from: pickStr(sp, "from") ?? "",
         to: pickStr(sp, "to") ?? "",
       }}

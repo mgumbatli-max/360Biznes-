@@ -74,8 +74,13 @@ export async function getOperations(
     }
     if (filter.status) where.status = filter.status;
     if (filter.yon) where.y_n = filter.yon;
+    // QA wiring: hesab + search hər ikisi OR tələb edir — `where.OR`-u birbaşa
+    // təyin etmək onları bir-birini əzirdi. İndi hər ikisi AND massivinə qoşulur.
     if (filter.hesab_id) {
-      where.OR = [{ hesab_id: filter.hesab_id }, { hesab_id2: filter.hesab_id }];
+      where.AND = [
+        ...(where.AND ?? []),
+        { OR: [{ hesab_id: filter.hesab_id }, { hesab_id2: filter.hesab_id }] },
+      ];
     }
     if (filter.kontragent_id) where.kontragent_id = filter.kontragent_id;
     if (filter.from || filter.to) {
@@ -90,19 +95,24 @@ export async function getOperations(
     }
     if (filter.search) {
       const q = filter.search.trim();
-      where.OR = [
-        { qeyd: { contains: q, mode: "insensitive" } },
-        { sened_nomresi: { contains: q, mode: "insensitive" } },
-        { qarsi_teref_ad: { contains: q, mode: "insensitive" } },
-        // Kontragent ad, telefon, voen
-        { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
-        { kontragentler: { telefon: { contains: q } } },
-        { kontragentler: { voen: { contains: q } } },
-        // Bağlı satış nömrəsi
-        { satis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
-        // Bağlı alış nömrəsi
-        { alis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
-        { alis_sifarisleri: { qaime_nomre: { contains: q, mode: "insensitive" } } },
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          OR: [
+            { qeyd: { contains: q, mode: "insensitive" } },
+            { sened_nomresi: { contains: q, mode: "insensitive" } },
+            { qarsi_teref_ad: { contains: q, mode: "insensitive" } },
+            // Kontragent ad, telefon, voen
+            { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
+            { kontragentler: { telefon: { contains: q } } },
+            { kontragentler: { voen: { contains: q } } },
+            // Bağlı satış nömrəsi
+            { satis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+            // Bağlı alış nömrəsi
+            { alis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+            { alis_sifarisleri: { qaime_nomre: { contains: q, mode: "insensitive" } } },
+          ],
+        },
       ];
     }
     if (filter.qrup) {
@@ -196,7 +206,13 @@ export async function getOperationsSummary(filter: OperationFilter) {
     }
     if (filter.status) where.status = filter.status;
     if (filter.yon) where.y_n = filter.yon;
-    if (filter.hesab_id) where.OR = [{ hesab_id: filter.hesab_id }, { hesab_id2: filter.hesab_id }];
+    // QA wiring: hesab + search hər ikisi OR — `where.OR`-u əzməmək üçün AND massivinə qoşulur.
+    if (filter.hesab_id) {
+      where.AND = [
+        ...(where.AND ?? []),
+        { OR: [{ hesab_id: filter.hesab_id }, { hesab_id2: filter.hesab_id }] },
+      ];
+    }
     if (filter.kontragent_id) where.kontragent_id = filter.kontragent_id;
     if (filter.from || filter.to) {
       where.tarix = {};
@@ -210,16 +226,21 @@ export async function getOperationsSummary(filter: OperationFilter) {
     }
     if (filter.search) {
       const q = filter.search.trim();
-      where.OR = [
-        { qeyd: { contains: q, mode: "insensitive" } },
-        { sened_nomresi: { contains: q, mode: "insensitive" } },
-        { qarsi_teref_ad: { contains: q, mode: "insensitive" } },
-        { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
-        { kontragentler: { telefon: { contains: q } } },
-        { kontragentler: { voen: { contains: q } } },
-        { satis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
-        { alis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
-        { alis_sifarisleri: { qaime_nomre: { contains: q, mode: "insensitive" } } },
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          OR: [
+            { qeyd: { contains: q, mode: "insensitive" } },
+            { sened_nomresi: { contains: q, mode: "insensitive" } },
+            { qarsi_teref_ad: { contains: q, mode: "insensitive" } },
+            { kontragentler: { ad: { contains: q, mode: "insensitive" } } },
+            { kontragentler: { telefon: { contains: q } } },
+            { kontragentler: { voen: { contains: q } } },
+            { satis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+            { alis_sifarisleri: { nomre: { contains: q, mode: "insensitive" } } },
+            { alis_sifarisleri: { qaime_nomre: { contains: q, mode: "insensitive" } } },
+          ],
+        },
       ];
     }
     if (filter.qrup) where.finance_operation_types = { qrup: filter.qrup };

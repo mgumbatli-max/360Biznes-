@@ -1,6 +1,6 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
-import { prisma, prismaUnscoped } from "@/lib/db/prisma";
+import { prisma, prismaUnscoped, Prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
@@ -344,6 +344,11 @@ export type ExpenseFilter = {
   kateqoriya_id?: number[];
   from?: Date;
   to?: Date;
+  /** Məbləğ aralığı (AZN-də deyil, orijinal məbləğ) */
+  min?: number;
+  max?: number;
+  /** Ödəniş növü / hesab tipi: negd | kart | bank | kecirme */
+  odenis_nov?: string[];
   /** "aktiv" (default) | "silinmis" | "hamisi" */
   silinmis?: "aktiv" | "silinmis" | "hamisi";
 };
@@ -380,10 +385,16 @@ export async function getExpenses(filter: ExpenseFilter, page = 1, pageSize = 50
     else if (mode === "silinmis") where.legv_de = { not: null };
     // "hamisi" — heç bir filtr
     if (filter.kateqoriya_id?.length) where.kateqoriya_id = { in: filter.kateqoriya_id };
+    if (filter.odenis_nov?.length) where.odenis_nov = { in: filter.odenis_nov };
     if (filter.from || filter.to) {
       where.tarix = {};
       if (filter.from) where.tarix.gte = filter.from;
       if (filter.to) where.tarix.lte = filter.to;
+    }
+    if (filter.min != null || filter.max != null) {
+      where.mebleg = {};
+      if (filter.min != null) where.mebleg.gte = filter.min;
+      if (filter.max != null) where.mebleg.lte = filter.max;
     }
     if (filter.search) {
       where.tesvir = { contains: filter.search, mode: "insensitive" };
@@ -645,9 +656,39 @@ export type DebtorRow = {
   avans: number;
 };
 
-export async function getDebtors(): Promise<DebtorRow[]> {
+export type DebtorFilter = {
+  /** Kontragent axtarışı — ad / telefon / VÖEN / email */
+  search?: string;
+  /** Minimum borc (₼) */
+  min?: number;
+  /** Maksimum borc (₼) */
+  max?: number;
+  /** Son alver tarix aralığı — başlanğıc */
+  from?: Date;
+  /** Son alver tarix aralığı — son */
+  to?: Date;
+};
+
+export async function getDebtors(filter: DebtorFilter = {}): Promise<DebtorRow[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+
+    // ── Filtr fraqmentləri (param → where) ──────────────────────
+    const search = filter.search?.trim();
+    const searchSql = search
+      ? Prisma.sql`AND (
+          k.ad ILIKE ${"%" + search + "%"}
+          OR k.telefon ILIKE ${"%" + search + "%"}
+          OR k.voen ILIKE ${"%" + search + "%"}
+          OR k.email ILIKE ${"%" + search + "%"}
+        )`
+      : Prisma.empty;
+    const borcExpr = Prisma.sql`(COALESCE(os.open_total, 0) + COALESCE(sb.servis_total, 0))`;
+    const minSql = filter.min != null ? Prisma.sql`AND ${borcExpr} >= ${filter.min}` : Prisma.empty;
+    const maxSql = filter.max != null ? Prisma.sql`AND ${borcExpr} <= ${filter.max}` : Prisma.empty;
+    const fromSql = filter.from ? Prisma.sql`AND os.son_satis >= ${filter.from}` : Prisma.empty;
+    const toSql = filter.to ? Prisma.sql`AND os.son_satis <= ${filter.to}` : Prisma.empty;
+
     type Row = {
       id: string;
       ad: string;
@@ -668,7 +709,7 @@ export async function getDebtors(): Promise<DebtorRow[]> {
       acig_sened_say: number;
       avans: number;
     };
-    const rows = await prisma.$queryRaw<Row[]>`
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
       WITH open_sales AS (
         SELECT s.musteri_id,
                SUM(s.son_mebleg - COALESCE(s.odenilmis, 0)) AS open_total,
@@ -745,8 +786,13 @@ export async function getDebtors(): Promise<DebtorRow[]> {
          AND k.aktiv = TRUE
          AND k.nov IN ('musteri', 'her_ikisi')
          AND (COALESCE(os.open_total, 0) + COALESCE(sb.servis_total, 0)) > 0 -- QA-orta: yalnız servis borclu müştəri də görünsün
+         ${searchSql}
+         ${minSql}
+         ${maxSql}
+         ${fromSql}
+         ${toSql}
        ORDER BY borc DESC NULLS LAST
-    `;
+    `);
     return rows.map((r) => ({
       id: r.id,
       ad: r.ad,
@@ -789,9 +835,44 @@ export type CreditorRow = {
   acig_sened_say: number;
 };
 
-export async function getCreditors(): Promise<CreditorRow[]> {
+export type CreditorFilter = {
+  /** Kontragent axtarışı — ad / telefon / VÖEN / email */
+  search?: string;
+  /** Minimum borc (₼) */
+  min?: number;
+  /** Maksimum borc (₼) */
+  max?: number;
+  /** Son alış tarix aralığı — başlanğıc */
+  from?: Date;
+  /** Son alış tarix aralığı — son */
+  to?: Date;
+};
+
+export async function getCreditors(filter: CreditorFilter = {}): Promise<CreditorRow[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+
+    // ── Filtr fraqmentləri (param → where) ──────────────────────
+    const search = filter.search?.trim();
+    const searchSql = search
+      ? Prisma.sql`AND (
+          k.ad ILIKE ${"%" + search + "%"}
+          OR k.telefon ILIKE ${"%" + search + "%"}
+          OR k.voen ILIKE ${"%" + search + "%"}
+          OR k.email ILIKE ${"%" + search + "%"}
+        )`
+      : Prisma.empty;
+    // Hesablanmış borc (kreditor sütunundakı ifadə ilə eyni)
+    const borcExpr = Prisma.sql`GREATEST(
+      COALESCE(k.borc, 0),
+      ABS(LEAST(COALESCE(k.borc, 0), 0)),
+      COALESCE(op.open_total, 0)
+    )`;
+    const minSql = filter.min != null ? Prisma.sql`AND ${borcExpr} >= ${filter.min}` : Prisma.empty;
+    const maxSql = filter.max != null ? Prisma.sql`AND ${borcExpr} <= ${filter.max}` : Prisma.empty;
+    const fromSql = filter.from ? Prisma.sql`AND op.son_alis >= ${filter.from}` : Prisma.empty;
+    const toSql = filter.to ? Prisma.sql`AND op.son_alis <= ${filter.to}` : Prisma.empty;
+
     type Row = {
       id: string;
       ad: string;
@@ -808,7 +889,7 @@ export async function getCreditors(): Promise<CreditorRow[]> {
       son_alis_mebleg: number | null;
       acig_sened_say: number;
     };
-    const rows = await prisma.$queryRaw<Row[]>`
+    const rows = await prisma.$queryRaw<Row[]>(Prisma.sql`
       WITH open_purch AS (
         SELECT a.techiazatci_id,
                SUM(a.umumi_mebleg - COALESCE(a.odenilmis, 0)) AS open_total,
@@ -872,8 +953,13 @@ export async function getCreditors(): Promise<CreditorRow[]> {
            COALESCE(k.borc, 0) <> 0
            OR COALESCE(op.open_total, 0) > 0
          )
+         ${searchSql}
+         ${minSql}
+         ${maxSql}
+         ${fromSql}
+         ${toSql}
        ORDER BY borc DESC NULLS LAST
-    `;
+    `);
     return rows.map((r) => ({
       id: r.id,
       ad: r.ad,

@@ -1,13 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useTransition } from "react";
 import Link from "next/link";
-import { Phone, Briefcase, Trash2, ExternalLink, Wallet, CalendarDays, Search } from "lucide-react";
+import { Phone, Briefcase, Trash2, ExternalLink, Wallet, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { EmployeeDialog } from "./employee-dialog";
 import { deactivateEmployee } from "../actions";
@@ -77,35 +76,9 @@ export function EmployeesTable({
   const [pending, startTransition] = useTransition();
   const cols = useColumnToggle(STORAGE_KEY, COLUMN_DEFS, DEFAULT_ORDER);
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("all");
-  const [vezifeFilter, setVezifeFilter] = useState<string>("all");
-  const [filialFilter, setFilialFilter] = useState<string>("all");
-  const [rolFilter, setRolFilter] = useState<string>("all");
-
-  const filtered = useMemo(() => {
-    return items.filter((e) => {
-      if (statusFilter !== "all" && e.status !== statusFilter) return false;
-      if (vezifeFilter !== "all" && (e.vezife ?? "") !== vezifeFilter) return false;
-      if (filialFilter !== "all" && String(e.default_filial_id ?? "") !== filialFilter) return false;
-      if (rolFilter !== "all" && String(e.rol_id) !== rolFilter) return false;
-      if (search.trim()) {
-        const q = search.trim().toLowerCase();
-        const hay = [
-          e.ad_soyad,
-          e.email,
-          e.telefon,
-          e.vezife,
-          e.fin_kod,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [items, search, statusFilter, vezifeFilter, filialFilter, rolFilter]);
+  // Filtrasiya artıq server-tərəfdə (URL → query → Prisma where) aparılır.
+  // Burada gələn `items` artıq filtrlənmiş siyahıdır.
+  const filtered = items;
 
   function onDeactivate(id: string, ad: string) {
     if (!confirm(`"${ad}" əməliyyatdan çıxarılsın?`)) return;
@@ -118,58 +91,8 @@ export function EmployeesTable({
 
   return (
     <div className="space-y-3">
-      {/* Filters bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Axtar (ad, email, telefon, FİN)..."
-            className="h-9 pl-8"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
-          className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-        >
-          <option value="all">Bütün statuslar</option>
-          <option value="aktiv">Aktiv</option>
-          <option value="mezuniyyetde">Məzuniyyətdə</option>
-          <option value="cixib">İşdən çıxıb</option>
-          <option value="passiv">Passiv</option>
-        </select>
-        <select
-          value={vezifeFilter}
-          onChange={(e) => setVezifeFilter(e.target.value)}
-          className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-        >
-          <option value="all">Bütün vəzifələr</option>
-          {vezifeler.map((v) => (
-            <option key={v} value={v}>{v}</option>
-          ))}
-        </select>
-        <select
-          value={filialFilter}
-          onChange={(e) => setFilialFilter(e.target.value)}
-          className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-        >
-          <option value="all">Bütün filiallar</option>
-          {filiallar.map((f) => (
-            <option key={f.id} value={String(f.id)}>{f.ad}</option>
-          ))}
-        </select>
-        <select
-          value={rolFilter}
-          onChange={(e) => setRolFilter(e.target.value)}
-          className="h-9 rounded-md border border-border bg-background px-2 text-sm"
-        >
-          <option value="all">Bütün rollar</option>
-          {roles.map((r) => (
-            <option key={r.id} value={String(r.id)}>{r.ad}</option>
-          ))}
-        </select>
+      {/* Sütun seçimi — filtrasiya yuxarıdakı EmployeeSearch (URL → query) ilə aparılır */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {cols.render()}
       </div>
 

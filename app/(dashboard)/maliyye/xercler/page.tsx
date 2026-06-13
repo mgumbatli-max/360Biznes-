@@ -16,7 +16,24 @@ import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 
 export const metadata: Metadata = { title: "Xərclər" };
 
-type SearchParams = { link?: string; silinmis?: string };
+type SearchParams = {
+  link?: string;
+  silinmis?: string;
+  q?: string;
+  kateq?: string;
+  odenis?: string;
+  mn?: string;
+  mx?: string;
+  df?: string;
+  dt?: string;
+};
+
+const ODENIS_OPTIONS = [
+  { value: "negd", label: "Nağd" },
+  { value: "kart", label: "Kart" },
+  { value: "bank", label: "Bank" },
+  { value: "kecirme", label: "Köçürmə" },
+];
 
 export default async function XerclerPage({
   searchParams,
@@ -34,8 +51,27 @@ export default async function XerclerPage({
   const { filter: silinmisMode, canSeeDeleted } = await readRecordStatusFromSearch(
     sp as Record<string, string | string[] | undefined>,
   );
+
+  // Yeni filtrlər — query where-ə ötürülür (param → where)
+  const search = sp.q?.trim() || undefined;
+  const kateqId = sp.kateq && sp.kateq !== "" ? Number(sp.kateq) : undefined;
+  const odenisNov = sp.odenis && sp.odenis !== "" ? sp.odenis : undefined;
+  const minMebleg = sp.mn != null && sp.mn !== "" ? Number(sp.mn) : undefined;
+  const maxMebleg = sp.mx != null && sp.mx !== "" ? Number(sp.mx) : undefined;
+  const dateFrom = sp.df ? new Date(sp.df) : undefined;
+  const dateTo = sp.dt ? new Date(`${sp.dt}T23:59:59.999`) : undefined;
+
   const [{ items, total }, categories, usage, purchases, accounts] = await Promise.all([
-    getExpenses({ silinmis: silinmisMode }),
+    getExpenses({
+      silinmis: silinmisMode,
+      search,
+      kateqoriya_id: kateqId != null && Number.isFinite(kateqId) ? [kateqId] : undefined,
+      odenis_nov: odenisNov ? [odenisNov] : undefined,
+      min: Number.isFinite(minMebleg) ? minMebleg : undefined,
+      max: Number.isFinite(maxMebleg) ? maxMebleg : undefined,
+      from: dateFrom && !Number.isNaN(dateFrom.getTime()) ? dateFrom : undefined,
+      to: dateTo && !Number.isNaN(dateTo.getTime()) ? dateTo : undefined,
+    }),
     getExpenseCategories(),
     getExpenseCategoryUsage(),
     getRecentPurchases(90, 200),
@@ -85,9 +121,86 @@ export default async function XerclerPage({
 
       <MaliyyeSubNav active="/maliyye/xercler" />
 
-      {/* Linked-invoice + silinmiş filtri */}
+      {/* Filtrlər — axtarış, kateqoriya, ödəniş, məbləğ/tarix aralığı, qaimə bağı, vəziyyət */}
       <form className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-card/30 p-2">
-        <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+        {/* Axtarış (təsvir) — query where-ə bağlıdır */}
+        <input
+          type="text"
+          name="q"
+          defaultValue={sp.q ?? ""}
+          placeholder="Təsvir axtar..."
+          className="h-8 min-w-[180px] flex-1 rounded-md border border-input bg-background px-2 text-xs"
+        />
+
+        {/* Kateqoriya — query where-ə bağlıdır */}
+        <select
+          name="kateq"
+          defaultValue={sp.kateq ?? ""}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="">Bütün kateqoriyalar</option>
+          {categories.map((c) => (
+            <option key={c.id} value={String(c.id)}>
+              {c.ad}
+            </option>
+          ))}
+        </select>
+
+        {/* Ödəniş növü — query where-ə bağlıdır */}
+        <select
+          name="odenis"
+          defaultValue={sp.odenis ?? ""}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+        >
+          <option value="">Bütün ödəniş növləri</option>
+          {ODENIS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Məbləğ aralığı — query where-ə bağlıdır */}
+        <div className="flex items-center gap-1" title="Məbləğ aralığı (₼)">
+          <input
+            type="number"
+            name="mn"
+            defaultValue={sp.mn ?? ""}
+            min={0}
+            step="0.01"
+            placeholder="min ₼"
+            className="h-8 w-20 rounded-md border border-input bg-background px-2 text-xs"
+          />
+          <span className="text-muted-foreground">–</span>
+          <input
+            type="number"
+            name="mx"
+            defaultValue={sp.mx ?? ""}
+            min={0}
+            step="0.01"
+            placeholder="max ₼"
+            className="h-8 w-20 rounded-md border border-input bg-background px-2 text-xs"
+          />
+        </div>
+
+        {/* Tarix aralığı — query where-ə bağlıdır */}
+        <div className="flex items-center gap-1" title="Tarix aralığı">
+          <input
+            type="date"
+            name="df"
+            defaultValue={sp.df ?? ""}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          />
+          <span className="text-muted-foreground">–</span>
+          <input
+            type="date"
+            name="dt"
+            defaultValue={sp.dt ?? ""}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          />
+        </div>
+
+        <span className="ml-2 text-[10.5px] uppercase tracking-wider text-muted-foreground">
           Qaimə bağı:
         </span>
         <select

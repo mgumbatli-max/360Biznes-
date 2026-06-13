@@ -16,6 +16,7 @@ type SearchParams = {
   qrup?: string;
   yon?: string;
   status?: string;
+  hesab?: string; // QA wiring: hesab filtri
   from?: string;
   to?: string;
   min?: string;
@@ -45,6 +46,7 @@ export default async function EmeliyyatPage({
     qrup: sp.qrup,
     yon: sp.yon,
     status: sp.status,
+    hesab_id: sp.hesab, // QA wiring: hesab → where (hesab_id / hesab_id2 OR)
     from: sp.from ? new Date(sp.from) : undefined,
     to: sp.to ? new Date(sp.to) : undefined,
     min: sp.min ? Number(sp.min) : undefined,
@@ -69,6 +71,7 @@ export default async function EmeliyyatPage({
     if (sp.qrup) params.set("qrup", sp.qrup);
     if (sp.yon) params.set("yon", sp.yon);
     if (sp.status) params.set("status", sp.status);
+    if (sp.hesab) params.set("hesab", sp.hesab);
     if (b) params.set("from", b);
     if (e) params.set("to", e);
     return `/maliyye/emeliyyat${params.toString() ? `?${params.toString()}` : ""}`;
@@ -158,7 +161,7 @@ export default async function EmeliyyatPage({
           >
             Filtrlə
           </button>
-          {(sp.q || sp.qrup || sp.yon || sp.from || sp.to || sp.min || sp.max) && (
+          {(sp.q || sp.qrup || sp.yon || sp.status || sp.hesab || sp.from || sp.to || sp.min || sp.max) && (
             <a
               href="/maliyye/emeliyyat"
               className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] text-muted-foreground hover:bg-secondary"
@@ -278,9 +281,24 @@ export default async function EmeliyyatPage({
           </div>
         </div>
 
-        {/* Row 3: məbləğ aralığı */}
+        {/* Row 3: hesab + məbləğ aralığı */}
         <div className="flex flex-wrap items-center gap-2 border-t border-border/40 pt-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Məbləğ aralığı (AZN)</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hesab</span>
+          <select
+            name="hesab"
+            defaultValue={sp.hesab ?? ""}
+            className="h-8 min-w-[160px] rounded-md border border-input bg-background px-2 text-sm"
+            aria-label="Hesab (kassa/bank)"
+          >
+            <option value="">Bütün hesablar</option>
+            {refs.hesablar.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.ad}
+              </option>
+            ))}
+          </select>
+
+          <span className="ml-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Məbləğ aralığı (AZN)</span>
           <input
             type="number"
             step="0.01"

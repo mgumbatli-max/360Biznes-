@@ -23,6 +23,7 @@ import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmployeeDialog } from "@/features/iscilier/components/employee-dialog";
 import { EmployeesTable } from "@/features/iscilier/components/employees-table";
+import { EmployeeSearch } from "@/features/iscilier/components/employee-search";
 import { Button } from "@/components/ui/button";
 import { RecordStatusFilter } from "@/components/ui/record-status-filter";
 import {
@@ -31,8 +32,52 @@ import {
   getFilialOptions,
   getVezifeOptions,
 } from "@/features/iscilier/queries";
+import type { EmployeeFilter } from "@/features/iscilier/queries";
+import type { EmployeeStatus } from "@/features/iscilier/types";
 import { getHeadcountStats } from "@/features/iscilier/hr-queries";
 import { liteGate } from "@/lib/lite/config";
+
+const VALID_STATUS: EmployeeStatus[] = ["aktiv", "passiv", "mezuniyyetde", "cixib"];
+
+function one(v: string | string[] | undefined): string {
+  return (Array.isArray(v) ? v[0] : v ?? "").trim();
+}
+
+function buildEmployeeFilter(
+  sp: Record<string, string | string[] | undefined>,
+  recordStatus: "aktiv" | "silinmis" | "hamisi",
+): EmployeeFilter {
+  const filter: EmployeeFilter = { recordStatus };
+
+  const q = one(sp.q);
+  if (q) filter.search = q;
+
+  const status = one(sp.status);
+  if (status && (VALID_STATUS as string[]).includes(status)) {
+    filter.status = [status as EmployeeStatus];
+  }
+
+  const vezife = one(sp.vezife);
+  if (vezife) filter.vezife = [vezife];
+
+  const rol = Number(one(sp.rol));
+  if (Number.isFinite(rol) && rol > 0) filter.rol_id = [rol];
+
+  const filial = Number(one(sp.filial));
+  if (Number.isFinite(filial) && filial > 0) filter.filial_id = [filial];
+
+  const maasMin = Number(one(sp.maas_min));
+  if (Number.isFinite(maasMin) && one(sp.maas_min)) filter.maas_min = maasMin;
+  const maasMax = Number(one(sp.maas_max));
+  if (Number.isFinite(maasMax) && one(sp.maas_max)) filter.maas_max = maasMax;
+
+  const iseMin = one(sp.ise_min);
+  if (iseMin) filter.ise_baslama_min = iseMin;
+  const iseMax = one(sp.ise_max);
+  if (iseMax) filter.ise_baslama_max = iseMax;
+
+  return filter;
+}
 
 export const metadata: Metadata = { title: "Əməkdaşlar" };
 
@@ -77,12 +122,12 @@ function HeadcountSkeleton() {
   );
 }
 
-async function EmployeesSection({ recordStatus }: { recordStatus: "aktiv" | "silinmis" | "hamisi" }) {
+async function EmployeesSection({ filter }: { filter: EmployeeFilter }) {
   const { isHrPrivileged } = await import("@/features/iscilier/access-guard");
   const { auth } = await import("@/auth");
   const { getRequestPermissions } = await import("@/lib/auth/get-permissions");
   const [items, roles, filiallar, vezifeler, session, perms] = await Promise.all([
-    getEmployees({ recordStatus }),
+    getEmployees(filter),
     getRoleOptions(),
     getFilialOptions(),
     getVezifeOptions(),
@@ -91,7 +136,12 @@ async function EmployeesSection({ recordStatus }: { recordStatus: "aktiv" | "sil
   ]);
   const canEdit =
     isHrPrivileged(session?.user?.rol_ad) || perms.includes("isci.idare");
-  return <EmployeesTable items={items} roles={roles} filiallar={filiallar} vezifeler={vezifeler} canEdit={canEdit} />;
+  return (
+    <>
+      <EmployeeSearch roles={roles} filiallar={filiallar} vezifeler={vezifeler} />
+      <EmployeesTable items={items} roles={roles} filiallar={filiallar} vezifeler={vezifeler} canEdit={canEdit} />
+    </>
+  );
 }
 
 export default async function IscilierPage({
@@ -102,6 +152,7 @@ export default async function IscilierPage({
   const sp = await searchParams;
   const { readRecordStatusFromSearch } = await import("@/lib/soft-delete/record-filter");
   const { filter: recordStatus, canSeeDeleted } = await readRecordStatusFromSearch(sp);
+  const employeeFilter = buildEmployeeFilter(sp, recordStatus);
   const lite = await liteGate("iscilier");
   return (
     <div className="mx-auto max-w-7xl space-y-5">
@@ -147,8 +198,15 @@ export default async function IscilierPage({
         <SubLink href="/iscilier/budce" icon={PieChart} title="Büdcə" desc="Headcount plan" />
       </div>
 
-      <Suspense fallback={<Skeleton className="h-96 rounded-xl" />}>
-        <EmployeesSection recordStatus={recordStatus} />
+      <Suspense
+        key={new URLSearchParams(
+          Object.entries(sp).flatMap(([k, v]) =>
+            Array.isArray(v) ? v.map((x) => [k, x] as [string, string]) : v != null ? [[k, v] as [string, string]] : []
+          )
+        ).toString()}
+        fallback={<Skeleton className="h-96 rounded-xl" />}
+      >
+        <EmployeesSection filter={employeeFilter} />
       </Suspense>
     </div>
   );

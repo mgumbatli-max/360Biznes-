@@ -43,6 +43,10 @@ export type ServisListFilter = {
   filial_id?: number | null;
   marka_id?: number | null;
   kateqoriya_id?: number | null;
+  /** Defekt kateqoriyası (servis_defekt_kateq.id). */
+  defekt_kateq_id?: number | null;
+  /** Yalnız xarici (kənar) servisə göndərilənlər. */
+  xarici_only?: boolean;
   /** Soft-delete standart filter */
   recordStatus?: "aktiv" | "silinmis" | "hamisi";
 };
@@ -64,7 +68,9 @@ export async function getServisRequests(filter: ServisListFilter = {}): Promise<
     if (filter.status) where.status = filter.status;
     if (filter.iscisi_id) where.servis_iscisi_id = filter.iscisi_id;
     if (filter.zemanet_only) where.zemanet_var = true;
+    if (filter.xarici_only) where.xarici_servis = true;
     if (filter.filial_id != null) where.filial_id = filter.filial_id;
+    if (filter.defekt_kateq_id != null) where.defekt_kateq_id = filter.defekt_kateq_id;
     if (filter.from || filter.to) {
       const dateRange: { gte?: Date; lte?: Date } = {};
       if (filter.from) dateRange.gte = filter.from;

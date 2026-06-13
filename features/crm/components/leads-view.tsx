@@ -12,7 +12,7 @@ import { LeadRowActions } from "./lead-row-actions";
 import { LeadStatusBadge, LeadPriorityBadge } from "./lead-status-badge";
 import { changeLeadStage } from "../actions";
 import { bulkChangeLeadStage } from "../leadler-actions";
-import { LEAD_STAGES, LEAD_PRIORITY, type LeadCard, type LeadListRow, type LeadStatus } from "../types";
+import { LEAD_STAGES, LEAD_PRIORITY, LEAD_SOURCES, type LeadCard, type LeadListRow, type LeadStatus } from "../types";
 import { cn, formatMoney, formatDate } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { az } from "date-fns/locale";
@@ -40,10 +40,25 @@ export function LeadsView({
   const sp = useSearchParams();
   const view = (sp.get("view") as "kanban" | "list") || "kanban";
 
+  const menecer = sp.get("menecer") ?? "";
+  const menbe = sp.get("menbe") ?? "";
+  const statusSel = sp.get("status") ?? "";
+  const tarixDan = sp.get("tarix_dan") ?? "";
+  const tarixaDek = sp.get("tarixa_dek") ?? "";
+  const q = sp.get("q") ?? "";
+  const hasFilter = !!(q || menecer || menbe || statusSel || tarixDan || tarixaDek);
+
   function setQueryParam(key: string, value: string) {
     const params = new URLSearchParams(sp.toString());
     if (value) params.set(key, value);
     else params.delete(key);
+    router.push(`/crm/leadler?${params.toString()}`);
+  }
+
+  function resetFilters() {
+    const params = new URLSearchParams();
+    // Yalnız görünüş rejimini saxla, qalan filtrləri sıfırla
+    if (view) params.set("view", view);
     router.push(`/crm/leadler?${params.toString()}`);
   }
 
@@ -75,7 +90,7 @@ export function LeadsView({
 
         <Input
           placeholder="Axtarış: ad, telefon, email..."
-          defaultValue={sp.get("q") ?? ""}
+          defaultValue={q}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               setQueryParam("q", (e.target as HTMLInputElement).value);
@@ -85,7 +100,7 @@ export function LeadsView({
         />
 
         <select
-          value={sp.get("menecer") ?? ""}
+          value={menecer}
           onChange={(e) => setQueryParam("menecer", e.target.value)}
           className="h-8 rounded-md border border-input bg-background px-2 text-xs"
         >
@@ -98,25 +113,21 @@ export function LeadsView({
         </select>
 
         <select
-          value={sp.get("menbe") ?? ""}
+          value={menbe}
           onChange={(e) => setQueryParam("menbe", e.target.value)}
           className="h-8 rounded-md border border-input bg-background px-2 text-xs"
         >
           <option value="">Bütün mənbələr</option>
-          <option value="facebook">Facebook</option>
-          <option value="instagram">Instagram</option>
-          <option value="whatsapp">WhatsApp</option>
-          <option value="telegram">Telegram</option>
-          <option value="telefon">Telefon</option>
-          <option value="magaza">Mağaza</option>
-          <option value="vebsayt">Website</option>
-          <option value="tovsiye">Tövsiyə</option>
-          <option value="reklam">Reklam</option>
+          {LEAD_SOURCES.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
         </select>
 
         {view === "list" && (
           <select
-            value={sp.get("status") ?? ""}
+            value={statusSel}
             onChange={(e) => setQueryParam("status", e.target.value)}
             className="h-8 rounded-md border border-input bg-background px-2 text-xs"
           >
@@ -127,6 +138,34 @@ export function LeadsView({
               </option>
             ))}
           </select>
+        )}
+
+        {/* Tarix aralığı — yaradılma tarixinə görə (yaradildi) */}
+        <div className="inline-flex items-center gap-1">
+          <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="date"
+            value={tarixDan}
+            max={tarixaDek || undefined}
+            onChange={(e) => setQueryParam("tarix_dan", e.target.value)}
+            aria-label="Tarixdən"
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground"
+          />
+          <span className="text-xs text-muted-foreground">—</span>
+          <input
+            type="date"
+            value={tarixaDek}
+            min={tarixDan || undefined}
+            onChange={(e) => setQueryParam("tarixa_dek", e.target.value)}
+            aria-label="Tarixə dək"
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-muted-foreground"
+          />
+        </div>
+
+        {hasFilter && (
+          <Button size="sm" variant="ghost" onClick={resetFilters} className="ml-auto h-8">
+            <X className="h-3.5 w-3.5" /> Sıfırla
+          </Button>
         )}
       </div>
 

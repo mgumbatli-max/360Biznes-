@@ -16,6 +16,8 @@ type SearchParams = Promise<{
   status?: string;
   menecer?: string;
   menbe?: string;
+  tarix_dan?: string;
+  tarixa_dek?: string;
 }>;
 
 export default async function LeadlerPage({ searchParams }: { searchParams: SearchParams }) {
@@ -23,6 +25,8 @@ export default async function LeadlerPage({ searchParams }: { searchParams: Sear
   const filter = {
     menecer_id: sp.menecer || null,
     menbe: sp.menbe || null,
+    tarix_dan: sp.tarix_dan || null,
+    tarixa_dek: sp.tarixa_dek || null,
   };
   const [stages, listRows, users, session, icazeler] = await Promise.all([
     getLeadsByStage(filter),
@@ -31,6 +35,8 @@ export default async function LeadlerPage({ searchParams }: { searchParams: Sear
       status: (sp.status as LeadStatus) || null,
       menecer_id: filter.menecer_id,
       menbe: filter.menbe,
+      tarix_dan: filter.tarix_dan,
+      tarixa_dek: filter.tarixa_dek,
     }),
     getActiveUsers(),
     auth(),
