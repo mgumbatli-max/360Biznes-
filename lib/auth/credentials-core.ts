@@ -5,7 +5,9 @@ import { verifyPassword } from "@/lib/auth/password";
 import { checkLoginRate, recordLoginAttempt } from "@/lib/auth/login-guard";
 
 const LoginSchema = z.object({
-  email: z.string().email("Email düzgün deyil"),
+  // .trim() validasiyadan ƏVVƏL — mobil autofill/paste tez-tez sonda boşluq
+  // əlavə edir; trim olmasa zod `.email()` rədd edib "giriş alınmır" verərdi.
+  email: z.string().trim().email("Email düzgün deyil"),
   password: z.string().min(6, "Şifrə ən az 6 simvol olmalıdır"),
 });
 

@@ -2,9 +2,10 @@ import { z } from "zod";
 
 export const SignupSchema = z
   .object({
-    sirket_adi: z.string().min(2, "Şirkət adı ən az 2 simvol").max(150),
-    email: z.string().email("Email düzgün deyil").max(150),
-    telefon: z.string().min(7, "Telefon düzgün deyil").max(30),
+    sirket_adi: z.string().trim().min(2, "Şirkət adı ən az 2 simvol").max(150),
+    // .trim() validasiyadan əvvəl — boşluqlu email/paste qeydiyyatı pozmasın.
+    email: z.string().trim().email("Email düzgün deyil").max(150),
+    telefon: z.string().trim().min(7, "Telefon düzgün deyil").max(30),
     sifre: z.string().min(6, "Şifrə ən az 6 simvol").max(100),
     sifre_tekrar: z.string(),
     biznes_novu: z.string().min(2).max(50).optional().or(z.literal("")),
