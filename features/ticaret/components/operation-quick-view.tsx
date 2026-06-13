@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Loader2, Wallet, Printer, ExternalLink, History, Receipt, ListChecks, Info } from "lucide-react";
+import { Loader2, Wallet, Printer, ExternalLink, History, Receipt, ListChecks, Info, Link2 } from "lucide-react";
 import Link from "next/link";
+import { LinkedOperationsPanel } from "@/features/emeliyyat/components/linked-operations-panel";
 import {
   Sheet,
   SheetContent,
@@ -177,6 +178,10 @@ export function OperationQuickView({
                 <TabsTrigger value="audit" className="flex-1 gap-1.5 transition-all duration-200">
                   <History className="h-3.5 w-3.5" />
                   Tarixçə
+                </TabsTrigger>
+                <TabsTrigger value="linked" className="flex-1 gap-1.5 transition-all duration-200">
+                  <Link2 className="h-3.5 w-3.5" />
+                  Bağlı əməliyyatlar
                 </TabsTrigger>
               </TabsList>
 
@@ -382,6 +387,10 @@ export function OperationQuickView({
                     ))}
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="linked" className="mt-4">
+                <LinkedOperationsPanel mode="view" target={{ type: nov, id }} />
               </TabsContent>
             </Tabs>
           )}
