@@ -5,16 +5,10 @@ import {
   ShieldCheck, Sparkles, TrendingUp, ShoppingCart, Boxes, Wallet,
   Lock, Check,
 } from "lucide-react";
+import { DEEP_MESH } from "@/components/public/ui";
 
 export const metadata: Metadata = { title: "Giriş — 360Biznes" };
 
-const DEEP_MESH: React.CSSProperties = {
-  background:
-    "radial-gradient(circle at 18% 22%, hsl(165 84% 38% / 0.45), transparent 42%)," +
-    "radial-gradient(circle at 82% 8%, hsl(174 88% 44% / 0.40), transparent 40%)," +
-    "radial-gradient(circle at 60% 100%, hsl(158 84% 40% / 0.32), transparent 48%)," +
-    "linear-gradient(155deg, hsl(177 78% 8%), hsl(171 70% 13%), hsl(164 62% 12%))",
-};
 const GRID_OVERLAY: React.CSSProperties = {
   backgroundImage:
     "linear-gradient(hsl(0 0% 100% / 0.05) 1px, transparent 1px)," +
