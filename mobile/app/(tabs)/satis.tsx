@@ -30,18 +30,18 @@ const STATUS_LABEL: Record<string, string> = {
 function StatsHeader({ s }: { s: SaleStats }) {
   const cell = (label: string, count: number, mebleg: number, tone?: "pos" | "neg") => (
     <View className="flex-1 items-center">
-      <Text className={`font-bold text-base ${tone === "neg" ? "text-neg" : "text-ink"}`}>
+      <Text className={`font-bold text-base ${tone === "neg" ? "text-neg" : "text-ink dark:text-inkDark"}`}>
         {formatMoney(mebleg)}
       </Text>
-      <Text className="text-sub text-[10px] mt-0.5">{label} · {count}</Text>
+      <Text className="text-sub dark:text-subDark text-[10px] mt-0.5">{label} · {count}</Text>
     </View>
   );
   return (
     <Card className="flex-row mb-3">
       {cell("Bugün", s.bugun.count, s.bugun.mebleg, "pos")}
-      <View style={{ width: 1 }} className="bg-line" />
+      <View style={{ width: 1 }} className="bg-line dark:bg-lineDark" />
       {cell("Həftə", s.bu_hefte.count, s.bu_hefte.mebleg)}
-      <View style={{ width: 1 }} className="bg-line" />
+      <View style={{ width: 1 }} className="bg-line dark:bg-lineDark" />
       {cell("Ay", s.bu_ay.count, s.bu_ay.mebleg)}
     </Card>
   );
@@ -59,17 +59,17 @@ function SaleRow({ item }: { item: Sale }) {
         <Receipt size={20} color={C.brand} strokeWidth={1.8} />
       </View>
       <View className="flex-1">
-        <Text className="text-ink font-semibold text-sm" numberOfLines={1}>
+        <Text className="text-ink dark:text-inkDark font-semibold text-sm" numberOfLines={1}>
           № {item.nomre} {item.qaralama ? "· qaralama" : ""}
         </Text>
-        <Text className="text-sub text-xs mt-0.5" numberOfLines={1}>{sub}</Text>
+        <Text className="text-sub dark:text-subDark text-xs mt-0.5" numberOfLines={1}>{sub}</Text>
       </View>
       <View className="items-end">
-        <Text className="text-ink font-bold text-sm">{formatMoney(item.son_mebleg)}</Text>
+        <Text className="text-ink dark:text-inkDark font-bold text-sm">{formatMoney(item.son_mebleg)}</Text>
         {unpaid > 0.005 ? (
           <Text className="text-neg text-[10px] mt-0.5">borc {formatMoney(unpaid)}</Text>
         ) : (
-          <Text className="text-sub text-[10px] mt-0.5">{STATUS_LABEL[item.status] ?? item.status}</Text>
+          <Text className="text-sub dark:text-subDark text-[10px] mt-0.5">{STATUS_LABEL[item.status] ?? item.status}</Text>
         )}
       </View>
     </Card>

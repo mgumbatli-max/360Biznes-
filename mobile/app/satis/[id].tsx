@@ -15,8 +15,8 @@ const STATUS_LABEL: Record<string, string> = {
 function Row({ label, value, tone }: { label: string; value: string; tone?: "neg" | "pos" }) {
   return (
     <View className="flex-row justify-between py-1.5">
-      <Text className="text-sub text-sm">{label}</Text>
-      <Text className={`text-sm font-semibold ${tone === "neg" ? "text-neg" : "text-ink"}`}>{value}</Text>
+      <Text className="text-sub dark:text-subDark text-sm">{label}</Text>
+      <Text className={`text-sm font-semibold ${tone === "neg" ? "text-neg" : "text-ink dark:text-inkDark"}`}>{value}</Text>
     </View>
   );
 }
@@ -47,8 +47,8 @@ export default function SatisDetailScreen() {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
         {/* Başlıq */}
         <View className="items-center mb-4">
-          <Text className="text-ink font-bold text-2xl">{formatMoney(son)}</Text>
-          <Text className="text-sub text-xs mt-1">
+          <Text className="text-ink dark:text-inkDark font-bold text-2xl">{formatMoney(son)}</Text>
+          <Text className="text-sub dark:text-subDark text-xs mt-1">
             {s.tarix ? String(s.tarix).slice(0, 16).replace("T", " ") : ""} · {STATUS_LABEL[s.status ?? ""] ?? s.status}
           </Text>
         </View>
@@ -57,13 +57,13 @@ export default function SatisDetailScreen() {
         <Card className="mb-3">
           <View className="flex-row items-center gap-3 py-1">
             <User size={16} color={C.sub} />
-            <Text className="text-ink text-sm flex-1">{s.kontragentler?.ad ?? "Pərakəndə müştəri"}</Text>
-            {s.kontragentler?.telefon ? <Text className="text-sub text-xs">{s.kontragentler.telefon}</Text> : null}
+            <Text className="text-ink dark:text-inkDark text-sm flex-1">{s.kontragentler?.ad ?? "Pərakəndə müştəri"}</Text>
+            {s.kontragentler?.telefon ? <Text className="text-sub dark:text-subDark text-xs">{s.kontragentler.telefon}</Text> : null}
           </View>
           {s.anbarlar?.ad ? (
             <View className="flex-row items-center gap-3 py-1">
               <Warehouse size={16} color={C.sub} />
-              <Text className="text-ink text-sm flex-1">{s.anbarlar.ad}</Text>
+              <Text className="text-ink dark:text-inkDark text-sm flex-1">{s.anbarlar.ad}</Text>
             </View>
           ) : null}
         </Card>
@@ -83,17 +83,17 @@ export default function SatisDetailScreen() {
         {/* Məhsul sətirləri */}
         {lines.length > 0 ? (
           <View>
-            <Text className="text-ink font-semibold text-sm mb-2">Məhsullar ({lines.length})</Text>
+            <Text className="text-ink dark:text-inkDark font-semibold text-sm mb-2">Məhsullar ({lines.length})</Text>
             {lines.map((ln, i) => (
               <Card key={String(ln.id ?? i)} className="flex-row items-center gap-3 mb-2">
                 <Package size={18} color={C.sub} />
                 <View className="flex-1">
-                  <Text className="text-ink text-sm" numberOfLines={1}>{ln.mehsullar?.ad ?? "Məhsul"}</Text>
-                  <Text className="text-sub text-xs mt-0.5">
+                  <Text className="text-ink dark:text-inkDark text-sm" numberOfLines={1}>{ln.mehsullar?.ad ?? "Məhsul"}</Text>
+                  <Text className="text-sub dark:text-subDark text-xs mt-0.5">
                     {formatNumber(Number(ln.miqdar ?? 0))} × {formatMoney(Number(ln.vahid_qiymet ?? 0))}
                   </Text>
                 </View>
-                <Text className="text-ink font-semibold text-sm">{formatMoney(Number(ln.cemi ?? 0))}</Text>
+                <Text className="text-ink dark:text-inkDark font-semibold text-sm">{formatMoney(Number(ln.cemi ?? 0))}</Text>
               </Card>
             ))}
           </View>
@@ -101,7 +101,7 @@ export default function SatisDetailScreen() {
 
         {s.qeyd ? (
           <Card className="mt-1">
-            <Text className="text-sub text-xs">{String(s.qeyd)}</Text>
+            <Text className="text-sub dark:text-subDark text-xs">{String(s.qeyd)}</Text>
           </Card>
         ) : null}
       </ScrollView>

@@ -17,7 +17,7 @@ const SHADOW = {
 };
 
 export function Card({ children, className = "", onPress }: CardProps) {
-  const baseClass = `bg-card border border-line rounded-2xl p-3 ${className}`;
+  const baseClass = `bg-card dark:bg-cardDark border border-line dark:border-lineDark rounded-2xl p-3 ${className}`;
 
   if (onPress != null) {
     return (

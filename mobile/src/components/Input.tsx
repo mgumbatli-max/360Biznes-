@@ -15,18 +15,18 @@ export function Input({
   style,
   ...rest
 }: InputProps) {
-  const borderClass = error ? "border-neg" : "border-line";
+  const borderClass = error ? "border-neg" : "border-line dark:border-lineDark";
 
   return (
     <View className="w-full">
       {label != null && (
-        <Text className="text-sub text-xs font-semibold mb-1">{label}</Text>
+        <Text className="text-sub dark:text-subDark text-xs font-semibold mb-1">{label}</Text>
       )}
       <View
-        className={`flex-row items-center border ${borderClass} rounded-xl bg-card px-3`}
+        className={`flex-row items-center border ${borderClass} rounded-xl bg-card dark:bg-cardDark px-3`}
       >
         <TextInput
-          className="flex-1 py-2.5 text-ink text-sm"
+          className="flex-1 py-2.5 text-ink dark:text-inkDark text-sm"
           placeholderTextColor={C.sub}
           style={style}
           {...rest}

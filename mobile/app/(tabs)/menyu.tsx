@@ -66,10 +66,10 @@ export default function ModullarScreen() {
                   flex: 1,
                   minHeight: 102,
                   justifyContent: "flex-start",
-                  backgroundColor: "#ffffff",
+                  backgroundColor: C.card,
                   borderRadius: 16,
                   borderWidth: 1,
-                  borderColor: "#e6e8ee",
+                  borderColor: C.line,
                   padding: 14,
                   shadowColor: "#0b1220",
                   shadowOffset: { width: 0, height: 2 },
@@ -80,7 +80,7 @@ export default function ModullarScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t.label}
               >
-                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: t.bg, alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: t.fg + "26", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                   <t.Icon size={22} color={t.fg} strokeWidth={2.1} />
                 </View>
                 <Text style={{ color: C.ink, fontSize: 14, fontWeight: "700" }}>{t.label}</Text>

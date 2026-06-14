@@ -24,23 +24,23 @@ function TaskRow({ item }: { item: Task }) {
       <View className="flex-row items-start gap-2.5">
         <View style={{ width: 8, height: 8, borderRadius: 4, marginTop: 6, backgroundColor: PRIO_COLOR[item.prioritet] ?? C.sub }} />
         <View className="flex-1">
-          <Text className="text-ink font-semibold text-sm" numberOfLines={2}>{item.basliq}</Text>
+          <Text className="text-ink dark:text-inkDark font-semibold text-sm" numberOfLines={2}>{item.basliq}</Text>
           <View className="flex-row items-center gap-3 mt-1 flex-wrap">
             {item.mesul_ad ? (
               <View className="flex-row items-center gap-1">
                 <User size={11} color={C.sub} />
-                <Text className="text-sub text-[11px]">{item.mesul_ad}</Text>
+                <Text className="text-sub dark:text-subDark text-[11px]">{item.mesul_ad}</Text>
               </View>
             ) : null}
             {item.deadline ? (
               <View className="flex-row items-center gap-1">
                 <Clock size={11} color={overdue ? C.neg : C.sub} />
-                <Text className={`text-[11px] ${overdue ? "text-neg" : "text-sub"}`}>{String(item.deadline).slice(0, 10)}</Text>
+                <Text className={`text-[11px] ${overdue ? "text-neg" : "text-sub dark:text-subDark"}`}>{String(item.deadline).slice(0, 10)}</Text>
               </View>
             ) : null}
           </View>
         </View>
-        <Text className={`text-[10px] font-medium ${item.status === "tamamlandi" ? "text-pos" : "text-sub"}`}>
+        <Text className={`text-[10px] font-medium ${item.status === "tamamlandi" ? "text-pos" : "text-sub dark:text-subDark"}`}>
           {STATUS_LABEL[item.status] ?? item.status}
         </Text>
       </View>
@@ -57,7 +57,7 @@ export default function TapshiriqListScreen() {
 
   const Filters = (
     <View className="px-4 pt-3 gap-2">
-      <View className="flex-row bg-bg rounded-xl p-1">
+      <View className="flex-row bg-bg dark:bg-bgDark rounded-xl p-1">
         {(["menim", "hamisi"] as const).map((sc) => (
           <Pressable key={sc} onPress={() => setScope(sc)} className="flex-1 rounded-lg py-2 items-center" style={{ backgroundColor: scope === sc ? C.brand : "transparent" }}>
             <Text className="text-xs font-semibold" style={{ color: scope === sc ? "#fff" : C.sub }}>{sc === "menim" ? "Mənim" : "Hamısı"}</Text>

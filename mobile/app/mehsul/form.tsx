@@ -64,7 +64,7 @@ function SelectField({
 
   return (
     <View className="w-full mb-3">
-      <Text className="text-sub text-xs font-semibold mb-1">{label}</Text>
+      <Text className="text-sub dark:text-subDark text-xs font-semibold mb-1">{label}</Text>
       <Pressable
         onPress={() => setOpen(true)}
         style={({ pressed }) => ({
@@ -372,7 +372,7 @@ export default function MehsulForm() {
       >
         {/* Şəkillər */}
         <Card className="mb-3">
-          <Text className="text-sub text-xs font-semibold mb-2">
+          <Text className="text-sub dark:text-subDark text-xs font-semibold mb-2">
             Şəkillər (maks. 4)
           </Text>
           <ImagePickerRow images={images} onChange={setImages} max={4} />

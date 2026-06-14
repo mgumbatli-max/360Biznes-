@@ -58,7 +58,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-bg"
+      className="flex-1 bg-bg dark:bg-bgDark"
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
@@ -71,14 +71,14 @@ export default function LoginScreen() {
           <Text className="text-brand text-3xl font-extrabold tracking-tight">
             360Biznes
           </Text>
-          <Text className="text-sub text-sm mt-2">
+          <Text className="text-sub dark:text-subDark text-sm mt-2">
             Hesabınıza daxil olun
           </Text>
         </View>
 
         {/* Form card */}
         <View className="flex-1 px-6 pb-10">
-          <View className="bg-card rounded-3xl p-6 shadow-sm gap-4">
+          <View className="bg-card dark:bg-cardDark rounded-3xl p-6 shadow-sm gap-4">
             {/* Email */}
             <Input
               label="E-poçt"
@@ -137,7 +137,7 @@ export default function LoginScreen() {
           </View>
 
           {/* Footer */}
-          <Text className="text-sub text-xs text-center mt-6">
+          <Text className="text-sub dark:text-subDark text-xs text-center mt-6">
             © 2025 360Biznes. Bütün hüquqlar qorunur.
           </Text>
         </View>

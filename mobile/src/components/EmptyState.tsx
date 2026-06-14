@@ -28,11 +28,11 @@ export function EmptyState({
           <Inbox size={48} color={C.sub} strokeWidth={1.5} />
         )}
       </View>
-      <Text className="text-ink font-semibold mt-3 text-base text-center">
+      <Text className="text-ink dark:text-inkDark font-semibold mt-3 text-base text-center">
         {title}
       </Text>
       {subtitle != null && (
-        <Text className="text-sub text-sm text-center mt-1">{subtitle}</Text>
+        <Text className="text-sub dark:text-subDark text-sm text-center mt-1">{subtitle}</Text>
       )}
       {actionLabel != null && (
         <View className="mt-5 w-full">

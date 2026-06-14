@@ -20,7 +20,7 @@ function InfoRow({ icon, value }: { icon: React.ReactNode; value: string }) {
   return (
     <View className="flex-row items-center gap-3 py-2">
       {icon}
-      <Text className="text-ink text-sm flex-1">{value}</Text>
+      <Text className="text-ink dark:text-inkDark text-sm flex-1">{value}</Text>
     </View>
   );
 }
@@ -63,9 +63,9 @@ export default function MusteriDetailScreen() {
               {c.ad?.trim()?.charAt(0)?.toUpperCase() || "?"}
             </Text>
           </View>
-          <Text className="text-ink font-bold text-lg text-center">{c.ad}</Text>
+          <Text className="text-ink dark:text-inkDark font-bold text-lg text-center">{c.ad}</Text>
           {c.qiymet_tipi ? (
-            <Text className="text-sub text-xs mt-0.5">
+            <Text className="text-sub dark:text-subDark text-xs mt-0.5">
               {QIYMET_LABEL[c.qiymet_tipi] ?? c.qiymet_tipi} qiymət
             </Text>
           ) : null}
@@ -74,15 +74,15 @@ export default function MusteriDetailScreen() {
         {/* Borc / Alacaq */}
         <Card className="flex-row mb-3">
           <View className="flex-1 items-center">
-            <Text className={`font-bold text-lg ${c.borc > 0 ? "text-neg" : "text-ink"}`}>
+            <Text className={`font-bold text-lg ${c.borc > 0 ? "text-neg" : "text-ink dark:text-inkDark"}`}>
               {formatMoney(c.borc)}
             </Text>
-            <Text className="text-sub text-[11px] mt-0.5">Borc</Text>
+            <Text className="text-sub dark:text-subDark text-[11px] mt-0.5">Borc</Text>
           </View>
-          <View style={{ width: 1 }} className="bg-line" />
+          <View style={{ width: 1 }} className="bg-line dark:bg-lineDark" />
           <View className="flex-1 items-center">
-            <Text className="text-ink font-bold text-lg">{formatMoney(c.avans)}</Text>
-            <Text className="text-sub text-[11px] mt-0.5">Avans</Text>
+            <Text className="text-ink dark:text-inkDark font-bold text-lg">{formatMoney(c.avans)}</Text>
+            <Text className="text-sub dark:text-subDark text-[11px] mt-0.5">Avans</Text>
           </View>
         </Card>
 
@@ -117,8 +117,8 @@ export default function MusteriDetailScreen() {
           ) : null}
           {c.voen ? <InfoRow icon={<Building2 size={16} color={C.sub} />} value={`VÖEN: ${c.voen}`} /> : null}
           {c.qeyd ? (
-            <View className="pt-2 mt-1 border-t border-line">
-              <Text className="text-sub text-xs">{c.qeyd}</Text>
+            <View className="pt-2 mt-1 border-t border-line dark:border-lineDark">
+              <Text className="text-sub dark:text-subDark text-xs">{c.qeyd}</Text>
             </View>
           ) : null}
         </Card>
@@ -126,22 +126,22 @@ export default function MusteriDetailScreen() {
         {/* Son satışlar */}
         {sales.length > 0 ? (
           <View>
-            <Text className="text-ink font-semibold text-sm mb-2">Son satışlar</Text>
+            <Text className="text-ink dark:text-inkDark font-semibold text-sm mb-2">Son satışlar</Text>
             {sales.slice(0, 15).map((s, i) => (
               <Card key={String(s.sale_id ?? i)} className="flex-row items-center gap-3 mb-2">
                 <Receipt size={18} color={C.sub} />
                 <View className="flex-1">
-                  <Text className="text-ink text-sm" numberOfLines={1}>
+                  <Text className="text-ink dark:text-inkDark text-sm" numberOfLines={1}>
                     {s.nomre ? `№ ${s.nomre}` : "Satış"}
                   </Text>
                   {s.tarix ? (
-                    <Text className="text-sub text-xs mt-0.5">
+                    <Text className="text-sub dark:text-subDark text-xs mt-0.5">
                       {String(s.tarix).slice(0, 10)}
                     </Text>
                   ) : null}
                 </View>
                 {typeof s.cemi === "number" ? (
-                  <Text className="text-ink font-semibold text-sm">{formatMoney(s.cemi)}</Text>
+                  <Text className="text-ink dark:text-inkDark font-semibold text-sm">{formatMoney(s.cemi)}</Text>
                 ) : null}
               </Card>
             ))}

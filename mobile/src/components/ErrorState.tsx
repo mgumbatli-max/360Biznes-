@@ -18,11 +18,11 @@ export function ErrorState({
   return (
     <View className="flex-1 items-center justify-center px-8 py-12">
       <TriangleAlert size={44} color={C.neg} strokeWidth={1.5} />
-      <Text className="text-ink font-semibold mt-3 text-base text-center">
+      <Text className="text-ink dark:text-inkDark font-semibold mt-3 text-base text-center">
         {title}
       </Text>
       {message != null && (
-        <Text className="text-sub text-sm text-center mt-1">{message}</Text>
+        <Text className="text-sub dark:text-subDark text-sm text-center mt-1">{message}</Text>
       )}
       {onRetry != null && (
         <View className="mt-5 w-full">

@@ -30,7 +30,7 @@ export function Screen({
   const showHeader = title != null || showBack || right != null;
 
   return (
-    <SafeAreaView edges={["top"]} className="flex-1 bg-bg">
+    <SafeAreaView edges={["top"]} className="flex-1 bg-bg dark:bg-bgDark">
       {showHeader && (
         <View className="px-4 py-3 flex-row items-center">
           {showBack && (
@@ -45,7 +45,7 @@ export function Screen({
             </Pressable>
           )}
           {title != null && (
-            <Text className="text-ink text-lg font-bold flex-1">{title}</Text>
+            <Text className="text-ink dark:text-inkDark text-lg font-bold flex-1">{title}</Text>
           )}
           {right != null && <View className="ml-auto">{right}</View>}
         </View>
@@ -63,7 +63,7 @@ export function Screen({
       )}
       {footer != null && (
         <View
-          className="bg-card border-t border-line px-4 pt-3"
+          className="bg-card dark:bg-cardDark border-t border-line dark:border-lineDark px-4 pt-3"
           style={{ paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }}
         >
           {footer}

@@ -77,7 +77,7 @@ export default function MusteriFormScreen() {
           <Input label="VÖEN" placeholder="VÖEN (istəyə görə)" value={voen} onChangeText={setVoen} keyboardType="numeric" />
 
           <View>
-            <Text className="text-sub text-xs font-semibold mb-1">Qiymət tipi</Text>
+            <Text className="text-sub dark:text-subDark text-xs font-semibold mb-1">Qiymət tipi</Text>
             <View className="flex-row flex-wrap gap-2">
               {QIYMET_OPTIONS.map((opt) => {
                 const on = qiymetTipi === opt.value;

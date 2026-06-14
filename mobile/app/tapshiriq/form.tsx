@@ -92,12 +92,12 @@ export default function TapshiriqFormScreen() {
           <Input label="Təsvir" placeholder="Ətraflı (istəyə görə)" value={tesvir} onChangeText={setTesvir} multiline numberOfLines={3} style={{ minHeight: 72, textAlignVertical: "top" }} />
 
           <View>
-            <Text className="text-sub text-xs font-semibold mb-1.5">Prioritet</Text>
+            <Text className="text-sub dark:text-subDark text-xs font-semibold mb-1.5">Prioritet</Text>
             <Chips options={PRIO} value={prioritet} onChange={setPrioritet} />
           </View>
 
           <View>
-            <Text className="text-sub text-xs font-semibold mb-1.5">Kimə tapşırılsın</Text>
+            <Text className="text-sub dark:text-subDark text-xs font-semibold mb-1.5">Kimə tapşırılsın</Text>
             <View className="flex-row flex-wrap gap-2">
               <Pressable onPress={() => setMesulId("")} className="rounded-full px-3.5 py-1.5" style={{ backgroundColor: mesulId === "" ? C.brand : C.bg, borderWidth: 1, borderColor: mesulId === "" ? C.brand : C.line }}>
                 <Text className="text-xs font-medium" style={{ color: mesulId === "" ? "#fff" : C.sub }}>Özümə</Text>
@@ -114,12 +114,12 @@ export default function TapshiriqFormScreen() {
           </View>
 
           <View>
-            <Text className="text-sub text-xs font-semibold mb-1.5">Son tarix</Text>
+            <Text className="text-sub dark:text-subDark text-xs font-semibold mb-1.5">Son tarix</Text>
             <Chips options={[{ v: "", label: "Yox" }, { v: "today", label: "Bu gün" }, { v: "tomorrow", label: "Sabah" }, { v: "3days", label: "+3 gün" }]} value={deadline} onChange={setDeadline} />
           </View>
 
           <View>
-            <Text className="text-sub text-xs font-semibold mb-1.5">Xatırlatma</Text>
+            <Text className="text-sub dark:text-subDark text-xs font-semibold mb-1.5">Xatırlatma</Text>
             <Chips options={[{ v: "", label: "Yox" }, { v: "1h", label: "1 saat sonra" }, { v: "eve", label: "Bu gün axşam" }, { v: "morn", label: "Sabah səhər" }]} value={remind} onChange={setRemind} />
           </View>
         </View>

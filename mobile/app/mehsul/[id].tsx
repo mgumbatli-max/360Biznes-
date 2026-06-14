@@ -48,12 +48,12 @@ function DetailSkeleton() {
 type InfoRowProps = { label: string; value: string; icon?: React.ReactNode };
 function InfoRow({ label, value, icon }: InfoRowProps) {
   return (
-    <View className="flex-row justify-between items-center py-1.5 border-b border-line">
+    <View className="flex-row justify-between items-center py-1.5 border-b border-line dark:border-lineDark">
       <View className="flex-row items-center gap-1.5">
         {icon != null && icon}
-        <Text className="text-sub text-sm">{label}</Text>
+        <Text className="text-sub dark:text-subDark text-sm">{label}</Text>
       </View>
-      <Text className="text-ink text-sm font-medium flex-shrink-1 ml-4 text-right">
+      <Text className="text-ink dark:text-inkDark text-sm font-medium flex-shrink-1 ml-4 text-right">
         {value}
       </Text>
     </View>
@@ -65,13 +65,13 @@ type StatCardProps = { label: string; qty: number; mebleg: number; valyuta?: str
 function StatCard({ label, qty, mebleg, valyuta, sifaris }: StatCardProps) {
   return (
     <View className="flex-1 bg-brand/5 rounded-xl p-3 items-center">
-      <Text className="text-sub text-xs mb-1">{label}</Text>
-      <Text className="text-ink font-bold text-base">{formatNumber(qty)} əd.</Text>
+      <Text className="text-sub dark:text-subDark text-xs mb-1">{label}</Text>
+      <Text className="text-ink dark:text-inkDark font-bold text-base">{formatNumber(qty)} əd.</Text>
       <Text className="text-brand text-xs font-semibold mt-0.5">
         {formatMoney(mebleg, valyuta)}
       </Text>
       {sifaris != null && (
-        <Text className="text-sub text-xs mt-0.5">{sifaris} sifariş</Text>
+        <Text className="text-sub dark:text-subDark text-xs mt-0.5">{sifaris} sifariş</Text>
       )}
     </View>
   );
@@ -206,23 +206,23 @@ export default function MehsulDetailScreen() {
 
           {/* Ad + meta ────────────────────────────────────────────── */}
           <View className="p-4">
-            <Text className="text-ink text-xl font-bold mb-2">{item.ad}</Text>
+            <Text className="text-ink dark:text-inkDark text-xl font-bold mb-2">{item.ad}</Text>
 
             {/* Çiplər: kateqoriya, marka, kod */}
             <View className="flex-row flex-wrap gap-1.5 mb-3">
               {item.kateqoriyalar?.ad != null && (
-                <View className="bg-line rounded-full px-2 py-0.5">
-                  <Text className="text-sub text-xs">{item.kateqoriyalar.ad}</Text>
+                <View className="bg-line dark:bg-lineDark rounded-full px-2 py-0.5">
+                  <Text className="text-sub dark:text-subDark text-xs">{item.kateqoriyalar.ad}</Text>
                 </View>
               )}
               {item.markalar?.ad != null && (
-                <View className="bg-line rounded-full px-2 py-0.5">
-                  <Text className="text-sub text-xs">{item.markalar.ad}</Text>
+                <View className="bg-line dark:bg-lineDark rounded-full px-2 py-0.5">
+                  <Text className="text-sub dark:text-subDark text-xs">{item.markalar.ad}</Text>
                 </View>
               )}
               {item.kod != null && (
-                <View className="bg-line rounded-full px-2 py-0.5">
-                  <Text className="text-sub text-xs">{item.kod}</Text>
+                <View className="bg-line dark:bg-lineDark rounded-full px-2 py-0.5">
+                  <Text className="text-sub dark:text-subDark text-xs">{item.kod}</Text>
                 </View>
               )}
             </View>
@@ -233,7 +233,7 @@ export default function MehsulDetailScreen() {
                 {formatMoney(gosterileQiymet, valyuta)}
               </Text>
               {hasDiscount && (
-                <Text className="text-sub text-sm line-through">
+                <Text className="text-sub dark:text-subDark text-sm line-through">
                   {formatMoney(satisQiymeti, valyuta)}
                 </Text>
               )}
@@ -272,15 +272,15 @@ export default function MehsulDetailScreen() {
               {stok.map((row, i) => (
                 <View
                   key={`${row.anbar_id}-${i}`}
-                  className="flex-row justify-between items-center py-1.5 border-b border-line"
+                  className="flex-row justify-between items-center py-1.5 border-b border-line dark:border-lineDark"
                 >
-                  <Text className="text-ink text-sm flex-1">{row.anbar_ad}</Text>
+                  <Text className="text-ink dark:text-inkDark text-sm flex-1">{row.anbar_ad}</Text>
                   <View className="items-end">
-                    <Text className="text-ink text-sm font-semibold">
+                    <Text className="text-ink dark:text-inkDark text-sm font-semibold">
                       {formatNumber(row.miqdar)}
                     </Text>
                     {row.son_qiymet != null && (
-                      <Text className="text-sub text-xs">
+                      <Text className="text-sub dark:text-subDark text-xs">
                         {formatMoney(row.son_qiymet, valyuta)}
                       </Text>
                     )}
@@ -300,16 +300,16 @@ export default function MehsulDetailScreen() {
               {son_satislar.map((row) => (
                 <View
                   key={row.sale_id}
-                  className="flex-row justify-between items-start py-1.5 border-b border-line"
+                  className="flex-row justify-between items-start py-1.5 border-b border-line dark:border-lineDark"
                 >
                   <View className="flex-1 mr-2">
-                    <Text className="text-ink text-sm font-medium">{row.nomre}</Text>
-                    <Text className="text-sub text-xs">
+                    <Text className="text-ink dark:text-inkDark text-sm font-medium">{row.nomre}</Text>
+                    <Text className="text-sub dark:text-subDark text-xs">
                       {fmtDate(row.tarix)} · {row.musteri_ad ?? "—"}
                     </Text>
                   </View>
                   <View className="items-end">
-                    <Text className="text-ink text-sm">
+                    <Text className="text-ink dark:text-inkDark text-sm">
                       {formatNumber(row.miqdar)} × {formatMoney(row.vahid_qiymet, valyuta)}
                     </Text>
                     <Text className="text-brand text-xs font-semibold">
@@ -331,13 +331,13 @@ export default function MehsulDetailScreen() {
               {hereketler.map((row) => (
                 <View
                   key={row.id}
-                  className="flex-row justify-between items-start py-1.5 border-b border-line"
+                  className="flex-row justify-between items-start py-1.5 border-b border-line dark:border-lineDark"
                 >
                   <View className="flex-1 mr-2">
-                    <Text className="text-ink text-sm font-medium">
+                    <Text className="text-ink dark:text-inkDark text-sm font-medium">
                       {row.nov} · {row.anbar_ad}
                     </Text>
-                    <Text className="text-sub text-xs">
+                    <Text className="text-sub dark:text-subDark text-xs">
                       {fmtDate(row.tarix)}
                       {row.edilen_ad != null ? ` · ${row.edilen_ad}` : ""}
                     </Text>
@@ -363,34 +363,34 @@ export default function MehsulDetailScreen() {
               defaultOpen={false}
             >
               {/* Mini statistika */}
-              <View className="flex-row gap-2 mb-2 pb-2 border-b border-line">
-                <Text className="text-sub text-xs">
+              <View className="flex-row gap-2 mb-2 pb-2 border-b border-line dark:border-lineDark">
+                <Text className="text-sub dark:text-subDark text-xs">
                   Cəmi{" "}
-                  <Text className="text-ink font-semibold">{servis.stats.total}</Text>
+                  <Text className="text-ink dark:text-inkDark font-semibold">{servis.stats.total}</Text>
                   {"  "}·{"  "}Aktiv{" "}
-                  <Text className="text-ink font-semibold">{servis.stats.active}</Text>
+                  <Text className="text-ink dark:text-inkDark font-semibold">{servis.stats.active}</Text>
                   {"  "}·{"  "}Bu il{" "}
-                  <Text className="text-ink font-semibold">{servis.stats.thisYear}</Text>
+                  <Text className="text-ink dark:text-inkDark font-semibold">{servis.stats.thisYear}</Text>
                 </Text>
               </View>
               {servis.rows.map((row) => (
                 <View
                   key={row.id}
-                  className="py-2 border-b border-line"
+                  className="py-2 border-b border-line dark:border-lineDark"
                 >
                   <View className="flex-row justify-between items-center mb-0.5">
-                    <Text className="text-ink text-sm font-semibold">{row.nomre}</Text>
+                    <Text className="text-ink dark:text-inkDark text-sm font-semibold">{row.nomre}</Text>
                     <View
                       className="rounded-full px-2 py-0.5 bg-teal-50"
                     >
                       <Text className="text-teal-700 text-xs">{row.status}</Text>
                     </View>
                   </View>
-                  <Text className="text-sub text-xs mb-0.5">
+                  <Text className="text-sub dark:text-subDark text-xs mb-0.5">
                     {fmtDate(row.yaradildi)} · {row.musteri_ad}
                   </Text>
                   <Text
-                    className="text-sub text-xs"
+                    className="text-sub dark:text-subDark text-xs"
                     numberOfLines={2}
                   >
                     {row.problem_tesviri}
@@ -482,7 +482,7 @@ export default function MehsulDetailScreen() {
               {/* Qiymət skaları */}
               {(minSatis > 0 || topdan > 0 || partnyor > 0 || vip > 0) && (
                 <View className="mt-2">
-                  <Text className="text-sub text-xs font-semibold uppercase mb-1">
+                  <Text className="text-sub dark:text-subDark text-xs font-semibold uppercase mb-1">
                     Qiymət cədvəli
                   </Text>
                   {minSatis > 0 && (

@@ -33,12 +33,12 @@ export function Accordion({
       <Pressable
         onPress={toggle}
         style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
-        className="py-3 border-b border-line flex-row items-center gap-2"
+        className="py-3 border-b border-line dark:border-lineDark flex-row items-center gap-2"
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
       >
         {icon != null && <View>{icon}</View>}
-        <Text className="text-ink font-semibold flex-1 text-sm">{title}</Text>
+        <Text className="text-ink dark:text-inkDark font-semibold flex-1 text-sm">{title}</Text>
         {open ? (
           <ChevronUp size={18} color={C.sub} strokeWidth={2} />
         ) : (

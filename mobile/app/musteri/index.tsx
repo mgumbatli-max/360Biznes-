@@ -41,15 +41,15 @@ function CustomerRow({ item }: { item: Customer }) {
       </View>
 
       <View className="flex-1">
-        <Text className="text-ink font-semibold text-sm" numberOfLines={1}>
+        <Text className="text-ink dark:text-inkDark font-semibold text-sm" numberOfLines={1}>
           {item.ad}
         </Text>
         {subLine ? (
-          <Text className="text-sub text-xs mt-0.5" numberOfLines={1}>
+          <Text className="text-sub dark:text-subDark text-xs mt-0.5" numberOfLines={1}>
             {subLine}
           </Text>
         ) : (
-          <Text className="text-sub text-xs mt-0.5">Müştəri</Text>
+          <Text className="text-sub dark:text-subDark text-xs mt-0.5">Müştəri</Text>
         )}
       </View>
 
@@ -59,10 +59,10 @@ function CustomerRow({ item }: { item: Customer }) {
             <Text className="text-neg font-bold text-sm">
               {formatMoney(item.borc)}
             </Text>
-            <Text className="text-sub text-[10px] mt-0.5">borc</Text>
+            <Text className="text-sub dark:text-subDark text-[10px] mt-0.5">borc</Text>
           </>
         ) : (
-          <Text className="text-sub text-xs">—</Text>
+          <Text className="text-sub dark:text-subDark text-xs">—</Text>
         )}
       </View>
     </Card>
@@ -129,7 +129,7 @@ export default function MusteriListScreen() {
           onChangeText={setQuery}
           rightSlot={<Search size={18} color={C.sub} />}
         />
-        {total > 0 && <Text className="text-sub text-xs">Cəmi: {total}</Text>}
+        {total > 0 && <Text className="text-sub dark:text-subDark text-xs">Cəmi: {total}</Text>}
       </View>
 
       {items.length === 0 ? (

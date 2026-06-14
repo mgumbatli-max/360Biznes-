@@ -30,14 +30,14 @@ export function Skeleton({ className = "" }: SkeletonProps) {
   return (
     <Animated.View
       style={{ opacity }}
-      className={`bg-line rounded-lg ${className}`}
+      className={`bg-line dark:bg-lineDark rounded-lg ${className}`}
     />
   );
 }
 
 export function ProductCardSkeleton() {
   return (
-    <View className="bg-card border border-line rounded-2xl p-3 mb-3">
+    <View className="bg-card dark:bg-cardDark border border-line dark:border-lineDark rounded-2xl p-3 mb-3">
       {/* Image placeholder */}
       <Skeleton className="w-full h-36 rounded-xl mb-3" />
       {/* Title line */}

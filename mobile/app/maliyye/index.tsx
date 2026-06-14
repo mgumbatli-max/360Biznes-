@@ -9,12 +9,12 @@ import { C } from "../../src/theme";
 
 function Kpi({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone?: "pos" | "neg" }) {
   return (
-    <View style={{ flex: 1 }} className="bg-card rounded-2xl border border-line p-3">
+    <View style={{ flex: 1 }} className="bg-card dark:bg-cardDark rounded-2xl border border-line dark:border-lineDark p-3">
       <View className="flex-row items-center gap-1.5">
         {icon}
-        <Text className="text-sub text-[11px]" numberOfLines={1}>{label}</Text>
+        <Text className="text-sub dark:text-subDark text-[11px]" numberOfLines={1}>{label}</Text>
       </View>
-      <Text className={`font-extrabold text-base mt-1.5 ${tone === "neg" ? "text-neg" : tone === "pos" ? "text-pos" : "text-ink"}`} numberOfLines={1}>
+      <Text className={`font-extrabold text-base mt-1.5 ${tone === "neg" ? "text-neg" : tone === "pos" ? "text-pos" : "text-ink dark:text-inkDark"}`} numberOfLines={1}>
         {value}
       </Text>
     </View>
@@ -25,10 +25,10 @@ function PartyList({ title, rows, tone }: { title: string; rows: TopRow[]; tone:
   if (!rows.length) return null;
   return (
     <View className="mt-1">
-      <Text className="text-ink font-semibold text-sm mb-2">{title}</Text>
+      <Text className="text-ink dark:text-inkDark font-semibold text-sm mb-2">{title}</Text>
       {rows.map((r, i) => (
         <Card key={`${r.ad}-${i}`} className="flex-row items-center justify-between mb-2">
-          <Text className="text-ink text-sm flex-1" numberOfLines={1}>{r.ad}</Text>
+          <Text className="text-ink dark:text-inkDark text-sm flex-1" numberOfLines={1}>{r.ad}</Text>
           <Text className={`font-bold text-sm ${tone === "neg" ? "text-neg" : "text-pos"}`}>
             {formatMoney(r.mebleg)}
           </Text>
@@ -55,7 +55,7 @@ export default function MaliyyeScreen() {
     return (
       <Screen title="Maliyyə" showBack>
         <View className="px-4 pt-8 items-center">
-          <Text className="text-sub text-sm text-center">Maliyyə məlumatlarına icazəniz yoxdur.</Text>
+          <Text className="text-sub dark:text-subDark text-sm text-center">Maliyyə məlumatlarına icazəniz yoxdur.</Text>
         </View>
       </Screen>
     );
@@ -70,9 +70,9 @@ export default function MaliyyeScreen() {
         <Card className="mb-3 items-center py-5">
           <View className="flex-row items-center gap-2">
             <Wallet size={18} color={C.brand} />
-            <Text className="text-sub text-xs">Cari balans (kassa + hesablar)</Text>
+            <Text className="text-sub dark:text-subDark text-xs">Cari balans (kassa + hesablar)</Text>
           </View>
-          <Text className="text-ink font-extrabold text-3xl mt-2">{formatMoney(k.hesab_balans)}</Text>
+          <Text className="text-ink dark:text-inkDark font-extrabold text-3xl mt-2">{formatMoney(k.hesab_balans)}</Text>
         </Card>
 
         {/* KPI grid */}

@@ -65,11 +65,11 @@ function ProductRow({ item }: { item: Product }) {
 
       {/* Orta — ad + kod/kateqoriya */}
       <View className="flex-1">
-        <Text className="text-ink font-semibold text-sm" numberOfLines={1}>
+        <Text className="text-ink dark:text-inkDark font-semibold text-sm" numberOfLines={1}>
           {item.ad}
         </Text>
         {subLine ? (
-          <Text className="text-sub text-xs mt-0.5" numberOfLines={1}>
+          <Text className="text-sub dark:text-subDark text-xs mt-0.5" numberOfLines={1}>
             {subLine}
           </Text>
         ) : null}
@@ -77,14 +77,14 @@ function ProductRow({ item }: { item: Product }) {
 
       {/* Sağ — qiymət + stok */}
       <View className="items-end">
-        <Text className="text-ink font-bold text-sm">{displayPrice}</Text>
+        <Text className="text-ink dark:text-inkDark font-bold text-sm">{displayPrice}</Text>
         {showStrikethrough && (
-          <Text className="text-sub text-xs line-through">
+          <Text className="text-sub dark:text-subDark text-xs line-through">
             {formatMoney(item.satis_qiymeti, item.valyuta)}
           </Text>
         )}
         <Text
-          className={`text-xs mt-0.5 ${isLowStock ? "text-neg" : "text-sub"}`}
+          className={`text-xs mt-0.5 ${isLowStock ? "text-neg" : "text-sub dark:text-subDark"}`}
         >
           {formatNumber(item.satis_acig_miqdari)}
           {item.olcu_ad ? ` ${item.olcu_ad}` : ""}
@@ -165,7 +165,7 @@ export default function MehsullarScreen() {
           rightSlot={<Search size={18} color={C.sub} />}
         />
         {total > 0 && (
-          <Text className="text-sub text-xs">
+          <Text className="text-sub dark:text-subDark text-xs">
             Cəmi: {total}
           </Text>
         )}

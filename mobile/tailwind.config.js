@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
-// LIGHT tema — 360biznes.az light tokenləri ilə uyğun.
+// LIGHT + DARK tema. Neytral tokenlərin dark variantı (dark: className ilə işlədilir).
 module.exports = {
+  darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
@@ -11,6 +12,9 @@ module.exports = {
         card: "#ffffff", surface: "#f3f3f8",
         pos: "#10b981", neg: "#ef4444", warn: "#f59e0b", info: "#3b82f6",
         bg: "#f7f7fc",
+        // Dark variantlar (dark:bg-cardDark, dark:text-inkDark və s.)
+        cardDark: "#161c2b", bgDark: "#0b0f1a", inkDark: "#eef1f8",
+        subDark: "#98a2b8", lineDark: "#2a3346", surfaceDark: "#1e2638",
       },
     },
   },

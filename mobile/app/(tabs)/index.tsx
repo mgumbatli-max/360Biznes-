@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import {
   TrendingUp, Wallet, AlertTriangle, Boxes, Sparkles, Bell, Search,
   ShieldAlert, FileBarChart, Plus, X, SlidersHorizontal, ChevronUp, ChevronDown, Trash2,
+  Moon, Sun,
 } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
@@ -13,7 +14,7 @@ import { useOzet } from "../../src/features/ozet/hooks";
 import { useQuickActions } from "../../src/features/quick-actions/store";
 import { QA_CATALOG, QA_MAP, type QAItem } from "../../src/features/quick-actions/catalog";
 import { formatMoney } from "../../src/lib/format";
-import { C, TONE, type ToneKey } from "../../src/theme";
+import { C, TONE, useThemeStore, type ToneKey } from "../../src/theme";
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 const NUM = { fontVariant: ["tabular-nums" as const] };
@@ -92,6 +93,8 @@ export default function HomeScreen() {
   const user = useAuth((s) => s.user);
   const mode = useAppModeStore((s) => s.mode);
   const setMode = useAppModeStore((s) => s.setMode);
+  const themeMode = useThemeStore((s) => s.mode);
+  const toggleTheme = useThemeStore((s) => s.toggle);
   const { data: ozet } = useOzet();
   const { keys, load, toggle, move, reset } = useQuickActions();
   const [customize, setCustomize] = useState(false);
@@ -130,6 +133,7 @@ export default function HomeScreen() {
         </View>
         <View style={{ flex: 1 }} />
         <IconBtn onPress={() => router.push("/mehsullar")}><Search size={18} color={C.ink} /></IconBtn>
+        <IconBtn onPress={() => toggleTheme()}>{themeMode === "dark" ? <Sun size={18} color={C.warn} /> : <Moon size={18} color={C.ink} />}</IconBtn>
         {kritik > 0 ? <IconBtn onPress={() => router.push("/mehsullar")} danger badge={kritik}><AlertTriangle size={18} color={C.neg} /></IconBtn> : null}
         <IconBtn onPress={() => router.push("/bildiris")}><Bell size={18} color={C.ink} /></IconBtn>
       </View>

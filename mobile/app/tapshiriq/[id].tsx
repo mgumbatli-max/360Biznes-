@@ -42,22 +42,22 @@ export default function TapshiriqDetailScreen() {
         <Card className="mb-3">
           <View className="flex-row items-start gap-2.5">
             <View style={{ width: 10, height: 10, borderRadius: 5, marginTop: 5, backgroundColor: PRIO_COLOR[prioritet] ?? C.sub }} />
-            <Text className="text-ink font-bold text-lg flex-1">{String(t.basliq ?? "")}</Text>
+            <Text className="text-ink dark:text-inkDark font-bold text-lg flex-1">{String(t.basliq ?? "")}</Text>
           </View>
           <View className="flex-row items-center gap-3 mt-2 flex-wrap">
-            <View className="flex-row items-center gap-1"><Flag size={13} color={PRIO_COLOR[prioritet]} /><Text className="text-sub text-xs">{PRIO_LABEL[prioritet] ?? prioritet}</Text></View>
+            <View className="flex-row items-center gap-1"><Flag size={13} color={PRIO_COLOR[prioritet]} /><Text className="text-sub dark:text-subDark text-xs">{PRIO_LABEL[prioritet] ?? prioritet}</Text></View>
             <Text className={`text-xs font-medium ${done ? "text-pos" : "text-brand"}`}>{STATUS_LABEL[status] ?? status}</Text>
           </View>
-          {tesvir ? <Text className="text-sub text-sm mt-3 leading-relaxed">{tesvir}</Text> : null}
+          {tesvir ? <Text className="text-sub dark:text-subDark text-sm mt-3 leading-relaxed">{tesvir}</Text> : null}
         </Card>
 
         {(deadline || xatirlatma) && (
           <Card className="mb-3">
             {deadline ? (
-              <View className="flex-row items-center gap-3 py-1.5"><Clock size={16} color={C.sub} /><Text className="text-ink text-sm flex-1">Son tarix</Text><Text className="text-ink text-sm">{deadline.slice(0, 16).replace("T", " ")}</Text></View>
+              <View className="flex-row items-center gap-3 py-1.5"><Clock size={16} color={C.sub} /><Text className="text-ink dark:text-inkDark text-sm flex-1">Son tarix</Text><Text className="text-ink dark:text-inkDark text-sm">{deadline.slice(0, 16).replace("T", " ")}</Text></View>
             ) : null}
             {xatirlatma ? (
-              <View className="flex-row items-center gap-3 py-1.5"><Bell size={16} color={C.sub} /><Text className="text-ink text-sm flex-1">Xatırlatma</Text><Text className="text-ink text-sm">{xatirlatma.slice(0, 16).replace("T", " ")}</Text></View>
+              <View className="flex-row items-center gap-3 py-1.5"><Bell size={16} color={C.sub} /><Text className="text-ink dark:text-inkDark text-sm flex-1">Xatırlatma</Text><Text className="text-ink dark:text-inkDark text-sm">{xatirlatma.slice(0, 16).replace("T", " ")}</Text></View>
             ) : null}
           </Card>
         )}
@@ -75,7 +75,7 @@ export default function TapshiriqDetailScreen() {
             </Pressable>
           ) : (
             <Pressable onPress={() => setStatus("yeni")} disabled={change.isPending} className="flex-row items-center justify-center gap-2 rounded-xl py-3" style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.line, opacity: change.isPending ? 0.6 : 1 }}>
-              <Play size={18} color={C.sub} /><Text className="text-sub font-semibold text-sm">Yenidən aç</Text>
+              <Play size={18} color={C.sub} /><Text className="text-sub dark:text-subDark font-semibold text-sm">Yenidən aç</Text>
             </Pressable>
           )}
           {status !== "legv" ? (
