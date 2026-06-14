@@ -109,10 +109,8 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
           <AppModeToggle serverMode={appMode} />
           {/* Axtarış həmişə görünür — mobildə kompakt ikon, md+-də enli qutu (komponentin öz daxili variantı) */}
           <CommandPaletteTrigger hiddenModules={hiddenModules} />
-          {/* Tema mobildə gizli — user dropdown-da var */}
-          <div className="hidden md:contents">
-            <ThemeToggle />
-          </div>
+          {/* Tema keçidi — mobil daxil HƏR YERDƏ görünür (dark↔light) */}
+          <ThemeToggle />
           <MyWork data={myWork} />
           <NotificationBell items={alerts} unreadCount={unreadCount} />
           <div className="hidden sm:contents">
