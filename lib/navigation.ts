@@ -142,12 +142,13 @@ export function resolveNavItem(pathname: string): NavItem | undefined {
 /** Whether a user with the given role/permissions can see this item. */
 export function canSeeNavItem(
   item: NavItem,
-  ctx: { rolId: number; rolAd?: string; icazeler: string[] }
+  ctx: { rolId: number; rolAd?: string; icazeler: string[]; isSuperAdmin?: boolean }
 ): boolean {
   const req = item.requires;
   if (!req) return true;
-  // Multi-tenant: ad üzrə yoxlama (rolId nömrəsi tenant-dan-tenanta dəyişir)
-  if (req.systemAdminOnly && ctx.rolAd !== "admin") return false;
+  // Multi-tenant: ad üzrə yoxlama (rolId nömrəsi tenant-dan-tenanta dəyişir).
+  // Super-admin (rol_id=1 və ya email allowlist) — server tərəfdə hesablanıb prop kimi gəlir.
+  if (req.systemAdminOnly && !ctx.isSuperAdmin && ctx.rolAd !== "admin") return false;
   if (req.roleNames && (!ctx.rolAd || !req.roleNames.includes(ctx.rolAd))) return false;
   if (req.roleIds && !req.roleIds.includes(ctx.rolId)) return false;
   if (req.anyPermission && req.anyPermission.length) {

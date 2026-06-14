@@ -6,8 +6,8 @@ const b = await chromium.launch({ headless: true });
 const ctx = await b.newContext({ viewport: { width: 420, height: 780 } }); // mobil ölçü (donma testi)
 const p = await ctx.newPage();
 await p.goto(BASE + "/login", NAV);
-await p.fill('input[name="email"]', "test-sahibkar@example.com");
-await p.fill('input[name="password"]', "Test1234!");
+await p.fill('input[name="email"]', process.env.QA_TEST_EMAIL);
+await p.fill('input[name="password"]', process.env.QA_TEST_PASSWORD);
 await p.click('button[type="submit"]');
 await p.waitForTimeout(3500);
 

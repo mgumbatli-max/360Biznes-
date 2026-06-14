@@ -107,11 +107,16 @@ export async function checkCustomerEndpointRateLimit(
 /**
  * Servis qeydinə bağlı approval_token hesabla.
  * HMAC-SHA256(servis_id + ":" + sahibkar_id, SECRET) → ilk 32 hex simvol.
- * SECRET olmasa, AUTH_SECRET istifadə olunur.
+ * SECRET = SERVIS_TOKEN_SECRET, yoxdursa AUTH_SECRET.
+ * ⚠️ Hardcoded fallback YOXDUR: heç biri yoxdursa fail-closed (throw) —
+ * əks halda public servis approval token-ları saxta düzəldilə bilərdi.
  */
 async function computeServisToken(servisId: string, sahibkarId: string): Promise<string> {
   const { createHmac } = await import("node:crypto");
-  const secret = process.env.SERVIS_TOKEN_SECRET ?? process.env.AUTH_SECRET ?? "default-fallback-secret-change-me";
+  const secret = process.env.SERVIS_TOKEN_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error("SERVIS_TOKEN_SECRET və ya AUTH_SECRET təyin olunmalıdır (servis approval token imzası)");
+  }
   return createHmac("sha256", secret).update(`${servisId}:${sahibkarId}`).digest("hex").slice(0, 32);
 }
 

@@ -3,7 +3,7 @@ const j = async (path, opt) => { const r = await fetch(BASE + path, opt); return
 
 const login = await j("/api/mobile/v1/auth/login", {
   method: "POST", headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email: "test-sahibkar@example.com", password: "Test1234!" }),
+  body: JSON.stringify({ email: process.env.QA_TEST_EMAIL, password: process.env.QA_TEST_PASSWORD }),
 });
 console.log("login:", login.s, login.b.accessToken ? "access ✓" : JSON.stringify(login.b), login.b.refreshToken ? "refresh ✓" : "");
 const tok = login.b.accessToken;

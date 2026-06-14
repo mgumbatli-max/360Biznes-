@@ -23,6 +23,7 @@ import {
   Store,
   FlaskConical,
   Crown,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -62,11 +63,20 @@ const TILES: Tile[] = [
   { href: "/ayarlar", label: "Ayarlar", icon: Settings, tone: "bg-slate-500/12 text-slate-600" },
 ];
 
-export function LiteMenu() {
+/** Yalnız super-admin görür — bütün platformanın baza admini. */
+const PLATFORM_TILE: Tile = {
+  href: "/platform-admin",
+  label: "Platform Admin",
+  icon: ShieldCheck,
+  tone: "bg-primary/12 text-primary",
+};
+
+export function LiteMenu({ isSuperAdmin = false }: { isSuperAdmin?: boolean }) {
   const open = useLiteMenu((s) => s.open);
   const setOpen = useLiteMenu((s) => s.setOpen);
   const hiddenModules = useLiteMenu((s) => s.hiddenModules);
   const pathname = usePathname();
+  const tiles = isSuperAdmin ? [...TILES, PLATFORM_TILE] : TILES;
 
   // Naviqasiya baş verəndə bağla
   useEffect(() => {
@@ -126,7 +136,7 @@ export function LiteMenu() {
 
         {/* Modul grid — 2 sütun, böyük kartlar (Lite-da gizli modullar çıxarılır) */}
         <div className="grid grid-cols-2 gap-3">
-          {TILES.filter((t) => !hiddenModules.includes(t.href.split("/")[1] ?? "")).map((t) => {
+          {tiles.filter((t) => !hiddenModules.includes(t.href.split("/")[1] ?? "")).map((t) => {
             const Icon = t.icon;
             return (
               <Link

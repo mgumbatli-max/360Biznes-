@@ -5,6 +5,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { ParsedRow } from "./excel-parser";
 import { audit } from "@/lib/audit/log";
 import { nextDocNumber } from "@/lib/db/sened-nomre";
+import { isReservedSuperAdminEmail } from "@/lib/platform-admin/guard";
 
 /** Şablon `tip` sütunu (sahib/sirket/fiziki/huquqi/şirkət...) → DB huquqi_fiziki */
 function mapHuquqiFiziki(tip: string | number | null | undefined): string | undefined {
@@ -543,6 +544,13 @@ async function importEmekdas(rows: ParsedRow[]): Promise<ImportResult> {
     try {
       const email = String(r.values.email).toLowerCase();
       const adSoyad = String(r.values.ad_soyad);
+
+      // Defense-in-depth: platforma super-admin emailini idxalla yaratmaq/yeniləmək olmaz.
+      if (isReservedSuperAdminEmail(email)) {
+        xeta++;
+        log.push({ sira: r.sira, emeliyyat: "xeta", mesaj: "Bu email istifadə oluna bilməz" });
+        continue;
+      }
 
       const existing = await prisma.istifadeciler.findFirst({
         where: { sahibkar_id: sahibkarId, email },

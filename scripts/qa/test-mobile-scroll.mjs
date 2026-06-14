@@ -9,8 +9,8 @@ const page = await ctx.newPage();
 const NAV = { waitUntil: "domcontentloaded", timeout: 60000 };
 
 await page.goto(BASE + "/login", NAV);
-await page.fill('input[name="email"]', "test-sahibkar@example.com");
-await page.fill('input[name="password"]', "Test1234!");
+await page.fill('input[name="email"]', process.env.QA_TEST_EMAIL);
+await page.fill('input[name="password"]', process.env.QA_TEST_PASSWORD);
 await page.click('button[type="submit"]');
 await page.waitForTimeout(4000);
 await page.goto(BASE + "/dashboard", NAV);

@@ -10,7 +10,7 @@ const CommandPaletteBody = dynamic(() => import("./command-palette-body"), {
   ssr: false,
 });
 
-export function CommandPaletteTrigger({ hiddenModules }: { hiddenModules?: string[] } = {}) {
+export function CommandPaletteTrigger({ hiddenModules, isSuperAdmin }: { hiddenModules?: string[]; isSuperAdmin?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -57,7 +57,7 @@ export function CommandPaletteTrigger({ hiddenModules }: { hiddenModules?: strin
       </button>
 
       {mounted && (
-        <CommandPaletteBody open={open} onOpenChange={setOpen} hiddenModules={hiddenModules} />
+        <CommandPaletteBody open={open} onOpenChange={setOpen} hiddenModules={hiddenModules} isSuperAdmin={isSuperAdmin} />
       )}
     </>
   );

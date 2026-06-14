@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { SignupSchema } from "./schemas";
 import { signIn } from "@/auth";
 import { checkBotId } from "botid/server";
+import { isReservedSuperAdminEmail } from "@/lib/platform-admin/guard";
 
 export type SignupActionResult =
   | { ok: true }
@@ -40,6 +41,11 @@ export async function signupAction(_prev: SignupActionResult | null, formData: F
 
   const data = parsed.data;
   const email = data.email.toLowerCase().trim();
+
+  // Defense-in-depth: rezerv platforma super-admin emaili ilə qeydiyyat olmaz.
+  if (isReservedSuperAdminEmail(email)) {
+    return { ok: false, error: "Bu email istifadə oluna bilməz", fieldErrors: { email: ["İstifadə oluna bilməz"] } };
+  }
 
   // Email uniqueness check across both sahibkarlar and istifadeciler.
   // case-INSENSITIVE — legacy/import datası mixed-case email saxlaya bilər;

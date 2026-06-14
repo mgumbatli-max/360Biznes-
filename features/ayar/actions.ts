@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { audit } from "@/lib/audit/log";
 import { requireAyarActionPerm, isAyarPrivileged } from "@/features/ayarlar/access-guard";
+import { isReservedSuperAdminEmail } from "@/lib/platform-admin/guard";
 import { auth } from "@/auth";
 
 // Form data only has strings; `z.coerce.boolean()` treats "false" as true
@@ -794,6 +795,15 @@ export async function createUser(input: FormData): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // Defense-in-depth: platforma super-admin emailini heç bir tenant öz
+      // daxilində yarada bilməz (privilege-escalation minting vektorunu bağlayır).
+      if (isReservedSuperAdminEmail(d.email)) {
+        return { ok: false, error: "Bu email istifadə oluna bilməz" };
+      }
+      // Platforma super-admin rolu (rol_id=1) tenant-dən təyin edilə bilməz.
+      if (d.rol_id === 1) {
+        return { ok: false, error: "Bu rol təyin edilə bilməz" };
+      }
       const existing = await prisma.istifadeciler.findFirst({
         where: { sahibkar_id: sahibkarId, email: d.email.toLowerCase(), deleted_at: null },
       });
@@ -932,6 +942,12 @@ export async function changeUserRole(input: FormData): Promise<ActionResult> {
   const parsed = ChangeUserRoleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
+  // Qlobal sistem "admin" rolu (rol_id=1) tenant istifadəçi idarəsindən TƏYİN
+  // EDİLƏ BİLMƏZ — bu, platforma-səviyyəli roldur, tenant üçün nəzərdə tutulmayıb.
+  // (Super-admin onsuz da rolla verilmir, amma bu rolun tenant-a sızmasını da bağlayırıq.)
+  if (d.rol_id === 1) {
+    return { ok: false, error: "Bu rol təyin edilə bilməz" };
+  }
   const session = await auth();
   const actorPrivileged = isAyarPrivileged(session?.user?.rol_ad);
   return withTenant(async () => {

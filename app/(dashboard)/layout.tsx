@@ -26,6 +26,7 @@ import { getMyNotifications } from "@/features/bildirisler/get-my-notifications"
 import { getMyActiveReminders, getMyWorkSummary } from "@/features/tapshiriqlar/queries";
 import { getNezaretSidebarTotal } from "@/features/nezaret-merkezi/counts";
 import { getSahibkarSidebarVisible } from "@/lib/sahibkar/visibility";
+import { isSuperAdmin } from "@/lib/platform-admin/guard";
 import { KeyboardShortcuts } from "@/components/layout/keyboard-shortcuts";
 import { QuickActionsFab } from "@/components/layout/quick-actions-fab";
 import { StealthBanner } from "@/components/layout/stealth-banner";
@@ -54,6 +55,7 @@ async function SidebarShell({ user, hiddenModules }: { user: SessionUser; hidden
       badges={Object.keys(badges).length > 0 ? badges : undefined}
       sahibkarVisible={sahibkarVisible}
       hiddenModules={hiddenModules}
+      isSuperAdmin={isSuperAdmin(user)}
     />
   );
 }
@@ -105,6 +107,7 @@ async function TopbarShell({ user, hiddenModules }: { user: SessionUser; hiddenM
       myWork={myWork}
       appMode={appMode}
       hiddenModules={hiddenModules}
+      isSuperAdmin={isSuperAdmin(user)}
     />
   );
 }
@@ -148,7 +151,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   try {
     const h = await headers();
     const pathname = h.get("x-pathname") ?? "";
-    if (pathname) {
+    // Super-admin (rol_id=1 və ya email allowlist) bütün route-lara girir.
+    if (pathname && !isSuperAdmin(session.user)) {
       const gate = gateRoute(pathname, session.user.rol_ad, icazeler);
       if (!gate.allowed) redirect("/icaze-yox");
     }
@@ -201,7 +205,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <main className="flex-1 overflow-x-clip p-4 pb-safe-20 md:p-6 md:pb-6 animate-fade-in">{children}</main>
           </div>
           <BottomNav />
-          <LiteMenu />
+          <LiteMenu isSuperAdmin={isSuperAdmin(session.user)} />
           <LiteMenuHydrator hiddenModules={hiddenModules} />
   {/* Critical olmayan widget-lər — interactive olduqdan sonra mount olur.
               Bu, ilk paint-i bloklayan client JS-i ~3-5 komponent həcmində azaldır. */}

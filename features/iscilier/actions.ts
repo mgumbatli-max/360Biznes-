@@ -9,6 +9,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { parseLocalDate } from "@/lib/utils";
 import { audit, diffObjects } from "@/lib/audit/log";
 import { requireHrActionPerm, bustHrCache } from "./access-guard";
+import { isReservedSuperAdminEmail } from "@/lib/platform-admin/guard";
 
 const EmployeeSchema = z.object({
   id: z.string().uuid().optional(),
@@ -39,6 +40,11 @@ export async function saveEmployee(input: FormData): Promise<ActionResult> {
     return { ok: false, error: first ?? "Forma yanlışdır" };
   }
   const d = parsed.data;
+  // Defense-in-depth: platforma super-admin emaili nə yaradıla, nə də mövcud
+  // işçi bu emailə dəyişdirilə bilər (create + update branch-larını əhatə edir).
+  if (isReservedSuperAdminEmail(d.email)) {
+    return { ok: false as const, error: "Bu email istifadə oluna bilməz" };
+  }
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();

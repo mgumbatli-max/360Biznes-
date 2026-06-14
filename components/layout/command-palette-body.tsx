@@ -98,10 +98,12 @@ export default function CommandPaletteBody({
   open,
   onOpenChange,
   hiddenModules = [],
+  isSuperAdmin = false,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   hiddenModules?: string[];
+  isSuperAdmin?: boolean;
 }) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -186,10 +188,10 @@ export default function CommandPaletteBody({
         // Lite-da gizlədilmiş modul (sidebar ilə eyni məntiq) — Cmd+K-da da gizlət.
         const modul = i.href.split("/")[1] ?? "";
         if (hiddenModules.includes(modul)) return false;
-        return canSeeNavItem(i, { rolId: user.rol_id, icazeler });
+        return canSeeNavItem(i, { rolId: user.rol_id, rolAd: user.rol_ad, icazeler, isSuperAdmin });
       }),
     })).filter((s) => s.items.length > 0);
-  }, [user, icazeler, hiddenModules]);
+  }, [user, icazeler, hiddenModules, isSuperAdmin]);
 
   const filteredModules = useMemo(() => {
     const tq = q.trim().toLowerCase();

@@ -4,8 +4,8 @@ const browser = await chromium.launch({ headless: true });
 const ctx = await browser.newContext();
 const page = await ctx.newPage();
 await page.goto(BASE + "/login", { waitUntil: "domcontentloaded", timeout: 45000 });
-await page.fill('input[name="email"]', "test-sahibkar@example.com");
-await page.fill('input[name="password"]', "Test1234!");
+await page.fill('input[name="email"]', process.env.QA_TEST_EMAIL);
+await page.fill('input[name="password"]', process.env.QA_TEST_PASSWORD);
 await page.click('button[type="submit"]');
 await page.waitForTimeout(3500);
 

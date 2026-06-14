@@ -10,6 +10,7 @@ import { parseLocalDate } from "@/lib/utils";
 import { audit } from "@/lib/audit/log";
 import { appendTag, parseQeydTags, replaceTags } from "./hr-tags";
 import { requireHrActionPerm, bustHrCache } from "./access-guard";
+import { isReservedSuperAdminEmail } from "@/lib/platform-admin/guard";
 import type {
   CertRow,
   DisciplineEvent,
@@ -135,6 +136,14 @@ export async function completeOnboarding(input: FormData): Promise<Result> {
     return { ok: false, error: first ?? "Forma yanlışdır" };
   }
   const d = parsed.data;
+  // Defense-in-depth: platforma super-admin emaili heç bir yolla yaradıla bilməz.
+  if (isReservedSuperAdminEmail(d.email)) {
+    return { ok: false, error: "Bu email istifadə oluna bilməz" };
+  }
+  // Platforma super-admin rolu (rol_id=1) onboarding-dən təyin edilə bilməz.
+  if (d.rol_id === 1) {
+    return { ok: false, error: "Bu rol təyin edilə bilməz" };
+  }
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {

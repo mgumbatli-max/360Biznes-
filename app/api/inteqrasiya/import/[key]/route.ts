@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { getTemplate } from "@/features/inteqrasiya/templates";
 import { parseExcel } from "@/features/inteqrasiya/excel-parser";
 import { importByKey, isImporterAvailable } from "@/features/inteqrasiya/importer";
+import { requireHrActionPerm } from "@/features/iscilier/access-guard";
 import { safeUserMessage } from "@/lib/error/user-message"; // QA-orta: raw error sızmasın
 
 export const runtime = "nodejs";
@@ -24,6 +25,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ key: strin
       },
       { status: 501 }
     );
+  }
+
+  // Əməkdaş idxalı istifadəçi yaradır → "isci.idare" tələb olunur (əvvəl yalnız
+  // login yoxlanırdı; istənilən autentifikasiyalı istifadəçi işçi idxal edə bilərdi).
+  if (key === "emekdas") {
+    const perm = await requireHrActionPerm("isci.idare");
+    if (!perm.ok) return NextResponse.json({ error: perm.error }, { status: 403 });
   }
 
   const formData = await req.formData();

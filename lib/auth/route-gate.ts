@@ -63,7 +63,8 @@ export const ROUTE_RULES: RouteRule[] = [
   { prefix: "/satinalma", anyOf: ["anbar.view", "satinalma.view", "trade.view"] },
   // — Sahibkar bölməsi (PIN guard onsuz da var, amma rol kontrolü də etsən pis olmaz)
   { prefix: "/sahibkar", anyOf: ["sahibkar.access"] },
-  // — Platform admin (rol_id===1 onsuz da yoxlanılır, amma map-də qeyd etmək yaxşıdır)
+  // — Platform admin (səhifə guard-ı requirePlatformAdmin/isSuperAdmin onsuz da
+  //   yoxlayır — super-admin yalnız konkret profildir, rolla verilmir)
   { prefix: "/platform-admin", anyOf: ["platform.admin"] },
   // — 360 LAB (yalnız sahibkar/admin; bunlar onsuz da bypass olur)
   { prefix: "/360-lab", anyOf: ["lab.view"] },
