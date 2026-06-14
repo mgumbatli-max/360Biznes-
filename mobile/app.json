@@ -2,7 +2,7 @@
   "expo": {
     "name": "360Biznes",
     "slug": "biznes360",
-    "owner": "mr.maqa",
+    "owner": "sabiroglu-limited",
     "scheme": "biznes360",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -56,7 +56,7 @@
       "apiBase": "http://localhost:3500",
       "router": {},
       "eas": {
-        "projectId": "5a7f0bee-145f-4f41-8f5b-15da1c4547f6"
+        "projectId": "b474434a-f202-4e74-a8b4-da9c25be9749"
       }
     }
   }
