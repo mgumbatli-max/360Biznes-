@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronRight, LogOut, Settings, User, Users, Package, Wallet, ShoppingCart, ListTodo } from "lucide-react-native";
+import { ChevronRight, LogOut, Settings, User, Users, Package, Wallet, ShoppingCart, ListTodo, MessageSquare } from "lucide-react-native";
 import { Screen, Card } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
 import { useAppModeStore } from "../../src/lib/app-mode-store";
@@ -241,6 +241,11 @@ export default function MenyuScreen() {
             icon={<ListTodo size={20} color={C.brand} strokeWidth={2} />}
             label="Tapşırıqlar"
             onPress={() => router.push("/tapshiriq")}
+          />
+          <MenuRow
+            icon={<MessageSquare size={20} color={C.brand} strokeWidth={2} />}
+            label="Söhbətlər (Team)"
+            onPress={() => router.push("/team")}
           />
         </View>
 
