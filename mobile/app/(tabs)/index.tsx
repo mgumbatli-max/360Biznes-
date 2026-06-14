@@ -1,19 +1,23 @@
-import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  Plus, ScanLine, TrendingUp, Wallet, AlertTriangle, Boxes,
-  Sparkles, Bell, Search, Settings, ShoppingCart, Users, ListTodo, FileBarChart,
+  TrendingUp, Wallet, AlertTriangle, Boxes, Sparkles, Bell, Search, Settings,
+  ShieldAlert, FileBarChart, Plus, Check, X, SlidersHorizontal,
 } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
 import { useOzet } from "../../src/features/ozet/hooks";
+import { useQuickActions } from "../../src/features/quick-actions/store";
+import { QA_CATALOG, QA_MAP, type QAItem } from "../../src/features/quick-actions/catalog";
 import { formatMoney } from "../../src/lib/format";
-import { C, TONE, AI_GRADIENT, type ToneKey } from "../../src/theme";
+import { C, TONE, type ToneKey } from "../../src/theme";
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 const NUM = { fontVariant: ["tabular-nums" as const] };
+const AZ_DAYS = ["Bazar", "Bazar ertəsi", "Çərşənbə axşamı", "Çərşənbə", "Cümə axşamı", "Cümə", "Şənbə"];
+const AZ_MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 
 function getInitials(name?: string | null): string {
   if (!name) return "?";
@@ -24,11 +28,15 @@ function getInitials(name?: string | null): string {
 }
 function greeting(): { label: string; emoji: string } {
   const h = new Date().getHours();
-  if (h < 6) return { label: "Sakit gecələr", emoji: "🌙" };
+  if (h < 6) return { label: "Gecəniz xeyrə qalsın", emoji: "🌙" };
   if (h < 12) return { label: "Sabahın xeyir", emoji: "☀️" };
   if (h < 17) return { label: "Gününüz xeyir", emoji: "🌤️" };
   if (h < 22) return { label: "Axşamın xeyir", emoji: "🌆" };
-  return { label: "Gecəniz xeyirə qalsın", emoji: "🌙" };
+  return { label: "Gecəniz xeyrə qalsın", emoji: "🌙" };
+}
+function azDate(): string {
+  const d = new Date();
+  return `${d.getDate()} ${AZ_MONTHS[d.getMonth()]} ${d.getFullYear()}, ${AZ_DAYS[d.getDay()]}`;
 }
 
 function IconBtn({ children, onPress, filled = false, danger = false, badge }: { children: React.ReactNode; onPress: () => void; filled?: boolean; danger?: boolean; badge?: number }) {
@@ -62,14 +70,15 @@ function MetricCard({ Icon, label, value, sub, tone = "neutral", onPress }: { Ic
   );
 }
 
-function ActionCard({ Icon, title, desc, colors, onPress, full = false }: { Icon: LucideIcon; title: string; desc: string; colors: [string, string]; onPress: () => void; full?: boolean }) {
+function ActionCard({ item, full, onPress }: { item: QAItem; full?: boolean; onPress: () => void }) {
+  const Icon = item.Icon;
   return (
     <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, flex: full ? undefined : 1, width: full ? "100%" : undefined, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 14, shadowColor: "#141820", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 })}>
-      <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
-        <Icon size={21} color="#fff" strokeWidth={2.2} />
+      <LinearGradient colors={item.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+        <Icon size={22} color="#fff" strokeWidth={2.2} />
       </LinearGradient>
-      <Text style={{ color: C.ink, fontSize: 14.5, fontWeight: "700" }}>{title}</Text>
-      <Text style={{ color: C.sub, fontSize: 11.5, marginTop: 2 }} numberOfLines={1}>{desc}</Text>
+      <Text style={{ color: C.ink, fontSize: 15, fontWeight: "700" }}>{item.title}</Text>
+      <Text style={{ color: C.sub, fontSize: 11.5, marginTop: 2 }} numberOfLines={1}>{item.desc}</Text>
     </Pressable>
   );
 }
@@ -78,18 +87,24 @@ export default function HomeScreen() {
   const router = useRouter();
   const user = useAuth((s) => s.user);
   const { data: ozet } = useOzet();
+  const { keys, load, toggle, reset } = useQuickActions();
+  const [customize, setCustomize] = useState(false);
+
+  useEffect(() => { load(); }, [load]);
+
   const initials = getInitials(user?.ad_soyad);
   const kritik = ozet?.products?.kritik ?? 0;
   const borc = ozet?.sales?.borc_mebleg ?? 0;
   const g = greeting();
   const firstName = (user?.ad_soyad ?? "İstifadəçi").split(" ")[0];
-  let today = "";
-  try {
-    today = new Date().toLocaleDateString("az-AZ", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  } catch {
-    const d = new Date();
-    today = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
-  }
+
+  const selected = QA_CATALOG.filter((q) => keys.includes(q.key));
+  const hero = keys.includes("pos") ? QA_MAP["pos"] : null;
+  const gridItems = selected.filter((q) => q.key !== "pos");
+  const gridRows: QAItem[][] = [];
+  for (let i = 0; i < gridItems.length; i += 2) gridRows.push(gridItems.slice(i, i + 2));
+
+  function go(route: string) { router.push(route as never); }
 
   return (
     <Screen>
@@ -106,7 +121,7 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
-        {/* Salamlama kartı (web dashboard-header üslubu) */}
+        {/* Salamlama kartı */}
         <View style={{ marginHorizontal: 16, marginTop: 6, backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.line, padding: 18, shadowColor: "#141820", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 5, borderWidth: 1, borderColor: C.line, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: C.bg }}>
             <Text style={{ fontSize: 11 }}>{g.emoji}</Text>
@@ -118,7 +133,7 @@ export default function HomeScreen() {
             <Text style={{ color: C.sub, fontSize: 13, fontWeight: "500", marginLeft: 8, marginBottom: 4 }}>biznesiniz hazırdır</Text>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-            <Text style={{ color: C.sub, fontSize: 12.5, textTransform: "capitalize" }} numberOfLines={1}>{today}</Text>
+            <Text style={{ color: C.sub, fontSize: 12.5 }} numberOfLines={1}>{azDate()}</Text>
             {user?.sahibkar_ad ? (
               <>
                 <Text style={{ color: C.sub, fontSize: 12 }}>·</Text>
@@ -127,9 +142,20 @@ export default function HomeScreen() {
               </>
             ) : null}
           </View>
+          {/* Nəzarət / Hesabat */}
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+            <Pressable onPress={() => router.push("/mehsullar")} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 10 })}>
+              <ShieldAlert size={15} color={C.ink} />
+              <Text style={{ color: C.ink, fontSize: 13, fontWeight: "600" }}>Nəzarət</Text>
+            </Pressable>
+            <Pressable onPress={() => router.push("/maliyye")} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 10 })}>
+              <FileBarChart size={15} color={C.ink} />
+              <Text style={{ color: C.ink, fontSize: 13, fontWeight: "600" }}>Hesabat</Text>
+            </Pressable>
+          </View>
         </View>
 
-        {/* KPI MetricCards */}
+        {/* KPI */}
         {(ozet?.sales || ozet?.products) && (
           <View style={{ marginHorizontal: 16, marginTop: 14, gap: 10 }}>
             {ozet?.sales && (
@@ -149,20 +175,77 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Sürətli əməliyyat */}
-        <Text style={{ marginHorizontal: 16, marginTop: 22, marginBottom: 12, fontSize: 16, fontWeight: "800", color: C.ink }}>Sürətli əməliyyat</Text>
+        {/* Sürətli əməliyyat + Düzəlt */}
+        <View style={{ flexDirection: "row", alignItems: "center", marginHorizontal: 16, marginTop: 22, marginBottom: 12 }}>
+          <Text style={{ flex: 1, fontSize: 16, fontWeight: "800", color: C.ink }}>Sürətli əməliyyat</Text>
+          <Pressable onPress={() => setCustomize(true)} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 999, backgroundColor: C.bg })}>
+            <SlidersHorizontal size={14} color={C.brand} />
+            <Text style={{ color: C.brand, fontSize: 12.5, fontWeight: "700" }}>Düzəlt</Text>
+          </Pressable>
+        </View>
+
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
-          <ActionCard full Icon={ScanLine} title="POS aç — Yeni satış" desc="Skan + səbət + çek" colors={[C.brand, C.brandDark]} onPress={() => router.push("/pos")} />
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <ActionCard Icon={ShoppingCart} title="Satışlar" desc="Sifariş tarixçəsi" colors={["#2563eb", "#1d4ed8"]} onPress={() => router.push("/(tabs)/satis")} />
-            <ActionCard Icon={Users} title="Müştərilər" desc="CRM + borclar" colors={["#7c3aed", "#6d28d9"]} onPress={() => router.push("/musteri")} />
-          </View>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <ActionCard Icon={ListTodo} title="Tapşırıqlar" desc="Təyinat + xatırlatma" colors={["#db2777", "#be185d"]} onPress={() => router.push("/tapshiriq")} />
-            <ActionCard Icon={FileBarChart} title="Maliyyə" desc="Kassa + hesabat" colors={["#d97706", "#b45309"]} onPress={() => router.push("/maliyye")} />
-          </View>
+          {hero ? <ActionCard item={hero} full onPress={() => go(hero.route)} /> : null}
+          {gridRows.map((pair, i) => (
+            <View key={i} style={{ flexDirection: "row", gap: 10 }}>
+              <ActionCard item={pair[0]} onPress={() => go(pair[0].route)} />
+              {pair[1] ? <ActionCard item={pair[1]} onPress={() => go(pair[1].route)} /> : <View style={{ flex: 1 }} />}
+            </View>
+          ))}
+          {/* Funksiya əlavə et */}
+          <Pressable onPress={() => setCustomize(true)} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderColor: C.line, borderStyle: "dashed", borderRadius: 16, paddingVertical: 16 })}>
+            <Plus size={18} color={C.sub} />
+            <Text style={{ color: C.sub, fontSize: 14, fontWeight: "600" }}>Funksiya əlavə et / düzəlt</Text>
+          </Pressable>
         </View>
       </ScrollView>
+
+      {/* Özelleşdirmə modalı */}
+      <CustomizeModal visible={customize} keys={keys} onToggle={toggle} onReset={reset} onClose={() => setCustomize(false)} />
     </Screen>
+  );
+}
+
+function CustomizeModal({ visible, keys, onToggle, onReset, onClose }: { visible: boolean; keys: string[]; onToggle: (k: string) => void; onReset: () => void; onClose: () => void }) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}>
+        <View style={{ backgroundColor: C.bg, borderTopLeftRadius: 22, borderTopRightRadius: 22, height: "82%", paddingTop: 10 }}>
+          <View style={{ alignItems: "center", paddingVertical: 6 }}>
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: C.line }} />
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingBottom: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: C.ink, fontSize: 17, fontWeight: "800" }}>Sürətli əməliyyatlar</Text>
+              <Text style={{ color: C.sub, fontSize: 12, marginTop: 2 }}>Ana səhifədə görmək istədiklərinizi seçin</Text>
+            </View>
+            <Pressable onPress={onReset} hitSlop={8} style={{ marginRight: 8, paddingVertical: 4, paddingHorizontal: 8 }}>
+              <Text style={{ color: C.brand, fontSize: 13, fontWeight: "700" }}>Bərpa</Text>
+            </Pressable>
+            <Pressable onPress={onClose} hitSlop={8}><X size={22} color={C.sub} /></Pressable>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 8 }}>
+            {QA_CATALOG.map((q) => {
+              const on = keys.includes(q.key);
+              const Icon = q.Icon;
+              return (
+                <Pressable key={q.key} onPress={() => onToggle(q.key)} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: on ? C.brand : C.line, padding: 12 })}>
+                  <LinearGradient colors={q.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 40, height: 40, borderRadius: 11, alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={20} color="#fff" strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.ink, fontSize: 14.5, fontWeight: "700" }}>{q.title}</Text>
+                    <Text style={{ color: C.sub, fontSize: 12 }} numberOfLines={1}>{q.desc}</Text>
+                  </View>
+                  <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: on ? C.brand : "transparent", borderWidth: on ? 0 : 1.5, borderColor: C.line, alignItems: "center", justifyContent: "center" }}>
+                    {on ? <Check size={16} color="#fff" strokeWidth={3} /> : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
