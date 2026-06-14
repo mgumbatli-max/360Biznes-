@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
 import { getSales, getSaleStats } from "@/features/ticaret/satis-queries";
+import { createSaleCore } from "@/features/pos/sale-action";
 
 /** GET — satış siyahısı (axtarış + səhifələmə) + 1-ci səhifədə statistika. */
 export async function GET(req: NextRequest) {
@@ -19,5 +20,21 @@ export async function GET(req: NextRequest) {
       page === 1 ? getSaleStats().catch(() => null) : Promise.resolve(null),
     ]);
     return { items: sales.items, total: sales.total, stats };
+  });
+}
+
+/**
+ * POST — POS satışı (isti satış). Web `createSale` ilə eyni `createSaleCore`
+ * çəyirdəyini çağırır: idempotent (client_op_id), race-safe stok azalması,
+ * kassa/finance/müştəri borc, POS çek nömrəsi. İcazə burada yoxlanılır.
+ */
+export async function POST(req: NextRequest) {
+  return withMobile(req, async (ctx) => {
+    if (!mobilePerm(ctx, "pos.satis", "satis.yarat", "satis.idare")) {
+      return { ok: false, error: "Satış üçün icazə yoxdur" };
+    }
+    const body = await req.json().catch(() => ({}));
+    // createSaleCore öz Zod validasiyasını edir; nəticəni olduğu kimi qaytarırıq.
+    return createSaleCore(body);
   });
 }

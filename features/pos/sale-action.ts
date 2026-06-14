@@ -87,8 +87,43 @@ export async function createSale(input: CreateSaleInput): Promise<CreateSaleResu
   const permCheck = await requireTicaretActionPerm(["pos.satis"]);
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
+  return runCreateSale(data);
+}
+
+/**
+ * POS satışının auth-suz çəyirdəyi. Web `createSale` (NextAuth permCheck) və
+ * mobil route (Bearer token + mobilePerm) hər ikisi bunu çağırır. Çağıran
+ * İCAZƏ yoxlamasını ÖZÜ etməlidir (bu funksiya icazə yoxlamır). Tenant
+ * konteksti aktiv olmalıdır — withTenant aktiv kontekti reuse edir.
+ */
+export async function createSaleCore(input: CreateSaleInput): Promise<CreateSaleResult> {
+  const parsed = CreateSaleSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
+  return runCreateSale(parsed.data);
+}
+
+async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<CreateSaleResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+
+    // Cross-tenant qoruması: kliyentdən gələn FK-lər (müştəri, satış meneceri)
+    // CARI tenantə aid olmalıdır. FK constraint qlobaldır (yalnız UUID-in
+    // mövcudluğunu yoxlayır) — başqa tenantın müştərisi/işçisi göndərilsə
+    // sahibkar_id=cari, lakin musteri_id=özgə tenant satışı yaranardı.
+    if (data.musteri_id) {
+      const m = await prisma.kontragentler.findFirst({
+        where: { id: data.musteri_id, sahibkar_id: sahibkarId },
+        select: { id: true },
+      });
+      if (!m) return { ok: false as const, error: "Müştəri bu hesaba aid deyil" };
+    }
+    if (data.satis_meneceri_id) {
+      const sm = await prisma.istifadeciler.findFirst({
+        where: { id: data.satis_meneceri_id, sahibkar_id: sahibkarId, aktiv: true },
+        select: { id: true },
+      });
+      if (!sm) return { ok: false as const, error: "Satış meneceri bu hesaba aid deyil" };
+    }
 
     try {
       // Pre-flight: compute totals first to check credit and discount limits.

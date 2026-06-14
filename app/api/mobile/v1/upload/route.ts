@@ -1,12 +1,17 @@
 import { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
-import { withMobile } from "@/lib/mobile/session";
+import { withMobile, mobilePerm } from "@/lib/mobile/session";
 import { saveUploadFile } from "@/lib/storage/upload";
 
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export async function POST(req: NextRequest) {
-  return withMobile(req, async () => {
+  return withMobile(req, async (ctx) => {
+    // Authz: yalnız məzmun yaza bilən istifadəçilər şəkil yükləyə bilər
+    // (DoS/storage sui-istifadəsinin qarşısı). Owner/admin avtomatik keçir.
+    if (!mobilePerm(ctx, "mehsul.yarat", "mehsul.duzelt", "mehsul.idare")) {
+      return { error: "Yükləmə üçün icazə yoxdur" };
+    }
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof Blob)) return { error: "Fayl yoxdur" };

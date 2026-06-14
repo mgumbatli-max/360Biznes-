@@ -14,7 +14,7 @@ function CenterFAB() {
   const router = useRouter();
   return (
     <Pressable
-      onPress={() => router.push("/mehsul/form")}
+      onPress={() => router.push("/pos")}
       style={({ pressed }) => ({
         opacity: pressed ? 0.85 : 1,
         flex: 1,
@@ -22,7 +22,7 @@ function CenterFAB() {
         justifyContent: "center",
       })}
       accessibilityRole="button"
-      accessibilityLabel="Yeni məhsul"
+      accessibilityLabel="Yeni satış (POS)"
     >
       <View
         style={{

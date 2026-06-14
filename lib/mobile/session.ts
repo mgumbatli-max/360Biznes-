@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { verifyAccessToken } from "./jwt";
 import { runWithTenant, type TenantContext } from "@/lib/db/tenant-context";
 import { loadPermissionsForRole, loadAllPermissionCodes } from "@/lib/auth/permissions";
+import { prismaUnscoped } from "@/lib/db/prisma";
 
 export async function getMobileTenant(req: NextRequest): Promise<TenantContext | null> {
   const h = req.headers.get("authorization") ?? "";
@@ -11,11 +12,31 @@ export async function getMobileTenant(req: NextRequest): Promise<TenantContext |
   if (!token) return null;
   const p = verifyAccessToken(token);
   if (!p) return null;
-  const rolAd = (p.rol_ad ?? "").toLowerCase();
-  const icazeler = rolAd === "sahibkar" || rolAd === "admin"
+
+  // Hər sorğuda DB re-validasiyası (təhlükəsizlik — access token 15 dəq yaşayır):
+  //  • dərhal ləğv — deaktiv edilmiş işçi / dayandırılmış tenant token-i artıq
+  //    işləməsin (web login credentials-core ilə paritet);
+  //  • JWT rol iddialarına ETİBAR ETMƏ — rol_id/rol_ad DB-dən yüklənir, beləcə
+  //    forge olunmuş `rol_ad: "admin"` (secret kompromis ssenarisi) işləməz.
+  const user = await prismaUnscoped.istifadeciler.findFirst({
+    where: { id: p.istifadeci_id, sahibkar_id: p.sahibkar_id },
+    select: {
+      aktiv: true,
+      rol_id: true,
+      roles: { select: { ad: true } },
+      sahibkarlar: { select: { status: true } },
+    },
+  });
+  if (!user || user.aktiv !== true) return null;
+  if (user.sahibkarlar?.status !== "aktiv") return null;
+
+  const rolId = user.rol_id ?? p.rol_id;
+  const rolAd = user.roles?.ad ?? p.rol_ad ?? "";
+  const rLower = rolAd.toLowerCase();
+  const icazeler = rLower === "sahibkar" || rLower === "admin"
     ? await loadAllPermissionCodes()
-    : await loadPermissionsForRole(p.rol_id);
-  return { sahibkarId: p.sahibkar_id, istifadeciId: p.istifadeci_id, rolId: p.rol_id, rolAd: p.rol_ad, icazeler };
+    : await loadPermissionsForRole(rolId);
+  return { sahibkarId: p.sahibkar_id, istifadeciId: p.istifadeci_id, rolId, rolAd, icazeler };
 }
 
 /** Route içində: token yoxla → tenant kontekstində fn-i işlət. 401/500 idarəsi daxili. */
