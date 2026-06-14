@@ -9,3 +9,4 @@ export { OfflineBanner } from "./OfflineBanner";
 export { Accordion } from "./Accordion";
 export { ImagePickerRow } from "./ImagePickerRow";
 export { BarcodeScanner } from "./BarcodeScanner";
+export { ModuleGrid, type Modul } from "./ModuleGrid";

@@ -2,273 +2,141 @@ import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Package, Plus, ScanLine, TrendingUp, Wallet, AlertTriangle, Boxes, Sparkles, ChevronRight } from "lucide-react-native";
-import { Screen } from "../../src/components";
+import {
+  Package, Plus, ScanLine, TrendingUp, Wallet, AlertTriangle, Boxes,
+  Sparkles, Bell, Search, Settings, ShoppingCart, Users, ListTodo, MessageSquare,
+} from "lucide-react-native";
+import { Screen, ModuleGrid, type Modul } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
-import { useAppModeStore } from "../../src/lib/app-mode-store";
-import { useAppConfig } from "../../src/features/app-config/hooks";
 import { useOzet } from "../../src/features/ozet/hooks";
-import { moduleVisible } from "../../src/lib/gating";
 import { formatMoney } from "../../src/lib/format";
 import { C } from "../../src/theme";
 
-function KpiTile({
-  icon, label, value, sub, tone, onPress,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  sub?: string;
-  tone?: "neg";
-  onPress?: () => void;
-}) {
+function getInitials(name?: string | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(" ").filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 6) return "Gecəniz xeyrə";
+  if (h < 12) return "Sabahınız xeyir";
+  if (h < 18) return "Günortanız xeyir";
+  return "Axşamınız xeyir";
+}
+
+// ─── Yuxarı toolbar düyməsi ──────────────────────────────────────────────────
+function IconBtn({ children, onPress, filled = false }: { children: React.ReactNode; onPress: () => void; filled?: boolean }) {
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
-        opacity: pressed ? 0.85 : 1,
-        flex: 1,
-        backgroundColor: "#fff",
-        borderRadius: 14,
-        borderWidth: 1,
-        borderColor: C.line,
-        padding: 12,
+        opacity: pressed ? 0.6 : 1,
+        width: 38, height: 38, borderRadius: 19,
+        backgroundColor: filled ? C.brand : "#fff",
+        borderWidth: 1, borderColor: filled ? C.brand : C.line,
+        alignItems: "center", justifyContent: "center",
       })}
     >
+      {children}
+    </Pressable>
+  );
+}
+
+// ─── KPI tile ────────────────────────────────────────────────────────────────
+function KpiTile({ icon, label, value, sub, tone, onPress }: {
+  icon: React.ReactNode; label: string; value: string; sub?: string; tone?: "neg"; onPress?: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, flex: 1, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: C.line, padding: 12 })}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         {icon}
         <Text style={{ color: C.sub, fontSize: 11 }} numberOfLines={1}>{label}</Text>
       </View>
-      <Text style={{ color: tone === "neg" ? C.neg : C.ink, fontSize: 18, fontWeight: "800", marginTop: 6 }} numberOfLines={1}>
-        {value}
-      </Text>
+      <Text style={{ color: tone === "neg" ? C.neg : C.ink, fontSize: 18, fontWeight: "800", marginTop: 6 }} numberOfLines={1}>{value}</Text>
       {sub ? <Text style={{ color: C.sub, fontSize: 10, marginTop: 1 }} numberOfLines={1}>{sub}</Text> : null}
     </Pressable>
   );
 }
 
-type Tile = {
-  label: string;
-  icon: React.ReactNode;
-  onPress: () => void;
-};
-
 export default function HomeScreen() {
   const router = useRouter();
   const user = useAuth((s) => s.user);
-  const mode = useAppModeStore((s) => s.mode);
-  const { data: appCfg } = useAppConfig();
   const { data: ozet } = useOzet();
-  // Anbar/Məhsul modulu Lite-da gizlədilibsə sürətli-əməl tile-ları göstərilmir.
-  const anbarOn = moduleVisible(appCfg?.lite, mode, "anbar");
+  const initials = getInitials(user?.ad_soyad);
 
-  const tiles: Tile[] = [
-    {
-      label: "Məhsullar",
-      icon: <Package size={28} color={C.brand} strokeWidth={1.8} />,
-      onPress: () => router.push("/(tabs)/mehsullar"),
-    },
-    {
-      label: "Yeni məhsul",
-      icon: <Plus size={28} color={C.brand} strokeWidth={1.8} />,
-      onPress: () => router.push("/mehsul/form"),
-    },
-    {
-      label: "Skan",
-      icon: <ScanLine size={28} color={C.brand} strokeWidth={1.8} />,
-      onPress: () => router.push("/mehsul/form?scan=1"),
-    },
+  const modullar: Modul[] = [
+    { label: "AI köməkçi", icon: <Sparkles size={22} color="#0d9488" />, bg: "#ccfbf1", onPress: () => router.push("/ai") },
+    { label: "Yeni satış", icon: <ScanLine size={22} color="#16a34a" />, bg: "#dcfce7", onPress: () => router.push("/pos") },
+    { label: "Satışlar", icon: <ShoppingCart size={22} color="#2563eb" />, bg: "#dbeafe", onPress: () => router.push("/(tabs)/satis") },
+    { label: "Müştərilər", icon: <Users size={22} color="#7c3aed" />, bg: "#ede9fe", onPress: () => router.push("/musteri") },
+    { label: "Məhsullar", icon: <Package size={22} color="#0891b2" />, bg: "#cffafe", onPress: () => router.push("/mehsullar") },
+    { label: "Maliyyə", icon: <Wallet size={22} color="#d97706" />, bg: "#fef3c7", onPress: () => router.push("/maliyye") },
+    { label: "Tapşırıqlar", icon: <ListTodo size={22} color="#db2777" />, bg: "#fce7f3", onPress: () => router.push("/tapshiriq") },
+    { label: "Söhbətlər", icon: <MessageSquare size={22} color="#4f46e5" />, bg: "#e0e7ff", onPress: () => router.push("/team") },
   ];
 
   return (
     <Screen>
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingBottom: 24 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Greeting card with gradient */}
+      {/* Yuxarı toolbar */}
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6, gap: 7 }}>
+        <Pressable
+          onPress={() => router.push("/(tabs)/menyu")}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.brand, alignItems: "center", justifyContent: "center", marginRight: "auto" }}
+          accessibilityLabel="Profil / Menyu"
+        >
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>{initials}</Text>
+        </Pressable>
+        <IconBtn onPress={() => router.push("/mehsullar")}><Search size={18} color={C.ink} /></IconBtn>
+        <IconBtn onPress={() => router.push("/ai")} filled><Sparkles size={18} color="#fff" /></IconBtn>
+        <IconBtn onPress={() => router.push("/bildiris")}><Bell size={18} color={C.ink} /></IconBtn>
+        <IconBtn onPress={() => router.push("/(tabs)/menyu")}><Settings size={18} color={C.ink} /></IconBtn>
+        <IconBtn onPress={() => router.push("/pos")} filled><Plus size={18} color="#fff" /></IconBtn>
+      </View>
+
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+        {/* Salamlama kartı */}
         <LinearGradient
           colors={[C.brand, C.brandDark]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={{
-            marginHorizontal: 16,
-            marginTop: 16,
-            borderRadius: 20,
-            padding: 20,
-          }}
+          style={{ marginHorizontal: 16, marginTop: 6, borderRadius: 20, padding: 20 }}
         >
-          <Text
-            style={{ color: "#fff", fontSize: 22, fontWeight: "700" }}
-            numberOfLines={1}
-          >
-            Salam, {user?.ad_soyad ?? "İstifadəçi"} 👋
+          <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 14 }}>{greeting()},</Text>
+          <Text style={{ color: "#fff", fontSize: 22, fontWeight: "800", marginTop: 2 }} numberOfLines={1}>
+            {user?.ad_soyad ?? "İstifadəçi"} 👋
           </Text>
           {user?.sahibkar_ad != null && (
-            <Text
-              style={{ color: "rgba(255,255,255,0.8)", marginTop: 4, fontSize: 14 }}
-              numberOfLines={1}
-            >
-              {user.sahibkar_ad}
-            </Text>
+            <Text style={{ color: "rgba(255,255,255,0.8)", marginTop: 4, fontSize: 13 }} numberOfLines={1}>{user.sahibkar_ad}</Text>
           )}
         </LinearGradient>
 
-        {/* AI köməkçi — həmişə görünən vurğulu giriş */}
-        <Pressable
-          onPress={() => router.push("/ai")}
-          style={({ pressed }) => ({
-            opacity: pressed ? 0.9 : 1,
-            marginHorizontal: 16,
-            marginTop: 12,
-            backgroundColor: C.brand50,
-            borderWidth: 1,
-            borderColor: C.brandLight,
-            borderRadius: 16,
-            padding: 14,
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-          })}
-          accessibilityRole="button"
-          accessibilityLabel="AI köməkçi"
-        >
-          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }}>
-            <Sparkles size={22} color="#fff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: C.brandDark, fontSize: 15, fontWeight: "700" }}>AI köməkçi</Text>
-            <Text style={{ color: C.sub, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
-              Satış, borc, stok soruşun — və ya əməliyyat etdirin
-            </Text>
-          </View>
-          <ChevronRight size={20} color={C.brand} />
-        </Pressable>
-
-        {/* KPI icmal — bu gün/ay satış, açıq borc, kritik stok */}
+        {/* KPI icmal */}
         {(ozet?.sales || ozet?.products) && (
-          <View style={{ marginHorizontal: 12, marginTop: 12, gap: 10 }}>
+          <View style={{ marginHorizontal: 16, marginTop: 12, gap: 10 }}>
             {ozet?.sales && (
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <KpiTile
-                  icon={<TrendingUp size={15} color={C.brand} />}
-                  label="Bugün satış"
-                  value={formatMoney(ozet.sales.bugun.mebleg)}
-                  sub={`${ozet.sales.bugun.count} satış`}
-                  onPress={() => router.push("/(tabs)/satis")}
-                />
-                <KpiTile
-                  icon={<Wallet size={15} color={C.brand} />}
-                  label="Bu ay"
-                  value={formatMoney(ozet.sales.bu_ay.mebleg)}
-                  sub={`${ozet.sales.bu_ay.count} satış`}
-                  onPress={() => router.push("/(tabs)/satis")}
-                />
+                <KpiTile icon={<TrendingUp size={15} color={C.brand} />} label="Bugün satış" value={formatMoney(ozet.sales.bugun.mebleg)} sub={`${ozet.sales.bugun.count} satış`} onPress={() => router.push("/(tabs)/satis")} />
+                <KpiTile icon={<Wallet size={15} color={C.brand} />} label="Bu ay" value={formatMoney(ozet.sales.bu_ay.mebleg)} sub={`${ozet.sales.bu_ay.count} satış`} onPress={() => router.push("/(tabs)/satis")} />
               </View>
             )}
             <View style={{ flexDirection: "row", gap: 10 }}>
               {ozet?.sales && (
-                <KpiTile
-                  icon={<AlertTriangle size={15} color={ozet.sales.borc_mebleg > 0 ? C.neg : C.sub} />}
-                  label="Açıq borc"
-                  value={formatMoney(ozet.sales.borc_mebleg)}
-                  tone={ozet.sales.borc_mebleg > 0 ? "neg" : undefined}
-                  onPress={() => router.push("/musteri")}
-                />
+                <KpiTile icon={<AlertTriangle size={15} color={ozet.sales.borc_mebleg > 0 ? C.neg : C.sub} />} label="Açıq borc" value={formatMoney(ozet.sales.borc_mebleg)} tone={ozet.sales.borc_mebleg > 0 ? "neg" : undefined} onPress={() => router.push("/musteri")} />
               )}
               {ozet?.products && (
-                <KpiTile
-                  icon={<Boxes size={15} color={ozet.products.kritik > 0 ? C.neg : C.brand} />}
-                  label="Kritik stok"
-                  value={String(ozet.products.kritik ?? 0)}
-                  sub={`${ozet.products.toplam_aktiv ?? 0} aktiv məhsul`}
-                  tone={ozet.products.kritik > 0 ? "neg" : undefined}
-                  onPress={() => router.push("/(tabs)/mehsullar")}
-                />
+                <KpiTile icon={<Boxes size={15} color={ozet.products.kritik > 0 ? C.neg : C.brand} />} label="Kritik stok" value={String(ozet.products.kritik ?? 0)} sub={`${ozet.products.toplam_aktiv ?? 0} aktiv məhsul`} tone={ozet.products.kritik > 0 ? "neg" : undefined} onPress={() => router.push("/mehsullar")} />
               )}
             </View>
           </View>
         )}
 
-        {/* Quick action tiles — Lite-da anbar gizlidirsə göstərilmir */}
-        {!anbarOn ? (
-          <Text
-            style={{
-              marginHorizontal: 16,
-              marginTop: 24,
-              color: C.sub,
-              fontSize: 14,
-            }}
-          >
-            Lite rejimində modullar gizlədilib. Menyu → Pro ilə hamısını aça
-            bilərsiniz.
-          </Text>
-        ) : (
-          <>
-            <Text
-              style={{
-                marginHorizontal: 16,
-                marginTop: 24,
-                marginBottom: 12,
-                fontSize: 15,
-                fontWeight: "700",
-                color: C.ink,
-              }}
-            >
-              Sürətli əməliyyat
-            </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                flexWrap: "wrap",
-                marginHorizontal: 12,
-                gap: 10,
-              }}
-            >
-              {tiles.map((tile) => (
-            <Pressable
-              key={tile.label}
-              onPress={tile.onPress}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.8 : 1,
-                backgroundColor: "#fff",
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: C.line,
-                padding: 16,
-                alignItems: "center",
-                width: "45%",
-                gap: 10,
-              })}
-            >
-              <View
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 14,
-                  backgroundColor: C.brand + "1a",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {tile.icon}
-              </View>
-              <Text
-                style={{
-                  color: C.ink,
-                  fontWeight: "600",
-                  fontSize: 13,
-                  textAlign: "center",
-                }}
-              >
-                {tile.label}
-              </Text>
-            </Pressable>
-              ))}
-            </View>
-          </>
-        )}
+        {/* Bölmələr (modullar) */}
+        <Text style={{ marginHorizontal: 16, marginTop: 22, marginBottom: 12, fontSize: 16, fontWeight: "800", color: C.ink }}>Bölmələr</Text>
+        <ModuleGrid modules={modullar} />
       </ScrollView>
     </Screen>
   );

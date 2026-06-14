@@ -1,13 +1,7 @@
 import React from "react";
 import { Pressable, View } from "react-native";
 import { Tabs, useRouter } from "expo-router";
-import {
-  Home,
-  ShoppingCart,
-  Plus,
-  Bell,
-  Menu,
-} from "lucide-react-native";
+import { Home, ShoppingCart, Plus, Package, Menu } from "lucide-react-native";
 import { C } from "../../src/theme";
 
 function CenterFAB() {
@@ -66,18 +60,14 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Ana",
-          tabBarIcon: ({ color, size }) => (
-            <Home color={color} size={size} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ color, size }) => <Home color={color} size={size} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
         name="satis"
         options={{
           title: "Satış",
-          tabBarIcon: ({ color, size }) => (
-            <ShoppingCart color={color} size={size} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ color, size }) => <ShoppingCart color={color} size={size} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
@@ -89,27 +79,18 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="bildiris"
+        name="mehsullar"
         options={{
-          title: "Bildiriş",
-          tabBarIcon: ({ color, size }) => (
-            <Bell color={color} size={size} strokeWidth={2} />
-          ),
+          title: "Anbar",
+          tabBarIcon: ({ color, size }) => <Package color={color} size={size} strokeWidth={2} />,
         }}
       />
       <Tabs.Screen
         name="menyu"
         options={{
           title: "Menyu",
-          tabBarIcon: ({ color, size }) => (
-            <Menu color={color} size={size} strokeWidth={2} />
-          ),
+          tabBarIcon: ({ color, size }) => <Menu color={color} size={size} strokeWidth={2} />,
         }}
-      />
-      {/* mehsullar — tab bar-da görünməsin, yalnız naviqasiya üçün */}
-      <Tabs.Screen
-        name="mehsullar"
-        options={{ href: null }}
       />
     </Tabs>
   );

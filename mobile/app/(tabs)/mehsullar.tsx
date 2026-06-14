@@ -10,8 +10,8 @@ import {
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { ImageOff, Package, Plus, Search } from "lucide-react-native";
-import { useProducts } from "../../../src/features/mehsul/hooks";
-import type { Product } from "../../../src/features/mehsul/types";
+import { useProducts } from "../../src/features/mehsul/hooks";
+import type { Product } from "../../src/features/mehsul/types";
 import {
   Card,
   EmptyState,
@@ -20,9 +20,9 @@ import {
   ListSkeleton,
   OfflineBanner,
   Screen,
-} from "../../../src/components";
-import { formatMoney, formatNumber } from "../../../src/lib/format";
-import { C } from "../../../src/theme";
+} from "../../src/components";
+import { formatMoney, formatNumber } from "../../src/lib/format";
+import { C } from "../../src/theme";
 
 // ─── Məhsul sırası komponenti ─────────────────────────────────────────────────
 function ProductRow({ item }: { item: Product }) {
