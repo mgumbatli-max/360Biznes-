@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ChevronRight, LogOut, Settings, User } from "lucide-react-native";
+import { ChevronRight, LogOut, Settings, User, Users, Package } from "lucide-react-native";
 import { Screen, Card } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
 import { useAppModeStore } from "../../src/lib/app-mode-store";
@@ -204,6 +204,29 @@ export default function MenyuScreen() {
               Lite — yalnız vacib funksiyalar (web ayarlarına görə). Pro — hər şey aktiv.
             </Text>
           </Card>
+        </View>
+
+        {/* Modullar */}
+        <View
+          style={{
+            marginHorizontal: 16,
+            marginBottom: 16,
+            borderRadius: 16,
+            overflow: "hidden",
+            borderWidth: 1,
+            borderColor: C.line,
+          }}
+        >
+          <MenuRow
+            icon={<Users size={20} color={C.brand} strokeWidth={2} />}
+            label="Müştərilər"
+            onPress={() => router.push("/musteri")}
+          />
+          <MenuRow
+            icon={<Package size={20} color={C.brand} strokeWidth={2} />}
+            label="Məhsullar"
+            onPress={() => router.push("/mehsullar")}
+          />
         </View>
 
         {/* Menu rows */}
