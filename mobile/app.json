@@ -27,7 +27,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "az.biznes360.app",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
