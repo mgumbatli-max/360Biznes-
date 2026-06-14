@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCheck, ListTodo, Mail } from "lucide-react";
-import { markAllBildirisRead } from "@/features/bildirisler/actions";
+import { markAllBildirisRead, markBildirisRead } from "@/features/bildirisler/actions";
 import {
   DropdownMenuContent,
   DropdownMenuLabel,
@@ -90,12 +90,26 @@ export default function NotificationBellBody({ items, unreadCount, onClose }: Pr
         ) : (
           <ul className="space-y-1 px-1 py-1">
             {items.map((n) => {
-              const href = n.is_personal && n.link ? n.link : `/xeberdarliqlar/${n.id}`;
+              // Şəxsi bildiriş: link varsa ona, yoxsa bildirişlər səhifəsinə
+              // (köhnə: /xeberdarliqlar/{bildiris-id} → alert tapılmır → 404).
+              const href = n.is_personal ? (n.link || "/xeberdarliqlar") : `/xeberdarliqlar/${n.id}`;
               return (
                 <li key={`${n.is_personal ? "b" : "a"}-${n.id}`}>
                   <Link
                     href={href}
-                    onClick={onClose}
+                    onClick={(e) => {
+                      // Klikdə şəxsi bildirişi oxunmuş et (sayı azalsın), sonra keç
+                      if (n.is_personal && !n.oxundu) {
+                        e.preventDefault();
+                        startTransition(async () => {
+                          await markBildirisRead(n.id);
+                          onClose();
+                          router.push(href);
+                        });
+                      } else {
+                        onClose();
+                      }
+                    }}
                     className={cn(
                       "flex items-start gap-2 rounded-md px-2 py-2 transition hover:bg-secondary",
                       n.is_personal && !n.oxundu && "bg-primary/[0.04]",
