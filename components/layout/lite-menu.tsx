@@ -18,6 +18,11 @@ import {
   BarChart3,
   ShieldAlert,
   Settings,
+  MessagesSquare,
+  Contact2,
+  Store,
+  FlaskConical,
+  Crown,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,13 +47,18 @@ const TILES: Tile[] = [
   { href: "/ticaret", label: "Ticarət", icon: ShoppingCart, tone: "bg-emerald-500/12 text-emerald-600" },
   { href: "/anbar", label: "Anbar", icon: Package, tone: "bg-amber-500/12 text-amber-600" },
   { href: "/maliyye", label: "Maliyyə", icon: Wallet, tone: "bg-violet-500/12 text-violet-600" },
-  { href: "/elaqe", label: "Müştərilər", icon: Users, tone: "bg-cyan-500/12 text-cyan-600" },
+  { href: "/elaqe", label: "Əlaqələr", icon: Users, tone: "bg-cyan-500/12 text-cyan-600" },
   { href: "/servis", label: "Servis", icon: Wrench, tone: "bg-orange-500/12 text-orange-600" },
   { href: "/iscilier", label: "Əməkdaşlar", icon: UserCog, tone: "bg-teal-500/12 text-teal-600" },
   { href: "/tapshiriqlar", label: "Tapşırıqlar", icon: ListTodo, tone: "bg-indigo-500/12 text-indigo-600" },
+  { href: "/team", label: "Team / Söhbət", icon: MessagesSquare, tone: "bg-indigo-500/12 text-indigo-600" },
+  { href: "/crm", label: "CRM / Mesaj", icon: Contact2, tone: "bg-sky-500/12 text-sky-600" },
   { href: "/kampaniyalar", label: "Kampaniyalar", icon: Megaphone, tone: "bg-pink-500/12 text-pink-600" },
+  { href: "/marketplace", label: "Marketplace", icon: Store, tone: "bg-slate-500/12 text-slate-600" },
+  { href: "/360-lab", label: "360 LAB", icon: FlaskConical, tone: "bg-fuchsia-500/12 text-fuchsia-600" },
   { href: "/hesabatlar", label: "Hesabatlar", icon: BarChart3, tone: "bg-sky-500/12 text-sky-600" },
-  { href: "/nezaret-merkezi", label: "Nəzarət", icon: ShieldAlert, tone: "bg-red-500/12 text-red-600" },
+  { href: "/nezaret-merkezi", label: "Nəzarət Mərkəzi", icon: ShieldAlert, tone: "bg-red-500/12 text-red-600" },
+  { href: "/sahibkar", label: "Sahibkar", icon: Crown, tone: "bg-amber-500/12 text-amber-600" },
   { href: "/ayarlar", label: "Ayarlar", icon: Settings, tone: "bg-slate-500/12 text-slate-600" },
 ];
 
