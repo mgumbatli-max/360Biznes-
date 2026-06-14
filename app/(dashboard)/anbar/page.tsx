@@ -40,6 +40,7 @@ import { getLowStockProducts } from "@/features/anbar/attention-queries";
 import { AttentionWidget } from "@/features/anbar/components/attention-widget";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { formatNumber, formatCompactMoney, formatCompactNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Anbar" };
@@ -315,13 +316,17 @@ export default async function AnbarDashboardPage() {
         <OverviewSection />
       </Suspense>
 
-      <Suspense fallback={null}>
-        <AttentionSection />
-      </Suspense>
+      <CollapsibleSection title="Diqqət tələb edənlər" subtitle="Kritik stok, problemlər">
+        <Suspense fallback={null}>
+          <AttentionSection />
+        </Suspense>
+      </CollapsibleSection>
 
-      <Suspense fallback={<BreakdownFallback />}>
-        <BreakdownSection />
-      </Suspense>
+      <CollapsibleSection title="Bölgü və analiz" subtitle="Anbar/marka üzrə dəyər">
+        <Suspense fallback={<BreakdownFallback />}>
+          <BreakdownSection />
+        </Suspense>
+      </CollapsibleSection>
     </div>
   );
 }
