@@ -9,6 +9,7 @@ type S = {
   ready: boolean;
   load: () => Promise<void>;
   toggle: (k: string) => Promise<void>;
+  move: (k: string, dir: "up" | "down") => Promise<void>;
   reset: () => Promise<void>;
 };
 
@@ -37,6 +38,20 @@ export const useQuickActions = create<S>((set, get) => ({
     set({ keys: next });
     try {
       await SecureStore.setItemAsync(KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  },
+  move: async (k, dir) => {
+    const cur = [...get().keys];
+    const i = cur.indexOf(k);
+    if (i < 0) return;
+    const j = dir === "up" ? i - 1 : i + 1;
+    if (j < 0 || j >= cur.length) return;
+    [cur[i], cur[j]] = [cur[j], cur[i]];
+    set({ keys: cur });
+    try {
+      await SecureStore.setItemAsync(KEY, JSON.stringify(cur));
     } catch {
       /* ignore */
     }

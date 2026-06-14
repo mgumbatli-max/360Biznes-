@@ -3,8 +3,8 @@ import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  TrendingUp, Wallet, AlertTriangle, Boxes, Sparkles, Bell, Search, Settings,
-  ShieldAlert, FileBarChart, Plus, Check, X, SlidersHorizontal,
+  TrendingUp, Wallet, AlertTriangle, Boxes, Sparkles, Bell, Search,
+  ShieldAlert, FileBarChart, Plus, X, SlidersHorizontal, ChevronUp, ChevronDown, Trash2,
 } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
@@ -93,7 +93,7 @@ export default function HomeScreen() {
   const mode = useAppModeStore((s) => s.mode);
   const setMode = useAppModeStore((s) => s.setMode);
   const { data: ozet } = useOzet();
-  const { keys, load, toggle, reset } = useQuickActions();
+  const { keys, load, toggle, move, reset } = useQuickActions();
   const [customize, setCustomize] = useState(false);
 
   useEffect(() => { load(); }, [load]);
@@ -104,9 +104,10 @@ export default function HomeScreen() {
   const g = greeting();
   const firstName = (user?.ad_soyad ?? "İstifadəçi").split(" ")[0];
 
-  const selected = QA_CATALOG.filter((q) => keys.includes(q.key));
-  const hero = keys.includes("pos") ? QA_MAP["pos"] : null;
-  const gridItems = selected.filter((q) => q.key !== "pos");
+  // İstifadəçinin sırası ilə (birinci = hero, qalanı 2-sütun grid)
+  const selected = keys.map((k) => QA_MAP[k]).filter(Boolean) as QAItem[];
+  const hero = selected[0] ?? null;
+  const gridItems = selected.slice(1);
   const gridRows: QAItem[][] = [];
   for (let i = 0; i < gridItems.length; i += 2) gridRows.push(gridItems.slice(i, i + 2));
 
@@ -214,12 +215,14 @@ export default function HomeScreen() {
       </ScrollView>
 
       {/* Özelleşdirmə modalı */}
-      <CustomizeModal visible={customize} keys={keys} onToggle={toggle} onReset={reset} onClose={() => setCustomize(false)} />
+      <CustomizeModal visible={customize} keys={keys} onToggle={toggle} onMove={move} onReset={reset} onClose={() => setCustomize(false)} />
     </Screen>
   );
 }
 
-function CustomizeModal({ visible, keys, onToggle, onReset, onClose }: { visible: boolean; keys: string[]; onToggle: (k: string) => void; onReset: () => void; onClose: () => void }) {
+function CustomizeModal({ visible, keys, onToggle, onMove, onReset, onClose }: { visible: boolean; keys: string[]; onToggle: (k: string) => void; onMove: (k: string, dir: "up" | "down") => void; onReset: () => void; onClose: () => void }) {
+  const selectedItems = keys.map((k) => QA_MAP[k]).filter(Boolean) as QAItem[];
+  const available = QA_CATALOG.filter((q) => !keys.includes(q.key));
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}>
@@ -238,21 +241,39 @@ function CustomizeModal({ visible, keys, onToggle, onReset, onClose }: { visible
             <Pressable onPress={onClose} hitSlop={8}><X size={22} color={C.sub} /></Pressable>
           </View>
           <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 8 }}>
-            {QA_CATALOG.map((q) => {
-              const on = keys.includes(q.key);
+            <Text style={{ color: C.sub, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Seçilmiş — sıranı dəyiş</Text>
+            {selectedItems.map((q, idx) => {
               const Icon = q.Icon;
               return (
-                <Pressable key={q.key} onPress={() => onToggle(q.key)} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: on ? C.brand : C.line, padding: 12 })}>
-                  <LinearGradient colors={q.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 40, height: 40, borderRadius: 11, alignItems: "center", justifyContent: "center" }}>
-                    <Icon size={20} color="#fff" strokeWidth={2.2} />
+                <View key={q.key} style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, padding: 10 }}>
+                  <LinearGradient colors={q.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={19} color="#fff" strokeWidth={2.2} />
                   </LinearGradient>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: C.ink, fontSize: 14.5, fontWeight: "700" }}>{q.title}</Text>
+                    <Text style={{ color: C.ink, fontSize: 14, fontWeight: "700" }}>{q.title}</Text>
+                    {idx === 0 ? <Text style={{ color: C.brand, fontSize: 10.5, fontWeight: "600" }}>Böyük kart (ən üstdə)</Text> : null}
+                  </View>
+                  <Pressable onPress={() => onMove(q.key, "up")} disabled={idx === 0} hitSlop={6} style={{ padding: 5, opacity: idx === 0 ? 0.3 : 1 }}><ChevronUp size={18} color={C.ink} /></Pressable>
+                  <Pressable onPress={() => onMove(q.key, "down")} disabled={idx === selectedItems.length - 1} hitSlop={6} style={{ padding: 5, opacity: idx === selectedItems.length - 1 ? 0.3 : 1 }}><ChevronDown size={18} color={C.ink} /></Pressable>
+                  <Pressable onPress={() => onToggle(q.key)} hitSlop={6} style={{ padding: 5 }}><Trash2 size={17} color={C.neg} /></Pressable>
+                </View>
+              );
+            })}
+            {available.length > 0 ? (
+              <Text style={{ color: C.sub, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 12, marginBottom: 2 }}>Əlavə et</Text>
+            ) : null}
+            {available.map((q) => {
+              const Icon = q.Icon;
+              return (
+                <Pressable key={q.key} onPress={() => onToggle(q.key)} style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.line, padding: 10 })}>
+                  <LinearGradient colors={q.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 38, height: 38, borderRadius: 11, alignItems: "center", justifyContent: "center" }}>
+                    <Icon size={19} color="#fff" strokeWidth={2.2} />
+                  </LinearGradient>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.ink, fontSize: 14, fontWeight: "700" }}>{q.title}</Text>
                     <Text style={{ color: C.sub, fontSize: 12 }} numberOfLines={1}>{q.desc}</Text>
                   </View>
-                  <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: on ? C.brand : "transparent", borderWidth: on ? 0 : 1.5, borderColor: C.line, alignItems: "center", justifyContent: "center" }}>
-                    {on ? <Check size={16} color="#fff" strokeWidth={3} /> : null}
-                  </View>
+                  <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }}><Plus size={17} color="#fff" strokeWidth={2.6} /></View>
                 </Pressable>
               );
             })}
