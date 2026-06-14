@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { FlatList, Pressable, Text, View, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { Users } from "lucide-react-native";
+import { Users, UsersRound, ChevronRight } from "lucide-react-native";
 import { useTeamUsers, useCreateDM, type TeamUser } from "../../src/features/team/hooks";
 import { EmptyState, ErrorState, ListSkeleton, Screen } from "../../src/components";
 import { C } from "../../src/theme";
@@ -39,6 +39,21 @@ export default function NewChatScreen() {
         <FlatList<TeamUser>
           data={users}
           keyExtractor={(u) => u.id}
+          ListHeaderComponent={
+            <View>
+              <Pressable
+                onPress={() => router.push("/team/qrup")}
+                style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.line })}
+              >
+                <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }}>
+                  <UsersRound size={22} color="#fff" />
+                </View>
+                <Text style={{ flex: 1, color: C.ink, fontWeight: "700", fontSize: 15 }}>Yeni qrup yarat</Text>
+                <ChevronRight size={20} color={C.sub} />
+              </Pressable>
+              <Text style={{ color: C.sub, fontSize: 12, fontWeight: "600", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 }}>BİRBAŞA SÖHBƏT</Text>
+            </View>
+          }
           renderItem={({ item }) => (
             <Pressable
               onPress={() => start(item)}

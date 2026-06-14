@@ -44,3 +44,10 @@ export function useCreateDM() {
       (await api.post<{ ok?: boolean; id?: number; error?: string }>("/team", { userId })).data,
   });
 }
+
+export function useCreateGroup() {
+  return useMutation({
+    mutationFn: async (b: { ad: string; uzv_ids: string[] }) =>
+      (await api.post<{ ok?: boolean; id?: number; error?: string }>("/team", b)).data,
+  });
+}

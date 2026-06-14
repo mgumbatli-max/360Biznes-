@@ -25,8 +25,16 @@ export type Message = {
   silindi: boolean;
 };
 
+export type TeamMember = {
+  id: string;
+  ad: string;
+  rol: string;
+  aktiv: boolean;
+};
+
 export type MessagesResponse = {
   meId: string;
-  channel: { id: number; ad: string; novu: string };
+  channel: { id: number; ad: string; novu: string; uzv_say: number };
+  members: TeamMember[];
   messages: Message[];
 };

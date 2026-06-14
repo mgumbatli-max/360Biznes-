@@ -32,9 +32,16 @@ export async function GET(
       };
     });
 
+    const members = detail?.uzvler
+      ? detail.uzvler.map((u) => ({ id: u.istifadeci_id ?? "", ad: u.istifadeci?.ad_soyad ?? "", rol: u.rolu ?? "uzv", aktiv: u.istifadeci?.aktiv ?? true }))
+      : [];
+
     return {
       meId: ctx.istifadeciId,
-      channel: detail ? { id: detail.id, ad: detail.ad, novu: detail.novu } : { id: kanalId, ad: "Söhbət", novu: "channel" },
+      channel: detail
+        ? { id: detail.id, ad: detail.ad, novu: detail.novu, uzv_say: detail.uzvler?.length ?? 0 }
+        : { id: kanalId, ad: "Söhbət", novu: "channel", uzv_say: 0 },
+      members,
       messages,
     };
   });

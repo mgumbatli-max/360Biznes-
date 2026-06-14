@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { withMobile } from "@/lib/mobile/session";
 import { getMyChannels } from "@/features/team/queries";
+import { createChannelCore } from "@/features/team/actions";
 import { prisma } from "@/lib/db/prisma";
 import { requireTenant } from "@/lib/db/tenant-context";
 
@@ -33,13 +34,26 @@ export async function GET(req: NextRequest) {
 }
 
 const DmSchema = z.object({ userId: z.string().uuid() });
+const GroupSchema = z.object({
+  ad: z.string().trim().min(2, "Qrup adı ən az 2 simvol").max(150),
+  uzv_ids: z.array(z.string().uuid()).min(1, "Ən az 1 üzv seçin"),
+});
 
-/** POST — istifadəçi ilə birbaşa söhbət (DM) yarat və ya mövcudu qaytar. */
+/** POST — qrup (ad + uzv_ids) yarat, və ya istifadəçi ilə birbaşa söhbət (DM). */
 export async function POST(req: NextRequest) {
   return withMobile(req, async () => {
     const body = await req.json().catch(() => ({}));
+
+    // Qrup yaratma — createChannelCore (web ilə eyni nüvə) reuse olunur
+    const g = GroupSchema.safeParse(body);
+    if (g.success) {
+      const res = await createChannelCore({ ad: g.data.ad, tesvir: "", novu: "kanal", qapali: true, uzv_ids: g.data.uzv_ids.join(","), filial_id: undefined });
+      if (res.ok) return { ok: true, id: (res.data as { id?: number } | undefined)?.id };
+      return { error: res.error };
+    }
+
     const parsed = DmSchema.safeParse(body);
-    if (!parsed.success) return { error: "Yanlış istifadəçi" };
+    if (!parsed.success) return { error: "Yanlış data" };
     const { sahibkarId, istifadeciId } = requireTenant();
     const other = parsed.data.userId;
     if (other === istifadeciId) return { error: "Özünüzlə söhbət yarada bilməzsiniz" };

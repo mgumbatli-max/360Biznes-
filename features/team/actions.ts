@@ -38,8 +38,15 @@ export async function createChannel(input: FormData): Promise<ActionResult> {
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = CreateChannelSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
-  const d = parsed.data;
+  return createChannelCore(parsed.data);
+}
 
+/**
+ * Kanal/qrup yaratma çəyirdəyi — auth-suz. Web createChannel (permCheck) və
+ * mobil route (Bearer + mobilePerm) hər ikisi bunu çağırır. Çağıran İCAZƏ
+ * yoxlamasını ÖZÜ etməlidir. Tenant konteksti aktiv olmalıdır.
+ */
+export async function createChannelCore(d: z.infer<typeof CreateChannelSchema>): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     if (!istifadeciId) return { ok: false, error: "Giriş tələb olunur" };
