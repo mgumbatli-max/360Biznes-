@@ -29,19 +29,25 @@ function greeting(): string {
 }
 
 // ─── Yuxarı toolbar düyməsi ──────────────────────────────────────────────────
-function IconBtn({ children, onPress, filled = false }: { children: React.ReactNode; onPress: () => void; filled?: boolean }) {
+function IconBtn({ children, onPress, filled = false, danger = false, badge }: { children: React.ReactNode; onPress: () => void; filled?: boolean; danger?: boolean; badge?: number }) {
+  const bg = danger ? "#fee2e2" : filled ? C.brand : "#fff";
+  const border = danger ? "#fecaca" : filled ? C.brand : C.line;
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
         opacity: pressed ? 0.6 : 1,
         width: 38, height: 38, borderRadius: 19,
-        backgroundColor: filled ? C.brand : "#fff",
-        borderWidth: 1, borderColor: filled ? C.brand : C.line,
+        backgroundColor: bg, borderWidth: 1, borderColor: border,
         alignItems: "center", justifyContent: "center",
       })}
     >
       {children}
+      {badge != null && badge > 0 ? (
+        <View style={{ position: "absolute", top: -3, right: -3, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.neg, alignItems: "center", justifyContent: "center", paddingHorizontal: 3, borderWidth: 1.5, borderColor: "#fff" }}>
+          <Text style={{ color: "#fff", fontSize: 9, fontWeight: "800" }}>{badge > 99 ? "99" : badge}</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -67,6 +73,7 @@ export default function HomeScreen() {
   const user = useAuth((s) => s.user);
   const { data: ozet } = useOzet();
   const initials = getInitials(user?.ad_soyad);
+  const kritik = ozet?.products?.kritik ?? 0;
 
   const modullar: Modul[] = [
     { label: "AI köməkçi", icon: <Sparkles size={22} color="#0d9488" />, bg: "#ccfbf1", onPress: () => router.push("/ai") },
@@ -92,8 +99,11 @@ export default function HomeScreen() {
         </Pressable>
         <IconBtn onPress={() => router.push("/mehsullar")}><Search size={18} color={C.ink} /></IconBtn>
         <IconBtn onPress={() => router.push("/ai")} filled><Sparkles size={18} color="#fff" /></IconBtn>
+        {kritik > 0 ? (
+          <IconBtn onPress={() => router.push("/mehsullar")} danger badge={kritik}><AlertTriangle size={18} color={C.neg} /></IconBtn>
+        ) : null}
         <IconBtn onPress={() => router.push("/bildiris")}><Bell size={18} color={C.ink} /></IconBtn>
-        <IconBtn onPress={() => router.push("/(tabs)/menyu")}><Settings size={18} color={C.ink} /></IconBtn>
+        <IconBtn onPress={() => router.push("/ayarlar")}><Settings size={18} color={C.ink} /></IconBtn>
         <IconBtn onPress={() => router.push("/pos")} filled><Plus size={18} color="#fff" /></IconBtn>
       </View>
 

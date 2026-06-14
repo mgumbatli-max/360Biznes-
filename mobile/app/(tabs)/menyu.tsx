@@ -120,8 +120,8 @@ export default function MenyuScreen() {
         {/* Hesab */}
         <Text style={{ marginHorizontal: 16, marginTop: 12, marginBottom: 12, fontSize: 16, fontWeight: "800", color: C.ink }}>Hesab</Text>
         <View style={{ marginHorizontal: 16, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: C.line }}>
-          <AccountRow icon={<User size={20} color={C.sub} strokeWidth={2} />} label="Profil" onPress={() => Alert.alert("Tezliklə", "Bu bölmə hazırlanır.")} />
-          <AccountRow icon={<Settings size={20} color={C.sub} strokeWidth={2} />} label="Ayarlar" onPress={() => Alert.alert("Tezliklə", "Bu bölmə hazırlanır.")} />
+          <AccountRow icon={<User size={20} color={C.sub} strokeWidth={2} />} label="Profil" onPress={() => router.push("/profil")} />
+          <AccountRow icon={<Settings size={20} color={C.sub} strokeWidth={2} />} label="Ayarlar" onPress={() => router.push("/ayarlar")} />
           <AccountRow icon={<LogOut size={20} color={C.neg} strokeWidth={2} />} label="Çıxış" onPress={confirmLogout} danger last />
         </View>
       </ScrollView>
