@@ -2,7 +2,7 @@ import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Package, Plus, ScanLine, TrendingUp, Wallet, AlertTriangle, Boxes } from "lucide-react-native";
+import { Package, Plus, ScanLine, TrendingUp, Wallet, AlertTriangle, Boxes, Sparkles, ChevronRight } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
 import { useAppModeStore } from "../../src/lib/app-mode-store";
@@ -114,6 +114,37 @@ export default function HomeScreen() {
             </Text>
           )}
         </LinearGradient>
+
+        {/* AI köməkçi — həmişə görünən vurğulu giriş */}
+        <Pressable
+          onPress={() => router.push("/ai")}
+          style={({ pressed }) => ({
+            opacity: pressed ? 0.9 : 1,
+            marginHorizontal: 16,
+            marginTop: 12,
+            backgroundColor: C.brand50,
+            borderWidth: 1,
+            borderColor: C.brandLight,
+            borderRadius: 16,
+            padding: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+          })}
+          accessibilityRole="button"
+          accessibilityLabel="AI köməkçi"
+        >
+          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }}>
+            <Sparkles size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.brandDark, fontSize: 15, fontWeight: "700" }}>AI köməkçi</Text>
+            <Text style={{ color: C.sub, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+              Satış, borc, stok soruşun — və ya əməliyyat etdirin
+            </Text>
+          </View>
+          <ChevronRight size={20} color={C.brand} />
+        </Pressable>
 
         {/* KPI icmal — bu gün/ay satış, açıq borc, kritik stok */}
         {(ozet?.sales || ozet?.products) && (

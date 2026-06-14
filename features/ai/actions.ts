@@ -27,7 +27,15 @@ export async function sendMessage(message: string, mode: "owner" | "employee" = 
   // 1) Auth — sessiya olmadan ümumiyyətlə AI çağırışı yox
   const session = await auth();
   if (!session?.user) return { ok: false, error: "Giriş tələb olunur" };
+  return sendMessageCore(message, mode);
+}
 
+/**
+ * AI agent çəyirdəyi — auth-suz. Web `sendMessage` (NextAuth sessiya) və mobil
+ * route (Bearer token + withMobile) hər ikisi bunu çağırır. Tenant konteksti
+ * çağırandan əvvəl qurulmuş olmalıdır (withTenant aktiv kontekti reuse edir).
+ */
+export async function sendMessageCore(message: string, mode: "owner" | "employee" = "employee"): Promise<SendResult> {
   const parsed = SendSchema.safeParse({ message, mode });
   if (!parsed.success) {
     return { ok: false, error: "Mesaj boş və ya çox uzundur (max 4000 simvol)" };
