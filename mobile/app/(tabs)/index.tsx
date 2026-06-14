@@ -8,6 +8,7 @@ import {
 } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
+import { useAppModeStore } from "../../src/lib/app-mode-store";
 import { useOzet } from "../../src/features/ozet/hooks";
 import { useQuickActions } from "../../src/features/quick-actions/store";
 import { QA_CATALOG, QA_MAP, type QAItem } from "../../src/features/quick-actions/catalog";
@@ -89,6 +90,8 @@ function ActionCard({ item, full, onPress }: { item: QAItem; full?: boolean; onP
 export default function HomeScreen() {
   const router = useRouter();
   const user = useAuth((s) => s.user);
+  const mode = useAppModeStore((s) => s.mode);
+  const setMode = useAppModeStore((s) => s.setMode);
   const { data: ozet } = useOzet();
   const { keys, load, toggle, reset } = useQuickActions();
   const [customize, setCustomize] = useState(false);
@@ -111,16 +114,23 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      {/* Yuxarı toolbar */}
-      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6, gap: 7 }}>
-        <Pressable onPress={() => router.push("/profil")} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.brand, alignItems: "center", justifyContent: "center", marginRight: "auto" }} accessibilityLabel="Profil">
-          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}>{initials}</Text>
+      {/* Yuxarı toolbar — web kimi: avatar · Lite/Pro · axtarış · bildiriş */}
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6, gap: 8 }}>
+        <Pressable onPress={() => router.push("/profil")} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Profil">
+          <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>{initials}</Text>
         </Pressable>
+        {/* Lite / Pro */}
+        <View style={{ flexDirection: "row", backgroundColor: C.bg, borderRadius: 999, padding: 3, borderWidth: 1, borderColor: C.line }}>
+          {(["lite", "pro"] as const).map((m) => (
+            <Pressable key={m} onPress={() => setMode(m)} style={{ paddingHorizontal: 13, paddingVertical: 5, borderRadius: 999, backgroundColor: mode === m ? C.brand : "transparent" }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: mode === m ? "#fff" : C.sub }}>{m === "lite" ? "Lite" : "Pro"}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={{ flex: 1 }} />
         <IconBtn onPress={() => router.push("/mehsullar")}><Search size={18} color={C.ink} /></IconBtn>
-        <IconBtn onPress={() => router.push("/ai")} filled><Sparkles size={18} color="#fff" /></IconBtn>
         {kritik > 0 ? <IconBtn onPress={() => router.push("/mehsullar")} danger badge={kritik}><AlertTriangle size={18} color={C.neg} /></IconBtn> : null}
         <IconBtn onPress={() => router.push("/bildiris")}><Bell size={18} color={C.ink} /></IconBtn>
-        <IconBtn onPress={() => router.push("/ayarlar")}><Settings size={18} color={C.ink} /></IconBtn>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 28 }} showsVerticalScrollIndicator={false}>
