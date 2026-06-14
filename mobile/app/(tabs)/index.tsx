@@ -83,7 +83,13 @@ export default function HomeScreen() {
   const borc = ozet?.sales?.borc_mebleg ?? 0;
   const g = greeting();
   const firstName = (user?.ad_soyad ?? "İstifadəçi").split(" ")[0];
-  const today = new Date().toLocaleDateString("az-AZ", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  let today = "";
+  try {
+    today = new Date().toLocaleDateString("az-AZ", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  } catch {
+    const d = new Date();
+    today = `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
+  }
 
   return (
     <Screen>
