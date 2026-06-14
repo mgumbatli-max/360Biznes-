@@ -72,8 +72,11 @@ function MetricCard({ Icon, label, value, sub, tone = "neutral", onPress }: { Ic
 
 function ActionCard({ item, full, onPress }: { item: QAItem; full?: boolean; onPress: () => void }) {
   const Icon = item.Icon;
+  // Web kimi rəngli-tonlu fon (color/8% tint + color/20% border)
+  const tintBg = item.colors[1] + "14";
+  const tintBorder = item.colors[1] + "33";
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, flex: full ? undefined : 1, width: full ? "100%" : undefined, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 14, shadowColor: "#141820", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 })}>
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, flex: full ? undefined : 1, width: full ? "100%" : undefined, backgroundColor: tintBg, borderRadius: 16, borderWidth: 1, borderColor: tintBorder, padding: 14 })}>
       <LinearGradient colors={item.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
         <Icon size={22} color="#fff" strokeWidth={2.2} />
       </LinearGradient>
@@ -130,7 +133,7 @@ export default function HomeScreen() {
           <View style={{ flexDirection: "row", alignItems: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
             <Text style={{ color: C.ai, fontSize: 26, fontWeight: "900", letterSpacing: -0.5 }}>{firstName}</Text>
             <Text style={{ fontSize: 22, marginLeft: 4 }}>👋</Text>
-            <Text style={{ color: C.sub, fontSize: 13, fontWeight: "500", marginLeft: 8, marginBottom: 4 }}>biznesiniz hazırdır</Text>
+            <Text style={{ color: C.sub, fontSize: 13, fontWeight: "500", marginLeft: 8, marginBottom: 4 }}>biznesin hazırdır</Text>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
             <Text style={{ color: C.sub, fontSize: 12.5 }} numberOfLines={1}>{azDate()}</Text>

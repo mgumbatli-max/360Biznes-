@@ -17,7 +17,7 @@ export type QAItem = {
 // Bütün mümkün sürətli əməliyyatlar — istifadəçi seçib home-a əlavə edir.
 export const QA_CATALOG: QAItem[] = [
   { key: "pos", title: "POS aç", desc: "Sürətli kassa satışı", Icon: ScanLine, colors: ["#10b981", "#0d9488"], route: "/pos" },
-  { key: "yeni_satis", title: "Yeni satış", desc: "Sürətli satış / qaimə", Icon: Plus, colors: ["#3b82f6", "#2563eb"], route: "/pos" },
+  { key: "yeni_satis", title: "Yeni satış", desc: "Formal sifariş / qaimə", Icon: Plus, colors: ["#3b82f6", "#2563eb"], route: "/pos" },
   { key: "yeni_musteri", title: "Yeni müştəri", desc: "Kontragent əlavə et", Icon: UserPlus, colors: ["#ec4899", "#db2777"], route: "/musteri/form" },
   { key: "yeni_mehsul", title: "Yeni məhsul", desc: "Məhsul əlavə et", Icon: PackagePlus, colors: ["#f59e0b", "#d97706"], route: "/mehsul/form" },
   { key: "yeni_tapshiriq", title: "Yeni tapşırıq", desc: "Təyinat + xatırlatma", Icon: ListPlus, colors: ["#8b5cf6", "#7c3aed"], route: "/tapshiriq/form" },
