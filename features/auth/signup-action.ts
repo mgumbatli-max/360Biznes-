@@ -4,6 +4,7 @@ import { prismaUnscoped } from "@/lib/db/prisma";
 import { hashPassword } from "@/lib/auth/password";
 import { SignupSchema } from "./schemas";
 import { signIn } from "@/auth";
+import { checkBotId } from "botid/server";
 
 export type SignupActionResult =
   | { ok: true }
@@ -23,6 +24,18 @@ export async function signupAction(_prev: SignupActionResult | null, formData: F
       error: "Forma doldurulmasında xəta var.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
+  }
+
+  // BotID — bot/credential-stuffing qeydiyyatını dayandır. FAIL-OPEN: yoxlama
+  // xəta verərsə real istifadəçi BURAXILIR (heç vaxt günahsız müştərini
+  // əngəlləmir). Dev/lokal mühitdə no-op (isBot=false). Yalnız aşkar bot rədd.
+  try {
+    const verdict = await checkBotId();
+    if (verdict.isBot && !verdict.isVerifiedBot) {
+      return { ok: false, error: "Şübhəli avtomatlaşdırılmış aktivlik aşkarlandı. Bir azdan yenidən cəhd edin." };
+    }
+  } catch {
+    /* fail-open — BotID problemi qeydiyyatı bloklamasın */
   }
 
   const data = parsed.data;

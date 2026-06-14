@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import path from "node:path";
+import { withBotId } from "botid/next/config";
 
 // Təhlükəsizlik başlıqları — bütün route-lara tətbiq olunur.
 // CSP qəsdən 'unsafe-inline'/'unsafe-eval' saxlayır (inline style/script + WASM
@@ -99,4 +100,6 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Vercel BotID — qeydiyyat formasını bot/credential-stuffing-dən qoruyur.
+// withBotId challenge proxy rewrite-larını əlavə edir (same-origin → CSP 'self' uyğun).
+export default withBotId(nextConfig);

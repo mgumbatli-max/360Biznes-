@@ -26,6 +26,7 @@
     "@vercel/blob": "^2.4.0",
     "barcode-detector": "^3.2.0",
     "bcryptjs": "^3.0.3",
+    "botid": "^1.5.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
