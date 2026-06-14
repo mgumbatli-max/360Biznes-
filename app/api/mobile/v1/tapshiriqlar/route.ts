@@ -54,8 +54,9 @@ export async function POST(req: NextRequest) {
     const d = parsed.data;
     const { sahibkarId, istifadeciId } = requireTenant();
 
-    // Başqasına atamaq üçün icazə; yoxdursa yalnız özünə
-    let mesulId = d.mesul_id || null;
+    // mesul seçilməyibsə → özünə təyin (tapşırıq "mənim" siyahısında görünsün).
+    // Başqasına atamaq üçün icazə tələb olunur.
+    const mesulId = d.mesul_id || istifadeciId;
     const canAssign = mobilePerm(ctx, "tapshiriq.atayir", "tapshiriq.idare");
     if (mesulId && mesulId !== istifadeciId && !canAssign) {
       return { error: "Başqasına tapşırıq atamaq üçün icazə yoxdur" };
