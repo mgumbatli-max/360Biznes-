@@ -1,7 +1,7 @@
 import React from "react";
 import { FlatList, Pressable, Text, View, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
-import { MessageSquare, Hash } from "lucide-react-native";
+import { MessageSquare, Hash, Plus } from "lucide-react-native";
 import { useChannels } from "../../src/features/team/hooks";
 import type { Channel } from "../../src/features/team/types";
 import { EmptyState, ErrorState, ListSkeleton, OfflineBanner, Screen } from "../../src/components";
@@ -54,6 +54,7 @@ function ChannelRow({ item }: { item: Channel }) {
 }
 
 export default function TeamScreen() {
+  const router = useRouter();
   const { data, isLoading, isError, refetch, isRefetching } = useChannels();
   const channels = data?.channels ?? [];
 
@@ -77,6 +78,13 @@ export default function TeamScreen() {
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={C.brand} colors={[C.brand]} />}
         />
       )}
+      <Pressable
+        onPress={() => router.push("/team/yeni")}
+        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, position: "absolute", bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: C.brand, alignItems: "center", justifyContent: "center", shadowColor: C.brandDark, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 6, elevation: 6 })}
+        accessibilityRole="button" accessibilityLabel="Yeni söhbət"
+      >
+        <Plus color="#fff" size={26} strokeWidth={2.5} />
+      </Pressable>
     </Screen>
   );
 }
