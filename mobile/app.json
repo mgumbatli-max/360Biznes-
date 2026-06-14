@@ -2,6 +2,7 @@
   "expo": {
     "name": "360Biznes",
     "slug": "biznes360",
+    "owner": "mr.maqa",
     "scheme": "biznes360",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -26,18 +27,36 @@
       "predictiveBackGestureEnabled": false,
       "package": "az.biznes360.app",
       "versionCode": 1,
-      "permissions": ["CAMERA"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
-      ["expo-camera", { "cameraPermission": "Barkod skan etmək və məhsul şəkli çəkmək üçün kameradan istifadə olunur." }],
-      ["expo-image-picker", { "photosPermission": "Məhsula şəkil əlavə etmək üçün qalereyaya giriş istənilir.", "cameraPermission": "Məhsul şəkli çəkmək üçün kameradan istifadə olunur." }]
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Barkod skan etmək və məhsul şəkli çəkmək üçün kameradan istifadə olunur."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Məhsula şəkil əlavə etmək üçün qalereyaya giriş istənilir.",
+          "cameraPermission": "Məhsul şəkli çəkmək üçün kameradan istifadə olunur."
+        }
+      ]
     ],
     "extra": {
-      "apiBase": "http://localhost:3500"
+      "apiBase": "http://localhost:3500",
+      "router": {},
+      "eas": {
+        "projectId": "5a7f0bee-145f-4f41-8f5b-15da1c4547f6"
+      }
     }
   }
 }
