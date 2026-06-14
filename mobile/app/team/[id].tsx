@@ -118,7 +118,7 @@ export default function ChatScreen() {
           />
 
           {/* Input bar */}
-          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 10, paddingVertical: 8, paddingBottom: Platform.OS === "ios" ? 8 : 10, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: C.line }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 10, paddingVertical: 8, paddingBottom: Platform.OS === "ios" ? 8 : 10, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line }}>
             <TextInput
               value={text}
               onChangeText={setText}

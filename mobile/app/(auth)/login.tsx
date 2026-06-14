@@ -78,7 +78,7 @@ export default function LoginScreen() {
 
         {/* Form card */}
         <View className="flex-1 px-6 pb-10">
-          <View className="bg-white rounded-3xl p-6 shadow-sm gap-4">
+          <View className="bg-card rounded-3xl p-6 shadow-sm gap-4">
             {/* Email */}
             <Input
               label="E-poçt"

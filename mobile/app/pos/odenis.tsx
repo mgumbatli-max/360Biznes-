@@ -126,7 +126,7 @@ export default function OdenisScreen() {
         <View>
           <Text style={{ color: C.sub, fontSize: 12, fontWeight: "600", marginBottom: 6 }}>Müştəri</Text>
           {musteri ? (
-            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12, gap: 10 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12, gap: 10 }}>
               <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.brand + "1a", alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ color: C.brand, fontWeight: "700" }}>{musteri.ad.charAt(0).toUpperCase()}</Text>
               </View>
@@ -135,7 +135,7 @@ export default function OdenisScreen() {
             </View>
           ) : (
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable onPress={() => setPickerOpen(true)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12 }}>
+              <Pressable onPress={() => setPickerOpen(true)} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12 }}>
                 <User size={18} color={C.brand} />
                 <Text style={{ flex: 1, color: C.ink, fontSize: 14 }}>Müştəri seç</Text>
                 <ChevronRight size={18} color={C.sub} />
@@ -175,7 +175,7 @@ export default function OdenisScreen() {
         {/* Endirim */}
         <View>
           <Text style={{ color: C.sub, fontSize: 12, fontWeight: "600", marginBottom: 6 }}>Endirim (məbləğ)</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 12 }}>
             <TextInput
               value={endirimMebleg ? String(endirimMebleg) : ""}
               onChangeText={(t) => setEndirim(Number(t.replace(",", ".")) || 0)}
@@ -189,7 +189,7 @@ export default function OdenisScreen() {
         </View>
 
         {/* Xülasə */}
-        <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 14, gap: 8 }}>
+        <View style={{ backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 14, gap: 8 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={{ color: C.sub, fontSize: 14 }}>Ara cəmi</Text>
             <Text style={{ color: C.ink, fontSize: 14 }}>{formatMoney(subtotal, valyuta)}</Text>
@@ -234,7 +234,7 @@ function CustomerPicker({ visible, onClose, onSelect }: { visible: boolean; onCl
               onChangeText={setQ}
               placeholder="Ad və ya telefon…"
               placeholderTextColor={C.sub}
-              style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: C.ink }}
+              style={{ backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: C.ink }}
             />
           </View>
           <FlatList
@@ -247,7 +247,7 @@ function CustomerPicker({ visible, onClose, onSelect }: { visible: boolean; onCl
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => onSelect(item)}
-                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: C.line })}
+                style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 16, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.line })}
               >
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.brand + "1a", alignItems: "center", justifyContent: "center" }}>
                   <Text style={{ color: C.brand, fontWeight: "700" }}>{item.ad.charAt(0).toUpperCase()}</Text>
@@ -283,7 +283,7 @@ function SuccessModal({ data, valyuta, onNew, onClose }: { data: ReceiptData | n
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", padding: 24 }}>
-        <View style={{ backgroundColor: "#fff", borderRadius: 20, padding: 22 }}>
+        <View style={{ backgroundColor: C.card, borderRadius: 20, padding: 22 }}>
           <View style={{ alignItems: "center", marginBottom: 14 }}>
             <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: C.pos + "1a", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
               <Check size={32} color={C.pos} strokeWidth={3} />

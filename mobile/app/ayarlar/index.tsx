@@ -16,7 +16,7 @@ const API_BASE =
 
 function Row({ icon, label, value, onPress, last }: { icon: React.ReactNode; label: string; value?: string; onPress?: () => void; last?: boolean }) {
   const inner = (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, paddingHorizontal: 14, borderBottomWidth: last ? 0 : 1, borderBottomColor: C.line, backgroundColor: "#fff" }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, paddingHorizontal: 14, borderBottomWidth: last ? 0 : 1, borderBottomColor: C.line, backgroundColor: C.card }}>
       <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.brand + "1a", alignItems: "center", justifyContent: "center" }}>{icon}</View>
       <Text style={{ flex: 1, color: C.ink, fontSize: 15, fontWeight: "500" }}>{label}</Text>
       {value ? <Text style={{ color: C.sub, fontSize: 13 }} numberOfLines={1}>{value}</Text> : null}
@@ -76,7 +76,7 @@ export default function AyarlarScreen() {
       <Text style={{ marginTop: 18, marginBottom: 10, fontSize: 15, fontWeight: "800", color: C.ink }}>Hesab</Text>
       <View style={{ borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: C.line }}>
         <Pressable onPress={confirmLogout} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, paddingHorizontal: 14, backgroundColor: "#fff" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, paddingHorizontal: 14, backgroundColor: C.card }}>
             <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: C.neg + "1a", alignItems: "center", justifyContent: "center" }}><LogOut size={18} color={C.neg} /></View>
             <Text style={{ flex: 1, color: C.neg, fontSize: 15, fontWeight: "600" }}>Hesabdan çıx</Text>
           </View>

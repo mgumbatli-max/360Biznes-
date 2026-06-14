@@ -37,7 +37,7 @@ export function Skeleton({ className = "" }: SkeletonProps) {
 
 export function ProductCardSkeleton() {
   return (
-    <View className="bg-white border border-line rounded-2xl p-3 mb-3">
+    <View className="bg-card border border-line rounded-2xl p-3 mb-3">
       {/* Image placeholder */}
       <Skeleton className="w-full h-36 rounded-xl mb-3" />
       {/* Title line */}

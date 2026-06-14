@@ -131,7 +131,7 @@ export default function PosScreen() {
 
         {/* Axtarış + skan */}
         <View style={{ flexDirection: "row", gap: 8, marginBottom: 6 }}>
-          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10 }}>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, paddingHorizontal: 10 }}>
             <Search size={16} color={C.sub} />
             <TextInput
               value={q}
@@ -155,7 +155,7 @@ export default function PosScreen() {
 
         {/* Axtarış nəticələri */}
         {results.length > 0 ? (
-          <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, marginBottom: 8, maxHeight: 220 }}>
+          <View style={{ backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, marginBottom: 8, maxHeight: 220 }}>
             <ScrollView keyboardShouldPersistTaps="handled">
               {results.map((p) => (
                 <Pressable
@@ -192,7 +192,7 @@ export default function PosScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 }}
           renderItem={({ item }) => (
-            <View style={{ backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12, marginBottom: 8 }}>
+            <View style={{ backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12, marginBottom: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Text style={{ flex: 1, color: C.ink, fontSize: 14, fontWeight: "600" }} numberOfLines={2}>{item.ad}</Text>
                 <Pressable onPress={() => removeLine(item.mehsul_id)} hitSlop={8} style={{ padding: 4 }}>

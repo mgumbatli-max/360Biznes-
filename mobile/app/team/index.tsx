@@ -26,7 +26,7 @@ function ChannelRow({ item }: { item: Channel }) {
   return (
     <Pressable
       onPress={() => router.push(`/team/${item.id}`)}
-      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: C.line })}
+      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11, paddingHorizontal: 16, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.line })}
     >
       <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: C.brand + "1a", alignItems: "center", justifyContent: "center" }}>
         {isDirect ? (

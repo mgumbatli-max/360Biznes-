@@ -74,7 +74,7 @@ function SelectField({
           borderWidth: 1,
           borderColor: C.line,
           borderRadius: 12,
-          backgroundColor: "#fff",
+          backgroundColor: C.card,
           paddingHorizontal: 12,
           paddingVertical: 10,
         })}
@@ -104,7 +104,7 @@ function SelectField({
               bottom: 0,
               left: 0,
               right: 0,
-              backgroundColor: "#fff",
+              backgroundColor: C.card,
               borderTopLeftRadius: 18,
               borderTopRightRadius: 18,
               paddingBottom: 34,

@@ -42,7 +42,7 @@ export default function NewChatScreen() {
           renderItem={({ item }) => (
             <Pressable
               onPress={() => start(item)}
-              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: C.line })}
+              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: C.card, borderBottomWidth: 1, borderBottomColor: C.line })}
             >
               <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: C.brand + "1a", alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ color: C.brand, fontWeight: "700", fontSize: 17 }}>{item.ad_soyad?.trim()?.charAt(0)?.toUpperCase() || "?"}</Text>

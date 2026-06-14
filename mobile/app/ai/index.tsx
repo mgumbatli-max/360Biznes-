@@ -199,7 +199,7 @@ export default function AiScreen() {
                   <Pressable
                     key={s}
                     onPress={() => onSend(s)}
-                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, backgroundColor: "#fff", borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 8 })}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 8 })}
                   >
                     <Sparkles size={15} color={C.brand} />
                     <Text style={{ color: C.ink, fontSize: 14, flex: 1 }}>{s}</Text>
@@ -224,7 +224,7 @@ export default function AiScreen() {
           ) : null}
 
           {/* Input bar */}
-          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 10, paddingVertical: 8, paddingBottom: Platform.OS === "ios" ? 8 : 10, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: C.line }}>
+          <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8, paddingHorizontal: 10, paddingVertical: 8, paddingBottom: Platform.OS === "ios" ? 8 : 10, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line }}>
             <TextInput
               value={text}
               onChangeText={setText}

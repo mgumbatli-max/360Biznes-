@@ -63,7 +63,7 @@ export function Screen({
       )}
       {footer != null && (
         <View
-          className="bg-white border-t border-line px-4 pt-3"
+          className="bg-card border-t border-line px-4 pt-3"
           style={{ paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }}
         >
           {footer}

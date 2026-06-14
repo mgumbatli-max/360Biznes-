@@ -16,7 +16,7 @@ function ModuleCard({ m }: { m: Modul }) {
       style={({ pressed }) => ({
         opacity: pressed ? 0.85 : 1,
         flex: 1,
-        backgroundColor: "#fff",
+        backgroundColor: C.card,
         borderRadius: 18,
         borderWidth: 1,
         borderColor: C.line,

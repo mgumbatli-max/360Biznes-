@@ -9,7 +9,7 @@ import { C } from "../../src/theme";
 
 function Kpi({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone?: "pos" | "neg" }) {
   return (
-    <View style={{ flex: 1 }} className="bg-white rounded-2xl border border-line p-3">
+    <View style={{ flex: 1 }} className="bg-card rounded-2xl border border-line p-3">
       <View className="flex-row items-center gap-1.5">
         {icon}
         <Text className="text-sub text-[11px]" numberOfLines={1}>{label}</Text>

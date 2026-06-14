@@ -23,7 +23,7 @@ export function Input({
         <Text className="text-sub text-xs font-semibold mb-1">{label}</Text>
       )}
       <View
-        className={`flex-row items-center border ${borderClass} rounded-xl bg-white px-3`}
+        className={`flex-row items-center border ${borderClass} rounded-xl bg-card px-3`}
       >
         <TextInput
           className="flex-1 py-2.5 text-ink text-sm"
