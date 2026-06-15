@@ -3,7 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { LayoutDashboard, ScanLine, Sparkles, ListTodo, LayoutGrid } from "lucide-react-native";
-import { C, AI_GRADIENT } from "../../src/theme";
+import { C, BRAND_GRADIENT } from "../../src/theme";
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
 
@@ -23,7 +23,7 @@ function NavBtn({ Icon, label, route }: { Icon: LucideIcon; label: string; route
   );
 }
 
-/** Mərkəzi AI — qabarıq bənövşəyi dairə. */
+/** Mərkəzi AI — qabarıq yaşıl brend dairə (web bottom-nav ilə eyni). */
 function CenterAI() {
   const router = useRouter();
   return (
@@ -33,7 +33,7 @@ function CenterAI() {
       accessibilityRole="button"
       accessibilityLabel="Süni İntellekt"
     >
-      <LinearGradient colors={AI_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, marginTop: -20, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: C.bg, shadowColor: C.aiDark, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 8 }}>
+      <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 54, height: 54, borderRadius: 27, marginTop: -20, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: C.bg, shadowColor: C.brandDark, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 8 }}>
         <Sparkles color="#fff" size={25} strokeWidth={2.2} />
       </LinearGradient>
     </Pressable>

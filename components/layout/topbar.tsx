@@ -99,14 +99,18 @@ function TopbarComponent({ user, alerts = [], unreadCount = 0, myWork = EMPTY_MY
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="hidden lg:block">
-          <Breadcrumb />
-        </div>
-        <div className="lg:hidden">
-          <Breadcrumb compact />
+        {/* Breadcrumb sahəsi — yığılan (min-w-0 + overflow-hidden) ki dar mobil
+            ekranda sağdakı qrupu (profil daxil) ekrandan çıxarmasın. */}
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="hidden lg:block">
+            <Breadcrumb />
+          </div>
+          <div className="lg:hidden">
+            <Breadcrumb compact />
+          </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {/* Qlobal Lite/Pro keçidi — hər səhifədə görünür */}
           <AppModeToggle serverMode={appMode} />
           {/* Axtarış həmişə görünür — mobildə kompakt ikon, md+-də enli qutu (komponentin öz daxili variantı) */}

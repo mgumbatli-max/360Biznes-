@@ -24,8 +24,10 @@ export function applyTheme(mode: Mode) {
   Object.assign(C, mode === "dark" ? DARK : LIGHT);
 }
 
+// Web `--brand-gradient` (emerald-teal) güzgüsü — AI banner + mərkəzi AI düyməsi bununla.
+export const BRAND_GRADIENT = ["#0d9488", "#10b981", "#16c98e"] as const;
+// Köhnə bənövşəyi AI tonu — yalnız geriyə-uyğunluq üçün saxlanır (artıq AI üçün istifadə olunmur).
 export const AI_GRADIENT: [string, string] = ["#8b5cf6", "#a855f7"];
-export const BRAND_GRADIENT: [string, string] = ["#0d9488", "#14b8a6"];
 export const R = { sm: 6, md: 10, lg: 14, xl: 18, full: 9999 } as const;
 
 // Semantik tonlar — rgba (light + dark hər ikisində işləyir)

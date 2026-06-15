@@ -22,4 +22,6 @@ export type AppConfigResponse = {
   lite: LiteConfig;
   /** Super-admin tərəfindən bağlanmış modulların `modul_kod` siyahısı (web `module-gate`). */
   disabledModules?: string[];
+  /** Cari istifadəçi platforma super-admin-idir? — Platform Admin plitəsi üçün. */
+  isSuperAdmin?: boolean;
 };
