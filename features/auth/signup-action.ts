@@ -13,7 +13,7 @@ export type SignupActionResult =
 
 const SAHIBKAR_ROLE_ID = 9; // System role "sahibkar"
 const DEFAULT_PLAN_KOD = "baslangic";
-const DEMO_DAYS = 15;
+const DEMO_DAYS = 30; // 1 aylıq demo
 
 export async function signupAction(_prev: SignupActionResult | null, formData: FormData): Promise<SignupActionResult> {
   const raw = Object.fromEntries(formData.entries());
@@ -84,7 +84,7 @@ export async function signupAction(_prev: SignupActionResult | null, formData: F
         },
       });
 
-      // 2. Create subscription (15-day trial)
+      // 2. Create subscription (30-day / 1-month trial)
       await tx.abuneler.create({
         data: {
           sahibkar_id: sahibkar.id,
@@ -95,7 +95,7 @@ export async function signupAction(_prev: SignupActionResult | null, formData: F
         },
       });
 
-      // 3. Enable all modules for 15 days
+      // 3. Enable all modules for 30 days (1 month)
       const modullar = await tx.modullar.findMany({ where: { aktiv: true } });
       if (modullar.length) {
         await tx.sahibkar_modullar.createMany({

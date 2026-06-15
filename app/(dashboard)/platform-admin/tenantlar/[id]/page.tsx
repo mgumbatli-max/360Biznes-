@@ -5,10 +5,11 @@ import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
-import { getTenantDetail, getGlobalUsers } from "@/features/platform-admin/queries";
+import { getTenantDetail, getGlobalUsers, getTenantModules } from "@/features/platform-admin/queries";
 import { TenantActions } from "@/features/platform-admin/components/tenant-actions";
 import { ImpersonateButton } from "@/features/platform-admin/components/impersonate-button";
 import { UserAdminActions } from "@/features/platform-admin/components/user-admin-actions";
+import { ModuleToggle } from "@/features/platform-admin/components/module-toggle";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tenant detayı" };
@@ -23,6 +24,10 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
 
   // Bu şirkətin əməkdaşları (bütün, silinmişlər daxil) — əməliyyatlarla.
   const { rows: emekdaslar } = await getGlobalUsers({ tenantId: id, status: "hamisi" });
+
+  // Bu şirkətin modul səlahiyyətləri (per-tenant entitlement).
+  const modullar = await getTenantModules(id);
+  const now = new Date();
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -95,6 +100,61 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           </CardContent>
         </Card>
       </section>
+
+      {/* Modullar (funksiyalar) — per-tenant modul səlahiyyəti (aç/söndür + qiymət) */}
+      <Card className="glass">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Boxes className="h-4 w-4 text-primary-light" /> Modullar (funksiyalar)
+          </CardTitle>
+          <Badge variant="outline">{modullar.filter((m) => m.aktiv).length} / {modullar.length} aktiv</Badge>
+        </CardHeader>
+        <CardContent className="p-0">
+          {modullar.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Modul yoxdur</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Modul</th>
+                  <th className="px-3 py-2">Qiymət</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Bitmə</th>
+                  <th className="px-3 py-2 text-right">Əməliyyat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modullar.map((m) => {
+                  const muddetiBitib = Boolean(m.bitme && m.bitme < now);
+                  return (
+                    <tr key={m.kod} className="border-b border-border/30">
+                      <td className="px-3 py-2 font-medium">{m.ad}</td>
+                      <td className="px-3 py-2 text-xs tabular-nums">{formatMoney(m.aylik_qiymet)}/ay</td>
+                      <td className="px-3 py-2">
+                        {m.aktiv ? (
+                          <Badge variant="outline" className="border-success/30 text-success text-[10px]">Aktiv</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">Passiv</Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {m.bitme ? (
+                          <span className={muddetiBitib ? "text-danger" : ""}>{formatDate(m.bitme)}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <ModuleToggle sahibkarId={t.id} modulKod={m.kod} aktiv={m.aktiv} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Əməkdaşlar — bu şirkətin istifadəçiləri (şifrə yenilə / aktiv / sessiya / sil) */}
       <Card className="glass">

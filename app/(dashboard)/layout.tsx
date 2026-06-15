@@ -11,6 +11,12 @@ import type { LiteConfig } from "@/lib/lite/config";
 import { LiteThemeScript, IcmalAttrScript } from "@/components/layout/lite-theme";
 import { LiteThemeSync } from "@/components/layout/lite-theme-sync";
 import { gateRoute } from "@/lib/auth/route-gate";
+import {
+  getTenantDisabledModules,
+  isGateableModule,
+  segmentToModuleKod,
+  disabledModuleSegments,
+} from "@/lib/auth/module-gate";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -142,7 +148,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const liteCfg: LiteConfig | null = appMode === "lite" ? await getLiteConfig() : null;
   const liteDesign = liteCfg?.design ?? null;
   // Lite-da gizlədilmiş modullar (Pro-da boş) — sidebar nav-dan çıxarılır.
-  const hiddenModules = liteCfg ? hiddenLiteModules(liteCfg) : [];
+  // `let`: aşağıda tenant-ın bağlı (entitlement) modulları da bura merge olunur.
+  let hiddenModules = liteCfg ? hiddenLiteModules(liteCfg) : [];
+
+  // PER-TENANT MODUL ENTITLEMENT — bağlı modulları BİR dəfə hesabla.
+  // Super-admin (platform sahibi) bütün modullara bypass edir → heç vaxt bağlı.
+  // FAIL-OPEN: sorğu pozularsa boş dəst (səhifə heç vaxt sınmasın — bu hot path-dir).
+  const disabledModules = isSuperAdmin(session.user)
+    ? new Set<string>()
+    : await getTenantDisabledModules(session.user.sahibkar_id).catch(() => new Set<string>());
+  // Nav-dan gizlət: bağlı `modul_kod`-ları route seqmentlərinə çevirib merge et
+  // (sidebar/lite-menu/command-palette `hiddenModules`-u href seqmenti ilə tutur).
+  if (disabledModules.size > 0) {
+    hiddenModules = [...new Set([...hiddenModules, ...disabledModuleSegments(disabledModules)])];
+  }
 
   // Modul icmalları (ayar + icazə) — subnav İcmal tabları üçün (hər iki rejim)
   const icmalModules = (
@@ -166,6 +185,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
   } catch (e) {
     // headers() səhvi bizi başqa şəkildə bloklamasın — bu yalnız əlavə müdafiə qatıdır
     if (e && (e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;
+  }
+
+  // PER-TENANT MODUL ENTITLEMENT — bağlı moduln route-una girişi blokla.
+  // Cari path-in ilk seqmentini götür; gateable + tenant üçün bağlıdırsa /modul-yox.
+  // Super-admin onsuz da yuxarıda boş `disabledModules` alır (bypass).
+  if (disabledModules.size > 0) {
+    try {
+      const h = await headers();
+      const pathname = h.get("x-pathname") ?? "";
+      const seg = pathname.replace(/^\/+/, "").split("/")[0] ?? "";
+      if (seg && isGateableModule(seg)) {
+        const kod = segmentToModuleKod(seg);
+        if (kod && disabledModules.has(kod)) redirect("/modul-yox");
+      }
+    } catch (e) {
+      // FAIL-OPEN: yalnız redirect-i ötür, digər səhvlər səhifəni sındırmasın.
+      if (e && (e as { digest?: string }).digest?.startsWith("NEXT_REDIRECT")) throw e;
+    }
   }
 
   // Gündə bir dəfə avto-brifinq — naviqasiyanı bloklamır, cavabdan sonra işləyir.

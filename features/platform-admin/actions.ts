@@ -425,6 +425,49 @@ export async function adminUnblockIp(formData: FormData): Promise<{ ok: true } |
   }
 }
 
+// ── Tenant-üzrə modul aç/bağla (per-tenant module entitlement) ──────────────
+const SetTenantModuleSchema = z.object({
+  sahibkar_id: z.string().uuid("Sahibkar ID yanlışdır"),
+  modul_kod: z.string().min(1).max(40),
+  aktiv: z.enum(["true", "false"]),
+  bitme: z.string().optional().or(z.literal("")),
+});
+
+export async function setTenantModule(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = SetTenantModuleSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { sahibkar_id, modul_kod } = parsed.data;
+  const aktiv = parsed.data.aktiv === "true";
+  const bitme = parsed.data.bitme && parsed.data.bitme.length > 0 ? new Date(parsed.data.bitme) : null;
+  if (bitme && Number.isNaN(bitme.getTime())) return { ok: false, error: "Bitmə tarixi yanlışdır" };
+  try {
+    await prismaUnscoped.sahibkar_modullar.upsert({
+      where: { sahibkar_id_modul_kod: { sahibkar_id, modul_kod } },
+      create: { sahibkar_id, modul_kod, aktiv, bitme, baslama: new Date() },
+      update: { aktiv, bitme },
+    });
+
+    await safeAuditLog({
+      sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "MODULE_TOGGLE",
+      resurs_nov: "modul",
+      resurs_id: modul_kod,
+      yeni_data: { modul_kod, aktiv, bitme: bitme?.toISOString() ?? null, at: new Date().toISOString() },
+      sebeb: "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath(`/platform-admin/tenantlar/${sahibkar_id}`);
+    return { ok: true };
+  } catch (e) {
+    console.error("[setTenantModule]", e);
+    return { ok: false, error: "Modul dəyişmədi" };
+  }
+}
+
 export async function extendSubscription(sahibkar_id: string, daysToAdd: number): Promise<{ ok: true } | { ok: false; error: string }> {
   await requirePlatformAdmin();
   try {

@@ -414,3 +414,33 @@ export async function getGlobalIpBlocks(filter: {
     bitme_tarixi: r.bitme_tarixi,
   }));
 }
+
+// ── Tenant-üzrə modul səlahiyyəti (per-tenant module entitlement) ───────────
+// Bütün aktiv modullar (modullar.aktiv=true, siralama üzrə) LEFT-join tenant-in
+// sahibkar_modullar sətirlərilə birləşdirilir. Sətir yoxdursa aktiv=false.
+export async function getTenantModules(
+  sahibkarId: string,
+): Promise<Array<{ kod: string; ad: string; aylik_qiymet: number; aktiv: boolean; bitme: Date | null }>> {
+  const [modules, tenantRows] = await Promise.all([
+    prismaUnscoped.modullar.findMany({
+      where: { aktiv: true },
+      orderBy: { siralama: "asc" },
+    }),
+    prismaUnscoped.sahibkar_modullar.findMany({
+      where: { sahibkar_id: sahibkarId },
+    }),
+  ]);
+
+  const byKod = new Map(tenantRows.map((r) => [r.modul_kod, r]));
+
+  return modules.map((m) => {
+    const row = byKod.get(m.kod);
+    return {
+      kod: m.kod,
+      ad: m.ad,
+      aylik_qiymet: Number(m.aylik_qiymet ?? 0),
+      aktiv: row?.aktiv ?? false,
+      bitme: row?.bitme ?? null,
+    };
+  });
+}
