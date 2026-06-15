@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConnectDialog } from "@/features/marketplace/components/connect-dialog";
 import { AccountCard } from "@/features/marketplace/components/account-card";
 import { MarketplaceSubNav } from "@/components/marketplace-subnav";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import {
   getMarketplaceAccounts,
   getMarketplaceStats,
@@ -196,9 +197,11 @@ export default function MarketplacePage() {
         <AccountsSection />
       </Suspense>
 
-      <Suspense fallback={null}>
-        <RecentOrdersSection />
-      </Suspense>
+      <CollapsibleSection title="Son sifarişlər" defaultOpen={false}>
+        <Suspense fallback={null}>
+          <RecentOrdersSection />
+        </Suspense>
+      </CollapsibleSection>
     </div>
   );
 }

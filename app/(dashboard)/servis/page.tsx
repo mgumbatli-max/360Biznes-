@@ -11,6 +11,7 @@ import {
   CircleDollarSign,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ServisDialog } from "@/features/servis/components/servis-dialog";
 import { ServisTable } from "@/features/servis/components/servis-table";
@@ -240,15 +241,19 @@ export default async function ServisPage({
       </Suspense>
 
       {lite("qrafikler") && (
-        <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
-          <ChartsBlock dailyP={dailyP} heatmapP={heatmapP} />
-        </Suspense>
+        <CollapsibleSection title="Qrafiklər" defaultOpen={false}>
+          <Suspense fallback={<Skeleton className="h-64 w-full rounded-xl" />}>
+            <ChartsBlock dailyP={dailyP} heatmapP={heatmapP} />
+          </Suspense>
+        </CollapsibleSection>
       )}
 
       {lite("detal_cedvel") && (
-        <Suspense fallback={<Skeleton className="h-48 w-full rounded-xl" />}>
-          <LeaderboardBlock leaderboardP={leaderboardP} />
-        </Suspense>
+        <CollapsibleSection title="Texnik reytinqi" defaultOpen={false}>
+          <Suspense fallback={<Skeleton className="h-48 w-full rounded-xl" />}>
+            <LeaderboardBlock leaderboardP={leaderboardP} />
+          </Suspense>
+        </CollapsibleSection>
       )}
 
       {/* Modal pəncərə — URL `?detail=<id>` parametri ilə açılır */}

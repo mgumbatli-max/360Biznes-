@@ -33,6 +33,7 @@ import { AttentionWidget } from "@/features/anbar/components/attention-widget";
 import { SalesForecastWidget } from "@/features/ticaret/components/sales-forecast-widget";
 import { CrossSellWidget } from "@/features/ticaret/components/cross-sell-widget";
 import { ErrorSilentWrapper } from "@/components/error-silent-wrapper";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Suspense } from "react";
 import { formatNumber, formatMoney } from "@/lib/utils";
@@ -306,13 +307,17 @@ export default async function TicaretHubPage() {
         </ErrorSilentWrapper>
       </div>
 
-      <Suspense fallback={<Skeleton className="mt-3.5 h-56 rounded-xl" />}>
-        <ChartAndSellersSection />
-      </Suspense>
+      <CollapsibleSection title="Qrafik & ən çox satılanlar" defaultOpen={false}>
+        <Suspense fallback={<Skeleton className="mt-3.5 h-56 rounded-xl" />}>
+          <ChartAndSellersSection />
+        </Suspense>
+      </CollapsibleSection>
 
-      <Suspense fallback={<Skeleton className="mt-3.5 h-56 rounded-xl" />}>
-        <TopProductsAndFunnelSection />
-      </Suspense>
+      <CollapsibleSection title="Top məhsullar & satış hunisi" defaultOpen={false}>
+        <Suspense fallback={<Skeleton className="mt-3.5 h-56 rounded-xl" />}>
+          <TopProductsAndFunnelSection />
+        </Suspense>
+      </CollapsibleSection>
     </div>
   );
 }

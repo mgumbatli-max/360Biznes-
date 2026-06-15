@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ContactDialog } from "@/features/elaqe/components/contact-dialog";
 import { ContactSearch } from "@/features/elaqe/components/contact-search";
@@ -159,39 +160,42 @@ export default async function ElaqeHubPage({ searchParams }: { searchParams: Pro
         />
       </section>
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
-          icon={AlertTriangle}
-          label="Gecikmiş borc"
-          value={String(dash.gec_borc_say)}
-          subline="30+ gün"
-          tone={dash.gec_borc_say > 0 ? "danger" : "neutral"}
-        />
-        <KpiCard
-          icon={UserX}
-          label="Qara siyahı"
-          value={String(dash.qara_siyahi)}
-          subline="Bloklananlar"
-          tone={dash.qara_siyahi > 0 ? "danger" : "neutral"}
-        />
-        <KpiCard
-          icon={Moon}
-          label="Yatmış müştəri"
-          value={String(dash.yatmis_say)}
-          subline="90+ gün hərəkət yox"
-          tone={dash.yatmis_say > 0 ? "warning" : "neutral"}
-          href="/elaqe/musteriler?yatmis=1"
-        />
-        <KpiCard
-          icon={Cake}
-          label="Doğum bu ay"
-          value={String(dash.dogum_bu_ay)}
-          subline="Salamlama fürsəti"
-          tone={dash.dogum_bu_ay > 0 ? "info" : "neutral"}
-          href="/elaqe/musteriler?dogum_ay=1"
-        />
-      </section>
+      <CollapsibleSection title="Əlavə göstəricilər" defaultOpen={false}>
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <KpiCard
+            icon={AlertTriangle}
+            label="Gecikmiş borc"
+            value={String(dash.gec_borc_say)}
+            subline="30+ gün"
+            tone={dash.gec_borc_say > 0 ? "danger" : "neutral"}
+          />
+          <KpiCard
+            icon={UserX}
+            label="Qara siyahı"
+            value={String(dash.qara_siyahi)}
+            subline="Bloklananlar"
+            tone={dash.qara_siyahi > 0 ? "danger" : "neutral"}
+          />
+          <KpiCard
+            icon={Moon}
+            label="Yatmış müştəri"
+            value={String(dash.yatmis_say)}
+            subline="90+ gün hərəkət yox"
+            tone={dash.yatmis_say > 0 ? "warning" : "neutral"}
+            href="/elaqe/musteriler?yatmis=1"
+          />
+          <KpiCard
+            icon={Cake}
+            label="Doğum bu ay"
+            value={String(dash.dogum_bu_ay)}
+            subline="Salamlama fürsəti"
+            tone={dash.dogum_bu_ay > 0 ? "info" : "neutral"}
+            href="/elaqe/musteriler?dogum_ay=1"
+          />
+        </section>
+      </CollapsibleSection>
 
+      <CollapsibleSection title="Ən yaxşı müştərilər və riskli müştərilər" defaultOpen={false}>
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card className="glass">
           <CardHeader className="pb-2">
@@ -260,6 +264,7 @@ export default async function ElaqeHubPage({ searchParams }: { searchParams: Pro
           </CardContent>
         </Card>
       </section>
+      </CollapsibleSection>
 
       <ContactSearch basePath="/elaqe" showTip managers={managers} />
 

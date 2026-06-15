@@ -26,6 +26,7 @@ import {
   Flame,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
@@ -191,20 +192,26 @@ export default async function HesabatlarHubPage() {
         </Suspense>
       )}
 
-      <Suspense fallback={null}>
-        <AiInsightsSection />
-      </Suspense>
+      <CollapsibleSection title="AI kritik siqnallar" defaultOpen={false}>
+        <Suspense fallback={null}>
+          <AiInsightsSection />
+        </Suspense>
+      </CollapsibleSection>
 
       {lite("qrafikler") && (
-        <Suspense fallback={<TrendsRowSkeleton />}>
-          <TrendsRow />
-        </Suspense>
+        <CollapsibleSection title="Trendlər" defaultOpen={false}>
+          <Suspense fallback={<TrendsRowSkeleton />}>
+            <TrendsRow />
+          </Suspense>
+        </CollapsibleSection>
       )}
 
       {lite("detal_cedvel") && (
-        <Suspense fallback={<TopRowSkeleton />}>
-          <TopPerformersRow />
-        </Suspense>
+        <CollapsibleSection title="Liderlər (məhsul / müştəri)" defaultOpen={false}>
+          <Suspense fallback={<TopRowSkeleton />}>
+            <TopPerformersRow />
+          </Suspense>
+        </CollapsibleSection>
       )}
 
       {/* Report navigation cards — pure static, render immediately. */}

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Users, MessageSquare, TrendingUp, Wallet, ClipboardList, CalendarClock, BarChart3, Megaphone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CrmSubNav } from "@/components/crm-subnav";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMoney } from "@/lib/utils";
@@ -127,17 +128,23 @@ export default function CrmHubPage() {
         <KpiSection />
       </Suspense>
 
-      <Suspense fallback={<Skeleton className="h-64 rounded-xl" />}>
-        <DailyAndSourcesSection />
-      </Suspense>
+      <CollapsibleSection title="Günlük & mənbələr" defaultOpen={false}>
+        <Suspense fallback={<Skeleton className="h-64 rounded-xl" />}>
+          <DailyAndSourcesSection />
+        </Suspense>
+      </CollapsibleSection>
 
-      <Suspense fallback={<Skeleton className="h-64 rounded-xl" />}>
-        <FunnelAndActivitySection />
-      </Suspense>
+      <CollapsibleSection title="Huni & son aktivlik" defaultOpen={false}>
+        <Suspense fallback={<Skeleton className="h-64 rounded-xl" />}>
+          <FunnelAndActivitySection />
+        </Suspense>
+      </CollapsibleSection>
 
-      <Suspense fallback={<Skeleton className="h-64 rounded-xl" />}>
-        <SourceAnalyticsSection />
-      </Suspense>
+      <CollapsibleSection title="Mənbə analitikası" defaultOpen={false}>
+        <Suspense fallback={<Skeleton className="h-64 rounded-xl" />}>
+          <SourceAnalyticsSection />
+        </Suspense>
+      </CollapsibleSection>
     </div>
   );
 }

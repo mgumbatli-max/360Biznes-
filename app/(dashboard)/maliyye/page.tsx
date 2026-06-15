@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { MaliyyeSubNav } from "@/components/maliyye-subnav";
 import { DailyFlowChart } from "@/features/maliyye/components/daily-flow-chart";
@@ -299,7 +300,7 @@ export default async function MaliyyePage({ searchParams }: { searchParams?: Pro
       </section>
 
       {/* ─── 30-day cashflow chart ─── */}
-      <section>
+      <CollapsibleSection title="Pul axını (30 gün)" defaultOpen={false}>
         <Card className="glass">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
@@ -319,15 +320,20 @@ export default async function MaliyyePage({ searchParams }: { searchParams?: Pro
             <DailyFlowChart data={flow} />
           </CardContent>
         </Card>
-      </section>
+      </CollapsibleSection>
 
       {/* ─── Debt aging analysis ─── */}
-      <DebtAgingWidget buckets={aging.buckets} totalAmount={aging.total} />
+      <CollapsibleSection title="Borc qocalması" defaultOpen={false}>
+        <DebtAgingWidget buckets={aging.buckets} totalAmount={aging.total} />
+      </CollapsibleSection>
 
       {/* ─── Cash flow forecast (M7) ─── */}
-      <CashflowForecast initialRange={forecastDays} data={forecast} />
+      <CollapsibleSection title="Pul axını proqnozu" defaultOpen={false}>
+        <CashflowForecast initialRange={forecastDays} data={forecast} />
+      </CollapsibleSection>
 
       {/* ─── Top 5 panels ─── */}
+      <CollapsibleSection title="Top 5 — xərc / debitor / kreditor" defaultOpen={false}>
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <TopCard
           title="Top 5 xərc kateqoriyaları"
@@ -354,6 +360,7 @@ export default async function MaliyyePage({ searchParams }: { searchParams?: Pro
           href="/maliyye/kreditor"
         />
       </section>
+      </CollapsibleSection>
 
       <QuickOpDialog
         hesablar={refs.hesablar}
