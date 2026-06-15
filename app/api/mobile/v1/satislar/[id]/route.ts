@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
+import { assertModuleAccess } from "@/lib/mobile/module-access";
 import { getSaleDetail } from "@/features/ticaret/satis-queries";
 import { serializeForJson } from "@/features/anbar/save-product-core";
 
@@ -9,6 +10,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "satis"))) {
+      return NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
+    }
     if (!mobilePerm(ctx, "satis.oxu", "ticaret.oxu", "satis.idare")) {
       return { error: "İcazə yoxdur" };
     }

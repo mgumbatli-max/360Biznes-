@@ -148,7 +148,7 @@ export function canSeeNavItem(
   if (!req) return true;
   // Multi-tenant: ad üzrə yoxlama (rolId nömrəsi tenant-dan-tenanta dəyişir).
   // Super-admin (rol_id=1 və ya email allowlist) — server tərəfdə hesablanıb prop kimi gəlir.
-  if (req.systemAdminOnly && !ctx.isSuperAdmin && ctx.rolAd !== "admin") return false;
+  if (req.systemAdminOnly && !ctx.isSuperAdmin) return false;
   if (req.roleNames && (!ctx.rolAd || !req.roleNames.includes(ctx.rolAd))) return false;
   if (req.roleIds && !req.roleIds.includes(ctx.rolId)) return false;
   if (req.anyPermission && req.anyPermission.length) {

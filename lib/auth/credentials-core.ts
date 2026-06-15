@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
-import { checkLoginRate, recordLoginAttempt } from "@/lib/auth/login-guard";
+import { checkLoginRate, recordLoginAttempt, normalizeIp } from "@/lib/auth/login-guard";
 
 const LoginSchema = z.object({
   // .trim() validasiyadan ƏVVƏL — mobil autofill/paste tez-tez sonda boşluq
@@ -60,14 +60,18 @@ export async function authorizeUser(
   // ⚠️ FAIL-OPEN: hər hansı xəta, env yoxdursa, ip null/yanlışdırsa → BLOKU ÖTÜR,
   // girişə icazə ver. Bu auth-un isti yoludur — heç vaxt girişi sındırma.
   const superTenant = (process.env.SUPER_ADMIN_SAHIBKAR_ID ?? "").trim();
-  if (superTenant && ip) {
+  // Xam IP (vergüllü X-Forwarded-For, port-lu IPv6/IPv4, "unknown") Inet
+  // bərabərliyini AddrParseError-a salır → fail-open catch bloku ÖTÜRƏRDİ
+  // (yanlış başlıq qlobal IP-bloku keçə bilərdi). Normallaşdırıb sorğu veririk.
+  const ipForBlock = normalizeIp(ip);
+  if (superTenant && ipForBlock) {
     try {
       const now = new Date();
       const block = await prismaUnscoped.ip_bloklari.findFirst({
         where: {
           sahibkar_id: superTenant,
           aktiv: true,
-          ip_adres: ip,
+          ip_adres: ipForBlock,
           OR: [{ bitme_tarixi: null }, { bitme_tarixi: { gt: now } }],
         },
         select: { id: true },

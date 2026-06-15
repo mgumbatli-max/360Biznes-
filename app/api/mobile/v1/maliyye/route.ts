@@ -1,11 +1,15 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
+import { assertModuleAccess } from "@/lib/mobile/module-access";
 import { getDashboardKpis, getTopDebtors, getTopCreditors } from "@/features/maliyye/queries";
 
 /** GET — maliyyə icmalı: KPI (balans, gəlir/xərc, mənfəət, debitor/kreditor) +
  *  ən böyük borclu/kreditor. Stealth-scale getDashboardKpis daxilində tətbiq olunur. */
 export async function GET(req: NextRequest) {
   return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "maliyye"))) {
+      return NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
+    }
     if (!mobilePerm(ctx, "maliyye.oxu", "maliyye.gor", "maliyye.idare")) {
       return { error: "İcazə yoxdur", kpis: null, debtors: [], creditors: [] };
     }

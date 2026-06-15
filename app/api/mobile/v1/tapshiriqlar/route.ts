@@ -1,13 +1,18 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
+import { assertModuleAccess } from "@/lib/mobile/module-access";
 import { getTasks, getTaskStats, type TaskScope, type TaskStatus } from "@/features/tapshiriqlar/queries";
 import { prisma } from "@/lib/db/prisma";
 import { requireTenant } from "@/lib/db/tenant-context";
 
+const MODUL_BAGLI = () =>
+  NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
+
 /** GET — tapşırıq siyahısı (scope: menim/yaratdigim/hamisi) + 1-ci səhifədə statistika. */
 export async function GET(req: NextRequest) {
   return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "tapshiriq"))) return MODUL_BAGLI();
     const sp = req.nextUrl.searchParams;
     let scope = (sp.get("scope") as TaskScope) || "menim";
     // "hamisi" yalnız idarə icazəsi olanlara; əks halda öz tapşırıqları
@@ -43,6 +48,7 @@ const CreateSchema = z.object({
  *  token versiyası: cross-tenant validasiya + task + icraçı + xatırlatma + bildiriş. */
 export async function POST(req: NextRequest) {
   return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "tapshiriq"))) return MODUL_BAGLI();
     if (!mobilePerm(ctx, "tapshiriq.yarat", "tapshiriq.idare")) {
       return { error: "İcazə yoxdur" };
     }

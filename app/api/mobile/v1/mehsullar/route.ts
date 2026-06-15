@@ -1,10 +1,15 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
+import { assertModuleAccess } from "@/lib/mobile/module-access";
 import { getProducts } from "@/features/anbar/queries";
 import { ProductSchema, saveProductCore } from "@/features/anbar/save-product-core";
 
+const MODUL_BAGLI = () =>
+  NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
+
 export async function GET(req: NextRequest) {
   return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "anbar"))) return MODUL_BAGLI();
     if (!mobilePerm(ctx, "mehsul.oxu", "anbar.oxu")) {
       return { error: "İcazə yoxdur", items: [], total: 0 };
     }
@@ -22,6 +27,7 @@ export async function GET(req: NextRequest) {
 /** POST — yeni məhsul yarat. Token-əsaslı icazə + qiymət gözətçisi. */
 export async function POST(req: NextRequest) {
   return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "anbar"))) return MODUL_BAGLI();
     if (!mobilePerm(ctx, "mehsul.yarat")) {
       return { error: "İcazə yoxdur" };
     }

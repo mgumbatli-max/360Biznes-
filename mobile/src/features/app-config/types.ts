@@ -18,4 +18,8 @@ export type LiteConfig = {
   modules: Record<string, LiteModuleConfig>;
 };
 
-export type AppConfigResponse = { lite: LiteConfig };
+export type AppConfigResponse = {
+  lite: LiteConfig;
+  /** Super-admin tərəfindən bağlanmış modulların `modul_kod` siyahısı (web `module-gate`). */
+  disabledModules?: string[];
+};

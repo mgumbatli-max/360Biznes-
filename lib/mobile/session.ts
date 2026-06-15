@@ -48,6 +48,9 @@ export async function withMobile<T>(
   if (!ctx) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const data = await runWithTenant(ctx, () => fn(ctx));
+    // Handler-in özü status təyin etmək üçün hazır NextResponse qaytara bilər
+    // (məs. modul-entitlement 403). Belə halda olduğu kimi ötürürük.
+    if (data instanceof NextResponse) return data;
     return NextResponse.json(data);
   } catch (e) {
     console.error("[mobile]", req.nextUrl.pathname, e);

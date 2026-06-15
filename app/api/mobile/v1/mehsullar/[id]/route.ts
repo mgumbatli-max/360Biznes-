@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
+import { assertModuleAccess } from "@/lib/mobile/module-access";
 import {
   getProductDetail,
   getStockByWarehouse,
@@ -14,6 +15,9 @@ import {
   serializeForJson,
 } from "@/features/anbar/save-product-core";
 
+const MODUL_BAGLI = () =>
+  NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
+
 /**
  * GET — məhsul detalı (oxu).
  * Mobil detal ekranı üçün zəngin paket: baza məhsul + anbar üzrə stok +
@@ -27,6 +31,7 @@ export async function GET(
 ) {
   const { id } = await ctx.params;
   return withMobile(req, async (mctx) => {
+    if (!(await assertModuleAccess(mctx.sahibkarId, "anbar"))) return MODUL_BAGLI();
     if (!mobilePerm(mctx, "mehsul.oxu", "anbar.oxu")) {
       return { error: "İcazə yoxdur" };
     }
@@ -57,6 +62,7 @@ export async function PUT(
 ) {
   const { id } = await ctx.params;
   return withMobile(req, async (mctx) => {
+    if (!(await assertModuleAccess(mctx.sahibkarId, "anbar"))) return MODUL_BAGLI();
     if (!mobilePerm(mctx, "mehsul.duzelt")) {
       return { error: "İcazə yoxdur" };
     }

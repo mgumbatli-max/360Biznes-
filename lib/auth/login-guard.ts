@@ -27,6 +27,42 @@ const WINDOW_MIN = 15;
 const EMAIL_LIMIT = 5;
 const IP_DISTINCT_EMAIL_LIMIT = 12;
 
+/**
+ * Inet sorğusu üçün təhlükəsiz IP normallaşdırma.
+ *
+ * Problem: `ip` çox vaxt xam X-Forwarded-For (vergüllə birləşmiş hop-lar),
+ * port-lu IPv6 (`[::1]:443`), port-lu IPv4 (`1.2.3.4:5678`) və ya `unknown`
+ * kimi gəlir. Bunlar Postgres Inet bərabərliyini AddrParseError-a salır →
+ * fail-open catch BLOKU ÖTÜRÜR (yanlış başlıq qlobal IP-bloku keçə bilər).
+ *
+ * Bu helper: ilk vergül hop-unu götürür, trim edir, IPv4/bracketed-IPv6
+ * üçün sondakı :PORT-u atır. Tanınmayan/boş dəyər üçün null qaytarır ki,
+ * çağıran tərəf Inet sorğusunu tamamilə ötürsün (fail-open).
+ */
+export function normalizeIp(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // İlk hop (X-Forwarded-For: "client, proxy1, proxy2")
+  let ip = raw.split(",")[0]?.trim() ?? "";
+  if (!ip) return null;
+  // "unknown" və bənzər mütləq Inet olmayan dəyərlər
+  if (ip.toLowerCase() === "unknown") return null;
+
+  // Bracketed IPv6 with optional port: "[::1]" və ya "[::1]:443"
+  if (ip.startsWith("[")) {
+    const close = ip.indexOf("]");
+    if (close !== -1) ip = ip.slice(1, close);
+    return ip || null;
+  }
+
+  // IPv4 with port: "1.2.3.4:5678" — tək ":" və nöqtə varsa port-u at.
+  // Çılpaq IPv6 (`::1`, `fe80::1`) çox sayda ":" daxil edir — toxunma.
+  if (ip.includes(".") && ip.split(":").length === 2) {
+    ip = ip.split(":")[0];
+  }
+
+  return ip || null;
+}
+
 export type LoginGate =
   | { allowed: true }
   | { allowed: false; reason: string; retryAfterSec: number };
@@ -34,15 +70,17 @@ export type LoginGate =
 export async function checkLoginRate(email: string, ip: string | null): Promise<LoginGate> {
   const since = new Date(Date.now() - WINDOW_MIN * 60_000);
   const normalizedEmail = email.toLowerCase().trim();
+  // Xam/yanlış IP (vergüllü XFF, port-lu) Inet sorğusunu AddrParseError-a salır.
+  const ipNorm = normalizeIp(ip);
   try {
     const [emailFails, ipDistinctEmails] = await Promise.all([
       prismaUnscoped.giris_cehdleri.count({
         where: { email: normalizedEmail, ugurlu: false, yaradildi: { gte: since } },
       }),
-      ip
+      ipNorm
         ? prismaUnscoped.giris_cehdleri
             .findMany({
-              where: { ip_adres: ip, ugurlu: false, yaradildi: { gte: since } },
+              where: { ip_adres: ipNorm, ugurlu: false, yaradildi: { gte: since } },
               distinct: ["email"],
               select: { email: true },
             })

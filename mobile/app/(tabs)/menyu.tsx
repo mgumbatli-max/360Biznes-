@@ -9,34 +9,69 @@ import {
 } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { C, AI_GRADIENT } from "../../src/theme";
+import { useAppConfig } from "../../src/features/app-config/hooks";
 
 type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-type Tile = { label: string; Icon: LucideIcon; fg: string; onPress: () => void };
+/** `seg` — web `module-gate` SEGMENT_TO_MODULE açarı; gateable olmayan tile-larda boş. */
+type Tile = { label: string; Icon: LucideIcon; fg: string; onPress: () => void; seg?: string };
+
+/**
+ * Route seqmenti → `modul_kod` (web `lib/auth/module-gate.ts SEGMENT_TO_MODULE` güzgüsü).
+ * App-config-dən gələn `disabledModules` `modul_kod` saxlayır; tile-ın `seg`-i bu map
+ * ilə koda çevrilib müqayisə olunur. CORE tile-lar (dashboard/pos/ai/team/lab/ayarlar)
+ * `seg` təyin etmir → heç vaxt filtrlənmir. Lite görünüşündən AYRIDIR.
+ */
+const SEGMENT_TO_MODULE: Readonly<Record<string, string>> = {
+  ticaret: "satis",
+  anbar: "anbar",
+  maliyye: "maliyye",
+  elaqe: "elaqe",
+  crm: "elaqe",
+  servis: "servis",
+  tapshiriq: "tapshiriq",
+  iscilier: "iscilier",
+  marketplace: "marketplace",
+  hesabatlar: "hesabat",
+  satinalma: "alis",
+};
 
 export default function ModullarScreen() {
   const router = useRouter();
   const soon = (ad: string) => Alert.alert(ad, "Bu modul tezliklə əlavə olunacaq.");
 
+  const { data: appConfig } = useAppConfig();
+  const disabledKods = React.useMemo(
+    () => new Set(appConfig?.disabledModules ?? []),
+    [appConfig?.disabledModules],
+  );
+
   // Web naviqasiyasındakı BÜTÜN modullar (lib/navigation.ts ilə 1-1)
-  const tiles: Tile[] = [
+  const allTiles: Tile[] = [
     { label: "Əsas səhifə", Icon: LayoutDashboard, fg: "#2563eb", onPress: () => router.push("/(tabs)") },
     { label: "POS / İsti satış", Icon: ScanLine, fg: "#e11d48", onPress: () => router.push("/pos") },
-    { label: "Ticarət", Icon: ShoppingCart, fg: "#059669", onPress: () => router.push("/(tabs)/satis") },
-    { label: "Anbar", Icon: Package, fg: "#d97706", onPress: () => router.push("/mehsullar") },
-    { label: "Maliyyə", Icon: Wallet, fg: "#7c3aed", onPress: () => router.push("/maliyye") },
-    { label: "Əlaqələr", Icon: Users, fg: "#0891b2", onPress: () => router.push("/musteri") },
-    { label: "Tapşırıqlar", Icon: ListTodo, fg: "#4f46e5", onPress: () => router.push("/tapshiriq") },
+    { label: "Ticarət", Icon: ShoppingCart, fg: "#059669", onPress: () => router.push("/(tabs)/satis"), seg: "ticaret" },
+    { label: "Anbar", Icon: Package, fg: "#d97706", onPress: () => router.push("/mehsullar"), seg: "anbar" },
+    { label: "Maliyyə", Icon: Wallet, fg: "#7c3aed", onPress: () => router.push("/maliyye"), seg: "maliyye" },
+    { label: "Əlaqələr", Icon: Users, fg: "#0891b2", onPress: () => router.push("/musteri"), seg: "elaqe" },
+    { label: "Tapşırıqlar", Icon: ListTodo, fg: "#4f46e5", onPress: () => router.push("/tapshiriq"), seg: "tapshiriq" },
     { label: "Team / Söhbət", Icon: MessageSquare, fg: "#4f46e5", onPress: () => router.push("/team") },
-    { label: "Servis", Icon: Wrench, fg: "#ea580c", onPress: () => soon("Servis") },
-    { label: "Əməkdaşlar", Icon: UserCog, fg: "#0d9488", onPress: () => soon("Əməkdaşlar") },
+    { label: "Servis", Icon: Wrench, fg: "#ea580c", onPress: () => soon("Servis"), seg: "servis" },
+    { label: "Əməkdaşlar", Icon: UserCog, fg: "#0d9488", onPress: () => soon("Əməkdaşlar"), seg: "iscilier" },
     { label: "Kampaniyalar", Icon: Megaphone, fg: "#db2777", onPress: () => soon("Kampaniyalar") },
-    { label: "CRM / Mesaj", Icon: Contact, fg: "#0284c7", onPress: () => soon("CRM / Mesaj Mərkəzi") },
-    { label: "Marketplace", Icon: Store, fg: "#64748b", onPress: () => soon("Marketplace & Webhook") },
+    { label: "CRM / Mesaj", Icon: Contact, fg: "#0284c7", onPress: () => soon("CRM / Mesaj Mərkəzi"), seg: "crm" },
+    { label: "Marketplace", Icon: Store, fg: "#64748b", onPress: () => soon("Marketplace & Webhook"), seg: "marketplace" },
     { label: "360 LAB", Icon: FlaskConical, fg: "#c026d3", onPress: () => soon("360 LAB") },
-    { label: "Hesabatlar", Icon: BarChart3, fg: "#0284c7", onPress: () => router.push("/maliyye") },
+    { label: "Hesabatlar", Icon: BarChart3, fg: "#0284c7", onPress: () => router.push("/maliyye"), seg: "hesabatlar" },
     { label: "Nəzarət Mərkəzi", Icon: ShieldAlert, fg: "#dc2626", onPress: () => router.push("/mehsullar") },
     { label: "Ayarlar", Icon: Settings, fg: "#475569", onPress: () => router.push("/ayarlar") },
   ];
+
+  // Bağlanmış (super-admin) modulları gizlət — Lite görünüşündən AYRI.
+  const tiles = allTiles.filter((t) => {
+    if (!t.seg) return true;
+    const kod = SEGMENT_TO_MODULE[t.seg];
+    return kod === undefined || !disabledKods.has(kod);
+  });
 
   const rows: Tile[][] = [];
   for (let i = 0; i < tiles.length; i += 2) rows.push(tiles.slice(i, i + 2));

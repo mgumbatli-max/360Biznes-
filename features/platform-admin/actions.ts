@@ -573,8 +573,8 @@ export async function applyPlanModules(formData: FormData): Promise<{ ok: true }
     for (const modul_kod of kodlar) {
       await prismaUnscoped.sahibkar_modullar.upsert({
         where: { sahibkar_id_modul_kod: { sahibkar_id, modul_kod } },
-        // Mövcud sətr: yalnız aktiv et, bitme-yə toxunma.
-        update: { aktiv: true },
+        // Mövcud sətr: aktiv et + bitme-ni sıfırla (müddətsiz) — köhnə bitme gate-i bloklayırdı.
+        update: { aktiv: true, bitme: null },
         // Yeni sətr: aktiv + baslama (bitme = null → müddətsiz).
         create: { sahibkar_id, modul_kod, aktiv: true, baslama: new Date() },
       });

@@ -1,17 +1,22 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
+import { assertModuleAccess } from "@/lib/mobile/module-access";
 import { getTaskDetail } from "@/features/tapshiriqlar/detail-queries";
 import { serializeForJson } from "@/features/anbar/save-product-core";
 import { prisma } from "@/lib/db/prisma";
 import { requireTenant } from "@/lib/db/tenant-context";
+
+const MODUL_BAGLI = () =>
+  NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
 
 /** GET — tapşırıq detalı. */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  return withMobile(req, async () => {
+  return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "tapshiriq"))) return MODUL_BAGLI();
     const { id } = await params;
     const task = await getTaskDetail(id);
     if (!task) return { error: "Tapşırıq tapılmadı" };
@@ -30,6 +35,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   return withMobile(req, async (ctx) => {
+    if (!(await assertModuleAccess(ctx.sahibkarId, "tapshiriq"))) return MODUL_BAGLI();
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const parsed = PatchSchema.safeParse(body);

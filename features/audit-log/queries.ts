@@ -48,11 +48,14 @@ export async function getAuditLog(filter: AuditFilter, page = 1, pageSize = 50) 
       if (filter.to) where.yaradildi.lte = new Date(filter.to);
     }
     if (filter.q) {
+      // ⚠️ ip_adres Postgres `Inet` sütunudur — `contains` birbaşa İŞLƏMİR
+      // (runtime 500). IP axtarışı qeyri-əsas olduğu üçün OR-dan çıxarıldı;
+      // email/əməliyyat/resurs/URL axtarışı saxlanılır. (IP axtarışı lazım
+      // olsa, platform-admin/getLoginAttempts kimi raw `host(ip_adres)` ILIKE.)
       where.OR = [
         { istifadeci_ad: { contains: filter.q, mode: "insensitive" } },
         { resurs_nov: { contains: filter.q, mode: "insensitive" } },
         { url: { contains: filter.q } },
-        { ip_adres: { contains: filter.q } },
         { resurs_id: { contains: filter.q } },
       ];
     }
