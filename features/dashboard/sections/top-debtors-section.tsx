@@ -1,61 +1,8 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { Wallet, ChevronRight } from "lucide-react";
-import { Prisma, prisma } from "@/lib/db/prisma";
-import { withTenant } from "@/lib/db/with-tenant";
-import { requireTenant } from "@/lib/db/tenant-context";
 import { formatMoney } from "@/lib/utils";
-
-type Debtor = {
-  id: string;
-  ad: string;
-  telefon: string | null;
-  borc: number;
-  gecikme_gun: number;
-  acig_say: number;
-};
-
-async function getTopDebtors(limit = 5): Promise<Debtor[]> {
-  return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
-    const rows = await prisma.$queryRaw<
-      {
-        id: string;
-        ad: string;
-        telefon: string | null;
-        borc: number;
-        gecikme_gun: number;
-        acig_say: number;
-      }[]
-    >(Prisma.sql`
-      SELECT k.id,
-             k.ad,
-             k.telefon,
-             COALESCE(SUM(s.son_mebleg - COALESCE(s.odenilmis, 0)), 0)::float AS borc,
-             COALESCE(MAX((CURRENT_DATE - s.tarix)), 0)::int AS gecikme_gun,
-             COUNT(*)::int AS acig_say
-        FROM kontragentler k
-        JOIN satis_sifarisleri s ON s.musteri_id = k.id
-       WHERE k.sahibkar_id = ${sahibkarId}::uuid
-         AND s.sahibkar_id = ${sahibkarId}::uuid
-         AND s.status <> 'legv'
-         AND COALESCE(s.qaralama, false) = false
-         AND s.odenis_nov IN ('nisye', 'borc')
-         AND s.son_mebleg - COALESCE(s.odenilmis, 0) > 0
-       GROUP BY k.id, k.ad, k.telefon
-       ORDER BY borc DESC
-       LIMIT ${limit}
-    `);
-    return rows.map((r) => ({
-      id: r.id,
-      ad: r.ad,
-      telefon: r.telefon,
-      borc: Number(r.borc),
-      gecikme_gun: Number(r.gecikme_gun),
-      acig_say: Number(r.acig_say),
-    }));
-  });
-}
+import { getTopDebtors } from "@/features/dashboard/queries";
 
 async function TopDebtorsInner() {
   const debtors = await getTopDebtors(5);

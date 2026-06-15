@@ -898,3 +898,58 @@ export async function getDailyInsight(): Promise<DailyInsight> {
     return cached();
   });
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * Top borclu müştərilər — top debtors (dashboard + mobil üçün paylaşılan)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export type TopDebtorRow = {
+  id: string;
+  ad: string;
+  telefon: string | null;
+  borc: number;
+  gecikme_gun: number;
+  acig_say: number;
+};
+
+async function fetchTopDebtorsRaw(sahibkarId: string, limit: number): Promise<TopDebtorRow[]> {
+  const rows = await prismaUnscoped.$queryRaw<TopDebtorRow[]>`
+    SELECT k.id,
+           k.ad,
+           k.telefon,
+           COALESCE(SUM(s.son_mebleg - COALESCE(s.odenilmis, 0)), 0)::float AS borc,
+           COALESCE(MAX((CURRENT_DATE - s.tarix)), 0)::int AS gecikme_gun,
+           COUNT(*)::int AS acig_say
+      FROM kontragentler k
+      JOIN satis_sifarisleri s ON s.musteri_id = k.id
+     WHERE k.sahibkar_id = ${sahibkarId}::uuid
+       AND s.sahibkar_id = ${sahibkarId}::uuid
+       AND s.status <> 'legv'
+       AND COALESCE(s.qaralama, false) = false
+       AND s.odenis_nov IN ('nisye', 'borc')
+       AND s.son_mebleg - COALESCE(s.odenilmis, 0) > 0
+     GROUP BY k.id, k.ad, k.telefon
+     ORDER BY borc DESC
+     LIMIT ${limit}
+  `;
+  return rows.map((r) => ({
+    id: r.id,
+    ad: r.ad,
+    telefon: r.telefon,
+    borc: Number(r.borc),
+    gecikme_gun: Number(r.gecikme_gun),
+    acig_say: Number(r.acig_say),
+  }));
+}
+
+export async function getTopDebtors(limit = 5): Promise<TopDebtorRow[]> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const cached = unstable_cache(
+      () => fetchTopDebtorsRaw(sahibkarId, limit),
+      ["dashboard-top-debtors", sahibkarId, String(limit)],
+      { revalidate: 60, tags: [`dashboard:${sahibkarId}`] },
+    );
+    return cached();
+  });
+}

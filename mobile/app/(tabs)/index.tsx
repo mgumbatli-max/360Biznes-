@@ -1,25 +1,33 @@
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
-  TrendingUp, Wallet, AlertTriangle, Boxes, Sparkles, Bell, Search,
-  ShieldAlert, FileBarChart, Plus, X, SlidersHorizontal, ChevronUp, ChevronDown, Trash2,
-  Moon, Sun,
+  Sparkles, Bell, Search, ShieldAlert, FileBarChart, Plus, X,
+  SlidersHorizontal, ChevronUp, ChevronDown, Trash2, AlertTriangle, Moon, Sun,
 } from "lucide-react-native";
 import { Screen } from "../../src/components";
 import { useAuth } from "../../src/lib/auth-store";
 import { useAppModeStore } from "../../src/lib/app-mode-store";
-import { useOzet } from "../../src/features/ozet/hooks";
 import { useQuickActions } from "../../src/features/quick-actions/store";
 import { QA_CATALOG, QA_MAP, type QAItem } from "../../src/features/quick-actions/catalog";
-import { formatMoney } from "../../src/lib/format";
-import { C, TONE, useThemeStore, type ToneKey } from "../../src/theme";
+import { C, TONE, useThemeStore } from "../../src/theme";
+import { useDashboardHome } from "../../src/features/dashboard/hooks";
+import { useAppConfig } from "../../src/features/app-config/hooks";
+import {
+  InsightBanner, RevenueHero, TodayCard, KpiCards, CashflowCard,
+  MyWorkCard, AlertsCard, LowStockCard, Top5, TopDebtorsCard,
+} from "../../src/features/dashboard/components";
 
-type LucideIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-const NUM = { fontVariant: ["tabular-nums" as const] };
 const AZ_DAYS = ["Bazar", "Bazar ertəsi", "Çərşənbə axşamı", "Çərşənbə", "Cümə axşamı", "Cümə", "Şənbə"];
 const AZ_MONTHS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
+
+/** Web dashboard "dashboard" modulunun Lite blok defaultları (registry.ts güzgüsü). */
+const BLOCK_DEFAULT: Record<string, boolean> = {
+  kpi: true, alerts: true, lowStock: true, top5: true, debtors: true,
+  insight: false, charts: false, activity: false, feed: false, sync: false,
+};
+const SECTION = { marginHorizontal: 16, marginTop: 14 } as const;
 
 function getInitials(name?: string | null): string {
   if (!name) return "?";
@@ -56,22 +64,6 @@ function IconBtn({ children, onPress, filled = false, danger = false, badge }: {
   );
 }
 
-function MetricCard({ Icon, label, value, sub, tone = "neutral", onPress }: { Icon: LucideIcon; label: string; value: string; sub?: string; tone?: ToneKey; onPress?: () => void }) {
-  const t = TONE[tone];
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.9 : 1, flex: 1, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.line, paddingHorizontal: 13, paddingVertical: 12, shadowColor: "#141820", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 })}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <Text style={{ color: C.sub, fontSize: 11, fontWeight: "600" }} numberOfLines={1}>{label}</Text>
-        <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: t.bg, alignItems: "center", justifyContent: "center" }}>
-          <Icon size={16} color={t.fg} strokeWidth={2.2} />
-        </View>
-      </View>
-      <Text style={{ color: tone === "neutral" ? C.ink : t.fg, fontSize: 20, fontWeight: "800", marginTop: 8, ...NUM }} numberOfLines={1}>{value}</Text>
-      {sub ? <Text style={{ color: C.sub, fontSize: 11, marginTop: 1 }} numberOfLines={1}>{sub}</Text> : null}
-    </Pressable>
-  );
-}
-
 function ActionCard({ item, full, onPress }: { item: QAItem; full?: boolean; onPress: () => void }) {
   const Icon = item.Icon;
   // Web kimi rəngli-tonlu fon (color/8% tint + color/20% border)
@@ -95,17 +87,22 @@ export default function HomeScreen() {
   const setMode = useAppModeStore((s) => s.setMode);
   const themeMode = useThemeStore((s) => s.mode);
   const toggleTheme = useThemeStore((s) => s.toggle);
-  const { data: ozet } = useOzet();
+  const { data: home, isLoading } = useDashboardHome();
+  const { data: appConfig } = useAppConfig();
   const { keys, load, toggle, move, reset } = useQuickActions();
   const [customize, setCustomize] = useState(false);
 
   useEffect(() => { load(); }, [load]);
 
   const initials = getInitials(user?.ad_soyad);
-  const kritik = ozet?.products?.kritik ?? 0;
-  const borc = ozet?.sales?.borc_mebleg ?? 0;
+  const kritik = home?.ceo?.lowStockCount ?? 0;
   const g = greeting();
   const firstName = (user?.ad_soyad ?? "İstifadəçi").split(" ")[0];
+
+  // Bölmə görünürlüyü: Pro → hamısı; Lite → app-config dashboard blokları (default-set).
+  const blocks = appConfig?.lite?.modules?.dashboard?.blocks;
+  const vis = (b: string) => (mode === "pro" ? true : (blocks?.[b] ?? BLOCK_DEFAULT[b] ?? false));
+  const anyVisible = ["insight", "kpi", "alerts", "lowStock", "top5", "debtors"].some(vis);
 
   // İstifadəçinin sırası ilə (birinci = hero, qalanı 2-sütun grid)
   const selected = keys.map((k) => QA_MAP[k]).filter(Boolean) as QAItem[];
@@ -118,7 +115,7 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      {/* Yuxarı toolbar — web kimi: avatar · Lite/Pro · axtarış · bildiriş */}
+      {/* Yuxarı toolbar — web kimi: avatar · Lite/Pro · axtarış · tema · bildiriş */}
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 4, paddingBottom: 6, gap: 8 }}>
         <Pressable onPress={() => router.push("/profil")} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }} accessibilityLabel="Profil">
           <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>{initials}</Text>
@@ -173,25 +170,29 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* KPI */}
-        {(ozet?.sales || ozet?.products) && (
-          <View style={{ marginHorizontal: 16, marginTop: 14, gap: 10 }}>
-            {ozet?.sales && (
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <MetricCard Icon={TrendingUp} label="Bugün" value={formatMoney(ozet.sales.bugun.mebleg)} sub={`${ozet.sales.bugun.count} satış`} tone="success" onPress={() => router.push("/(tabs)/satis")} />
-                <MetricCard Icon={Wallet} label="Bu ay" value={formatMoney(ozet.sales.bu_ay.mebleg)} sub={`${ozet.sales.bu_ay.count} satış`} tone="info" onPress={() => router.push("/(tabs)/satis")} />
-              </View>
-            )}
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              {ozet?.sales && (
-                <MetricCard Icon={AlertTriangle} label="Açıq borc" value={formatMoney(borc)} tone={borc > 0 ? "danger" : "neutral"} onPress={() => router.push("/musteri")} />
-              )}
-              {ozet?.products && (
-                <MetricCard Icon={Boxes} label="Kritik stok" value={String(kritik)} sub={`${ozet.products.toplam_aktiv ?? 0} məhsul`} tone={kritik > 0 ? "danger" : "success"} onPress={() => router.push("/mehsullar")} />
-              )}
-            </View>
+        {/* ── Web dashboard bölmələri (lite bloklarına görə) ── */}
+        {vis("insight") && home?.insight ? <View style={SECTION}><InsightBanner insight={home.insight} /></View> : null}
+        {vis("kpi") && home?.monthly ? <View style={SECTION}><RevenueHero monthly={home.monthly} sales30={home.sales30} go={go} /></View> : null}
+        {vis("kpi") && home?.ceo ? <View style={SECTION}><TodayCard ceo={home.ceo} cashflow={home.cashflow} go={go} /></View> : null}
+        {vis("kpi") && home?.monthly && home?.ceo ? <View style={SECTION}><KpiCards monthly={home.monthly} ceo={home.ceo} salesVsExp={home.salesVsExp30} sales30={home.sales30} go={go} /></View> : null}
+        {vis("kpi") && home?.cashflow ? <View style={SECTION}><CashflowCard cashflow={home.cashflow} go={go} /></View> : null}
+        {vis("kpi") && home?.mywork ? <View style={SECTION}><MyWorkCard work={home.mywork} go={go} /></View> : null}
+        {vis("alerts") && home?.alerts && home.alerts.length > 0 ? <View style={SECTION}><AlertsCard alerts={home.alerts} go={go} /></View> : null}
+        {vis("lowStock") && home?.lowStock ? <View style={SECTION}><LowStockCard items={home.lowStock} go={go} /></View> : null}
+        {vis("top5") && home?.top ? <View style={SECTION}><Top5 products={home.top.products} sellers={home.top.sellers} customers={home.top.customers} platforms={home.top.platforms} go={go} /></View> : null}
+        {vis("debtors") && home?.debtors ? <View style={SECTION}><TopDebtorsCard debtors={home.debtors} go={go} /></View> : null}
+
+        {isLoading && !home ? (
+          <View style={{ paddingVertical: 24, alignItems: "center" }}>
+            <ActivityIndicator color={C.brand} />
           </View>
-        )}
+        ) : null}
+
+        {!anyVisible ? (
+          <View style={{ marginHorizontal: 16, marginTop: 14, borderRadius: 16, borderWidth: 1, borderStyle: "dashed", borderColor: C.line, padding: 18, alignItems: "center" }}>
+            <Text style={{ color: C.sub, fontSize: 12, textAlign: "center" }}>Lite-də heç bir bölmə seçilməyib. Yuxarıdan Pro rejimə keçin və ya ayarlardan bölmə seçin.</Text>
+          </View>
+        ) : null}
 
         {/* Sürətli əməliyyat + Düzəlt */}
         <View style={{ flexDirection: "row", alignItems: "center", marginHorizontal: 16, marginTop: 22, marginBottom: 12 }}>
