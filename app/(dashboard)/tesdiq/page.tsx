@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import Link from "next/link";
 import {
   CheckCircle2, Clock, X, AlertTriangle, ChevronRight, Settings, BarChart3,
@@ -123,7 +124,7 @@ async function getApprovals(sp: SP, tab: TabKey) {
   });
 }
 
-async function getStats() {
+const getStats = cache(async () => {
   return withTenant(async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -155,9 +156,9 @@ async function getStats() {
 
     return { gozleyen, kritik, tesdiq_bugun, red_bugun, avgHours };
   });
-}
+});
 
-async function getCategoryBreakdown(): Promise<Record<string, number>> {
+const getCategoryBreakdown = cache(async (): Promise<Record<string, number>> => {
   return withTenant(async () => {
     const rows = await prisma.tesdiq_telep.groupBy({
       by: ["emeliyyat_nov"],
@@ -168,7 +169,7 @@ async function getCategoryBreakdown(): Promise<Record<string, number>> {
     for (const r of rows) out[r.emeliyyat_nov] = r._count._all;
     return out;
   });
-}
+});
 
 function buildHref(currentSp: SP, override: Partial<SP & { tab: string }>): string {
   const p = new URLSearchParams();

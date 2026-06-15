@@ -123,6 +123,10 @@ export default function SatisScreen() {
           renderItem={({ item }) => <SaleRow item={item} />}
           ListHeaderComponent={stats ? <StatsHeader s={stats} /> : null}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 100 }}
+          initialNumToRender={10}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews
           onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
           onEndReachedThreshold={0.4}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={C.brand} colors={[C.brand]} />}

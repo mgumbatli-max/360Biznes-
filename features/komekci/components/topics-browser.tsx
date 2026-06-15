@@ -3,9 +3,21 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  Search, X, ArrowRight, ChevronDown, ChevronRight, Sparkles,
+  // UI ikonları (birbaşa JSX-də)
+  Search, X, ArrowRight, ChevronDown, ChevronRight,
+  // ICON_MAP — KATEQORIYA_LABEL.icon + MOVZULAR.iconKey-də istinad olunan
+  // BÜTÜN lucide ikonları (data-dan sayılıb). Bütöv-kitabxana import-u (`import *`)
+  // əvəzinə yalnız bunlar bundle olunur. Fallback: HelpCircle.
+  Activity, BarChart3, Bell, Briefcase, Cake, ClipboardCheck, Coins, CreditCard,
+  Crown, Database, DoorOpen, EyeOff, FileText, FolderArchive, GitCompare, History,
+  LayoutDashboard, Link2, ListTodo, Lock, Megaphone, Package, Printer,
+  RotateCcw, ScanLine, Settings, ShieldAlert, ShieldCheck, ShoppingBag,
+  ShoppingCart, Sparkles, Star, Sunset, Ticket, TrendingUp, UserX, Users, Zap,
+  HelpCircle,
+  // QEYD: data-dakı "Parking" iconKey bu lucide-react versiyasında YOXDUR —
+  // əvvəlki `import *`+getIcon kodunda da fallback HelpCircle göstərirdi.
+  // Daxil etmirik ki, davranış 1:1 qalsın (HelpCircle fallback).
 } from "lucide-react";
-import * as LucideIcons from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -13,8 +25,16 @@ import { MOVZULAR, KATEQORIYA_LABEL, type KomekciKateqoriya, type KomekciMovzu }
 
 type IconRecord = Record<string, React.ComponentType<{ className?: string }>>;
 
+const ICON_MAP: IconRecord = {
+  Activity, BarChart3, Bell, Briefcase, Cake, ClipboardCheck, Coins, CreditCard,
+  Crown, Database, DoorOpen, EyeOff, FileText, FolderArchive, GitCompare, History,
+  LayoutDashboard, Link2, ListTodo, Lock, Megaphone, Package, Printer,
+  RotateCcw, ScanLine, Settings, ShieldAlert, ShieldCheck, ShoppingBag,
+  ShoppingCart, Sparkles, Star, Sunset, Ticket, TrendingUp, UserX, Users, Zap,
+};
+
 function getIcon(name: string): React.ComponentType<{ className?: string }> {
-  return (LucideIcons as unknown as IconRecord)[name] ?? LucideIcons.HelpCircle;
+  return ICON_MAP[name] ?? HelpCircle;
 }
 
 function normalize(s: string): string {

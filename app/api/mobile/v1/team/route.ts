@@ -58,24 +58,26 @@ export async function POST(req: NextRequest) {
     const other = parsed.data.userId;
     if (other === istifadeciId) return { error: "Özünüzlə söhbət yarada bilməzsiniz" };
 
-    const valid = await prisma.istifadeciler.findFirst({
-      where: { id: other, sahibkar_id: sahibkarId, aktiv: true },
-      select: { id: true, ad_soyad: true },
-    });
+    // İstifadəçi mövcudluğu + mövcud DM yoxlaması bir-birindən asılı deyil — paralel icra
+    const [valid, existing] = await Promise.all([
+      prisma.istifadeciler.findFirst({
+        where: { id: other, sahibkar_id: sahibkarId, aktiv: true },
+        select: { id: true, ad_soyad: true },
+      }),
+      // Mövcud DM varsa onu qaytar
+      prisma.team_kanal.findFirst({
+        where: {
+          sahibkar_id: sahibkarId,
+          novu: "direct",
+          AND: [
+            { uzvler: { some: { istifadeci_id: istifadeciId } } },
+            { uzvler: { some: { istifadeci_id: other } } },
+          ],
+        },
+        select: { id: true },
+      }),
+    ]);
     if (!valid) return { error: "İstifadəçi tapılmadı" };
-
-    // Mövcud DM varsa onu qaytar
-    const existing = await prisma.team_kanal.findFirst({
-      where: {
-        sahibkar_id: sahibkarId,
-        novu: "direct",
-        AND: [
-          { uzvler: { some: { istifadeci_id: istifadeciId } } },
-          { uzvler: { some: { istifadeci_id: other } } },
-        ],
-      },
-      select: { id: true },
-    });
     if (existing) return { ok: true, id: existing.id };
 
     const kanal = await prisma.team_kanal.create({

@@ -13,7 +13,10 @@ import {
 } from "@/features/pos/sale-queries";
 import { getQuickProducts } from "@/features/pos/quick-products-queries";
 import { OpenSessionCard } from "@/features/pos/components/open-session-card";
-import { PosClient } from "@/features/pos/components/pos-client";
+// SÜRƏT: PosClient client-only dinamik wrapper-dən import olunur (ssr:false +
+// skeleton). `ssr:false` Server Component-də qadağandır (Next.js 16) — ona görə
+// wrapper "use client"-dir. Props/JSX 1:1 eynidir, auth/rol gate-ləri dəyişməz.
+import { PosClient } from "@/features/pos/components/pos-client-dynamic";
 import { getRoleAllowedTiers } from "@/features/ayarlar/qiymet-icaze";
 import { getPosPriceSettings } from "@/features/ayarlar/pos-qiymet";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";

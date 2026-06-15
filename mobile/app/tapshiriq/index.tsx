@@ -102,6 +102,10 @@ export default function TapshiriqListScreen() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <TaskRow item={item} />}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 100 }}
+          initialNumToRender={10}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews
           onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
           onEndReachedThreshold={0.4}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={C.brand} colors={[C.brand]} />}

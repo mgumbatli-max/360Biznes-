@@ -145,31 +145,38 @@ export async function getPlanningTable(filter?: { search?: string; durum?: strin
       },
     });
 
-    // Sales aggregates per product over 30/70/80 day windows
-    const salesData = await prisma.satis_sifaris_satirlari.findMany({
-      where: {
-        sahibkar_id: sahibkarId,
-        satis_sifarisleri: { tarix: { gte: d80 }, status: { not: "legv" } },
-        mehsul_id: { in: products.map((p) => p.id) },
-      },
-      select: {
-        mehsul_id: true,
-        miqdar: true,
-        satis_sifarisleri: { select: { tarix: true } },
-      },
-    });
-
+    // Sales aggregates per product over 30/70/80 day windows.
+    // Perf: aggregate in-DB (one round-trip) instead of streaming every line
+    // item into JS. Same semantics as before — window sums by tarix + last sale
+    // date. sahibkar_id scope preserved explicitly (raw bypasses tenant filter).
+    const productIds = products.map((p) => p.id);
     const stats = new Map<string, { sale30: number; sale70: number; sale80: number; lastSaleDate: Date | null }>();
-    for (const s of salesData) {
-      if (!s.mehsul_id || !s.satis_sifarisleri) continue;
-      const cur = stats.get(s.mehsul_id) ?? { sale30: 0, sale70: 0, sale80: 0, lastSaleDate: null };
-      const tarix = s.satis_sifarisleri.tarix;
-      const qty = Number(s.miqdar);
-      if (tarix >= d30) cur.sale30 += qty;
-      if (tarix >= d70) cur.sale70 += qty;
-      cur.sale80 += qty;
-      if (!cur.lastSaleDate || tarix > cur.lastSaleDate) cur.lastSaleDate = tarix;
-      stats.set(s.mehsul_id, cur);
+    if (productIds.length > 0) {
+      const aggRows = await prisma.$queryRaw<
+        { mehsul_id: string; sale30: number; sale70: number; sale80: number; last_sale: Date | null }[]
+      >`
+        SELECT sls.mehsul_id::text AS mehsul_id,
+               COALESCE(SUM(CASE WHEN ss.tarix >= ${d30} THEN sls.miqdar ELSE 0 END), 0)::float AS sale30,
+               COALESCE(SUM(CASE WHEN ss.tarix >= ${d70} THEN sls.miqdar ELSE 0 END), 0)::float AS sale70,
+               COALESCE(SUM(sls.miqdar), 0)::float AS sale80,
+               MAX(ss.tarix) AS last_sale
+          FROM satis_sifaris_satirlari sls
+          JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
+         WHERE sls.sahibkar_id = ${sahibkarId}::uuid
+           AND sls.mehsul_id = ANY(${productIds}::uuid[])
+           AND ss.tarix >= ${d80}
+           AND ss.status IS DISTINCT FROM 'legv'
+         GROUP BY sls.mehsul_id
+      `;
+      for (const r of aggRows) {
+        if (!r.mehsul_id) continue;
+        stats.set(r.mehsul_id, {
+          sale30: Number(r.sale30),
+          sale70: Number(r.sale70),
+          sale80: Number(r.sale80),
+          lastSaleDate: r.last_sale ? new Date(r.last_sale) : null,
+        });
+      }
     }
 
     const result = products.map((p) => {

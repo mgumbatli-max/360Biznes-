@@ -192,6 +192,10 @@ export default function MehsullarScreen() {
             <ProductRow item={item} />
           )}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          initialNumToRender={10}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews
           onEndReached={() => {
             if (hasNextPage && !isFetchingNextPage) {
               fetchNextPage();

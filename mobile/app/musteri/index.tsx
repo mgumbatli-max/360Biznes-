@@ -146,6 +146,10 @@ export default function MusteriListScreen() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <CustomerRow item={item} />}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          initialNumToRender={10}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews
           onEndReached={() => {
             if (hasNextPage && !isFetchingNextPage) fetchNextPage();
           }}

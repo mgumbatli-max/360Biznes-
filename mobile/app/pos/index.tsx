@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { memo, useCallback, useEffect, useState } from "react";
 import { Alert, FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ScanLine, Search, Plus, Minus, Trash2, ShoppingCart, X } from "lucide-react-native";
@@ -6,9 +6,62 @@ import { Button, Screen, ListSkeleton, ErrorState } from "../../src/components";
 import { BarcodeScanner } from "../../src/components/BarcodeScanner";
 import { usePosContext, usePosSearch, useScanLookup } from "../../src/features/pos/hooks";
 import { usePosStore, cartSubtotal, cartCount } from "../../src/features/pos/store";
-import type { PosProduct } from "../../src/features/pos/types";
+import type { CartLine, PosProduct } from "../../src/features/pos/types";
 import { formatMoney } from "../../src/lib/format";
 import { C } from "../../src/theme";
+
+// ─── Səbət sırası (memoizə: qty yazanda yalnız dəyişən sıra render olunur) ────
+const CartLineRow = memo(function CartLineRow({
+  item,
+  valyuta,
+  onRemove,
+  onIncQty,
+  onSetPrice,
+}: {
+  item: CartLine;
+  valyuta: string;
+  onRemove: (mehsulId: string) => void;
+  onIncQty: (mehsulId: string, delta: number) => void;
+  onSetPrice: (mehsulId: string, price: number) => void;
+}) {
+  return (
+    <View style={{ backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12, marginBottom: 8 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Text style={{ flex: 1, color: C.ink, fontSize: 14, fontWeight: "600" }} numberOfLines={2}>{item.ad}</Text>
+        <Pressable onPress={() => onRemove(item.mehsul_id)} hitSlop={8} style={{ padding: 4 }}>
+          <Trash2 size={18} color={C.neg} />
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, gap: 10 }}>
+        {/* Qiymət */}
+        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.bg, borderRadius: 8, paddingHorizontal: 8 }}>
+          <TextInput
+            value={String(item.qiymet)}
+            onChangeText={(t) => onSetPrice(item.mehsul_id, Number(t.replace(",", ".")) || 0)}
+            keyboardType="decimal-pad"
+            style={{ minWidth: 56, paddingVertical: 6, fontSize: 14, color: C.ink, textAlign: "center" }}
+          />
+          <Text style={{ color: C.sub, fontSize: 12 }}>{valyuta === "AZN" ? "₼" : valyuta}</Text>
+        </View>
+        {/* Stepper */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 0, marginLeft: "auto" }}>
+          <Pressable onPress={() => onIncQty(item.mehsul_id, -1)} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.bg, alignItems: "center", justifyContent: "center" }}>
+            <Minus size={16} color={C.ink} />
+          </Pressable>
+          <Text style={{ minWidth: 36, textAlign: "center", color: C.ink, fontSize: 15, fontWeight: "700" }}>{item.miqdar}</Text>
+          <Pressable onPress={() => onIncQty(item.mehsul_id, 1)} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }}>
+            <Plus size={16} color="#fff" />
+          </Pressable>
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 6 }}>
+        <Text style={{ color: C.brandDark, fontSize: 13, fontWeight: "700" }}>
+          {formatMoney(item.miqdar * item.qiymet, valyuta)}
+        </Text>
+      </View>
+    </View>
+  );
+});
 
 export default function PosScreen() {
   const router = useRouter();
@@ -27,6 +80,23 @@ export default function PosScreen() {
   const valyuta = ctx?.valyuta ?? "AZN";
   const subtotal = cartSubtotal(lines);
   const count = cartCount(lines);
+
+  // Stabil callback-lar: səbət sıraları yenidən render olmasın
+  const onRemoveLine = useCallback((mehsulId: string) => removeLine(mehsulId), [removeLine]);
+  const onIncQty = useCallback((mehsulId: string, delta: number) => incQty(mehsulId, delta), [incQty]);
+  const onSetPrice = useCallback((mehsulId: string, price: number) => setPrice(mehsulId, price), [setPrice]);
+  const renderCartLine = useCallback(
+    ({ item }: { item: CartLine }) => (
+      <CartLineRow
+        item={item}
+        valyuta={valyuta}
+        onRemove={onRemoveLine}
+        onIncQty={onIncQty}
+        onSetPrice={onSetPrice}
+      />
+    ),
+    [valyuta, onRemoveLine, onIncQty, onSetPrice],
+  );
 
   function onAdd(p: PosProduct) {
     if (p.stok != null && p.stok <= 0) {
@@ -191,43 +261,11 @@ export default function PosScreen() {
           keyExtractor={(l) => l.mehsul_id}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12 }}
-          renderItem={({ item }) => (
-            <View style={{ backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 12, marginBottom: 8 }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={{ flex: 1, color: C.ink, fontSize: 14, fontWeight: "600" }} numberOfLines={2}>{item.ad}</Text>
-                <Pressable onPress={() => removeLine(item.mehsul_id)} hitSlop={8} style={{ padding: 4 }}>
-                  <Trash2 size={18} color={C.neg} />
-                </Pressable>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, gap: 10 }}>
-                {/* Qiymət */}
-                <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: C.bg, borderRadius: 8, paddingHorizontal: 8 }}>
-                  <TextInput
-                    value={String(item.qiymet)}
-                    onChangeText={(t) => setPrice(item.mehsul_id, Number(t.replace(",", ".")) || 0)}
-                    keyboardType="decimal-pad"
-                    style={{ minWidth: 56, paddingVertical: 6, fontSize: 14, color: C.ink, textAlign: "center" }}
-                  />
-                  <Text style={{ color: C.sub, fontSize: 12 }}>{valyuta === "AZN" ? "₼" : valyuta}</Text>
-                </View>
-                {/* Stepper */}
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 0, marginLeft: "auto" }}>
-                  <Pressable onPress={() => incQty(item.mehsul_id, -1)} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.bg, alignItems: "center", justifyContent: "center" }}>
-                    <Minus size={16} color={C.ink} />
-                  </Pressable>
-                  <Text style={{ minWidth: 36, textAlign: "center", color: C.ink, fontSize: 15, fontWeight: "700" }}>{item.miqdar}</Text>
-                  <Pressable onPress={() => incQty(item.mehsul_id, 1)} style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: C.brand, alignItems: "center", justifyContent: "center" }}>
-                    <Plus size={16} color="#fff" />
-                  </Pressable>
-                </View>
-              </View>
-              <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: 6 }}>
-                <Text style={{ color: C.brandDark, fontSize: 13, fontWeight: "700" }}>
-                  {formatMoney(item.miqdar * item.qiymet, valyuta)}
-                </Text>
-              </View>
-            </View>
-          )}
+          initialNumToRender={10}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews
+          renderItem={renderCartLine}
         />
       )}
 

@@ -7,6 +7,9 @@ import type { Channel } from "../../src/features/team/types";
 import { EmptyState, ErrorState, ListSkeleton, OfflineBanner, Screen } from "../../src/components";
 import { C } from "../../src/theme";
 
+// Sabit sıra hündürlüyü: avatar 50 + paddingVertical 11*2 + borderBottomWidth 1
+const CHANNEL_ROW_H = 73;
+
 function timeLabel(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -75,6 +78,11 @@ export default function TeamScreen() {
           data={channels}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => <ChannelRow item={item} />}
+          initialNumToRender={10}
+          maxToRenderPerBatch={20}
+          windowSize={10}
+          removeClippedSubviews
+          getItemLayout={(_, index) => ({ length: CHANNEL_ROW_H, offset: CHANNEL_ROW_H * index, index })}
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={C.brand} colors={[C.brand]} />}
         />
       )}

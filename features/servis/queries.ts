@@ -120,9 +120,10 @@ export async function getServisRequests(filter: ServisListFilter = {}): Promise<
 
     // Filial adlarını ayrı qaynaqdan oxu — daha sadə cədvəl join-i.
     const filialIds = Array.from(new Set(rows.map((r) => r.filial_id).filter((v): v is number => v != null)));
+    const { sahibkarId } = requireTenant();
     const filiallar = filialIds.length
       ? await prisma.filiallar.findMany({
-          where: { id: { in: filialIds } },
+          where: { sahibkar_id: sahibkarId, id: { in: filialIds } },
           select: { id: true, ad: true },
         })
       : [];

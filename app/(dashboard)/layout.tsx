@@ -7,6 +7,7 @@ import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { getAppMode } from "@/lib/app-mode";
 import { getLiteConfig, getModuleEntry, hiddenLiteModules } from "@/lib/lite/config";
+import type { LiteConfig } from "@/lib/lite/config";
 import { LiteThemeScript, IcmalAttrScript } from "@/components/layout/lite-theme";
 import { LiteThemeSync } from "@/components/layout/lite-theme-sync";
 import { gateRoute } from "@/lib/auth/route-gate";
@@ -124,15 +125,21 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Müvəqqəti DB/JWT problemi login olmuş istifadəçiyə xəta səhifəsi göstərməsin:
   // auth() pozularsa → login-ə yönəlt; icazələr yüklənməzsə → boş (owner/admin
   // gateRoute-da onsuz da bypass olunur, digər rollar /icaze-yox alır — crash yox).
-  const [session, icazeler] = await Promise.all([
+  // appMode-u top-level Promise.all-da paralel çək — getLiteConfig() ilə serial
+  // şəlalə əvəzinə. getLiteConfig() YALNIZ Lite rejimində çağırılır (çoxluq =
+  // Pro: əlavə DB/cache round-trip-i tamamilə atılır).
+  const [session, icazeler, appMode] = await Promise.all([
     auth().catch(() => null),
     getRequestPermissions().catch(() => [] as string[]),
+    getAppMode().catch(() => "pro" as const),
   ]);
   if (!session?.user) redirect("/login");
 
   // Lite dizayn forması — yalnız Lite rejimində <html>-ə tətbiq olunur.
-  const appMode = await getAppMode();
-  const liteCfg = appMode === "lite" ? await getLiteConfig() : null;
+  // Pro-da getLiteConfig() çağırılmır; downstream üçün default config kifayət edir
+  // (hiddenLiteModules(default) === [] — köhnə `liteCfg ? ... : []` ilə eyni nəticə;
+  // liteDesign yalnız appMode==="lite" olduqda tətbiq olunur, default heç vaxt görünmür).
+  const liteCfg: LiteConfig | null = appMode === "lite" ? await getLiteConfig() : null;
   const liteDesign = liteCfg?.design ?? null;
   // Lite-da gizlədilmiş modullar (Pro-da boş) — sidebar nav-dan çıxarılır.
   const hiddenModules = liteCfg ? hiddenLiteModules(liteCfg) : [];

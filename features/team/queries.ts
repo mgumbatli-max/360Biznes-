@@ -226,18 +226,23 @@ export async function getTeamUnreadTotal() {
       select: { kanal_id: true, son_oxudu_de: true },
     });
     if (memberships.length === 0) return 0;
-    const counts = await Promise.all(
-      memberships.map((m) =>
-        prisma.team_mesaj.count({
-          where: {
-            kanal_id: m.kanal_id,
-            silindi: false,
-            gonderici_id: { not: istifadeciId },
-            yaradildi: m.son_oxudu_de ? { gt: m.son_oxudu_de } : undefined,
-          },
-        })
-      )
-    );
-    return counts.reduce((s, n) => s + n, 0);
+    // Perf: one grouped query instead of N per-channel counts. Each channel
+    // keeps its own son_oxudu_de cutoff via an OR branch, so results are
+    // identical to the previous per-channel loop. Tenant scope is carried by
+    // the channel ids (memberships were already filtered by sahibkar_id);
+    // team_mesaj has no sahibkar_id column of its own.
+    const grouped = await prisma.team_mesaj.groupBy({
+      by: ["kanal_id"],
+      where: {
+        silindi: false,
+        gonderici_id: { not: istifadeciId },
+        OR: memberships.map((m) => ({
+          kanal_id: m.kanal_id,
+          ...(m.son_oxudu_de ? { yaradildi: { gt: m.son_oxudu_de } } : {}),
+        })),
+      },
+      _count: { _all: true },
+    });
+    return grouped.reduce((s, g) => s + g._count._all, 0);
   });
 }

@@ -9,7 +9,7 @@ import type { TabBadge, NezaretTab } from "./components/tabs";
 /**
  * Returns badge counts for the unified tab bar. Called once per layout/page load.
  */
-export async function getNezaretBadges(): Promise<Partial<Record<NezaretTab, TabBadge>>> {
+export const getNezaretBadges = cache(async (): Promise<Partial<Record<NezaretTab, TabBadge>>> => {
   return withTenant(async () => {
     try {
       const { istifadeciId } = requireTenant();
@@ -44,7 +44,7 @@ export async function getNezaretBadges(): Promise<Partial<Record<NezaretTab, Tab
       return {};
     }
   });
-}
+});
 
 async function fetchNezaretTotal(sahibkarId: string, istifadeciId: string) {
   const [alertOpen, alertKritik, tesdiqGozleyen] = await Promise.all([
