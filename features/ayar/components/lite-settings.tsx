@@ -13,7 +13,7 @@ import {
   MOBILE_LAYOUT_OPTIONS,
   ACCENT_OPTIONS,
 } from "@/lib/lite/registry";
-import { saveLiteConfig } from "@/features/ayar/lite-actions";
+import { saveLiteConfig, resetLiteConfig } from "@/features/ayar/lite-actions";
 import type { LiteConfig } from "@/lib/lite/config";
 
 const FONT_PX: Record<string, number> = { kicik: 13.5, normal: 15, boyuk: 16.5 };
@@ -107,6 +107,18 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
       const res = await saveLiteConfig(cfg);
       if (res.ok) toast.success("Lite ayarları saxlanıldı — dashboard və modul səhifələrinə tətbiq olundu");
       else toast.error(res.error ?? "Xəta baş verdi");
+    });
+  }
+
+  // Saved config-i SİL → registry-dəki sadə default-lar dərhal tətbiq olunur
+  // (ozet/filtr/qrafik bağlı). Bir klik, ayrıca "Yadda saxla" lazım deyil.
+  function resetSimple() {
+    start(async () => {
+      const res = await resetLiteConfig();
+      if (res.ok) {
+        setCfg(buildDefaultConfig());
+        toast.success("Sadə Lite-a sıfırlandı — yuxarı bardan Lite-a keçib yoxlayın");
+      } else toast.error(res.error ?? "Xəta baş verdi");
     });
   }
 
@@ -269,15 +281,12 @@ export function LiteSettings({ initialConfig }: { initialConfig: LiteConfig }) {
       <div className="sticky bottom-0 -mx-1 flex items-center justify-between gap-2 border-t border-border bg-background/90 px-1 py-3 backdrop-blur">
         <Button
           variant="outline"
-          onClick={() => {
-            setCfg(buildDefaultConfig());
-            toast.message("Defolt seçimlər bərpa olundu — saxlamağı unutmayın");
-          }}
+          onClick={resetSimple}
           disabled={pending}
           className="h-10"
         >
           <RotateCcw className="h-4 w-4" />
-          Defolta qaytar
+          Sadə Lite-a sıfırla
         </Button>
         <Button onClick={save} disabled={pending} className="h-10">
           <Save className="h-4 w-4" />

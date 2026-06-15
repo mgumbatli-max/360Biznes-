@@ -55,6 +55,26 @@ function sanitize(input: any): LiteConfig {
   return { design, modules };
 }
 
+/** Saved Lite config-i sil → registry-dəki sadə default-lar tətbiq olunur
+ *  (ozet/filtr/qrafik bağlı). "Sadə Lite-a sıfırla" düyməsi bunu çağırır. */
+export async function resetLiteConfig(): Promise<{ ok: boolean; error?: string }> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, error: "Giriş tələb olunur" };
+  const rolAd = ((session.user as { rol_ad?: string }).rol_ad ?? "").toLowerCase();
+  if (rolAd !== "sahibkar" && rolAd !== "admin") {
+    return { ok: false, error: "Yalnız sahibkar/admin dəyişə bilər" };
+  }
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    await prisma.ayarlar.deleteMany({
+      where: { sahibkar_id: sahibkarId, qrup: LITE_CONFIG_GROUP, acar: LITE_CONFIG_KEY },
+    });
+    revalidateTag(liteConfigCacheTag(sahibkarId), "max");
+    revalidatePath("/", "layout");
+    return { ok: true };
+  });
+}
+
 export async function saveLiteConfig(
   input: LiteConfig,
 ): Promise<{ ok: boolean; error?: string }> {

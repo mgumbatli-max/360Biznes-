@@ -858,3 +858,23 @@ html[data-accent="amber"] {
   }
   html[data-mlayout="cedvel"] table[data-stack-on-mobile] td::before { display: none; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   LİTE BASELINE — data-lite="1" olanda (density/font-dan ASILI OLMAYAN) ümumi
+   sadələşmə. Məqsəd: Lite Pro-dan AÇIQ-AŞKAR fərqlənsin — daha sakit, kompakt,
+   mobil-web hissi. (Bölmə-gizlətmə config ilə; bu CSS həmişə işləyir.)
+   ════════════════════════════════════════════════════════════════════════ */
+html[data-lite="1"] [data-slot="card"],
+html[data-lite="1"] .glass {
+  padding: 0.85rem;
+}
+html[data-lite="1"] .space-y-8 > * + * { margin-top: 1.1rem !important; }
+html[data-lite="1"] .space-y-6 > * + * { margin-top: 0.9rem !important; }
+html[data-lite="1"] .space-y-5 > * + * { margin-top: 0.8rem !important; }
+/* KPI sıraları Lite-da ən çoxu 2 sütun — telefon-web kimi sadə (4→2x2). */
+@media (min-width: 768px) {
+  html[data-lite="1"] .md\:grid-cols-4,
+  html[data-lite="1"] .lg\:grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
