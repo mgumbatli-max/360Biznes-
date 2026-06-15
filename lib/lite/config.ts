@@ -43,7 +43,7 @@ export const DEFAULT_DESIGN: LiteDesign = {
   density: "rahat",
   mobileLayout: "kart",
   fontScale: "normal",
-  accent: "rose",
+  accent: "emerald",
 };
 
 const COOKIE_GROUP = "gorunis";

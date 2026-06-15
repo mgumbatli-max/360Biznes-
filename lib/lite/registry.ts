@@ -42,7 +42,7 @@ export const LITE_MODULES: LiteModuleDef[] = [
     ad: "Ticarət (satışlar)",
     bloklar: [
       { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
-      { kod: "ozet", ad: "Xülasə kartları (bugün / həftə / ay / borc)", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə kartları (bugün / həftə / ay / borc)", liteDefault: false },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər", liteDefault: false },
     ],
   },
@@ -51,7 +51,7 @@ export const LITE_MODULES: LiteModuleDef[] = [
     ad: "Anbar (məhsullar)",
     bloklar: [
       { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
-      { kod: "ozet", ad: "Xülasə kartları (dəyər, say, az stok…)", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə kartları (dəyər, say, az stok…)", liteDefault: false },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər", liteDefault: false },
     ],
   },
@@ -69,14 +69,14 @@ export const LITE_MODULES: LiteModuleDef[] = [
     ad: "Maliyyə (əməliyyatlar)",
     bloklar: [
       { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
-      { kod: "ozet", ad: "Xülasə kartları (mədaxil, məxaric, net…)", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə kartları (mədaxil, məxaric, net…)", liteDefault: false },
     ],
   },
   {
     kod: "servis",
     ad: "Servis",
     bloklar: [
-      { kod: "ozet", ad: "Xülasə / KPI kartları (gecikən, orta təmir, gəlir…)", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə / KPI kartları (gecikən, orta təmir, gəlir…)", liteDefault: false },
       { kod: "qrafikler", ad: "Qrafiklər (qəbul/təhvil, heatmap)", liteDefault: false },
       { kod: "detal_cedvel", ad: "Texnik liderlik cədvəli", liteDefault: false },
     ],
@@ -86,7 +86,7 @@ export const LITE_MODULES: LiteModuleDef[] = [
     ad: "Əlaqə (müştərilər)",
     bloklar: [
       { kod: "dashboard", ad: "Modulun öz dashboardu (KPI/icmal)", liteDefault: false },
-      { kod: "ozet", ad: "Xülasə kartları (aktiv, borclu, cəmi borc…)", liteDefault: true },
+      { kod: "ozet", ad: "Xülasə kartları (aktiv, borclu, cəmi borc…)", liteDefault: false },
       { kod: "filtrler", ad: "Qabaqcıl filtrlər (menecer, ölkə/şəhər…)", liteDefault: false },
     ],
   },
