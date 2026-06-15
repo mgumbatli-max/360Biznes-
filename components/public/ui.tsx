@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ShieldCheck, Database, Sparkles } from "lucide-react";
+import { BrandMark } from "@/components/brand/brand-mark";
 
 /* === Public səhifələr üçün ortaq dizayn sistemi (Premium Dərinlik) === */
 
@@ -68,9 +69,7 @@ export function PublicFooter() {
       <div className="mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div>
           <div className="flex items-center gap-2">
-            <div className="grid h-9 w-9 place-items-center rounded-lg text-white" style={{ background: "var(--brand-gradient)" }}>
-              <span className="font-black">3</span>
-            </div>
+            <BrandMark className="h-9 w-9" />
             <span className="brand-text text-xl font-black tracking-tight">360Biznes</span>
           </div>
           <p className="mt-4 max-w-xs text-sm text-muted-foreground">

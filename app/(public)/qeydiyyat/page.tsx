@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SignupForm } from "@/features/auth/signup-form";
 import { Sparkles, Check, ShieldCheck, Lock, CreditCard, Clock, Bot } from "lucide-react";
 import { DEEP_MESH } from "@/components/public/ui";
+import { BrandMark } from "@/components/brand/brand-mark";
 
 export const metadata: Metadata = { title: "Pulsuz başla — 360Biznes" };
 
@@ -58,7 +59,7 @@ export default function SignupPage() {
 
         <div className="relative flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
-            <span className="text-xl font-black">3</span>
+            <BrandMark tone="white" className="h-7 w-7" />
           </div>
           <div className="text-lg font-black tracking-tight">360Biznes</div>
         </div>

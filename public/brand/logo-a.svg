@@ -1,0 +1,15 @@
+<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="360Biznes">
+  <defs>
+    <linearGradient id="ga" x1="8" y1="8" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0d9488"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <!-- 360° orbit: açıq halqa -->
+  <path d="M51 17.5 A26 26 0 1 0 56 35" stroke="url(#ga)" stroke-width="6.5" stroke-linecap="round"/>
+  <!-- böyümə oxu (içəridə) -->
+  <path d="M21 38.5 L29 30.5 L35 36 L45 25.5" stroke="url(#ga)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M38.5 24.5 L46 24.5 L46 32" stroke="url(#ga)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- orbit nöqtəsi -->
+  <circle cx="52.5" cy="15" r="6" fill="#34d399"/>
+</svg>

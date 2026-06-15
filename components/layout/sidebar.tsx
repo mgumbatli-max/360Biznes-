@@ -9,6 +9,7 @@ import { NAV_SECTIONS, canSeeNavItem, type NavItem } from "@/lib/navigation";
 import { useSidebar } from "@/stores/sidebar";
 import { usePermissions } from "@/components/providers/permissions-provider";
 import { ThemeToggle } from "./theme-toggle";
+import { BrandMark } from "@/components/brand/brand-mark";
 import type { SessionUser } from "@/lib/auth/types";
 
 /** Sidebar açıq vəziyyətdə sola-swipe ilə bağlanma — mobile gesture.
@@ -130,9 +131,7 @@ function SidebarComponent({ user, badges, sahibkarVisible = true, hiddenModules 
             href="/dashboard"
             className={cn("flex items-center gap-2.5 overflow-hidden", collapsed && "md:justify-center md:w-full")}
           >
-            <div className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-lg" style={{ background: "var(--brand-gradient)" }}>
-              <span className="text-sm font-bold text-white">3</span>
-            </div>
+            <BrandMark className="h-9 w-9" />
             {!collapsed && (
               <div className="flex flex-col leading-tight">
                 <span className="brand-text text-base font-bold">360Biznes</span>

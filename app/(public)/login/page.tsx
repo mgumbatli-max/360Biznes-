@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LoginForm } from "@/features/auth/login-form";
+import { BrandMark } from "@/components/brand/brand-mark";
 import {
   ShieldCheck, Sparkles, TrendingUp, ShoppingCart, Boxes, Wallet,
   Lock, Check,
@@ -36,7 +37,7 @@ export default function LoginPage({
         {/* Brand mark */}
         <div className="relative flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
-            <span className="text-xl font-black">3</span>
+            <BrandMark tone="white" className="h-7 w-7" />
           </div>
           <div>
             <div className="text-lg font-black tracking-tight">360Biznes</div>
@@ -102,9 +103,7 @@ export default function LoginPage({
       <main className="flex flex-col items-center justify-center bg-secondary/30 px-6 py-12">
         {/* Mobile-only brand */}
         <div className="mb-8 flex items-center gap-2 lg:hidden">
-          <div className="grid h-10 w-10 place-items-center rounded-xl text-white" style={{ background: "var(--brand-gradient)" }}>
-            <span className="text-lg font-black">3</span>
-          </div>
+          <BrandMark className="h-10 w-10" />
           <div>
             <div className="text-lg font-black tracking-tight">360Biznes</div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">ERP Platform</div>

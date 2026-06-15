@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { BrandMark } from "@/components/brand/brand-mark";
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,9 +8,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-xl text-white shadow-lg shadow-primary/20" style={{ background: "var(--brand-gradient)" }}>
-              <span className="font-black">3</span>
-            </div>
+            <BrandMark className="h-9 w-9" />
             <span className="brand-text text-xl font-black tracking-tight">360Biznes</span>
           </Link>
 
