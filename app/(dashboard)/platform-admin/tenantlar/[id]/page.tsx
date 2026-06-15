@@ -5,9 +5,10 @@ import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
-import { getTenantDetail } from "@/features/platform-admin/queries";
+import { getTenantDetail, getGlobalUsers } from "@/features/platform-admin/queries";
 import { TenantActions } from "@/features/platform-admin/components/tenant-actions";
 import { ImpersonateButton } from "@/features/platform-admin/components/impersonate-button";
+import { UserAdminActions } from "@/features/platform-admin/components/user-admin-actions";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tenant detayı" };
@@ -19,6 +20,9 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
   if (!t) notFound();
 
   const latestAbune = t.abuneler[0];
+
+  // Bu şirkətin əməkdaşları (bütün, silinmişlər daxil) — əməliyyatlarla.
+  const { rows: emekdaslar } = await getGlobalUsers({ tenantId: id, status: "hamisi" });
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -91,6 +95,56 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           </CardContent>
         </Card>
       </section>
+
+      {/* Əməkdaşlar — bu şirkətin istifadəçiləri (şifrə yenilə / aktiv / sessiya / sil) */}
+      <Card className="glass">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary-light" /> Əməkdaşlar
+          </CardTitle>
+          <Badge variant="outline">{emekdaslar.length}</Badge>
+        </CardHeader>
+        <CardContent className="p-0">
+          {emekdaslar.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Əməkdaş yoxdur</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b border-border/60 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Ad soyad</th>
+                  <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">Rol</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Son giriş</th>
+                  <th className="px-3 py-2 text-right">Əməliyyat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emekdaslar.map((u) => (
+                  <tr key={u.id} className="border-b border-border/30">
+                    <td className="px-3 py-2 font-medium">{u.ad_soyad}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">{u.email}</td>
+                    <td className="px-3 py-2 text-xs">{u.rol_ad}</td>
+                    <td className="px-3 py-2">
+                      {u.deleted_at ? (
+                        <Badge variant="outline" className="border-danger/30 text-danger text-[10px]">Silinmiş</Badge>
+                      ) : u.aktiv ? (
+                        <Badge variant="outline" className="border-success/30 text-success text-[10px]">Aktiv</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px]">Deaktiv</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs">{u.son_giris ? formatDate(u.son_giris) : "heç vaxt"}</td>
+                    <td className="px-3 py-2 text-right">
+                      <UserAdminActions user={{ id: u.id, ad_soyad: u.ad_soyad, aktiv: u.aktiv, deleted_at: u.deleted_at }} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="glass">
         <CardHeader>
