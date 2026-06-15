@@ -1003,6 +1003,7 @@ model contact_followups {
   istifadeciler_contact_followups_yaradan_idToistifadeciler    istifadeciler? @relation("contact_followups_yaradan_idToistifadeciler", fields: [yaradan_id], references: [id], onUpdate: NoAction)
 
   @@index([kontragent_id, vaxt(sort: Desc)], map: "idx_cfu_kontr")
+  @@index([sahibkar_id, status, vaxt(sort: Desc)], map: "idx_cfu_sah_status_vaxt")
 }
 
 model contact_merge_logs {
@@ -2070,6 +2071,7 @@ model inbox_mesajlari {
 
   @@index([sohbet_id, yaradildi], map: "idx_inbox_mesaj_sohbet")
   @@index([sahibkar_id], map: "idx_inmsg_sahibkar")
+  @@index([sahibkar_id, status], map: "idx_inmsg_sah_status")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -2866,6 +2868,7 @@ model kontragentler {
   @@index([sahibkar_id, funnel_status], map: "idx_kontragentler_sah_funnel")
   @@index([sahibkar_id, menecer_id], map: "idx_kontragentler_sah_menecer")
   @@index([sahibkar_id, nov, aktiv], map: "idx_kontragentler_sah_nov_aktiv")
+  @@index([sahibkar_id, son_temas(sort: Desc)], map: "idx_kontragentler_sah_son_temas")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -3615,6 +3618,7 @@ model marketplace_hesablari {
 
   @@index([platform], map: "mp_hes_platform_idx")
   @@index([sahibkar_id], map: "mp_hes_sahibkar_idx")
+  @@index([sahibkar_id, status], map: "mp_hes_sah_status_idx")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -5257,6 +5261,7 @@ model satis_sifarisleri {
   @@index([sahibkar_id, musteri_id, tarix(sort: Desc)], map: "idx_satis_sah_musteri_tarix")
   @@index([sahibkar_id, odenis_nov, tarix(sort: Desc)], map: "idx_satis_sah_odenis_tarix")
   @@index([sahibkar_id, status, tarix(sort: Desc)], map: "idx_satis_sah_status_tarix")
+  @@index([sahibkar_id, status, qaralama, tarix(sort: Desc)], map: "idx_satis_sah_status_qaralama_tarix")
   @@index([sahibkar_id, yaradan_id, tarix(sort: Desc)], map: "idx_satis_sah_yaradan_tarix")
 }
 
@@ -5486,6 +5491,8 @@ model servis_qeydleri {
   @@index([problem_tesviri(ops: raw("gin_trgm_ops"))], map: "idx_servis_problem_trgm", type: Gin)
   @@index([qebul_eden_id], map: "idx_servis_qebul")
   @@index([sahibkar_id], map: "idx_servis_sahibkar")
+  @@index([sahibkar_id, status], map: "idx_servis_sah_status")
+  @@index([sahibkar_id, qapanma_tarixi(sort: Desc)], map: "idx_servis_sah_qapanma")
   @@index([status], map: "idx_servis_status")
   @@index([musteri_telefon], map: "idx_servis_telefon")
   @@index([musteri_telefon(ops: raw("gin_trgm_ops"))], map: "idx_servis_telefon_trgm", type: Gin)
@@ -5556,6 +5563,7 @@ model stok {
   @@index([anbar_id], map: "idx_stok_anbar")
   @@index([mehsul_id], map: "idx_stok_mehsul")
   @@index([sahibkar_id], map: "idx_stok_sahibkar")
+  @@index([sahibkar_id, anbar_id], map: "idx_stok_sah_anbar")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
