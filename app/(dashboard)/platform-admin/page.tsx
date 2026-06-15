@@ -140,6 +140,14 @@ export default async function PlatformAdminPage() {
             </CardContent>
           </Card>
         </Link>
+        <Link href="/platform-admin/ip-bloklari">
+          <Card className="glass transition hover:border-primary/30">
+            <CardContent className="py-4">
+              <div className="text-sm font-semibold">IP bloklama</div>
+              <div className="text-xs text-muted-foreground">Şübhəli IP-ləri login-dən blokla</div>
+            </CardContent>
+          </Card>
+        </Link>
         <Link href="/platform-admin/paketler">
           <Card className="glass transition hover:border-primary/30">
             <CardContent className="py-4">

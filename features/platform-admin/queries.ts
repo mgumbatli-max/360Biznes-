@@ -342,3 +342,75 @@ export async function getLoginAttempts(filter: {
     yaradildi: r.yaradildi ?? since,
   }));
 }
+
+// ── Qlobal IP blokları (platform sahibi tenant-i namespace olaraq) ──────────
+// GLOBAL = ip_bloklari sətirlər (sahibkar_id === SUPER_ADMIN_SAHIBKAR_ID).
+export async function getGlobalIpBlocks(filter: {
+  q?: string;
+  activeOnly?: boolean;
+}): Promise<
+  Array<{
+    id: number;
+    ip: string;
+    sebeb: string | null;
+    aktiv: boolean;
+    yaradildi: Date;
+    bitme_tarixi: Date | null;
+  }>
+> {
+  const globalSahibkarId = process.env.SUPER_ADMIN_SAHIBKAR_ID ?? "";
+
+  // ⚠️ ip_adres Postgres `Inet` sütunudur — `contains`/ILIKE birbaşa İŞLƏMİR.
+  // q verildikdə raw query + `host(ip_adres)` ilə mətnə çevirib axtarırıq
+  // (getLoginAttempts ilə eyni nümunə). Bütün dəyərlər Prisma.sql ilə parametrlənir.
+  if (filter.q && filter.q.trim()) {
+    const conds: Prisma.Sql[] = [Prisma.sql`sahibkar_id = ${globalSahibkarId}::uuid`];
+    if (filter.activeOnly) conds.push(Prisma.sql`aktiv = true`);
+    const like = `%${filter.q.trim()}%`;
+    conds.push(Prisma.sql`host(ip_adres) ILIKE ${like}`);
+
+    const rows = await prismaUnscoped.$queryRaw<
+      Array<{
+        id: number;
+        ip: string | null;
+        sebeb: string | null;
+        aktiv: boolean | null;
+        yaradildi: Date;
+        bitme_tarixi: Date | null;
+      }>
+    >(Prisma.sql`
+      SELECT id, host(ip_adres) AS ip, sebeb, aktiv, yaradildi, bitme_tarixi
+      FROM ip_bloklari
+      WHERE ${Prisma.join(conds, " AND ")}
+      ORDER BY yaradildi DESC
+      LIMIT 200
+    `);
+
+    return rows.map((r) => ({
+      id: Number(r.id),
+      ip: String(r.ip ?? ""),
+      sebeb: r.sebeb,
+      aktiv: r.aktiv ?? false,
+      yaradildi: r.yaradildi ?? new Date(0),
+      bitme_tarixi: r.bitme_tarixi,
+    }));
+  }
+
+  const rows = await prismaUnscoped.ip_bloklari.findMany({
+    where: {
+      sahibkar_id: globalSahibkarId,
+      ...(filter.activeOnly ? { aktiv: true } : {}),
+    },
+    orderBy: { yaradildi: "desc" },
+    take: 200,
+  });
+
+  return rows.map((r) => ({
+    id: Number(r.id),
+    ip: String(r.ip_adres),
+    sebeb: r.sebeb,
+    aktiv: r.aktiv ?? false,
+    yaradildi: r.yaradildi ?? new Date(0),
+    bitme_tarixi: r.bitme_tarixi,
+  }));
+}

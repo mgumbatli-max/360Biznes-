@@ -55,6 +55,33 @@ export async function authorizeUser(
     return { ok: false, reason: "rate_limited" };
   }
 
+  // Qlobal IP-blok (platform-admin): platforma-sahibi tenantında (SUPER_ADMIN_
+  // SAHIBKAR_ID) aktiv ip_bloklari sətri varsa, bu IP-dən girişi blokla.
+  // ⚠️ FAIL-OPEN: hər hansı xəta, env yoxdursa, ip null/yanlışdırsa → BLOKU ÖTÜR,
+  // girişə icazə ver. Bu auth-un isti yoludur — heç vaxt girişi sındırma.
+  const superTenant = (process.env.SUPER_ADMIN_SAHIBKAR_ID ?? "").trim();
+  if (superTenant && ip) {
+    try {
+      const now = new Date();
+      const block = await prismaUnscoped.ip_bloklari.findFirst({
+        where: {
+          sahibkar_id: superTenant,
+          aktiv: true,
+          ip_adres: ip,
+          OR: [{ bitme_tarixi: null }, { bitme_tarixi: { gt: now } }],
+        },
+        select: { id: true },
+      });
+      if (block) {
+        await recordLoginAttempt({ success: false, email, ip, ua, sebeb: "ip_blocked" });
+        return { ok: false, reason: "Bu IP-dən giriş bloklanıb" };
+      }
+    } catch (e) {
+      // Hər hansı xəta (Inet parse, DB) girişi bloklamamalıdır — fail-open.
+      console.warn("[auth] global ip-block check failed, allowing:", e);
+    }
+  }
+
   // `select` ilə yalnız lazımi sahələr — Prisma daha az JOIN edir,
   // payload kiçik olur. `include` bütün sütunları gətirir.
   //

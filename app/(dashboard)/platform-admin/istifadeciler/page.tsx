@@ -149,13 +149,14 @@ export default async function IstifadecilerPage({
                     {u.son_giris ? formatDate(u.son_giris, { dateStyle: "short", timeStyle: "short" }) : "heç vaxt"}
                   </td>
                   <td className="px-3 py-2.5">
-                    {u.deleted_at ? (
-                      <span className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground">
-                        <Trash2 className="h-3 w-3" /> Silinmiş
-                      </span>
-                    ) : (
-                      <UserAdminActions user={{ id: u.id, ad_soyad: u.ad_soyad, aktiv: u.aktiv }} />
-                    )}
+                    <UserAdminActions
+                      user={{
+                        id: u.id,
+                        ad_soyad: u.ad_soyad,
+                        aktiv: u.aktiv,
+                        deleted_at: u.deleted_at,
+                      }}
+                    />
                   </td>
                 </tr>
               ))}

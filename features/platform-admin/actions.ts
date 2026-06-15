@@ -186,6 +186,245 @@ export async function adminSetUserActive(formData: FormData): Promise<{ ok: true
   }
 }
 
+// ── Təhlükəsizlik əməliyyatları (force-logout / 2FA / soft-delete / restore) ──
+const UserIdSchema = z.object({
+  user_id: z.string().uuid("İstifadəçi ID yanlışdır"),
+});
+
+const SoftDeleteSchema = z.object({
+  user_id: z.string().uuid("İstifadəçi ID yanlışdır"),
+  sebeb: z.string().max(500).optional().or(z.literal("")),
+});
+
+const BlockIpSchema = z.object({
+  ip_adres: z.string().trim().min(1, "IP ünvanı boş ola bilməz").max(50),
+  sebeb: z.string().max(500).optional().or(z.literal("")),
+  bitme: z.string().optional().or(z.literal("")),
+});
+
+const UnblockIpSchema = z.object({
+  id: z.coerce.number().int().positive("ID yanlışdır"),
+});
+
+export async function adminForceLogout(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = UserIdSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { user_id } = parsed.data;
+  try {
+    const target = await prismaUnscoped.istifadeciler.findUnique({
+      where: { id: user_id },
+      select: { id: true, ad_soyad: true, sahibkar_id: true },
+    });
+    if (!target) return { ok: false, error: "İstifadəçi tapılmadı" };
+
+    const res = await prismaUnscoped.istifadeci_sessiya.updateMany({
+      where: { istifadeci_id: user_id, bitirilib: false },
+      data: { bitirilib: true, bitirilme_seb: "platform_admin" },
+    });
+
+    await safeAuditLog({
+      sahibkar_id: target.sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "FORCE_LOGOUT",
+      resurs_nov: "istifadeci",
+      resurs_id: target.id,
+      yeni_data: { target_name: target.ad_soyad, sessiya_sayi: res.count, at: new Date().toISOString() },
+      sebeb: "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/istifadeciler");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminForceLogout]", e);
+    return { ok: false, error: "Sessiyalar bitirilmədi" };
+  }
+}
+
+export async function adminDisable2FA(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = UserIdSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { user_id } = parsed.data;
+  try {
+    const target = await prismaUnscoped.istifadeciler.findUnique({
+      where: { id: user_id },
+      select: { id: true, ad_soyad: true, sahibkar_id: true },
+    });
+    if (!target) return { ok: false, error: "İstifadəçi tapılmadı" };
+
+    await prismaUnscoped.istifadeciler.update({
+      where: { id: user_id },
+      data: { iki_fa_aktiv: false, iki_fa_secret: null },
+    });
+
+    await safeAuditLog({
+      sahibkar_id: target.sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "FORCE_2FA_DISABLE",
+      resurs_nov: "istifadeci",
+      resurs_id: target.id,
+      yeni_data: { target_name: target.ad_soyad, at: new Date().toISOString() },
+      sebeb: "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/istifadeciler");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminDisable2FA]", e);
+    return { ok: false, error: "2FA söndürülmədi" };
+  }
+}
+
+export async function adminSoftDeleteUser(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = SoftDeleteSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { user_id } = parsed.data;
+  const sebeb = parsed.data.sebeb && parsed.data.sebeb.length > 0 ? parsed.data.sebeb : null;
+  try {
+    const target = await prismaUnscoped.istifadeciler.findUnique({
+      where: { id: user_id },
+      select: { id: true, ad_soyad: true, sahibkar_id: true },
+    });
+    if (!target) return { ok: false, error: "İstifadəçi tapılmadı" };
+
+    await prismaUnscoped.istifadeciler.update({
+      where: { id: user_id },
+      data: { deleted_at: new Date(), deleted_by: admin.id, delete_reason: sebeb, aktiv: false },
+    });
+
+    await safeAuditLog({
+      sahibkar_id: target.sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "USER_DELETE",
+      resurs_nov: "istifadeci",
+      resurs_id: target.id,
+      yeni_data: { target_name: target.ad_soyad, at: new Date().toISOString() },
+      sebeb: sebeb ?? "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/istifadeciler");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminSoftDeleteUser]", e);
+    return { ok: false, error: "İstifadəçi silinmədi" };
+  }
+}
+
+export async function adminRestoreUser(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = UserIdSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { user_id } = parsed.data;
+  try {
+    const target = await prismaUnscoped.istifadeciler.findUnique({
+      where: { id: user_id },
+      select: { id: true, ad_soyad: true, sahibkar_id: true },
+    });
+    if (!target) return { ok: false, error: "İstifadəçi tapılmadı" };
+
+    await prismaUnscoped.istifadeciler.update({
+      where: { id: user_id },
+      data: { deleted_at: null, restored_at: new Date(), restored_by: admin.id, aktiv: true },
+    });
+
+    await safeAuditLog({
+      sahibkar_id: target.sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "USER_RESTORE",
+      resurs_nov: "istifadeci",
+      resurs_id: target.id,
+      yeni_data: { target_name: target.ad_soyad, at: new Date().toISOString() },
+      sebeb: "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/istifadeciler");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminRestoreUser]", e);
+    return { ok: false, error: "İstifadəçi bərpa olunmadı" };
+  }
+}
+
+export async function adminBlockIp(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const sahibkar_id = (process.env.SUPER_ADMIN_SAHIBKAR_ID ?? "").trim();
+  if (!sahibkar_id) return { ok: false, error: "Konfiqurasiya yoxdur" };
+  const parsed = BlockIpSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const ip_adres = parsed.data.ip_adres.trim();
+  if (!ip_adres) return { ok: false, error: "IP ünvanı boş ola bilməz" };
+  const sebeb = parsed.data.sebeb && parsed.data.sebeb.length > 0 ? parsed.data.sebeb : null;
+  const bitme_tarixi = parsed.data.bitme && parsed.data.bitme.length > 0 ? new Date(parsed.data.bitme) : null;
+  if (bitme_tarixi && Number.isNaN(bitme_tarixi.getTime())) return { ok: false, error: "Bitmə tarixi yanlışdır" };
+  try {
+    const row = await prismaUnscoped.ip_bloklari.upsert({
+      where: { sahibkar_id_ip_adres: { sahibkar_id, ip_adres } },
+      create: { sahibkar_id, ip_adres, sebeb, aktiv: true, bloklayan_id: admin.id, bitme_tarixi },
+      update: { sebeb, aktiv: true, bloklayan_id: admin.id, bitme_tarixi },
+    });
+
+    await safeAuditLog({
+      sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "IP_BLOCK",
+      resurs_nov: "ip_bloklari",
+      resurs_id: String(row.id),
+      yeni_data: { ip_adres, sebeb, bitme_tarixi: bitme_tarixi?.toISOString() ?? null, at: new Date().toISOString() },
+      sebeb: sebeb ?? "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/ip-bloklari");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminBlockIp]", e);
+    return { ok: false, error: "IP bloklanmadı (ünvan yanlış ola bilər)" };
+  }
+}
+
+export async function adminUnblockIp(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = UnblockIpSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { id } = parsed.data;
+  try {
+    const row = await prismaUnscoped.ip_bloklari.update({
+      where: { id },
+      data: { aktiv: false },
+      select: { id: true, ip_adres: true, sahibkar_id: true },
+    });
+
+    await safeAuditLog({
+      sahibkar_id: row.sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "IP_UNBLOCK",
+      resurs_nov: "ip_bloklari",
+      resurs_id: String(row.id),
+      yeni_data: { ip_adres: String(row.ip_adres), at: new Date().toISOString() },
+      sebeb: "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/ip-bloklari");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminUnblockIp]", e);
+    return { ok: false, error: "Blok ləğv olunmadı" };
+  }
+}
+
 export async function extendSubscription(sahibkar_id: string, daysToAdd: number): Promise<{ ok: true } | { ok: false; error: string }> {
   await requirePlatformAdmin();
   try {
