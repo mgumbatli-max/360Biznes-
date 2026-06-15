@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Search, Users, Mail, Phone, Building2, ShieldCheck, CheckCircle2, MinusCircle, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -124,7 +125,12 @@ export default async function IstifadecilerPage({
               {rows.map((u) => (
                 <tr key={u.id} className="hover:bg-secondary/30">
                   <td className="px-3 py-2.5">
-                    <div className="font-medium">{u.ad_soyad}</div>
+                    <Link
+                      href={`/platform-admin/istifadeciler/${u.id}`}
+                      className="font-medium text-primary-light transition hover:underline"
+                    >
+                      {u.ad_soyad}
+                    </Link>
                     {u.telefon ? (
                       <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" /> {u.telefon}

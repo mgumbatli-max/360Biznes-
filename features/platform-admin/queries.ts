@@ -580,3 +580,116 @@ export async function getAllModules(): Promise<CatalogModule[]> {
   }));
 }
 
+// ── Audit / fəaliyyət jurnalı (cross-tenant, guard altında) ─────────────────
+// Tenant (sahibkar) və ya istifadəçi açıldıqda "nə etdiyini" göstərmək üçün
+// audit_log sətirlərini sadə forma çevirir. ip_adres Postgres `Inet` sütunudur,
+// Prisma onu string kimi qaytarır (filtr yox, sadə oxu).
+export type AuditRow = {
+  id: string;
+  istifadeci_id: string | null;
+  istifadeci_ad: string | null;
+  emeliyyat: string;
+  resurs_nov: string;
+  resurs_id: string | null;
+  status: string;
+  yaradildi: Date | null;
+  ip: string | null;
+  sebeb: string | null;
+};
+
+function mapAuditRow(r: {
+  id: bigint;
+  istifadeci_id: string | null;
+  istifadeci_ad: string | null;
+  emeliyyat: string;
+  resurs_nov: string;
+  resurs_id: string | null;
+  status: string | null;
+  yaradildi: Date | null;
+  ip_adres: string | null;
+  sebeb: string | null;
+}): AuditRow {
+  return {
+    id: String(r.id),
+    istifadeci_id: r.istifadeci_id,
+    istifadeci_ad: r.istifadeci_ad,
+    emeliyyat: r.emeliyyat,
+    resurs_nov: r.resurs_nov,
+    resurs_id: r.resurs_id,
+    status: r.status ?? "ugur",
+    yaradildi: r.yaradildi,
+    ip: r.ip_adres ? String(r.ip_adres) : null,
+    sebeb: r.sebeb,
+  };
+}
+
+const AUDIT_SELECT = {
+  id: true,
+  istifadeci_id: true,
+  istifadeci_ad: true,
+  emeliyyat: true,
+  resurs_nov: true,
+  resurs_id: true,
+  status: true,
+  yaradildi: true,
+  ip_adres: true,
+  sebeb: true,
+} as const;
+
+export async function getTenantAuditLog(sahibkarId: string, limit?: number): Promise<AuditRow[]> {
+  const rows = await prismaUnscoped.audit_log.findMany({
+    where: { sahibkar_id: sahibkarId },
+    orderBy: { yaradildi: "desc" },
+    take: limit ?? 50,
+    select: AUDIT_SELECT,
+  });
+  return rows.map(mapAuditRow);
+}
+
+export async function getUserAuditLog(istifadeciId: string, limit?: number): Promise<AuditRow[]> {
+  const rows = await prismaUnscoped.audit_log.findMany({
+    where: { istifadeci_id: istifadeciId },
+    orderBy: { yaradildi: "desc" },
+    take: limit ?? 80,
+    select: AUDIT_SELECT,
+  });
+  return rows.map(mapAuditRow);
+}
+
+// ── Qlobal istifadəçi detalı (cross-tenant) ─────────────────────────────────
+export async function getGlobalUserDetail(userId: string): Promise<{
+  id: string;
+  ad_soyad: string;
+  email: string;
+  telefon: string | null;
+  rol_ad: string;
+  tenant_id: string;
+  tenant_ad: string;
+  aktiv: boolean;
+  son_giris: Date | null;
+  deleted_at: Date | null;
+  yaradildi: Date;
+} | null> {
+  const u = await prismaUnscoped.istifadeciler.findUnique({
+    where: { id: userId },
+    include: {
+      roles: { select: { ad: true } },
+      sahibkarlar: { select: { ad: true } },
+    },
+  });
+  if (!u) return null;
+  return {
+    id: u.id,
+    ad_soyad: u.ad_soyad,
+    email: u.email,
+    telefon: u.telefon,
+    rol_ad: u.roles?.ad ?? "—",
+    tenant_id: u.sahibkar_id,
+    tenant_ad: u.sahibkarlar?.ad ?? "—",
+    aktiv: u.aktiv ?? false,
+    son_giris: u.son_giris,
+    deleted_at: u.deleted_at,
+    yaradildi: u.yaradildi ?? new Date(0),
+  };
+}
+

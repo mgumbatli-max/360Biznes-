@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, Mail, Phone, MapPin, Calendar, Boxes, Users, ShoppingCart, Wallet } from "lucide-react";
+import { Building2, Mail, Phone, MapPin, Calendar, Boxes, Users, ShoppingCart, Wallet, History } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
-import { getTenantDetail, getGlobalUsers, getTenantModules, getTenantBilling } from "@/features/platform-admin/queries";
+import { getTenantDetail, getGlobalUsers, getTenantModules, getTenantBilling, getTenantAuditLog } from "@/features/platform-admin/queries";
 import { TenantActions } from "@/features/platform-admin/components/tenant-actions";
 import { ImpersonateButton } from "@/features/platform-admin/components/impersonate-button";
 import { UserAdminActions } from "@/features/platform-admin/components/user-admin-actions";
 import { ModuleToggle } from "@/features/platform-admin/components/module-toggle";
 import { ApplyPlanButton } from "@/features/platform-admin/components/apply-plan-button";
+import { AuditList } from "@/features/platform-admin/components/audit-list";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tenant detayı" };
@@ -32,6 +34,9 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
 
   // Aylıq hesablama (plan bazası + əlavə modullar).
   const billing = await getTenantBilling(id);
+
+  // Bu şirkətin əməliyyat tarixçəsi (audit) — son 40 qeyd.
+  const auditRows = await getTenantAuditLog(id, 40);
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -264,7 +269,14 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
               <tbody>
                 {emekdaslar.map((u) => (
                   <tr key={u.id} className="border-b border-border/30">
-                    <td className="px-3 py-2 font-medium">{u.ad_soyad}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <Link
+                        href={`/platform-admin/istifadeciler/${u.id}`}
+                        className="text-primary-light underline-offset-2 hover:underline"
+                      >
+                        {u.ad_soyad}
+                      </Link>
+                    </td>
                     <td className="px-3 py-2 text-xs text-muted-foreground">{u.email}</td>
                     <td className="px-3 py-2 text-xs">{u.rol_ad}</td>
                     <td className="px-3 py-2">
@@ -285,6 +297,19 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
               </tbody>
             </table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Əməliyyat tarixçəsi (audit) — bu şirkətin son əməliyyatları (kim/nə/nə vaxt) */}
+      <Card className="glass">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <History className="h-4 w-4 text-primary-light" /> Əməliyyat tarixçəsi (audit)
+          </CardTitle>
+          <Badge variant="outline">{auditRows.length}</Badge>
+        </CardHeader>
+        <CardContent className="p-0">
+          <AuditList rows={auditRows} showUser={true} emptyText="Hələ qeyd yoxdur" />
         </CardContent>
       </Card>
 
