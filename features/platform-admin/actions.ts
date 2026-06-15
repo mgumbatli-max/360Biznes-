@@ -7,6 +7,7 @@ import { prismaUnscoped } from "@/lib/db/prisma";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
 import { safeAuditLog } from "@/lib/audit/safe-log";
 import { hashPassword } from "@/lib/auth/password";
+import { planTierFlag } from "./queries";
 
 export async function setTenantStatus(id: string, status: "aktiv" | "dayandirildi"): Promise<{ ok: true } | { ok: false; error: string }> {
   await requirePlatformAdmin();
@@ -468,6 +469,60 @@ export async function setTenantModule(formData: FormData): Promise<{ ok: true } 
   }
 }
 
+// ── Modul kataloqu: qiymət + plan flag-larını yaddaşda saxla (super-admin) ───
+const SaveModulSchema = z.object({
+  kod: z.string().min(1).max(40),
+  aylik_qiymet: z.coerce.number().min(0).max(1000000),
+  illik_qiymet: z.coerce.number().min(0).max(10000000).optional().or(z.literal("")),
+  start_daxil: z.enum(["true", "false"]),
+  business_daxil: z.enum(["true", "false"]),
+  pro_daxil: z.enum(["true", "false"]),
+  enterprise_daxil: z.enum(["true", "false"]),
+  ayrica_alina_biler: z.enum(["true", "false"]),
+  aktiv: z.enum(["true", "false"]),
+});
+
+export async function saveModul(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = SaveModulSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const d = parsed.data;
+  try {
+    const data = {
+      aylik_qiymet: d.aylik_qiymet,
+      illik_qiymet: typeof d.illik_qiymet === "number" ? d.illik_qiymet : null,
+      start_daxil: d.start_daxil === "true",
+      business_daxil: d.business_daxil === "true",
+      pro_daxil: d.pro_daxil === "true",
+      enterprise_daxil: d.enterprise_daxil === "true",
+      ayrica_alina_biler: d.ayrica_alina_biler === "true",
+      aktiv: d.aktiv === "true",
+    };
+    await prismaUnscoped.modullar.update({ where: { kod: d.kod }, data });
+
+    // audit_log.sahibkar_id MƏCBURİDİR (non-null UUID) — platforma-sahibi tenantı
+    // (SUPER_ADMIN_SAHIBKAR_ID), yoxdursa admin-in öz sahibkar_id-i.
+    const auditSahibkar = (process.env.SUPER_ADMIN_SAHIBKAR_ID ?? "").trim() || admin.sahibkar_id;
+    await safeAuditLog({
+      sahibkar_id: auditSahibkar,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "MODUL_SAVE",
+      resurs_nov: "modul",
+      resurs_id: d.kod,
+      yeni_data: { ...data, at: new Date().toISOString() },
+      sebeb: "Platform admin — modul kataloqu",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/modullar");
+    return { ok: true };
+  } catch (e) {
+    console.error("[saveModul]", e);
+    return { ok: false, error: "Yaddasaxlama alınmadı" };
+  }
+}
+
 export async function extendSubscription(sahibkar_id: string, daysToAdd: number): Promise<{ ok: true } | { ok: false; error: string }> {
   await requirePlatformAdmin();
   try {
@@ -487,5 +542,60 @@ export async function extendSubscription(sahibkar_id: string, daysToAdd: number)
   } catch (e) {
     console.error("[extendSubscription]", e);
     return { ok: false, error: "Uzatma alınmadı" };
+  }
+}
+
+// ── Plan tier-inə görə modulları tenant-a tətbiq et (super-admin) ────────────
+// Seçilmiş planın tier bayrağı (*_daxil) true olan bütün modulları tenant üçün
+// sahibkar_modullar-da aktivləşdirir (upsert). Mövcud əlavə (add-on) modulları
+// DEAKTİV ETMİR; yalnız plan modullarını aktiv edir. Mövcud sətrin `bitme`
+// dəyərinə toxunmur (sıfırlamır); yeni yaradılanda `baslama` qoyulur.
+const ApplyPlanModulesSchema = z.object({
+  sahibkar_id: z.string().uuid("Sahibkar ID yanlışdır"),
+  plan_kod: z.string().min(1).max(30),
+});
+
+export async function applyPlanModules(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = ApplyPlanModulesSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { sahibkar_id, plan_kod } = parsed.data;
+  const flag = planTierFlag(plan_kod);
+  if (!flag) return { ok: false, error: "Plan tanınmadı" };
+  try {
+    // Bu plan tier-inə daxil olan modulların kodları.
+    const modules = await prismaUnscoped.modullar.findMany({
+      where: { aktiv: true, [flag]: true },
+      select: { kod: true },
+    });
+    const kodlar = modules.map((m) => m.kod);
+
+    for (const modul_kod of kodlar) {
+      await prismaUnscoped.sahibkar_modullar.upsert({
+        where: { sahibkar_id_modul_kod: { sahibkar_id, modul_kod } },
+        // Mövcud sətr: yalnız aktiv et, bitme-yə toxunma.
+        update: { aktiv: true },
+        // Yeni sətr: aktiv + baslama (bitme = null → müddətsiz).
+        create: { sahibkar_id, modul_kod, aktiv: true, baslama: new Date() },
+      });
+    }
+
+    await safeAuditLog({
+      sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "APPLY_PLAN_MODULES",
+      resurs_nov: "sahibkar",
+      resurs_id: sahibkar_id,
+      yeni_data: { plan_kod, flag, modul_sayi: kodlar.length, kodlar, at: new Date().toISOString() },
+      sebeb: "Platform admin — plan modullarını tətbiq",
+      status: "ugur",
+    });
+
+    revalidatePath(`/platform-admin/tenantlar/${sahibkar_id}`);
+    return { ok: true };
+  } catch (e) {
+    console.error("[applyPlanModules]", e);
+    return { ok: false, error: "Plan modulları tətbiq olunmadı" };
   }
 }

@@ -156,6 +156,14 @@ export default async function PlatformAdminPage() {
             </CardContent>
           </Card>
         </Link>
+        <Link href="/platform-admin/modullar">
+          <Card className="glass transition hover:border-primary/30">
+            <CardContent className="py-4">
+              <div className="text-sm font-semibold">Modul kataloqu</div>
+              <div className="text-xs text-muted-foreground">Modul qiymətləri · plan paketləri</div>
+            </CardContent>
+          </Card>
+        </Link>
         <Link href="/platform-admin/audit">
           <Card className="glass transition hover:border-primary/30">
             <CardContent className="py-4">

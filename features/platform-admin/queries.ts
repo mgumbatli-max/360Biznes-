@@ -444,3 +444,139 @@ export async function getTenantModules(
     };
   });
 }
+
+// ── Plan tier → modullar daxiletmə bayrağı (plan kod → *_daxil sahəsi) ───────
+// Bazada 3 plan var (baslangic/peshekar/korporativ), modullarda isə 4 tier bayrağı
+// (start/business/pro/enterprise_daxil). Real planları ən uyğun bayrağa map edirik:
+//   baslangic  → start_daxil
+//   peshekar   → pro_daxil        (Peşəkar = Pro)
+//   korporativ → enterprise_daxil (Korporativ = Enterprise)
+// Kontraktdakı `business` planı da gələcəyə qarşı (fallback) saxlanılır.
+// Bu map həm getTenantBilling-in `included` məntiqi, həm də applyPlanModules
+// tərəfindən paylaşılır ki, ikisi eyni qaydaya əməl etsin.
+export type ModulTierFlag =
+  | "start_daxil"
+  | "business_daxil"
+  | "pro_daxil"
+  | "enterprise_daxil";
+
+export const PLAN_TIER_FLAG: Record<string, ModulTierFlag> = {
+  baslangic: "start_daxil",
+  business: "business_daxil",
+  peshekar: "pro_daxil",
+  pro: "pro_daxil",
+  korporativ: "enterprise_daxil",
+  enterprise: "enterprise_daxil",
+};
+
+/** Plan kod → tier bayrağı (tanınmırsa null → heç nə daxil deyil). */
+export function planTierFlag(planKod: string | null | undefined): ModulTierFlag | null {
+  if (!planKod) return null;
+  return PLAN_TIER_FLAG[planKod.toLowerCase()] ?? null;
+}
+
+// (getAllModules + CatalogModule aşağıda — kontraktdakı struktura uyğun mövcud
+//  versiya; bu fayl həm getAllModules-u, həm getTenantBilling-i ixrac edir.)
+
+// ── Tenant-üzrə hesablaşma (plan + əlavə modullar = ödəniş) ──────────────────
+// Tenant-in son abunəsini götürür (yaradildi desc). Plan tier bayrağına görə hər
+// AKTİV modul üçün: included = (modulda həmin tier bayrağı true). included isə
+// qiymət 0; deyilsə əlavə (add-on) kimi aylik_qiymet hesablanır. items YALNIZ
+// tenant-də AKTİV olan modullar üçündür. Plan yoxdursa → plan_qiymet 0, heç nə
+// daxil deyil (bütün aktiv modullar add-on).
+export async function getTenantBilling(sahibkarId: string): Promise<{
+  plan_kod: string | null;
+  plan_ad: string | null;
+  plan_qiymet: number;
+  items: Array<{ kod: string; ad: string; qiymet: number; included: boolean; aktiv: boolean }>;
+  addonsTotal: number;
+  total: number;
+}> {
+  const [abuneRows, modules, tenantRows] = await Promise.all([
+    prismaUnscoped.abuneler.findMany({
+      where: { sahibkar_id: sahibkarId },
+      orderBy: { yaradildi: "desc" },
+      take: 1,
+      include: { abune_planlari: true },
+    }),
+    prismaUnscoped.modullar.findMany({
+      where: { aktiv: true },
+      orderBy: { siralama: "asc" },
+    }),
+    prismaUnscoped.sahibkar_modullar.findMany({
+      where: { sahibkar_id: sahibkarId },
+    }),
+  ]);
+
+  const abune = abuneRows[0] ?? null;
+  const plan = abune?.abune_planlari ?? null;
+  const plan_kod = plan?.kod ?? null;
+  const plan_ad = plan?.ad ?? null;
+  const plan_qiymet = plan ? Number(plan.ayl_q_qiymet ?? 0) : 0;
+  const flag = planTierFlag(plan_kod);
+
+  const tenantByKod = new Map(tenantRows.map((r) => [r.modul_kod, r]));
+
+  const items: Array<{ kod: string; ad: string; qiymet: number; included: boolean; aktiv: boolean }> = [];
+  let addonsTotal = 0;
+
+  for (const m of modules) {
+    const row = tenantByKod.get(m.kod);
+    const aktiv = row?.aktiv ?? false;
+    if (!aktiv) continue; // items YALNIZ tenant-də AKTİV modullar üçün
+    const included = flag ? (m[flag] ?? false) : false;
+    const aylik = Number(m.aylik_qiymet ?? 0);
+    const qiymet = included ? 0 : aylik;
+    if (!included) addonsTotal += aylik;
+    items.push({ kod: m.kod, ad: m.ad, qiymet, included, aktiv });
+  }
+
+  return {
+    plan_kod,
+    plan_ad,
+    plan_qiymet,
+    items,
+    addonsTotal,
+    total: plan_qiymet + addonsTotal,
+  };
+}
+
+// ── Modul kataloqu & qiymət (super-admin) ───────────────────────────────────
+// Bütün modullar (siralama üzrə) — qiymət redaktəsi + plan↔modul flag-ları üçün.
+export type CatalogModule = {
+  kod: string;
+  ad: string;
+  qrup: string | null;
+  aylik_qiymet: number;
+  illik_qiymet: number | null;
+  start_daxil: boolean;
+  business_daxil: boolean;
+  pro_daxil: boolean;
+  enterprise_daxil: boolean;
+  ayrica_alina_biler: boolean;
+  aktiv: boolean;
+  siralama: number;
+};
+
+export async function getAllModules(): Promise<CatalogModule[]> {
+  const rows = await prismaUnscoped.modullar.findMany({
+    orderBy: { siralama: "asc" },
+  });
+
+  return rows.map((m) => ({
+    kod: m.kod,
+    ad: m.ad,
+    qrup: m.qrup ?? null,
+    aylik_qiymet: Number(m.aylik_qiymet ?? 0),
+    illik_qiymet:
+      m.illik_qiymet === null || m.illik_qiymet === undefined ? null : Number(m.illik_qiymet),
+    start_daxil: m.start_daxil ?? false,
+    business_daxil: m.business_daxil ?? false,
+    pro_daxil: m.pro_daxil ?? false,
+    enterprise_daxil: m.enterprise_daxil ?? false,
+    ayrica_alina_biler: m.ayrica_alina_biler ?? false,
+    aktiv: m.aktiv ?? false,
+    siralama: m.siralama ?? 100,
+  }));
+}
+

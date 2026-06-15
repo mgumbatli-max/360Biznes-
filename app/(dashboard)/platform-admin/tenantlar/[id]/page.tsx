@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Building2, Mail, Phone, MapPin, Calendar, Boxes, Users, ShoppingCart } from "lucide-react";
+import { Building2, Mail, Phone, MapPin, Calendar, Boxes, Users, ShoppingCart, Wallet } from "lucide-react";
 import { BackButton } from "@/components/ui/back-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
-import { getTenantDetail, getGlobalUsers, getTenantModules } from "@/features/platform-admin/queries";
+import { getTenantDetail, getGlobalUsers, getTenantModules, getTenantBilling } from "@/features/platform-admin/queries";
 import { TenantActions } from "@/features/platform-admin/components/tenant-actions";
 import { ImpersonateButton } from "@/features/platform-admin/components/impersonate-button";
 import { UserAdminActions } from "@/features/platform-admin/components/user-admin-actions";
 import { ModuleToggle } from "@/features/platform-admin/components/module-toggle";
+import { ApplyPlanButton } from "@/features/platform-admin/components/apply-plan-button";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Tenant detayı" };
@@ -28,6 +29,9 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
   // Bu şirkətin modul səlahiyyətləri (per-tenant entitlement).
   const modullar = await getTenantModules(id);
   const now = new Date();
+
+  // Aylıq hesablama (plan bazası + əlavə modullar).
+  const billing = await getTenantBilling(id);
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -153,6 +157,84 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
               </tbody>
             </table>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Hesablama (aylıq) — plan bazası + əlavə (add-on) modullar = aylıq cəmi */}
+      <Card className="glass">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-primary-light" /> Hesablama (aylıq)
+          </CardTitle>
+          <ApplyPlanButton sahibkarId={t.id} planKod={billing.plan_kod} planAd={billing.plan_ad} />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {/* Plan bazası */}
+          <div className="flex items-center justify-between rounded-md border border-border/40 bg-secondary/30 px-3 py-2">
+            <div>
+              <div className="text-sm font-medium">{billing.plan_ad ?? "Plan yoxdur"}</div>
+              <div className="text-xs text-muted-foreground">Plan bazası (aylıq)</div>
+            </div>
+            <div className="font-semibold tabular-nums">{formatMoney(billing.plan_qiymet)}</div>
+          </div>
+
+          {/* Aktiv modullar cədvəli */}
+          <div className="overflow-hidden rounded-md border border-border/40">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border/60 bg-secondary/20 text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Modul</th>
+                  <th className="px-3 py-2">Tip</th>
+                  <th className="px-3 py-2 text-right">Aylıq</th>
+                </tr>
+              </thead>
+              <tbody>
+                {billing.items.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-3 py-5 text-center text-xs text-muted-foreground">
+                      Aktiv modul yoxdur
+                    </td>
+                  </tr>
+                ) : (
+                  billing.items.map((it) => (
+                    <tr key={it.kod} className="border-b border-border/30 last:border-0">
+                      <td className="px-3 py-2 font-medium">{it.ad}</td>
+                      <td className="px-3 py-2">
+                        {it.included ? (
+                          <Badge variant="outline" className="border-success/30 text-success text-[10px]">Plana daxil</Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-warning/30 text-warning text-[10px]">Əlavə modul</Badge>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {it.included ? (
+                          <span className="text-muted-foreground">{formatMoney(0)}</span>
+                        ) : (
+                          formatMoney(it.qiymet)
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Cəm sətirləri */}
+          <div className="space-y-1.5 rounded-md border border-border/40 bg-secondary/20 px-3 py-2.5 text-sm">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Plan bazası</span>
+              <span className="tabular-nums">{formatMoney(billing.plan_qiymet)}</span>
+            </div>
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Əlavə modullar cəmi</span>
+              <span className="tabular-nums">{formatMoney(billing.addonsTotal)}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between border-t border-border/50 pt-2 text-base font-bold">
+              <span>Aylıq cəmi</span>
+              <span className="tabular-nums text-primary-light">{formatMoney(billing.total)}</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
