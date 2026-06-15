@@ -1,5 +1,6 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prismaUnscoped } from "@/lib/db/prisma";
 
 export type PlatformKpis = {
@@ -198,4 +199,146 @@ export async function getRevenueByPlan() {
   }
 
   return Array.from(byPlan.entries()).map(([kod, v]) => ({ kod, ...v }));
+}
+
+// ── Qlobal istifadəçilər (cross-tenant) ────────────────────────────────────
+export async function getGlobalUsers(filter: {
+  q?: string;
+  status?: string;
+  tenantId?: string;
+}): Promise<{
+  rows: Array<{
+    id: string;
+    ad_soyad: string;
+    email: string;
+    telefon: string | null;
+    rol_ad: string;
+    tenant_id: string;
+    tenant_ad: string;
+    aktiv: boolean;
+    son_giris: Date | null;
+    deleted_at: Date | null;
+    yaradildi: Date;
+  }>;
+  total: number;
+  tenants: Array<{ id: string; ad: string }>;
+}> {
+  // status mapping per contract:
+  //  "aktiv"    -> aktiv=true,  deleted_at=null
+  //  "deaktiv"  -> aktiv=false
+  //  "silinmis" -> deleted_at != null
+  //  undefined  -> all non-deleted
+  const statusWhere =
+    filter.status === "aktiv"
+      ? { aktiv: true, deleted_at: null }
+      : filter.status === "deaktiv"
+        ? { aktiv: false }
+        : filter.status === "silinmis"
+          ? { deleted_at: { not: null } }
+          : { deleted_at: null };
+
+  const where = {
+    ...statusWhere,
+    ...(filter.tenantId ? { sahibkar_id: filter.tenantId } : {}),
+    ...(filter.q
+      ? {
+          OR: [
+            { email: { contains: filter.q, mode: "insensitive" as const } },
+            { ad_soyad: { contains: filter.q, mode: "insensitive" as const } },
+            { telefon: { contains: filter.q, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [rows, total, tenants] = await Promise.all([
+    prismaUnscoped.istifadeciler.findMany({
+      where,
+      include: {
+        roles: { select: { ad: true } },
+        sahibkarlar: { select: { ad: true } },
+      },
+      orderBy: [{ son_giris: "desc" }, { yaradildi: "desc" }],
+      take: 100,
+    }),
+    prismaUnscoped.istifadeciler.count({ where }),
+    prismaUnscoped.sahibkarlar.findMany({
+      select: { id: true, ad: true },
+      orderBy: { ad: "asc" },
+    }),
+  ]);
+
+  return {
+    rows: rows.map((u) => ({
+      id: u.id,
+      ad_soyad: u.ad_soyad,
+      email: u.email,
+      telefon: u.telefon,
+      rol_ad: u.roles?.ad ?? "—",
+      tenant_id: u.sahibkar_id,
+      tenant_ad: u.sahibkarlar?.ad ?? "—",
+      aktiv: u.aktiv ?? false,
+      son_giris: u.son_giris,
+      deleted_at: u.deleted_at,
+      yaradildi: u.yaradildi ?? new Date(0),
+    })),
+    total,
+    tenants,
+  };
+}
+
+// ── Giriş cəhdləri (cross-tenant audit) ────────────────────────────────────
+export async function getLoginAttempts(filter: {
+  q?: string;
+  result?: string;
+  sinceHours?: number;
+}): Promise<
+  Array<{
+    id: string;
+    email: string | null;
+    ip: string | null;
+    ugurlu: boolean;
+    user_agent: string | null;
+    yaradildi: Date;
+  }>
+> {
+  const sinceHours = filter.sinceHours && filter.sinceHours > 0 ? filter.sinceHours : 168; // default 7 gün
+  const since = new Date(Date.now() - sinceHours * 3600000);
+
+  // ⚠️ ip_adres Postgres `Inet` sütunudur — `contains`/ILIKE birbaşa İŞLƏMİR (runtime
+  // xətası). Ona görə raw query + `host(ip_adres)` ilə mətnə çevirib axtarırıq.
+  // Bütün dəyərlər Prisma.sql ilə parametrlənir (SQL injection yox).
+  const conds: Prisma.Sql[] = [Prisma.sql`yaradildi >= ${since}`];
+  if (filter.result === "ugurlu") conds.push(Prisma.sql`ugurlu = true`);
+  else if (filter.result === "ugursuz") conds.push(Prisma.sql`ugurlu = false`);
+  if (filter.q && filter.q.trim()) {
+    const like = `%${filter.q.trim()}%`;
+    conds.push(Prisma.sql`(email ILIKE ${like} OR host(ip_adres) ILIKE ${like})`);
+  }
+
+  const rows = await prismaUnscoped.$queryRaw<
+    Array<{
+      id: bigint;
+      email: string | null;
+      ip: string | null;
+      ugurlu: boolean | null;
+      user_agent: string | null;
+      yaradildi: Date;
+    }>
+  >(Prisma.sql`
+    SELECT id, email, host(ip_adres) AS ip, ugurlu, user_agent, yaradildi
+    FROM giris_cehdleri
+    WHERE ${Prisma.join(conds, " AND ")}
+    ORDER BY yaradildi DESC
+    LIMIT 200
+  `);
+
+  return rows.map((r) => ({
+    id: String(r.id),
+    email: r.email,
+    ip: r.ip,
+    ugurlu: r.ugurlu ?? false,
+    user_agent: r.user_agent,
+    yaradildi: r.yaradildi ?? since,
+  }));
 }

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import { requirePlatformAdmin } from "@/lib/platform-admin/guard";
 import { safeAuditLog } from "@/lib/audit/safe-log";
+import { hashPassword } from "@/lib/auth/password";
 
 export async function setTenantStatus(id: string, status: "aktiv" | "dayandirildi"): Promise<{ ok: true } | { ok: false; error: string }> {
   await requirePlatformAdmin();
@@ -96,6 +97,92 @@ export async function deletePlan(id: number): Promise<{ ok: true } | { ok: false
   } catch (e) {
     console.error("[deletePlan]", e);
     return { ok: false, error: "Silinmədi" };
+  }
+}
+
+const ResetPasswordSchema = z.object({
+  user_id: z.string().uuid("İstifadəçi ID yanlışdır"),
+  yeni_sifre: z.string().min(6, "Şifrə ən azı 6 simvol olmalıdır"),
+});
+
+export async function adminResetUserPassword(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = ResetPasswordSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { user_id, yeni_sifre } = parsed.data;
+  try {
+    const target = await prismaUnscoped.istifadeciler.findUnique({
+      where: { id: user_id },
+      select: { id: true, ad_soyad: true, sahibkar_id: true },
+    });
+    if (!target) return { ok: false, error: "İstifadəçi tapılmadı" };
+
+    const sifre_hash = await hashPassword(yeni_sifre);
+    await prismaUnscoped.istifadeciler.update({
+      where: { id: user_id },
+      data: { sifre_hash, mecburi_sifre_deyis: true, son_sifre_deyis: new Date() },
+    });
+
+    await safeAuditLog({
+      sahibkar_id: target.sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: "RESET_PASSWORD",
+      resurs_nov: "istifadeci",
+      resurs_id: target.id,
+      yeni_data: { target_name: target.ad_soyad, at: new Date().toISOString() },
+      sebeb: "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/istifadeciler");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminResetUserPassword]", e);
+    return { ok: false, error: "Şifrə yenilənmədi" };
+  }
+}
+
+const SetUserActiveSchema = z.object({
+  user_id: z.string().uuid("İstifadəçi ID yanlışdır"),
+  aktiv: z.enum(["true", "false"]),
+});
+
+export async function adminSetUserActive(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const admin = await requirePlatformAdmin();
+  const parsed = SetUserActiveSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
+  const { user_id } = parsed.data;
+  const aktiv = parsed.data.aktiv === "true";
+  try {
+    const target = await prismaUnscoped.istifadeciler.findUnique({
+      where: { id: user_id },
+      select: { id: true, ad_soyad: true, sahibkar_id: true },
+    });
+    if (!target) return { ok: false, error: "İstifadəçi tapılmadı" };
+
+    await prismaUnscoped.istifadeciler.update({
+      where: { id: user_id },
+      data: { aktiv },
+    });
+
+    await safeAuditLog({
+      sahibkar_id: target.sahibkar_id,
+      istifadeci_id: admin.id,
+      istifadeci_ad: admin.ad_soyad ?? "platform_admin",
+      emeliyyat: aktiv ? "USER_AKTIV" : "USER_DEAKTIV",
+      resurs_nov: "istifadeci",
+      resurs_id: target.id,
+      yeni_data: { target_name: target.ad_soyad, aktiv, at: new Date().toISOString() },
+      sebeb: "Platform admin",
+      status: "ugur",
+    });
+
+    revalidatePath("/platform-admin/istifadeciler");
+    return { ok: true };
+  } catch (e) {
+    console.error("[adminSetUserActive]", e);
+    return { ok: false, error: "Status dəyişmədi" };
   }
 }
 

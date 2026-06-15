@@ -115,12 +115,28 @@ export default async function PlatformAdminPage() {
         </div>
       )}
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Link href="/platform-admin/tenantlar">
           <Card className="glass transition hover:border-primary/30">
             <CardContent className="py-4">
               <div className="text-sm font-semibold">Tenantlar</div>
               <div className="text-xs text-muted-foreground">Sahibkar şirkətlər siyahısı</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/platform-admin/istifadeciler">
+          <Card className="glass transition hover:border-primary/30">
+            <CardContent className="py-4">
+              <div className="text-sm font-semibold">İstifadəçilər</div>
+              <div className="text-xs text-muted-foreground">Bütün şirkətlərin istifadəçiləri · şifrə yenilə</div>
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/platform-admin/giris-cehdleri">
+          <Card className="glass transition hover:border-primary/30">
+            <CardContent className="py-4">
+              <div className="text-sm font-semibold">Giriş cəhdləri</div>
+              <div className="text-xs text-muted-foreground">Login log · uğurlu/uğursuz · IP</div>
             </CardContent>
           </Card>
         </Link>
