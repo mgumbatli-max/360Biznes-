@@ -5,10 +5,11 @@
   "scripts": {
     "postinstall": "prisma generate && node scripts/sync-wasm.mjs",
     "dev": "next dev --port 3500",
-    "build": "prisma generate && node scripts/sync-wasm.mjs && (test -z \"$VERCEL\" || DIRECT_URL=\"${DATABASE_URL_UNPOOLED:-$DATABASE_URL}\" prisma db push --skip-generate) && next build",
+    "build": "prisma generate && node scripts/sync-wasm.mjs && next build",
     "start": "next start --port 3500",
     "lint": "eslint",
     "db:pull": "prisma db pull",
+    "db:push": "DIRECT_URL=\"${DATABASE_URL_UNPOOLED:-$DATABASE_URL}\" prisma db push",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "check:consistency": "npx tsx scripts/check-data-consistency.ts",
