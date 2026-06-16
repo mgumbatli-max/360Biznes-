@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { auth } from "@/auth";
 import { runWithTenant } from "@/lib/db/tenant-context";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { isPrivilegedRole } from "@/lib/auth/privileged";
 import { getAppMode } from "@/lib/app-mode";
 import { getLiteConfig, getModuleEntry, hiddenLiteModules } from "@/lib/lite/config";
 import type { LiteConfig } from "@/lib/lite/config";
@@ -221,7 +222,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <AuthSessionProvider>
-      <PermissionsProvider icazeler={icazeler}>
+      <PermissionsProvider icazeler={icazeler} privileged={isPrivilegedRole(session.user.rol_ad)}>
         {/* Lite dizayn forması — SSR inline script, ilk paint-dən əvvəl (FOUC yox) */}
         <LiteThemeScript design={liteDesign} active={appMode === "lite"} />
         <IcmalAttrScript modules={icmalModules} />

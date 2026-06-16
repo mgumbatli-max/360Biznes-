@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { PermissionsProvider } from "@/components/providers/permissions-provider";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { isPrivilegedRole } from "@/lib/auth/privileged";
 import { PosHeader } from "@/features/pos/components/pos-header";
 import { OfflineBanner } from "@/features/pos/components/offline-banner";
 import { NavigationTracker } from "@/components/layout/navigation-tracker";
@@ -24,7 +25,7 @@ export default async function PosStandaloneLayout({
 
   return (
     <AuthSessionProvider>
-      <PermissionsProvider icazeler={icazeler}>
+      <PermissionsProvider icazeler={icazeler} privileged={isPrivilegedRole(session.user.rol_ad)}>
         <NavigationTracker />
         <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 pt-safe pb-safe">
           <PosHeader user={{ ad_soyad: session.user.ad_soyad, sahibkar_ad: session.user.sahibkar_ad }} />

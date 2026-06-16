@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { PermissionsProvider } from "@/components/providers/permissions-provider";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
+import { isPrivilegedRole } from "@/lib/auth/privileged";
 import { MarketPosHeader } from "@/features/ticaret/components/market-pos-header";
 
 export const metadata = {
@@ -21,7 +22,7 @@ export default async function MarketPosStandaloneLayout({
 
   return (
     <AuthSessionProvider>
-      <PermissionsProvider icazeler={icazeler}>
+      <PermissionsProvider icazeler={icazeler} privileged={isPrivilegedRole(session.user.rol_ad)}>
         <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 text-slate-900 pt-safe pb-safe">
           <MarketPosHeader
             user={{

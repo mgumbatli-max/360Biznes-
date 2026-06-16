@@ -48,7 +48,7 @@ import {
   type CustomerCreditStatus,
   type DiscountApprovalCheck,
 } from "../satis-yeni-actions";
-import { usePermissions } from "@/components/providers/permissions-provider";
+import { usePermissions, useIsPrivileged } from "@/components/providers/permissions-provider";
 import type { CustomerRow, ProductRow, SalespersonOption } from "@/features/pos/sale-queries";
 
 export type AnbarOpt = { id: number; ad: string };
@@ -109,8 +109,9 @@ export function SatisYeniClient({
   const router = useRouter();
   const defaultAnbarId = anbarlar[0]?.id ?? 0;
   const icazeler = usePermissions();
-  const canOverrideStock = icazeler.includes("pos.sell_no_stock");
-  const canOverCredit = icazeler.includes("sales.over_credit");
+  const isPriv = useIsPrivileged(); // sahibkar/admin/owner — bütün override-lara icazə
+  const canOverrideStock = isPriv || icazeler.includes("pos.sell_no_stock");
+  const canOverCredit = isPriv || icazeler.includes("sales.over_credit");
   // Idempotentlik açarı — double-submit dublikat satışın qarşısını alır.
   const clientOpIdRef = useRef<string>(crypto.randomUUID());
 
