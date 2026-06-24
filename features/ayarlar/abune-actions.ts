@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { requireAyarActionPerm } from "./access-guard";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -12,6 +13,11 @@ type ActionResult = { ok: true } | { ok: false; error: string };
  * mövcud aktiv abunə dayandırılır. Ödəniş axını ayrı sistem üçündür.
  */
 export async function changeSubscriptionPlan(planId: number, novu: "ayl_q" | "illik"): Promise<ActionResult> {
+  // İcazə: abunə planını yalnız sahibkar/admin dəyişə bilər (əvvəl guard YOX idi —
+  // istənilən autentifikasiya olunmuş istifadəçi tenant abunəsini dəyişə bilirdi).
+  const permCheck = await requireAyarActionPerm("ayar.abune");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {

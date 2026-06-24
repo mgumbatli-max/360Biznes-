@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { requireTapshiriqPerm } from "./actions";
 
 
 const Schema = z.object({
@@ -38,6 +39,11 @@ export async function createTaskFor(input: z.input<typeof Schema>): Promise<Resu
   const parsed = Schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Yanlış məlumat" };
   const d = parsed.data;
+
+  // İcazə: tapşırıq yarat (sahibkar/admin/owner bypass edir). Əvvəl bu action
+  // guard-sız idi — istənilən istifadəçi obyekt-bağlı tapşırıq yarada bilirdi.
+  const permCheck = await requireTapshiriqPerm("tapshiriq.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();

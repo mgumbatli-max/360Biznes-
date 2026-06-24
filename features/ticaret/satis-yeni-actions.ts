@@ -478,7 +478,19 @@ export async function createOrUpdateSatisYeni(
               // uyğunsuzluğu) — ya da ümumiyyətlə yazılmazdı. İkisi də pul
               // itkisidir. Hesab tapılmazsa satışı RƏDD et.
               if (!hesabIdForOp) {
-                throw new Error("Ödəniş üçün maliyə hesabı (nağd/kart/bank) tapılmadı — hesab seçin və ya Nisyə işarələyin. Pul heç bir hesaba düşmədən satış tamamlana bilməz.");
+                // SELF-HEAL: sıfır-data tenant (yeni sahibkar) üçün bu ödəniş
+                // növünə default maliyə hesabı yarat ki, nağd/kart satış
+                // bloklanmasın (signup default hesab yaratmadığı halda).
+                const novForAccount =
+                  data.odenis_nov === "kart" ? "kart" :
+                  data.odenis_nov === "kecirme" ? "bank" : "negd";
+                const adForNov = novForAccount === "kart" ? "Kart / POS terminal"
+                  : novForAccount === "bank" ? "Bank hesabı" : "Nağd kassa";
+                const createdHesab = await tx.maliye_hesablari.create({
+                  data: { sahibkar_id: sahibkarId, ad: adForNov, nov: novForAccount, qaliq: 0, valyuta: "AZN", aktiv: true },
+                  select: { id: true },
+                });
+                hesabIdForOp = createdHesab.id;
               }
 
               // Kassa əməliyyatı yalnız real kassa sessiyası varsa (kassa_id

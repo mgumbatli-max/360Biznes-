@@ -53,6 +53,11 @@ export default async function MaliyyePage({ searchParams }: { searchParams?: Pro
   const { requireMaliyyePerm } = await import("@/features/maliyye/access-guard");
   await requireMaliyyePerm();
 
+  // Sıfır-data tenant backfill: default maliyə hesabları (nağd/kart/bank) yoxdursa
+  // yarat ki, əməliyyat/satış formalarında hesab dropdown-u boş qalmasın.
+  const { ensureDefaultFinanceAccountsForCurrentTenant } = await import("@/features/maliyye/ensure-default-accounts");
+  await ensureDefaultFinanceAccountsForCurrentTenant().catch(() => {});
+
   const sp = (await searchParams) ?? {};
   const forecastDays = ([30, 60, 90].includes(Number(sp.forecast)) ? Number(sp.forecast) : 30) as 30 | 60 | 90;
 

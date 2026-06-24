@@ -6,6 +6,7 @@ import { SignupSchema } from "./schemas";
 import { signIn } from "@/auth";
 import { checkBotId } from "botid/server";
 import { isReservedSuperAdminEmail } from "@/lib/platform-admin/guard";
+import { ensureDefaultFinanceAccounts } from "@/features/maliyye/ensure-default-accounts";
 
 export type SignupActionResult =
   | { ok: true }
@@ -174,6 +175,10 @@ export async function signupAction(_prev: SignupActionResult | null, formData: F
           aktiv: true,
         },
       });
+
+      // 6b. Default maliyə hesabları (nağd/kart/bank) — bunlar olmadan yeni
+      // sahibkar nağd/kart satış edə bilmir (satış ödəniş hesabı tələb edir).
+      await ensureDefaultFinanceAccounts(tx, sahibkar.id);
 
       // 7. Demo trial record (separate tracking from abuneler)
       await tx.demo_trials.create({
