@@ -26,33 +26,33 @@ type RouteRule = {
 };
 
 export const ROUTE_RULES: RouteRule[] = [
-  // — Maliyyə
-  { prefix: "/maliyye", anyOf: ["maliye.view", "maliye.gor", "maliye.idare"] },
+  // — Maliyyə (canonical maliyye.* + köhnə alias maliye.*)
+  { prefix: "/maliyye", anyOf: ["maliyye.oxu", "maliyye.idare", "maliye.view", "maliye.gor", "maliye.idare"] },
   // — Hesabatlar
-  { prefix: "/hesabatlar", anyOf: ["hesabat.view", "hesabat.gor"] },
+  { prefix: "/hesabatlar", anyOf: ["hesabat.view", "hesabat.gor", "hesabat.oxu", "hesabat.idare"] },
   // — Əməkdaşlar / İşçilər
   // QA-K1: kütləvi maaş bordrosu dar icazə tələb edir (ilk uyğun qayda qazandığı
   // üçün /iscilier-dən ƏVVƏL durmalıdır).
   { prefix: "/iscilier/maas", anyOf: ["maas.view", "maas.idare"] },
   { prefix: "/iscilier", anyOf: ["isci.view", "isci.idare", "hr.view"] },
-  // — Anbar (məhsul redaktə daha dar icazə tələb edir, amma view geniş ola bilər)
-  { prefix: "/anbar", anyOf: ["anbar.view", "anbar.gor", "anbar.idare"] },
-  // — Ticarət / Satış
-  { prefix: "/ticaret", anyOf: ["trade.view", "ticaret.view", "satis.gor"] },
-  // — POS / İsti satış
-  { prefix: "/pos", anyOf: ["pos.view", "pos.istifade", "trade.view"] },
-  { prefix: "/market-pos", anyOf: ["pos.view", "pos.istifade", "trade.view"] },
+  // — Anbar (canonical anbar.oxu + köhnə alias anbar.view/gor/idare)
+  { prefix: "/anbar", anyOf: ["anbar.oxu", "anbar.view", "anbar.gor", "anbar.idare"] },
+  // — Ticarət / Satış (canonical ticaret.oxu/satis.oxu + alias)
+  { prefix: "/ticaret", anyOf: ["ticaret.oxu", "satis.oxu", "trade.view", "ticaret.view", "satis.gor"] },
+  // — POS / İsti satış (canonical pos.access + alias)
+  { prefix: "/pos", anyOf: ["pos.access", "pos.view", "pos.istifade", "trade.view"] },
+  { prefix: "/market-pos", anyOf: ["pos.access", "pos.view", "pos.istifade", "trade.view"] },
   // — CRM / Mesaj mərkəzi
   { prefix: "/crm", anyOf: ["crm.oxu", "crm.idare", "mesaj.cevab", "mesaj.idare", "lead.idare"] },
   // — Servis
   { prefix: "/servis", anyOf: ["servis.view", "servis.idare"] },
-  // — Marketplace
-  { prefix: "/marketplace", anyOf: ["marketplace.view", "marketplace.idare"] },
+  // — Marketplace (canonical marketplace.oxu + alias)
+  { prefix: "/marketplace", anyOf: ["marketplace.oxu", "marketplace.view", "marketplace.idare"] },
   // — Webhook
   { prefix: "/webhook", anyOf: ["webhook.view", "marketplace.idare"] },
   // — Avtomatlaşdırma / Təsdiq / Audit / Nəzarət
   { prefix: "/avtomatlasdirma", anyOf: ["avto.view", "avto.idare"] },
-  { prefix: "/tesdiq", anyOf: ["tesdiq.view", "tesdiq.tesdiq"] },
+  { prefix: "/tesdiq", anyOf: ["tesdiq.view", "tesdiq.tesdiq", "tesdiq.oxu"] },
   { prefix: "/audit-log", anyOf: ["audit.view"] },
   { prefix: "/nezaret-merkezi", anyOf: ["nezaret.oxu", "nezaret.dashboard", "audit.view"] },
   // — Ayarlar (yalnız admin / sahibkar; map-də sahibkar/admin bypass-ed olunduğu üçün burada dar saxlayırıq)
@@ -60,7 +60,7 @@ export const ROUTE_RULES: RouteRule[] = [
   // — Kampaniyalar
   { prefix: "/kampaniyalar", anyOf: ["kampaniya.view", "marketing.view"] },
   // — Satınalma planlama (anbar daxili gərək olardı, amma URL var)
-  { prefix: "/satinalma", anyOf: ["anbar.view", "satinalma.view", "trade.view"] },
+  { prefix: "/satinalma", anyOf: ["anbar.oxu", "anbar.view", "satinalma.oxu", "satinalma.view", "trade.view"] },
   // — Sahibkar bölməsi (PIN guard onsuz da var, amma rol kontrolü də etsən pis olmaz)
   { prefix: "/sahibkar", anyOf: ["sahibkar.access"] },
   // — Platform admin (səhifə guard-ı requirePlatformAdmin/isSuperAdmin onsuz da
