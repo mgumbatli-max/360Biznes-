@@ -47,6 +47,9 @@ export default async function PurchaseReceiptPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("alis.oxu");
+
   const { id } = await params;
   const [purchase, company] = await Promise.all([getPurchase(id), getCompany()]);
   if (!purchase) notFound();

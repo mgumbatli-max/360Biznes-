@@ -17,6 +17,9 @@ export default async function SalesHeatmapPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("hesabat.oxu");
+
   const sp = await searchParams;
   const gun = Math.min(365, Math.max(7, Number(sp.gun) || 90));
 

@@ -41,6 +41,9 @@ export default async function SaleReceiptPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ format?: string }>;
 }) {
+  const { requireTicaretPerm } = await import("@/features/ticaret/access-guard");
+  await requireTicaretPerm("satis.oxu");
+
   const { id } = await params;
   const { format } = await searchParams;
   const isThermal = format === "thermal";

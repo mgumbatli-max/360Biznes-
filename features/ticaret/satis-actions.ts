@@ -49,7 +49,7 @@ export async function recordSalePayment(
           id: string; son_mebleg: number; odenilmis: number; status: string;
         }>>`
           SELECT id, son_mebleg::float, COALESCE(odenilmis, 0)::float AS odenilmis, status
-          FROM satis_sifarisleri WHERE id = ${saleId}::uuid FOR UPDATE
+          FROM satis_sifarisleri WHERE id = ${saleId}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE
         `;
         if (lockedRows.length === 0) throw new Error("Satış tapılmadı");
         if (lockedRows[0].status === "legv") throw new Error("Ləğv edilmiş satışa ödəniş əlavə oluna bilməz");

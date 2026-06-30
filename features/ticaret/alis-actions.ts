@@ -325,7 +325,7 @@ export async function receivePurchase(purchaseId: string): Promise<{ ok: true } 
       await prisma.$transaction(async (tx) => {
         // 🔒 FOR UPDATE LOCK — paralel "Qəbul et" basışlarında double mədaxil önlənir
         const lockedRows = await tx.$queryRaw<Array<{ id: string; status: string }>>`
-          SELECT id, status FROM alis_sifarisleri WHERE id = ${purchaseId}::uuid FOR UPDATE
+          SELECT id, status FROM alis_sifarisleri WHERE id = ${purchaseId}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE
         `;
         if (lockedRows.length === 0) throw new Error("Alış tapılmadı");
         if (lockedRows[0].status !== "gozlemede") {
@@ -435,7 +435,7 @@ export async function cancelPurchase(
         // SELECT ilə FOR UPDATE-bənzər kilid almaq üçün $queryRaw.
         const lockedRows = await tx.$queryRaw<
           { id: string; status: string | null }[]
-        >`SELECT id, status FROM alis_sifarisleri WHERE id = ${purchaseId}::uuid FOR UPDATE`;
+        >`SELECT id, status FROM alis_sifarisleri WHERE id = ${purchaseId}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
         const locked = lockedRows[0];
         if (!locked) throw new Error("Alış tapılmadı");
         if (locked.status === "legv") throw new Error("Bu alış artıq ləğv edilib");
