@@ -43,6 +43,10 @@ export async function createRecurringRule(input: FormData): Promise<Result<{ id:
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
 
+  const { requireMaliyyeActionPerm } = await import("./access-guard");
+  const permCheck = await requireMaliyyeActionPerm(["maliyye.recurring", "maliyye.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   return withTenant(async () => {
     const { sahibkarId, istifadeciId, rolAd } = requireTenant();
     const r = (rolAd ?? "").toLowerCase();

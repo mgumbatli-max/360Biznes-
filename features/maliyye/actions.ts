@@ -1081,10 +1081,14 @@ export async function closeGunSonu(): Promise<ActionResult> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     try {
-      const [salesAgg, expenseAgg, kassaAgg] = await Promise.all([
+      const [salesAgg, returnsAgg, expenseAgg, kassaAgg] = await Promise.all([
         prisma.satis_sifarisleri.aggregate({
-          where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true } },
+          where: { sahibkar_id: sahibkarId, tarix: { gte: today }, qaralama: { not: true }, status: { not: "legv" } },
           _sum: { odenilmis: true, son_mebleg: true },
+        }),
+        prisma.qaytarma_sifarisleri.aggregate({
+          where: { sahibkar_id: sahibkarId, tarix: { gte: today }, deleted_at: null, status: { not: "legv" } },
+          _sum: { geri_qaytarildi: true },
         }),
         prisma.xercl_r.aggregate({
           where: { sahibkar_id: sahibkarId, tarix: { gte: today }, legv_de: null },
@@ -1098,6 +1102,7 @@ export async function closeGunSonu(): Promise<ActionResult> {
         }),
       ]);
       const satis = Number(salesAgg._sum.odenilmis ?? 0);
+      const qaytarma = Number(returnsAgg._sum.geri_qaytarildi ?? 0);
       const xerc = Number(expenseAgg._sum.mebleg ?? 0);
       const kassaQaliq = Number(kassaAgg._sum.qaliq ?? 0);
 
@@ -1112,7 +1117,7 @@ export async function closeGunSonu(): Promise<ActionResult> {
             status: "bagli",
             satish_cem: satis,
             xerc_cem: xerc,
-            menfeet: satis - xerc,
+            menfeet: satis - qaytarma - xerc,
             kassa_qaliq: kassaQaliq,
             baglayan_id: userId ?? null,
             bagh_tarix: new Date(),
@@ -1126,7 +1131,7 @@ export async function closeGunSonu(): Promise<ActionResult> {
             status: "bagli",
             satish_cem: satis,
             xerc_cem: xerc,
-            menfeet: satis - xerc,
+            menfeet: satis - qaytarma - xerc,
             kassa_qaliq: kassaQaliq,
             baglayan_id: userId ?? null,
             bagh_tarix: new Date(),

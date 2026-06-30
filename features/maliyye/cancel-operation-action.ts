@@ -51,7 +51,7 @@ export async function cancelFinanceOperation(
         // hər ikisi köhnə statusu oxuyub keçə bilirdi; kilid ikinci tx-i
         // birinci commit-dən sonra status guard-ına salır
         await tx.$queryRaw`
-          SELECT id FROM finance_operations WHERE id = ${d.operation_id}::uuid FOR UPDATE
+          SELECT id FROM finance_operations WHERE id = ${d.operation_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE
         `;
         // Əməliyyatı oxu (idempotency yoxlaması)
         const op = await tx.finance_operations.findFirst({
