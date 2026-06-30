@@ -68,6 +68,9 @@ async function getData() {
 }
 
 export default async function DefektPage() {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("stok.duzelis");
+
   const { qeydler, defektAnbarlar, butunAnbarlar, mehsullar } = await getData();
 
   const aktivSay = qeydler.filter((q) => q.status === "aktiv").length;

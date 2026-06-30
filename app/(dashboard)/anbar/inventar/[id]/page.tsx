@@ -35,6 +35,9 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 export default async function InventarDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("sayim.oxu");
+
   const { id } = await params;
   const inv = await getInventar(id);
   if (!inv) notFound();

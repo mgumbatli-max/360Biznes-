@@ -191,6 +191,9 @@ export async function setInventarRowReasons(
   rows: Array<{ satir_id: number; sebeb: string | null; aciqlama: string }>,
 ): Promise<ActionResult> {
   return withTenant(async () => {
+    const { requireAnbarActionPerm } = await import("../access-guard");
+    const permCheck = await requireAnbarActionPerm(["sayim.yarat", "stok.duzelis"]);
+    if (!permCheck.ok) return { ok: false, error: permCheck.error };
     try {
       const { buildVarianceQeyd } = await import("./variance-reasons");
       await prisma.$transaction(

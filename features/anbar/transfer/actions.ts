@@ -94,6 +94,10 @@ export async function createTransfer(input: z.input<typeof CreateTransferSchema>
 export async function acceptTransfer(id: string): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    // İcazə: transferi qəbul etmək real stok hərəkətidir — createTransfer ilə eyni gate.
+    const { requireAnbarActionPerm } = await import("../access-guard");
+    const permCheck = await requireAnbarActionPerm(["stok.transfer", "anbar.idare"]);
+    if (!permCheck.ok) return { ok: false, error: permCheck.error };
     try {
       await prisma.$transaction(async (tx) => {
         const t = await tx.anbar_transferleri.findUnique({
@@ -224,6 +228,10 @@ export async function partialAcceptTransfer(input: {
 }): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    // İcazə: hissəvi qəbul da stok dəyişdirir — eyni gate.
+    const { requireAnbarActionPerm } = await import("../access-guard");
+    const permCheck = await requireAnbarActionPerm(["stok.transfer", "anbar.idare"]);
+    if (!permCheck.ok) return { ok: false, error: permCheck.error };
     try {
       await prisma.$transaction(async (tx) => {
         const t = await tx.anbar_transferleri.findUnique({

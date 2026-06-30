@@ -224,6 +224,10 @@ export async function bulkUpdateProducts(
   if (d.ids.length > 1000) return { ok: false, error: "Bir dəfəyə 1000-dən çox məhsul ola bilməz" };
   return withTenant(async () => {
     try {
+      // ⚠️ Tenant izolyasiyası: raw $executeRaw Prisma tenant-extension-i ÖTÜR
+      // (yalnız model əməliyyatları scoped olur). Ona görə sahibkarId-i ƏVVƏL götür
+      // və aşağıdakı raw UPDATE-lərə `AND sahibkar_id` əlavə et (cross-tenant yazını qarşıla).
+      const { sahibkarId } = requireTenant();
       let count = 0;
       if (d.op === "sil" || d.op === "passiv") {
         const r = await prisma.mehsullar.updateMany({
@@ -256,7 +260,7 @@ export async function bulkUpdateProducts(
           UPDATE mehsullar
              SET satis_qiymeti = ROUND(satis_qiymeti * ${factor}::numeric, 2),
                  yenilendi = NOW()
-           WHERE id = ANY(${d.ids}::uuid[])
+           WHERE id = ANY(${d.ids}::uuid[]) AND sahibkar_id = ${sahibkarId}::uuid
         `;
         count = r;
       } else if (d.op === "endirim_faiz") {
@@ -265,7 +269,7 @@ export async function bulkUpdateProducts(
           UPDATE mehsullar
              SET endirimli_qiymet = ROUND(satis_qiymeti * ${factor}::numeric, 2),
                  yenilendi = NOW()
-           WHERE id = ANY(${d.ids}::uuid[])
+           WHERE id = ANY(${d.ids}::uuid[]) AND sahibkar_id = ${sahibkarId}::uuid
         `;
         count = r;
       } else if (d.op === "kritik_stok") {
@@ -275,7 +279,6 @@ export async function bulkUpdateProducts(
         });
         count = r.count;
       }
-      const { sahibkarId } = requireTenant();
       // Bulk operasiya — hər ID üçün ayrıca audit log yazırıq ki, hər
       // məhsulun history-si gəzilərkən bu kütləvi dəyişiklik də görünsün.
       // Resurs_id-ləri yaymaq əvəzinə bir "bulk" log + N "yenile" log yazırıq.

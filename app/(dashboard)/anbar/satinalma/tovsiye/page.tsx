@@ -81,6 +81,10 @@ async function getFilterOptions() {
 }
 
 export default async function SatinalmaPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  // İcazə: satınalma tövsiyələri (stok/satış tempi/son alış qiyməti/büdcə) həssasdır.
+  const { requireAnbarPerm } = await import("@/features/anbar/access-guard");
+  await requireAnbarPerm("satinalma.oxu");
+
   const sp = await searchParams;
   const [rows, opts, lastComputed] = await Promise.all([
     getRecommendations(sp),
