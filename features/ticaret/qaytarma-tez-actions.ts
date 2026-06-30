@@ -313,6 +313,13 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
                   qeyd: `Tez qaytarma refund: ${input.sebeb}`,
                 },
               });
+              // 🚨 Reversing finance_operations — hesab balansı şişməsin (kritik).
+              const { recordRefundFinanceOp } = await import("./refund-finance");
+              await recordRefundFinanceOp(tx, {
+                sahibkarId, saleId: origSale.id, musteriId: origSale.musteri_id,
+                kassaId: origSale.kassa_id, odenisNov: kassaOdenisNov, refund: total,
+                istifadeciId, qeyd: `Tez qaytarma refund: ${input.sebeb}`,
+              });
             }
 
             // Müştəri balansını source-of-truth-dan recalc
@@ -681,6 +688,14 @@ export async function returnFullSale(
                   istifadeci_id: istifadeciId,
                   qeyd: `Qaytarma refund: ${input.sebeb} (satis #${sale.nomre})`,
                 },
+              });
+              // 🚨 Reversing finance_operations — hesab balansı şişməsin (kritik).
+              // Balance yalnız finance_operations-dan hesablanır; kassa_emeliyyatlari kifayət deyil.
+              const { recordRefundFinanceOp } = await import("./refund-finance");
+              await recordRefundFinanceOp(tx, {
+                sahibkarId, saleId: sale.id, musteriId: sale.musteri_id,
+                kassaId: sale.kassa_id, odenisNov: kassaOdenisNov, refund,
+                istifadeciId, qeyd: `Qaytarma refund: ${input.sebeb} (satis #${sale.nomre})`,
               });
             }
           }

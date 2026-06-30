@@ -266,6 +266,13 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
                     qeyd: `Qaytarma refund: ${ret.nomre} (satis #${original.nomre})`,
                   },
                 });
+                // 🚨 Reversing finance_operations — hesab balansı şişməsin (kritik).
+                const { recordRefundFinanceOp } = await import("@/features/ticaret/refund-finance");
+                await recordRefundFinanceOp(tx, {
+                  sahibkarId, saleId: original.id, musteriId: original.musteri_id,
+                  kassaId: original.kassa_id, odenisNov: original.odenis_nov, refund,
+                  istifadeciId, qeyd: `Qaytarma refund: ${ret.nomre} (satis #${original.nomre})`,
+                });
               }
             }
 
