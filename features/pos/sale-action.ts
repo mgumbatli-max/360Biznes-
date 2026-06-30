@@ -104,18 +104,22 @@ export async function createSaleCore(input: CreateSaleInput): Promise<CreateSale
 
 async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<CreateSaleResult> {
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+    const { sahibkarId, istifadeciId, rolAd, icazeler } = requireTenant();
 
-    // 🔒 Kassir icazə enforce (server): `override_*` bayraqları yalnız privileged/
-    // menecer rollar üçün hörmət olunur. Əks halda kassir mobil API/body-də
-    // `override_discount_limit:true` / `override_credit_limit:true` göndərib
-    // endirim/kredit limitini özbaşına keçə bilərdi (client gating server-i bağlamır).
+    // 🔒 Kassir icazə enforce (server) — client gating server-i bağlamır; mobil
+    // API/body birbaşa çağırıla bilər, ona görə bütün enforce SERVER-də olmalıdır.
     const _r = (rolAd ?? "").toLowerCase();
-    const canOverrideLimits =
-      _r.includes("sahibkar") || _r.includes("admin") || _r.includes("owner") ||
-      _r.includes("menecer") || _r.includes("direktor") || _r.includes("director");
+    const _isPriv = _r.includes("sahibkar") || _r.includes("admin") || _r.includes("owner");
+    // override_* bayraqları yalnız privileged/menecer üçün hörmət olunur.
+    const canOverrideLimits = _isPriv || _r.includes("menecer") || _r.includes("direktor") || _r.includes("director");
     const overrideCredit = !!data.override_credit_limit && canOverrideLimits;
     const overrideDiscount = !!data.override_discount_limit && canOverrideLimits;
+    // change_price / sell_below_min — icazə kodu VƏ YA tenant POS settings ilə.
+    const _icz = icazeler ?? [];
+    const { getPosPriceSettings } = await import("@/features/ayarlar/pos-qiymet");
+    const _posSet = await getPosPriceSettings();
+    const canChangePrice = _isPriv || _icz.includes("pos.change_price") || _posSet.cashier_can_change_price;
+    const canSellBelowMin = _isPriv || _icz.includes("pos.sell_below_min_price") || _posSet.cashier_can_sell_below_min;
 
     // Cross-tenant qoruması: kliyentdən gələn FK-lər (müştəri, satış meneceri)
     // CARI tenantə aid olmalıdır. FK constraint qlobaldır (yalnız UUID-in
@@ -245,7 +249,11 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
         // 4. Load product cost info for maya_alti flag
         const products = await tx.mehsullar.findMany({
           where: { id: { in: data.lines.map((l) => l.mehsul_id) } },
-          select: { id: true, alish_qiymeti: true, min_satis_qiymeti: true },
+          select: {
+            id: true, alish_qiymeti: true, min_satis_qiymeti: true,
+            satis_qiymeti: true, topdan_qiymeti: true, partnyor_qiymeti: true,
+            vip_qiymeti: true, endirimli_qiymet: true,
+          },
         });
         const productById = new Map(products.map((p) => [p.id, p]));
         let mayaAlti = false;
@@ -258,6 +266,27 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
           if (Number(p.min_satis_qiymeti ?? 0) > 0 && effective < Number(p.min_satis_qiymeti ?? 0)) {
             minQiymetAlti = true;
           }
+        }
+
+        // 🔒 SERVER ENFORCE — kassir qiymət/min-altı icazəsi:
+        // change_price yoxdursa, line.qiymet məhsulun təyin edilmiş qiymətlərindən
+        // (tier) biri olmalıdır — kassir ixtiyari qiymət yaza bilməz.
+        if (!canChangePrice) {
+          for (const line of data.lines) {
+            const p = productById.get(line.mehsul_id);
+            if (!p) continue;
+            const allowed = [
+              p.satis_qiymeti, p.topdan_qiymeti, p.partnyor_qiymeti,
+              p.vip_qiymeti, p.endirimli_qiymet, p.min_satis_qiymeti,
+            ].map((v) => Number(v ?? 0)).filter((v) => v > 0);
+            if (allowed.length && !allowed.some((v) => Math.abs(v - line.qiymet) < 0.01)) {
+              throw new Error("Qiyməti dəyişmək icazəniz yoxdur — sistem qiymətindən istifadə edin.");
+            }
+          }
+        }
+        // min-altı satış icazəsi yoxdursa rədd et.
+        if (minQiymetAlti && !canSellBelowMin) {
+          throw new Error("Minimum qiymətdən aşağı satış icazəniz yoxdur.");
         }
 
         // 5. Sale number (race-safe inside transaction)
