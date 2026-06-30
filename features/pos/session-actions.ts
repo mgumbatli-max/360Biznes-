@@ -30,6 +30,10 @@ export async function openKassa(input: FormData | z.infer<typeof OpenSchema>): P
     return { ok: false, error: `Forma yanlışdır: ${issue?.path.join(".") || "?"} — ${issue?.message || "naməlum"}` };
   }
 
+  const { requireTicaretActionPerm } = await import("@/features/ticaret/access-guard");
+  const permCheck = await requireTicaretActionPerm(["pos.session_open", "pos.satis"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   try {
     return await withTenant(async () => {
       const { istifadeciId, sahibkarId } = requireTenant();
@@ -99,6 +103,10 @@ export async function closeKassa(
   const raw = input instanceof FormData ? Object.fromEntries(input.entries()) : input;
   const parsed = CloseSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
+
+  const { requireTicaretActionPerm } = await import("@/features/ticaret/access-guard");
+  const permCheck = await requireTicaretActionPerm(["pos.session_close", "pos.satis"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();

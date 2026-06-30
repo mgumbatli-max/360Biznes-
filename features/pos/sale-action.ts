@@ -104,7 +104,18 @@ export async function createSaleCore(input: CreateSaleInput): Promise<CreateSale
 
 async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<CreateSaleResult> {
   return withTenant(async () => {
-    const { sahibkarId, istifadeciId } = requireTenant();
+    const { sahibkarId, istifadeciId, rolAd } = requireTenant();
+
+    // 🔒 Kassir icazə enforce (server): `override_*` bayraqları yalnız privileged/
+    // menecer rollar üçün hörmət olunur. Əks halda kassir mobil API/body-də
+    // `override_discount_limit:true` / `override_credit_limit:true` göndərib
+    // endirim/kredit limitini özbaşına keçə bilərdi (client gating server-i bağlamır).
+    const _r = (rolAd ?? "").toLowerCase();
+    const canOverrideLimits =
+      _r.includes("sahibkar") || _r.includes("admin") || _r.includes("owner") ||
+      _r.includes("menecer") || _r.includes("direktor") || _r.includes("director");
+    const overrideCredit = !!data.override_credit_limit && canOverrideLimits;
+    const overrideDiscount = !!data.override_discount_limit && canOverrideLimits;
 
     // Cross-tenant qoruması: kliyentdən gələn FK-lər (müştəri, satış meneceri)
     // CARI tenantə aid olmalıdır. FK constraint qlobaldır (yalnız UUID-in
@@ -146,7 +157,7 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
       const effectiveMaxPct = Math.max(maxLineDiscount, overallDiscountPct);
 
       // Credit-limit check for nisye sales (POS-da nisyə qəbul olunur).
-      if (data.odenis_nov === "nisye" && data.musteri_id && !data.override_credit_limit) {
+      if (data.odenis_nov === "nisye" && data.musteri_id && !overrideCredit) {
         const check = await checkCustomerCreditLimit(data.musteri_id, preSonMebleg);
         if (!check.ok) {
           return {
@@ -158,7 +169,7 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
 
       // Discount-limit check: if user is over their role's cap and didn't
       // explicitly override, create a tesdiq_telep and refuse for now.
-      if (effectiveMaxPct > 0 && !data.override_discount_limit) {
+      if (effectiveMaxPct > 0 && !overrideDiscount) {
         const dCheck = await checkDiscountLimit(effectiveMaxPct);
         if (!dCheck.ok) {
           // Create an approval request (no sale yet — uses a placeholder ref).

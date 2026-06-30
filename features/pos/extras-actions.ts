@@ -36,6 +36,9 @@ export async function createQuickCustomer(input: {
   if (!parsed.success) {
     return { ok: false, error: "Müştəri adı ən az 2 simvol olmalıdır" };
   }
+  const { requireTicaretActionPerm } = await import("@/features/ticaret/access-guard");
+  const permCheck = await requireTicaretActionPerm(["pos.satis", "musteri.yarat"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const { sahibkarId, istifadeciId } = requireTenant();
@@ -70,6 +73,9 @@ export async function sendVergiCekAction(
   satisId: string,
 ): Promise<SendVergiCekResult> {
   if (!satisId) return { ok: false, error: "Satış ID boşdur" };
+  const { requireTicaretActionPerm } = await import("@/features/ticaret/access-guard");
+  const permCheck = await requireTicaretActionPerm(["pos.satis", "vergi.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const { sahibkarId, istifadeciId } = requireTenant();
@@ -132,6 +138,9 @@ export async function ensureWarrantyForSale(
   defaultMonths = 12,
 ): Promise<EnsureWarrantyResult> {
   if (!satisId) return { ok: false, error: "Satış ID boşdur" };
+  const { requireTicaretActionPerm } = await import("@/features/ticaret/access-guard");
+  const permCheck = await requireTicaretActionPerm(["pos.print_warranty", "pos.satis"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     try {
       const { sahibkarId, istifadeciId } = requireTenant();
