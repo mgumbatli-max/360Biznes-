@@ -282,7 +282,12 @@ export async function convertTeklifToSale(teklifId: string): Promise<ActionResul
             anbar_id: firstAnbar?.id ?? null,
             tarix: new Date(),
             status: "yeni",
-            odenis_nov: "negd",
+            // ⚠️ Pul-itkisi fix: stok burada düşür, amma ödəniş alınmır (odenilmis=0).
+            // "negd" olsaydı recalculateCustomerBalance bunu borca saymaz (yalnız
+            // nisye/borc sayır) → dəyər tamamilə itərdi. "nisye" ilə son_mebleg
+            // müştəri borcuna (alacaq) düşür; ödəniş gələndə recordSalePayment düzəldir.
+            // (createOrUpdateSatisYeni-dəki "ödənilməyən → nisye" məntiqi ilə eyni.)
+            odenis_nov: "nisye",
             umumi_mebleg: t.umumi_meblegh ?? 0,
             endirim_mebleg: t.endirim_meblegh ?? 0,
             son_mebleg: t.son_meblegh ?? 0,
@@ -340,9 +345,8 @@ export async function convertTeklifToSale(teklifId: string): Promise<ActionResul
           data: { satish_id: sale.id, status: "satisa_cevrildi", yenilendi: new Date() },
         });
 
-        // Müştəri balansı recalc — yeni nisyə satış olmadıqda bu da kassada cəm-i deyil,
-        // sadəcə kontragentler.alacaq drift-ini önləyir (satış default odenis_nov="negd").
-        // Real ödəniş işlədikdə (`recordSalePayment`) sonra düzəldiləcək.
+        // Müştəri balansı recalc — satış nisyə kimi yaradıldığı üçün son_mebleg
+        // müştərinin alacağına (borcuna) düşür. Ödəniş gələndə recordSalePayment düzəldir.
         if (t.musteri_id) {
           const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
           await recalculateCustomerBalance(t.musteri_id, tx);
