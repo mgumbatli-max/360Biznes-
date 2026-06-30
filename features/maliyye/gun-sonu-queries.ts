@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 
 export type GunSonuToday = {
   tarix: string;
@@ -86,6 +87,8 @@ export type GunSonuCheck = {
  */
 export async function getGunSonuChecks(): Promise<GunSonuCheck[]> {
   return withTenant(async () => {
+    // ⚠️ Raw $queryRaw tenant-extension-i ÖTÜR — sahibkar_id ƏL İLƏ lazımdır.
+    const { sahibkarId } = requireTenant();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -113,7 +116,8 @@ export async function getGunSonuChecks(): Promise<GunSonuCheck[]> {
         SELECT COUNT(*)::bigint AS c,
                COALESCE(SUM(COALESCE(son_mebleg,0) - COALESCE(odenilmis,0)), 0)::float AS qaliq
           FROM satis_sifarisleri
-         WHERE tarix >= ${today} AND tarix < ${tomorrow}
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND tarix >= ${today} AND tarix < ${tomorrow}
            AND COALESCE(qaralama, false) = FALSE
            AND COALESCE(status, '') <> 'legv'
            AND COALESCE(odenilmis, 0) < COALESCE(son_mebleg, 0)
@@ -137,9 +141,10 @@ export async function getGunSonuChecks(): Promise<GunSonuCheck[]> {
       const lowStock = await prisma.$queryRaw<{ c: bigint }[]>`
         SELECT COUNT(*)::bigint AS c
           FROM mehsullar m
-         WHERE m.aktiv = TRUE
+         WHERE m.sahibkar_id = ${sahibkarId}::uuid
+           AND m.aktiv = TRUE
            AND m.min_stok IS NOT NULL
-           AND COALESCE((SELECT SUM(miqdar) FROM stok WHERE mehsul_id = m.id), 0) <= m.min_stok
+           AND COALESCE((SELECT SUM(miqdar) FROM stok WHERE mehsul_id = m.id AND sahibkar_id = ${sahibkarId}::uuid), 0) <= m.min_stok
       `.catch(() => [{ c: 0n }]);
       const c = Number(lowStock[0]?.c ?? 0);
       checks.push({

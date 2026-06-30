@@ -23,6 +23,10 @@ export async function matchBankItem(input: FormData): Promise<Result> {
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
 
+  const { requireMaliyyeActionPerm } = await import("./access-guard");
+  const permCheck = await requireMaliyyeActionPerm(["bank.emeliyyat", "bank.import", "maliyye.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -70,6 +74,9 @@ export async function matchBankItem(input: FormData): Promise<Result> {
 
 /** Match-i ləğv et — sətri "eslesmiyib" statusuna qaytarır. */
 export async function unmatchBankItem(itemId: number): Promise<Result> {
+  const { requireMaliyyeActionPerm } = await import("./access-guard");
+  const permCheck = await requireMaliyyeActionPerm(["bank.emeliyyat", "maliyye.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -103,6 +110,9 @@ export async function unmatchBankItem(itemId: number): Promise<Result> {
  * ilə avtomatik bağlayır. Birdən çox kandidat varsa skip edilir (manual hövzəyə qalır).
  */
 export async function autoMatchStatement(statementId: number): Promise<Result<{ matched: number; ambiguous: number }>> {
+  const { requireMaliyyeActionPerm } = await import("./access-guard");
+  const permCheck = await requireMaliyyeActionPerm(["bank.emeliyyat", "bank.import", "maliyye.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {

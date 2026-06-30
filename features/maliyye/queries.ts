@@ -301,8 +301,8 @@ export async function getQuickRefs() {
 export async function getTopCreditors(limit = 5): Promise<TopRow[]> {
   return withTenant(async () =>
     (await prisma.kontragentler.findMany({
-      where: { aktiv: true, nov: { in: ["techizatci", "her_ikisi"] }, borc: { lt: 0 } },
-      orderBy: { borc: "asc" },
+      where: { aktiv: true, nov: { in: ["techizatci", "her_ikisi"] }, borc: { gt: 0 } },
+      orderBy: { borc: "desc" },
       take: limit,
       select: { ad: true, borc: true },
     })).map((r) => ({ ad: r.ad, mebleg: Math.abs(Number(r.borc ?? 0)) }))
@@ -317,7 +317,7 @@ export async function getMonthlyFlow(months = 6): Promise<MonthlyFlow[]> {
     const rows = await prisma.$queryRaw<{ month: string; daxil: number; xaric: number }[]>`
       WITH series AS (
         SELECT to_char(generate_series(
-          date_trunc('month', CURRENT_DATE) - INTERVAL '${months - 1} months',
+          date_trunc('month', CURRENT_DATE) - (${months - 1} * INTERVAL '1 month'),
           date_trunc('month', CURRENT_DATE),
           INTERVAL '1 month'
         ), 'YYYY-MM') AS month

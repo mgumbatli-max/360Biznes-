@@ -534,6 +534,17 @@ export async function saveQuickOperation(input: FormData): Promise<ActionResult>
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId: userId } = requireTenant();
+    // 🔒 Tenant ownership: client-dən gələn hesab_id/hesab_id2 CARI tenant-ə aid
+    // olmalıdır. Balans raw SQL sahibkar_id-siz hesablandığı üçün özgə hesab ID-si
+    // finance_operations-a yazılsa qurban tenant-ın balansını korlayar.
+    for (const hid of [d.hesab_id, d.hesab_id2]) {
+      if (!hid) continue;
+      const own = await prisma.maliye_hesablari.findFirst({
+        where: { id: hid, sahibkar_id: sahibkarId },
+        select: { id: true },
+      });
+      if (!own) return { ok: false as const, error: "Seçilmiş hesab bu hesaba aid deyil" };
+    }
     try {
       // Find or create operation_type
       let type = await prisma.finance_operation_types
