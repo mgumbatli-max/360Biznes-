@@ -1155,8 +1155,14 @@ export async function getReceivableAging() {
 
     const orders = await prisma.satis_sifarisleri.findMany({
       where: {
+        // customer-balance.ts SoT ilə eyni: yalnız nisyə/borc satışlar alacaqdır.
+        // Əvvəl status whitelist + odenis_nov filtri olmadığı üçün nağd-amma-tam-
+        // ödənilməmiş satışlar da "alacaq" kimi şişirdilirdi.
         sahibkar_id: sahibkarId,
-        status: { in: ["yeni", "tesdiq", "gonderildi"] },
+        deleted_at: null,
+        status: { notIn: ["legv", "qaytarilib"] },
+        qaralama: { not: true },
+        odenis_nov: { in: ["nisye", "borc"] },
       },
       select: { tarix: true, son_mebleg: true, odenilmis: true },
     });
