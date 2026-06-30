@@ -73,6 +73,14 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   if (!product) notFound();
 
+  // Maya görmə icazəsi yoxdursa (qiymet.oxu / privileged) — alış qiymətlərini
+  // gizlət ki, işçiyə maya/marja sızmasın. Sahibkar/admin görür.
+  const { canViewCost } = await import("@/features/anbar/access-guard");
+  if (!(await canViewCost())) {
+    (product as { alish_qiymeti: unknown }).alish_qiymeti = 0;
+    for (const w of byWarehouse) (w as { son_qiymet: unknown }).son_qiymet = 0;
+  }
+
   const totalStock = byWarehouse.reduce((s, w) => s + w.miqdar, 0);
   const stockValue = byWarehouse.reduce((s, w) => s + w.miqdar * Number(w.son_qiymet ?? product.alish_qiymeti ?? 0), 0);
   const margin = Number(product.alish_qiymeti ?? 0) > 0

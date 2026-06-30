@@ -189,6 +189,28 @@ export async function saveProductCore(
       }
     }
 
+    // Dublikat barkod/kod yoxlaması — eyni tenant-də unikal olmalıdır.
+    // (DB-də unique constraint yoxdur; app-level qoruma. Silinmiş məhsul istisna.)
+    if (data.barkod || data.kod) {
+      const dupOr: Array<Record<string, string>> = [];
+      if (data.barkod) dupOr.push({ barkod: data.barkod });
+      if (data.kod) dupOr.push({ kod: data.kod });
+      const dup = await prisma.mehsullar.findFirst({
+        where: {
+          OR: dupOr,
+          deleted_at: null,
+          ...(d.id ? { id: { not: d.id } } : {}),
+        },
+        select: { id: true, ad: true, barkod: true, kod: true },
+      });
+      if (dup) {
+        const which = data.barkod && dup.barkod === data.barkod
+          ? `barkod «${data.barkod}»`
+          : `kod «${data.kod}»`;
+        return { ok: false, error: `Eyni ${which} olan başqa məhsul mövcuddur: «${dup.ad}». Barkod/kod təkrarlana bilməz.` };
+      }
+    }
+
     // Apply auto price formulas from qiymet_novleri (only fill empty fields)
     const { applyPriceFormulas } = await import("@/features/ayarlar/apply-price-formulas");
     const formulaResult = await applyPriceFormulas(sahibkarId, {
