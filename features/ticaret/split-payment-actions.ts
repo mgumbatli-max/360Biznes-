@@ -86,6 +86,14 @@ export async function applySplitPayment(input: z.infer<typeof InputSchema>): Pro
               },
             });
           }
+          // 🚨 INFLOW finance_operations — toplanan pul hesab balansına düşsün.
+          // (Balance yalnız finance_operations-dan; kassa_emeliyyatlari kifayət deyil.)
+          const { recordSaleInflowFinanceOp } = await import("./refund-finance");
+          await recordSaleInflowFinanceOp(tx, {
+            sahibkarId, saleId: sale.id, musteriId: sale.musteri_id,
+            kassaId: sale.kassa_id, odenisNov: split.odenis_nov, mebleg: split.mebleg,
+            istifadeciId, qeyd: `Bölünmüş ödəniş: ${split.odenis_nov}`,
+          });
         }
 
         await tx.satis_sifarisleri.update({

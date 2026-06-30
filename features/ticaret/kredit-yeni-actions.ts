@@ -40,6 +40,8 @@ const CreateSchema = z.object({
 
   qeyd: z.string().max(500).nullish(),
   lines: z.array(LineSchema).min(1),
+  // Idempotentlik açarı — double-submit dublikat satış+stok mexaricini önləyir.
+  client_op_id: z.string().max(80).nullish(),
 });
 
 export type CreateKreditQeydInput = z.input<typeof CreateSchema>;
@@ -76,6 +78,15 @@ export async function createKreditSatis(
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const result = await prisma.$transaction(async (tx) => {
+        // Idempotentlik — eyni client_op_id ilə kredit satışı artıq varsa dublikat
+        // yaratma (double-submit / network retry); mövcudu qaytar.
+        if (d.client_op_id) {
+          const dup = await tx.satis_sifarisleri.findFirst({
+            where: { sahibkar_id: sahibkarId, client_op_id: d.client_op_id },
+            select: { id: true, nomre: true },
+          });
+          if (dup) return { id: dup.id, nomre: dup.nomre, magazaNet: 0, umumi: 0, aylik: 0 };
+        }
         // Totals
         let umumi = 0;
         for (const line of d.lines) {
@@ -125,6 +136,7 @@ export async function createKreditSatis(
             yaradan_id: istifadeciId,
             satis_meneceri_id: istifadeciId,
             qaralama: false, // real satışdır — müştəri məhsulu götürür
+            client_op_id: d.client_op_id ?? null,
           },
         });
 

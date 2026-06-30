@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -56,6 +56,8 @@ export function KreditYeniClient({
   const router = useRouter();
 
   // Customer
+  // Idempotentlik açarı — double-submit dublikat kredit satışını önləyir (server yoxlayır).
+  const opIdRef = useRef<string>(crypto.randomUUID());
   const [musteri, setMusteri] = useState<CustomerRow | null>(null);
   const [musteriQ, setMusteriQ] = useState("");
   const [musteriResults, setMusteriResults] = useState<CustomerRow[]>([]);
@@ -165,11 +167,13 @@ export function KreditYeniClient({
           qiymet: l.qiymet,
           endirim_faiz: l.endirim_faiz,
         })),
+        client_op_id: opIdRef.current,
       });
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
+      opIdRef.current = crypto.randomUUID(); // növbəti satış üçün yeni açar
       toast.success(`${res.nomre} — net: ${formatMoney(res.magaza_net)}`);
       if (isEmbedded()) closePageModal();
       else router.push(`/ticaret/kredit`);

@@ -6,83 +6,100 @@ import { prisma } from "@/lib/db/prisma";
 type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 /**
- * Nağd/kart qaytarmada REVERSING finance_operations yazır + hesab balansını
- * yenidən hesablayır.
- *
- * NİYƏ MƏCBURİ: maliye_hesablari.qaliq YALNIZ finance_operations-dan hesablanır
- * (lib/balance/account-balance.ts — kassa_emeliyyatlari oxunmur). Orijinal satış
- * müsbət `daxil` sətri yaradıb hesabı artırır; qaytarma o pulu geri almalıdır,
- * yoxsa hesab balansı şişik (fantom pul) qalır.
- *
- * İŞARƏ: balance = SUM(daxil.azn) − SUM(xaric.azn). Refund üçün yön="xaric" +
- * MÜSBƏT azn_meblegh → mexaric artır → qaliq azalır (düzgün).
+ * Ödəniş növünə görə maliyə hesabını həll et: kassanın bağlı hesabı →
+ * ödəniş növünün default hesabı (negd/kart/bank). satış pattern-i ilə eyni.
  */
-export async function recordRefundFinanceOp(
+async function resolveAccountId(
   tx: Tx,
-  args: {
-    sahibkarId: string;
-    saleId: string;
-    musteriId?: string | null;
-    kassaId?: string | null;
-    odenisNov: string | null | undefined; // negd/kart/kecirme
-    refund: number; // müsbət məbləğ
-    istifadeciId?: string | null;
-    qeyd: string;
-  },
-): Promise<void> {
-  const { sahibkarId, saleId, musteriId, kassaId, odenisNov, refund, istifadeciId, qeyd } = args;
-  if (!(refund > 0.001)) return;
-
-  // Operation type (xaric — qaytarma); idempotent get-or-create
-  let opType = await tx.finance_operation_types
-    .findUnique({ where: { kod: "qaytarma_xaric" } })
-    .catch(() => null);
-  if (!opType) {
-    opType = await tx.finance_operation_types.create({
-      data: { kod: "qaytarma_xaric", ad: "Qaytarma (geri ödəniş)", qrup: "qaytarma", y_n: "xaric", link_satish: true },
-    });
-  }
-  if (!opType) return;
-
-  // Hesab resolver: kassanın bağlı hesabı → ödəniş növünə default (satış pattern-i ilə eyni)
-  let hesabId: string | null = null;
+  sahibkarId: string,
+  kassaId: string | null | undefined,
+  odenisNov: string | null | undefined,
+): Promise<string | null> {
   if (kassaId) {
     const k = await tx.kassalar.findFirst({
       where: { id: kassaId, sahibkar_id: sahibkarId },
       select: { maliye_hesab_id: true },
     });
-    hesabId = k?.maliye_hesab_id ?? null;
+    if (k?.maliye_hesab_id) return k.maliye_hesab_id;
   }
-  if (!hesabId) {
-    const nov = odenisNov === "kart" ? "kart" : odenisNov === "kecirme" ? "bank" : "negd";
-    const def = await tx.maliye_hesablari.findFirst({
-      where: { sahibkar_id: sahibkarId, aktiv: true, nov },
-      orderBy: { yaradildi: "asc" },
-      select: { id: true },
-    });
-    hesabId = def?.id ?? null;
-  }
-  if (!hesabId) return; // hesab yoxdursa yazma (kassa qeydi onsuz da var)
-
-  await tx.finance_operations.create({
-    data: {
-      sahibkar_id: sahibkarId,
-      type_id: opType.id,
-      type_kod: opType.kod,
-      y_n: "xaric",
-      tarix: new Date(),
-      meblegh: new Prisma.Decimal(refund),
-      valyuta: "AZN",
-      mezenne: 1,
-      azn_meblegh: new Prisma.Decimal(refund), // MÜSBƏT — xaric balansı azaldır
-      hesab_id: hesabId,
-      kontragent_id: musteriId ?? null,
-      satis_id: saleId,
-      qeyd,
-      yaradan_id: istifadeciId ?? null,
-    },
+  const nov = odenisNov === "kart" ? "kart" : odenisNov === "kecirme" ? "bank" : "negd";
+  const def = await tx.maliye_hesablari.findFirst({
+    where: { sahibkar_id: sahibkarId, aktiv: true, nov },
+    orderBy: { yaradildi: "asc" },
+    select: { id: true },
   });
+  return def?.id ?? null;
+}
 
+async function getOrCreateOpType(tx: Tx, kod: string, ad: string, yn: "daxil" | "xaric") {
+  let t = await tx.finance_operation_types.findUnique({ where: { kod } }).catch(() => null);
+  if (!t) {
+    t = await tx.finance_operation_types.create({
+      data: { kod, ad, qrup: kod, y_n: yn, link_satish: true },
+    });
+  }
+  return t;
+}
+
+async function recalc(tx: Tx, hesabId: string) {
   const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
   await recalculateAccountBalance(hesabId, tx);
+}
+
+type CommonArgs = {
+  sahibkarId: string;
+  saleId: string;
+  musteriId?: string | null;
+  kassaId?: string | null;
+  odenisNov: string | null | undefined;
+  istifadeciId?: string | null;
+  qeyd: string;
+};
+
+/**
+ * Nağd/kart qaytarmada REVERSING finance_operations + balans recalc.
+ * NİYƏ: maliye_hesablari.qaliq YALNIZ finance_operations-dan hesablanır.
+ * İŞARƏ: balance = SUM(daxil) − SUM(xaric); refund üçün yön="xaric" + MÜSBƏT azn.
+ */
+export async function recordRefundFinanceOp(tx: Tx, args: CommonArgs & { refund: number }): Promise<void> {
+  if (!(args.refund > 0.001)) return;
+  const opType = await getOrCreateOpType(tx, "qaytarma_xaric", "Qaytarma (geri ödəniş)", "xaric");
+  if (!opType) return;
+  const hesabId = await resolveAccountId(tx, args.sahibkarId, args.kassaId, args.odenisNov);
+  if (!hesabId) return;
+  await tx.finance_operations.create({
+    data: {
+      sahibkar_id: args.sahibkarId, type_id: opType.id, type_kod: opType.kod,
+      y_n: "xaric", tarix: new Date(),
+      meblegh: new Prisma.Decimal(args.refund), valyuta: "AZN", mezenne: 1,
+      azn_meblegh: new Prisma.Decimal(args.refund),
+      hesab_id: hesabId, kontragent_id: args.musteriId ?? null, satis_id: args.saleId,
+      qeyd: args.qeyd, yaradan_id: args.istifadeciId ?? null,
+    },
+  });
+  await recalc(tx, hesabId);
+}
+
+/**
+ * Satışa nağd/kart ödəniş daxil olanda INFLOW finance_operations + balans recalc.
+ * (recordSalePayment pattern-i; split-payment kimi yalnız kassa yazan yerlər üçün.)
+ * İŞARƏ: yön="daxil" + MÜSBƏT azn → daxil artır → qaliq artır.
+ */
+export async function recordSaleInflowFinanceOp(tx: Tx, args: CommonArgs & { mebleg: number }): Promise<void> {
+  if (!(args.mebleg > 0.001)) return;
+  const opType = await getOrCreateOpType(tx, "qaime", "Qaimə", "daxil");
+  if (!opType) return;
+  const hesabId = await resolveAccountId(tx, args.sahibkarId, args.kassaId, args.odenisNov);
+  if (!hesabId) return;
+  await tx.finance_operations.create({
+    data: {
+      sahibkar_id: args.sahibkarId, type_id: opType.id, type_kod: opType.kod,
+      y_n: "daxil", tarix: new Date(),
+      meblegh: new Prisma.Decimal(args.mebleg), valyuta: "AZN", mezenne: 1,
+      azn_meblegh: new Prisma.Decimal(args.mebleg),
+      hesab_id: hesabId, kontragent_id: args.musteriId ?? null, satis_id: args.saleId,
+      qeyd: args.qeyd, yaradan_id: args.istifadeciId ?? null,
+    },
+  });
+  await recalc(tx, hesabId);
 }
