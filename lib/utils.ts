@@ -81,11 +81,55 @@ function trimZero(s: string): string {
   return s.replace(/\.?0+$/, "").replace(".", ",");
 }
 
+// az-AZ ay adları (Intl-siz — deterministik).
+const AZ_MONTHS_SHORT = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avq", "sen", "okt", "noy", "dek"];
+const AZ_MONTHS_LONG = ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avqust", "sentyabr", "oktyabr", "noyabr", "dekabr"];
+
+/**
+ * DETERMINISTIK tarix formatı — `Intl.DateTimeFormat` İSTİFADƏ ETMİR.
+ * KRİTİK: `Intl.DateTimeFormat("az-AZ")` Node (server) və brauzer ICU datasına görə
+ * FƏRQLİ nəticə verirdi → hydration mismatch (React #418). Manual format hər iki
+ * tərəfdə eynidir. Dəstəklənən opts: day/month(2-digit|numeric|short|long)/year/
+ * hour/minute/second + dateStyle:"short"/timeStyle:"short".
+ */
 export function formatDate(value: Date | string | null | undefined, opts?: Intl.DateTimeFormatOptions) {
   if (!value) return "—";
-  const date = typeof value === "string" ? new Date(value) : value;
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("az-AZ", opts ?? { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "—";
+  const o = opts ?? { year: "numeric", month: "2-digit", day: "2-digit" };
+  const p = (n: number) => String(n).padStart(2, "0");
+  const day = d.getDate(), mon = d.getMonth(), yr = d.getFullYear();
+  const hr = d.getHours(), min = d.getMinutes(), sec = d.getSeconds();
+  const parts: string[] = [];
+
+  // ── Tarix hissəsi ──
+  if (o.dateStyle === "short") {
+    parts.push(`${p(day)}.${p(mon + 1)}.${yr}`);
+  } else if (o.day || o.month || o.year) {
+    const dd = o.day === "2-digit" ? p(day) : o.day ? String(day) : "";
+    const yy = o.year === "2-digit" ? p(yr % 100) : o.year ? String(yr) : "";
+    let mm = "";
+    if (o.month === "short") mm = AZ_MONTHS_SHORT[mon];
+    else if (o.month === "long") mm = AZ_MONTHS_LONG[mon];
+    else if (o.month === "2-digit") mm = p(mon + 1);
+    else if (o.month) mm = String(mon + 1);
+    // Rəqəmli ay → nöqtə ilə (DD.MM.YYYY); ad-lı ay → boşluqla (DD mon YYYY)
+    const numericMonth = o.month === "2-digit" || o.month === "numeric";
+    parts.push([dd, mm, yy].filter(Boolean).join(numericMonth ? "." : " "));
+  }
+
+  // ── Vaxt hissəsi ──
+  if (o.timeStyle === "short") {
+    parts.push(`${p(hr)}:${p(min)}`);
+  } else if (o.hour || o.minute || o.second) {
+    const t: string[] = [];
+    if (o.hour) t.push(o.hour === "2-digit" ? p(hr) : String(hr));
+    if (o.minute) t.push(p(min));
+    if (o.second) t.push(p(sec));
+    if (t.length) parts.push(t.join(":"));
+  }
+
+  return parts.join(" ") || `${p(day)}.${p(mon + 1)}.${yr}`;
 }
 
 /**
