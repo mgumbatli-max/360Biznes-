@@ -164,6 +164,15 @@ export async function recordSalePayment(
               });
               opHesabId = def?.id ?? null;
             }
+            if (!opHesabId) {
+              // SELF-HEAL: hesab yoxdursa default nağd hesab yarat ki, ödəniş
+              // finance_operations-da attribute olunsun (drift önlənir).
+              const createdAcc = await tx.maliye_hesablari.create({
+                data: { sahibkar_id: sahibkarId, ad: "Nağd kassa", nov: "negd", qaliq: 0, valyuta: "AZN", aktiv: true },
+                select: { id: true },
+              });
+              opHesabId = createdAcc.id;
+            }
             await tx.finance_operations.create({
               data: {
                 sahibkar_id: sahibkarId,

@@ -1,5 +1,6 @@
 import "server-only";
 import { Prisma, prisma } from "@/lib/db/prisma";
+import { getTenant } from "@/lib/db/tenant-context";
 
 /**
  * Maliyə hesabı / kassa qaliqı üçün VAHID HƏQİQƏT MƏNBƏYİ.
@@ -45,6 +46,11 @@ export async function calculateAccountBalance(
   hesabId: string,
   tx: TxClient = prisma,
 ): Promise<AccountBalanceBreakdown> {
+  // ⚠️ Raw $queryRaw tenant-extension-i ÖTÜR. Bütün çağırışçılar withTenant
+  // içindədir və hesab cari tenant-ə aiddir; korlanmış cross-tenant finance_operations
+  // sətrini istisna etmək üçün cari tenant-in sahibkar_id-si ilə süzürük.
+  // Kontekst yoxdursa (null) filtr tətbiq olunmur — mövcud davranış qorunur.
+  const tenantSahibkarId = getTenant()?.sahibkarId ?? null;
   const rows = await tx.$queryRaw<
     Array<{
       daxil_cemi: number;
@@ -98,7 +104,8 @@ export async function calculateAccountBalance(
           AND status = 'aktiv'
       )::bigint AS emeliyyat_sayi
     FROM finance_operations
-    WHERE hesab_id = ${hesabId}::uuid OR hesab_id2 = ${hesabId}::uuid
+    WHERE (hesab_id = ${hesabId}::uuid OR hesab_id2 = ${hesabId}::uuid)
+      AND (${tenantSahibkarId}::uuid IS NULL OR sahibkar_id = ${tenantSahibkarId}::uuid)
   `;
 
   const r = rows[0] ?? {

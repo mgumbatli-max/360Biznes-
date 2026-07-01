@@ -467,6 +467,16 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
                 });
                 hesabIdForOp = def?.id ?? null;
               }
+              if (!hesabIdForOp) {
+                // SELF-HEAL: heç bir hesab yoxdursa default nağd hesab yarat ki,
+                // pul finance_operations-da hesaba attribute olunsun (drift önlənir —
+                // əvvəl hesab_id=null yazılırdı, balans yenilənmirdi).
+                const createdAcc = await tx.maliye_hesablari.create({
+                  data: { sahibkar_id: sahibkarId, ad: "Nağd kassa", nov: "negd", qaliq: 0, valyuta: "AZN", aktiv: true },
+                  select: { id: true },
+                });
+                hesabIdForOp = createdAcc.id;
+              }
               await tx.finance_operations.create({
                 data: {
                   sahibkar_id: sahibkarId,
