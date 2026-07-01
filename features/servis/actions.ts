@@ -772,6 +772,15 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
         // 4) finance_operations sətri yarat (xidmet geliri)
         let kassaOpId: string | null = null;
         if (d.kassaya_elave_et) {
+          // 🔒 Tenant ownership: client hesab_id CARI tenant-ə aid olmalıdır
+          // (özgə hesab finance_operations-a yazılsa qurban balansını korlayar).
+          if (d.hesab_id) {
+            const own = await tx.maliye_hesablari.findFirst({
+              where: { id: d.hesab_id, sahibkar_id: sahibkarId },
+              select: { id: true },
+            });
+            if (!own) throw new Error("Seçilmiş hesab bu hesaba aid deyil");
+          }
           const op = await tx.finance_operations.create({
             data: {
               sahibkar_id: sahibkarId,
@@ -1126,7 +1135,7 @@ export async function deleteEhtiyatHisse(input: FormData): Promise<ActionResult>
       // 🔒 Sahibkar yoxlaması
       const h = await prisma.anbar_hereketleri.findFirst({
         where: { id: d.hereket_id, sahibkar_id: sahibkarId },
-        select: { id: true, ref_id: true, ref_nov: true, qiymet: true, miqdar: true, mehsul_id: true, anbar_id: true },
+        select: { id: true, ref_id: true, ref_nov: true, nov: true, qiymet: true, miqdar: true, mehsul_id: true, anbar_id: true },
       });
       if (!h || h.ref_nov !== "servis" || h.ref_id !== d.servis_id) {
         return { ok: false, error: "Hərəkət tapılmadı" };
@@ -1157,6 +1166,15 @@ export async function deleteEhtiyatHisse(input: FormData): Promise<ActionResult>
               edilen_id: istifadeciId,
             },
           });
+          // 🚨 STOK CACHE bərpası — reversal ledger yazılır, amma stok cache də
+          // artırılmalıdır (yoxsa mal satıla bilən stokda görünmür = daimi itki).
+          // Yalnız orijinal hərəkət stoku azaltmışdısa (servis_mexaric); stoxsuz yolda toxunma.
+          if (h.nov === "servis_mexaric") {
+            await tx.stok.updateMany({
+              where: { sahibkar_id: sahibkarId, mehsul_id: h.mehsul_id, anbar_id: h.anbar_id },
+              data: { miqdar: { increment: Math.abs(Number(h.miqdar ?? 0)) } },
+            });
+          }
         }
 
         const yeni = Math.max(0, Number(evvel.temir_xerci ?? 0) - geri);

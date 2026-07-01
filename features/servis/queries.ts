@@ -968,6 +968,8 @@ export async function getZemanetByToken(token: string) {
 
 export async function getServisHesabat() {
   return withTenant(async () => {
+    // ⚠️ Raw $queryRaw tenant-extension-i ÖTÜR — sahibkar_id ƏL İLƏ lazımdır (cross-tenant sızma).
+    const tenantId = requireTenant().sahibkarId;
     const now = new Date();
     const monthsBack = new Date();
     monthsBack.setMonth(now.getMonth() - 5);
@@ -987,7 +989,8 @@ export async function getServisHesabat() {
              COALESCE(SUM(s.musteriden_alinan), 0)::float AS gelir
         FROM servis_qeydleri s
         LEFT JOIN istifadeciler i ON i.id = s.servis_iscisi_id
-       WHERE s.qapanma_tarixi IS NOT NULL
+       WHERE s.sahibkar_id = ${tenantId}::uuid
+         AND s.qapanma_tarixi IS NOT NULL
          AND s.yaradildi IS NOT NULL
        GROUP BY s.servis_iscisi_id, i.ad_soyad
        ORDER BY say DESC
@@ -1012,6 +1015,7 @@ export async function getServisHesabat() {
              COUNT(*) AS say,
              COALESCE(SUM(s.temir_xerci), 0)::float AS xerc
         FROM servis_qeydleri s
+       WHERE s.sahibkar_id = ${tenantId}::uuid
        GROUP BY s.mehsul_ad
        ORDER BY say DESC
        LIMIT 10
@@ -1026,6 +1030,7 @@ export async function getServisHesabat() {
     const repeatRaw = await prisma.$queryRaw<{ musteri_ad: string; musteri_telefon: string; say: bigint }[]>`
       SELECT musteri_ad, musteri_telefon, COUNT(*) AS say
         FROM servis_qeydleri
+       WHERE sahibkar_id = ${tenantId}::uuid
        GROUP BY musteri_ad, musteri_telefon
       HAVING COUNT(*) > 1
        ORDER BY say DESC
@@ -1051,6 +1056,7 @@ export async function getServisHesabat() {
         COUNT(*) FILTER (WHERE qapanma_tarixi IS NOT NULL AND texmini_tehvil IS NOT NULL AND qapanma_tarixi::date > texmini_tehvil) AS gecikme,
         COUNT(*) FILTER (WHERE qapanma_tarixi IS NOT NULL AND texmini_tehvil IS NOT NULL) AS "ümum"
         FROM servis_qeydleri
+       WHERE sahibkar_id = ${tenantId}::uuid
     `;
     const gecikme = lateAgg[0] ? Number(lateAgg[0].gecikme) : 0;
     const tamamlanan = lateAgg[0] ? Number(lateAgg[0].ümum) : 0;
@@ -1062,7 +1068,8 @@ export async function getServisHesabat() {
              COUNT(*) AS say,
              COALESCE(SUM(musteriden_alinan), 0)::float AS gelir
         FROM servis_qeydleri
-       WHERE yaradildi >= ${monthsBack}
+       WHERE sahibkar_id = ${tenantId}::uuid
+         AND yaradildi >= ${monthsBack}
        GROUP BY 1
        ORDER BY 1 ASC
     `;
