@@ -436,10 +436,14 @@ export async function payBordro(input: FormData): Promise<Result> {
       }
 
       await prisma.$transaction(async (tx) => {
-        await tx.maas_hesablamalar.update({
-          where: { id: b.id },
+        // ⚛️ ATOMİK claim — pre-flight status oxuması (yuxarıda) race-safe deyil;
+        // iki paralel ödəniş ikiqat pul çıxara bilər. Şərtli updateMany ilə bordronu
+        // bir dəfə "tut": count===0 = artıq başqa tx ödəyib → abort (double-pay yox).
+        const claim = await tx.maas_hesablamalar.updateMany({
+          where: { id: b.id, status: { not: "odenilib" } },
           data: { status: "odenilib", odenish_tarixi: now },
         });
+        if (claim.count === 0) throw new Error("Bu bordro artıq ödənilib");
         await tx.isci_odenisleri.create({
           data: {
             sahibkar_id: sahibkarId,

@@ -128,6 +128,11 @@ export async function getEmployees(filter: EmployeeFilter): Promise<EmployeeRow[
       attTotal.set(a.istifadeci_id, cur);
     }
 
+    // 🔒 Maaş/FİN/bank — yalnız privileged və ya maas.view/idare icazəsi olan görür.
+    const { rolAd, icazeler } = requireTenant();
+    const canSeeSalary =
+      /(sahibkar|admin|owner)/.test((rolAd ?? "").toLowerCase()) ||
+      (icazeler ?? []).includes("maas.view") || (icazeler ?? []).includes("maas.idare");
     const items = rows.map<EmployeeRow>((r) => {
       const status: EmployeeStatus = r.isden_cixdi
         ? "cixib"
@@ -150,16 +155,16 @@ export async function getEmployees(filter: EmployeeFilter): Promise<EmployeeRow[
         rol_id: r.rol_id ?? 0,
         rol_ad: r.roles?.ad ?? "—",
         vezife: r.vezife,
-        aylik_maas: Number(r.aylik_maas ?? 0),
+        aylik_maas: canSeeSalary ? Number(r.aylik_maas ?? 0) : 0,
         ise_baslama: r.ise_baslama,
         aktiv: r.aktiv ?? true,
         son_giris: r.son_giris,
         isden_cixdi: r.isden_cixdi,
-        fin_kod: r.fin_kod,
+        fin_kod: canSeeSalary ? r.fin_kod : null,
         dogum_tarixi: r.dogum_tarixi,
         unvan: r.unvan,
-        bank_hesab: r.bank_hesab,
-        bank_ad: r.bank_ad,
+        bank_hesab: canSeeSalary ? r.bank_hesab : null,
+        bank_ad: canSeeSalary ? r.bank_ad : null,
         default_filial_id: r.default_filial_id,
         default_filial_ad: r.filiallar_istifadeciler_default_filial_idTofiliallar?.ad ?? null,
         profil_sekil: r.profil_sekil,

@@ -104,9 +104,13 @@ export async function saveLeaveRequest(input: FormData): Promise<Result> {
         if (d.id) {
           const existing = await prisma.isci_mezuniyyet.findUnique({
             where: { id: d.id },
-            select: { gun_sayi: true },
+            select: { gun_sayi: true, status: true },
           });
-          consumedAdj -= Number(existing?.gun_sayi ?? 0);
+          // Yalnız SAYILAN (tesdiq/gozleyir) köhnə sorğunun günü çıxılır —
+          // consumedLeaveDays yalnız bunları sayır. Rədd edilmişi çıxsaq balans şişər.
+          if (existing && ["tesdiq", "gozleyir"].includes(existing.status ?? "")) {
+            consumedAdj -= Number(existing.gun_sayi ?? 0);
+          }
         }
         if (consumedAdj + gun_sayi > limit) {
           return { ok: false, error: `Məzuniyyət balansı kifayət deyil: qalan ${Math.max(0, limit - consumedAdj)} gün, istənən ${gun_sayi}` };
