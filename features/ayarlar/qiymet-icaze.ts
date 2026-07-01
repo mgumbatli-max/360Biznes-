@@ -45,7 +45,12 @@ export async function getRoleAllowedTiers(rolId: number): Promise<TierKey[]> {
         /* fall through */
       }
     }
-    const rol = await prisma.roles.findUnique({ where: { id: rolId }, select: { ad: true } });
+    // Tenant-aidliyi (audit #13): roles tenant-scoped deyil — OR ilə öz/sistem
+    // rolunu oxu ki, başqa tenant-ın rol adı sızmasın.
+    const rol = await prisma.roles.findFirst({
+      where: { id: rolId, OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
+      select: { ad: true },
+    });
     return defaultsForRoleName(rol?.ad ?? null);
   });
 }
@@ -89,6 +94,13 @@ export async function getAllRoleAllowedTiers(): Promise<{ rolId: number; ad: str
 export async function setRoleAllowedTiers(rolId: number, tiers: TierKey[]): Promise<void> {
   await withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    // 🔒 rolId tenant-a aid olmalı (audit #13) — uydurma rolId üçün orphan
+    // konfiq sətri yaradılmasın.
+    const rol = await prisma.roles.findFirst({
+      where: { id: rolId, OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
+      select: { id: true },
+    });
+    if (!rol) throw new Error("Rol tapılmadı");
     const clean = Array.from(new Set(tiers.filter((t) => ALL_TIERS.includes(t))));
     const acar = `rol_${rolId}`;
     const value = JSON.stringify(clean);

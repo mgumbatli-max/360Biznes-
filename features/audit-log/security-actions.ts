@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { requireAyarActionPerm } from "@/features/ayarlar/access-guard";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -17,6 +18,11 @@ const IpBlockSchema = z.object({
 });
 
 export async function createIpBlock(input: FormData): Promise<ActionResult> {
+  // 🔒 Backend guard (audit #8) — IP blok həssas təhlükəsizlik nəzarətidir;
+  // əvvəl guard-sız idi, adi istifadəçi admin-in IP-sini bloklayıb tenant-ı
+  // sistemdən kilidləyə bilirdi (DoS).
+  const g = await requireAyarActionPerm("ayar.idare");
+  if (!g.ok) return { ok: false, error: g.error };
   const parsed = IpBlockSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
@@ -68,6 +74,8 @@ export async function createIpBlock(input: FormData): Promise<ActionResult> {
 }
 
 export async function unblockIp(input: FormData): Promise<ActionResult> {
+  const g = await requireAyarActionPerm("ayar.idare");
+  if (!g.ok) return { ok: false, error: g.error };
   const id = Number(input.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
@@ -88,6 +96,8 @@ export async function unblockIp(input: FormData): Promise<ActionResult> {
 }
 
 export async function deleteIpBlock(input: FormData): Promise<ActionResult> {
+  const g = await requireAyarActionPerm("ayar.idare");
+  if (!g.ok) return { ok: false, error: g.error };
   const id = Number(input.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
@@ -121,6 +131,9 @@ function timeToDate(s: string): Date {
 }
 
 export async function saveLoginRule(input: FormData): Promise<ActionResult> {
+  // 🔒 Backend guard (audit #8) — istifadəçi giriş-saat məhdudiyyəti idarəsi.
+  const g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
+  if (!g.ok) return { ok: false, error: g.error };
   const parsed = LoginRuleSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
@@ -165,6 +178,8 @@ export async function saveLoginRule(input: FormData): Promise<ActionResult> {
 }
 
 export async function deleteLoginRule(input: FormData): Promise<ActionResult> {
+  const g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
+  if (!g.ok) return { ok: false, error: g.error };
   const id = Number(input.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
@@ -183,6 +198,8 @@ export async function deleteLoginRule(input: FormData): Promise<ActionResult> {
 }
 
 export async function toggleLoginRuleActive(input: FormData): Promise<ActionResult> {
+  const g = await requireAyarActionPerm(["ayar.idare", "istifadeci.idare"]);
+  if (!g.ok) return { ok: false, error: g.error };
   const id = Number(input.get("id"));
   const value = input.get("value") === "true";
   if (!id) return { ok: false, error: "Id yanlışdır" };

@@ -6,6 +6,7 @@ import { Prisma, prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit } from "@/lib/audit/log";
+import { requireAyarActionPerm } from "./access-guard";
 
 type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -25,6 +26,11 @@ const HesabSchema = z.object({
 });
 
 export async function saveMaliyyeHesab(input: FormData): Promise<ActionResult> {
+  // 🔒 Backend icazə guard-ı (audit #4) — əvvəl yalnız səhifə-gate qoruyurdu,
+  // server action POST-ları isə birbaşa çağrıla bilir (kassir/satıcı bank/nağd
+  // hesab yarada bilirdi).
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   const parsed = HesabSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
@@ -33,6 +39,15 @@ export async function saveMaliyyeHesab(input: FormData): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     const aktiv = d.aktiv === "on" || d.aktiv === "true" || d.aktiv === true;
+    // 🔒 filial_id tenant-a aid olmalı (audit #5) — əks halda cross-tenant
+    // dangling FK yaranır. Yalnız verildikdə yoxla (opsional sahə).
+    if (typeof d.filial_id === "number") {
+      const f = await prisma.filiallar.findFirst({
+        where: { id: d.filial_id, sahibkar_id: sahibkarId },
+        select: { id: true },
+      });
+      if (!f) return { ok: false, error: "Filial tapılmadı" };
+    }
     try {
       if (d.id) {
         const before = await prisma.maliye_hesablari.findFirst({
@@ -112,6 +127,9 @@ export async function deleteMaliyyeHesab(id: string): Promise<
       hint?: string;
     }
 > {
+  // 🔒 Backend icazə guard-ı (audit #4).
+  const __g = await requireAyarActionPerm("ayar.idare");
+  if (!__g.ok) return { ok: false, error: __g.error };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {

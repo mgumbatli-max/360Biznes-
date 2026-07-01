@@ -21,8 +21,10 @@ export async function changeSubscriptionPlan(planId: number, novu: "ayl_q" | "il
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
-      const plan = await prisma.abune_planlari.findUnique({ where: { id: planId } });
-      if (!plan) return { ok: false, error: "Plan tapılmadı" };
+      // 🔒 Yalnız aktiv (satışda olan) plana keçid (audit #9) — deaktiv/gizli
+      // (köhnə ucuz/internal) plana keçib qiymət manipulyasiyası bağlanır.
+      const plan = await prisma.abune_planlari.findFirst({ where: { id: planId, aktiv: true } });
+      if (!plan) return { ok: false, error: "Plan mövcud deyil" };
 
       const now = new Date();
       const bitme = new Date(now);

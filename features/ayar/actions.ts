@@ -8,8 +8,12 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { audit } from "@/lib/audit/log";
 import { requireAyarActionPerm, isAyarPrivileged } from "@/features/ayarlar/access-guard";
+import {
+  getActorPrivilege,
+  checkGrantablePermIds,
+  checkAssignableRole,
+} from "@/features/ayarlar/privilege-guard";
 import { isReservedSuperAdminEmail } from "@/lib/platform-admin/guard";
-import { auth } from "@/auth";
 
 // Form data only has strings; `z.coerce.boolean()` treats "false" as true
 // (any non-empty string is truthy). Use this helper instead for live toggles.
@@ -148,8 +152,11 @@ export async function saveRolePerms(input: FormData): Promise<ActionResult> {
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isFinite(n) && n > 0);
 
+  // İmtiyaz konteksti (auth-a əsaslanır — withTenant-dən əvvəl).
+  const actor = await getActorPrivilege();
+
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, rolId: actorRolId } = requireTenant();
     try {
       // Multi-tenant: yalnız sahibkarın ÖZ rolu redaktə oluna bilər.
       // Sistem rolları (template kataloqu) artıq UI-də görünmür və daxili də olsa,
@@ -158,6 +165,12 @@ export async function saveRolePerms(input: FormData): Promise<ActionResult> {
         where: { id: rolId, sahibkar_id: sahibkarId, sistem: false },
       });
       if (!rol) return { ok: false, error: "Rol tapılmadı və ya icazəniz çatmır" };
+
+      // 🔒 Self-eskalasiya (audit #1 kritik): imtiyazsız aktor öz rolunun
+      // icazələrini redaktə edib özünə əlavə səlahiyyət verə bilməz.
+      if (!actor.privileged && rolId === actorRolId) {
+        return { ok: false, error: "Öz rolunuzun icazələrini dəyişə bilməzsiniz" };
+      }
 
       // Audit üçün əvvəlki icazələri çək
       const prevPerms = await prisma.rol_icazeleri.findMany({
@@ -172,6 +185,11 @@ export async function saveRolePerms(input: FormData): Promise<ActionResult> {
         ? await prisma.icazeler.findMany({ where: { id: { in: ids } }, select: { id: true } })
         : [];
       const validIds = validPerms.map((p) => p.id);
+
+      // 🔒 No-amplification (audit #1 kritik): imtiyazsız aktor həssas və ya
+      // özündə olmayan icazəni verə bilməz — mint-to-admin vektorunu bağlayır.
+      const ampErr = await checkGrantablePermIds(validIds, actor);
+      if (ampErr) return { ok: false, error: ampErr };
 
       await prisma.$transaction([
         prisma.rol_icazeleri.deleteMany({ where: { rol_id: rolId } }),
@@ -379,6 +397,7 @@ export async function cloneRole(
   const parsed = RoleCloneSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
+  const actor = await getActorPrivilege();
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
@@ -387,6 +406,11 @@ export async function cloneRole(
         include: { rol_icazeleri: { select: { icaze_id: true } } },
       });
       if (!source) return { ok: false, error: "Mənbə rol tapılmadı" };
+
+      // 🔒 Eskalasiya (audit #6): imtiyazsız aktor tam-admin rolunu zərərsiz adlı
+      // yeni rola kopyalaya bilməz — kopyalanan icazələr aktorun səviyyəsində qalır.
+      const ampErr = await checkGrantablePermIds(source.rol_icazeleri.map((r) => r.icaze_id), actor);
+      if (ampErr) return { ok: false, error: "Bu rolu klonlamaq üçün səlahiyyətiniz çatmır" };
 
       const newRol = await prisma.roles.create({
         data: {
@@ -488,6 +512,11 @@ export async function saveFilial(input: FormData): Promise<ActionResult> {
         aktiv: d.aktiv,
       };
       if (d.id) {
+        // Müdafiə-in-depth (audit #17): extension update-ə sahibkar_id inject etsə
+        // də, digər filial action-ları kimi açıq sahiblik yoxlaması et (aydın
+        // "tapılmadı" mesajı + uyğunluq).
+        const existing = await prisma.filiallar.findFirst({ where: { id: d.id, sahibkar_id: sahibkarId }, select: { id: true } });
+        if (!existing) return { ok: false, error: "Filial tapılmadı" };
         await prisma.filiallar.update({ where: { id: d.id }, data });
       } else {
         await prisma.filiallar.create({ data: { sahibkar_id: sahibkarId, ...data } });
@@ -792,6 +821,7 @@ export async function createUser(input: FormData): Promise<ActionResult> {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   }
   const d = parsed.data;
+  const actor = await getActorPrivilege();
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
@@ -804,6 +834,17 @@ export async function createUser(input: FormData): Promise<ActionResult> {
       if (d.rol_id === 1) {
         return { ok: false, error: "Bu rol təyin edilə bilməz" };
       }
+      // 🔒 Rol tenant-a aid olmalı (cross-tenant istinad bloku) + eskalasiya
+      // yoxlaması (audit #3 kritik): changeUserRole ilə eyni müdafiə — imtiyazsız
+      // istifadəçi imtiyazlı rolla tam-admin hesab mint edə bilməz.
+      const rol = await prisma.roles.findFirst({
+        where: { id: d.rol_id, OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
+        select: { id: true, ad: true },
+      });
+      if (!rol) return { ok: false, error: "Rol tapılmadı" };
+      const escErr = await checkAssignableRole(rol.id, rol.ad, actor);
+      if (escErr) return { ok: false, error: escErr };
+
       const existing = await prisma.istifadeciler.findFirst({
         where: { sahibkar_id: sahibkarId, email: d.email.toLowerCase(), deleted_at: null },
       });
@@ -948,8 +989,8 @@ export async function changeUserRole(input: FormData): Promise<ActionResult> {
   if (d.rol_id === 1) {
     return { ok: false, error: "Bu rol təyin edilə bilməz" };
   }
-  const session = await auth();
-  const actorPrivileged = isAyarPrivileged(session?.user?.rol_ad);
+  const actor = await getActorPrivilege();
+  const actorPrivileged = actor.privileged;
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
@@ -960,6 +1001,7 @@ export async function changeUserRole(input: FormData): Promise<ActionResult> {
         }),
         prisma.roles.findFirst({
           where: { id: d.rol_id, OR: [{ sahibkar_id: sahibkarId }, { sistem: true }] },
+          select: { id: true, ad: true },
         }),
       ]);
       if (!user) return { ok: false, error: "İstifadəçi tapılmadı" };
@@ -973,10 +1015,11 @@ export async function changeUserRole(input: FormData): Promise<ActionResult> {
       if (isAyarPrivileged(user.roles?.ad) && !actorPrivileged) {
         return { ok: false, error: "Bu istifadəçinin rolunu dəyişmək üçün icazəniz çatmır" };
       }
-      // Escalation: imtiyazlı rol yalnız imtiyazlı istifadəçi tərəfindən təyin oluna bilər.
-      if (isAyarPrivileged(rol.ad) && !actorPrivileged) {
-        return { ok: false, error: "İcazə səviyyənizdən yuxarı rol təyin edə bilməzsiniz" };
-      }
+      // 🔒 Escalation (audit #2 kritik): imtiyazlı rol — HƏM adına, HƏM də faktiki
+      // icazə-məzmununa görə — yalnız imtiyazlı istifadəçi tərəfindən təyin oluna bilər.
+      // Ad-əsaslı guard-ı icazə-kodları ilə gücləndirir (zərərsiz-adlı fat rolu tutur).
+      const escErr = await checkAssignableRole(rol.id, rol.ad, actor);
+      if (escErr) return { ok: false, error: escErr };
       await prisma.istifadeciler.update({ where: { id: d.id }, data: { rol_id: d.rol_id } });
       revalidatePath("/ayarlar/istifadeci");
       return { ok: true };
@@ -999,13 +1042,22 @@ export async function resetUserPassword(input: FormData): Promise<ActionResult> 
   const parsed = ResetUserPasswordSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Forma yanlışdır" };
   const d = parsed.data;
+  const actor = await getActorPrivilege();
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
       const u = await prisma.istifadeciler.findFirst({
         where: { id: d.id, sahibkar_id: sahibkarId },
+        include: { roles: { select: { id: true, ad: true } } },
       });
       if (!u) return { ok: false, error: "İstifadəçi tapılmadı" };
+      // 🔒 Hesab ələ keçirmə müdafiəsi (audit #7): imtiyazsız aktor imtiyazlı
+      // istifadəçinin (sahibkar/admin/owner və ya həssas-kodlu rol) şifrəsini
+      // sıfırlayıb onun hesabına daxil ola bilməz.
+      if (u.roles) {
+        const escErr = await checkAssignableRole(u.roles.id, u.roles.ad, actor);
+        if (escErr) return { ok: false, error: "Bu istifadəçinin şifrəsini sıfırlamaq üçün səlahiyyətiniz çatmır" };
+      }
       const sifre_hash = await hashPassword(d.yeni_sifre);
       await prisma.istifadeciler.update({
         where: { id: d.id },
@@ -1029,14 +1081,22 @@ export async function deleteUser(input: FormData): Promise<ActionResult> {
   if (!__g.ok) return { ok: false, error: __g.error };
   const id = String(input.get("id") ?? "");
   if (!id) return { ok: false, error: "Id yanlışdır" };
+  const actor = await getActorPrivilege();
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       if (id === istifadeciId) return { ok: false, error: "Özünüzü silə bilməzsiniz" };
       const u = await prisma.istifadeciler.findFirst({
         where: { id, sahibkar_id: sahibkarId },
+        include: { roles: { select: { id: true, ad: true } } },
       });
       if (!u) return { ok: false, error: "İstifadəçi tapılmadı" };
+      // 🔒 Lockout müdafiəsi (audit #7 sinfi): imtiyazsız aktor imtiyazlı
+      // istifadəçini (patron/admin) deaktiv edib sistemdən kilidləyə bilməz.
+      if (u.roles) {
+        const escErr = await checkAssignableRole(u.roles.id, u.roles.ad, actor);
+        if (escErr) return { ok: false, error: "Bu istifadəçini silmək üçün səlahiyyətiniz çatmır" };
+      }
       // Soft delete by deactivating instead of hard delete (preserves audit).
       // Email-i arxivləyirik (suffikslə) ki, @@unique([sahibkar_id, email]) yeni
       // hesabı bloklamasın; deleted_* sütunları digər modullarla uyğun doldurulur.

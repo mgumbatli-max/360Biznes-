@@ -87,8 +87,12 @@ export async function revokeApiKey(id: string): Promise<Result> {
   const permCheck = await requireAyarActionPerm("ayar.api_key");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
-      const before = await prisma.api_keys.findUnique({ where: { id }, select: { ad: true, key_prefix: true } });
+      // Müdafiə-in-depth (audit #14): tək extension-a etibar etmə — açarın
+      // tenant-a aidliyini açıq yoxla (digər həssas action-larla eyni pattern).
+      const before = await prisma.api_keys.findFirst({ where: { id, sahibkar_id: sahibkarId }, select: { ad: true, key_prefix: true } });
+      if (!before) return { ok: false, error: "Açar tapılmadı" };
       await prisma.api_keys.update({ where: { id }, data: { aktiv: false } });
       await audit("sil", "api_key", id, {
         evvelki_data: before as Record<string, unknown> | null,
@@ -107,8 +111,10 @@ export async function deleteApiKey(id: string): Promise<Result> {
   const permCheck = await requireAyarActionPerm("ayar.api_key");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
-      const before = await prisma.api_keys.findUnique({ where: { id }, select: { ad: true, key_prefix: true } });
+      const before = await prisma.api_keys.findFirst({ where: { id, sahibkar_id: sahibkarId }, select: { ad: true, key_prefix: true } });
+      if (!before) return { ok: false, error: "Açar tapılmadı" };
       await prisma.api_keys.delete({ where: { id } });
       await audit("sil", "api_key", id, {
         evvelki_data: before as Record<string, unknown> | null,

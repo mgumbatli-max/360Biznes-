@@ -349,17 +349,16 @@ export async function previewSubscriptionDowngrade(
       ]);
       const asib: { resurs: string; mövcud: number; limit: number; asma: number }[] = [];
       if (plan) {
-        const isciLimit = Number((plan as unknown as { max_isci?: number }).max_isci ?? 0);
-        const mehsulLimit = Number((plan as unknown as { max_mehsul?: number }).max_mehsul ?? 0);
-        const anbarLimit = Number((plan as unknown as { max_anbar?: number }).max_anbar ?? 0);
+        // Schema-uyğun sahə adları (audit #15) — əvvəl max_isci/max_anbar
+        // yazılmışdı (schema-da yoxdur), `as unknown` cast səhvi gizlədib limit
+        // yoxlamasını dead-code etmişdi. Anbar limiti schema-da mövcud deyil.
+        const isciLimit = Number(plan.max_istifadeci ?? 0);
+        const mehsulLimit = Number(plan.max_mehsul ?? 0);
         if (isciLimit > 0 && users > isciLimit) {
-          asib.push({ resurs: "İşçi", mövcud: users, limit: isciLimit, asma: users - isciLimit });
+          asib.push({ resurs: "İstifadəçi", mövcud: users, limit: isciLimit, asma: users - isciLimit });
         }
         if (mehsulLimit > 0 && products > mehsulLimit) {
           asib.push({ resurs: "Məhsul", mövcud: products, limit: mehsulLimit, asma: products - mehsulLimit });
-        }
-        if (anbarLimit > 0 && warehouses > anbarLimit) {
-          asib.push({ resurs: "Anbar", mövcud: warehouses, limit: anbarLimit, asma: warehouses - anbarLimit });
         }
       }
       return {
