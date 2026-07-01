@@ -713,6 +713,14 @@ export async function mergeContacts(
             }
           }
 
+          // Avans (öncədən ödəniş) köçür — bu, saxlanan sahədir, recalc-dan derive
+          // OLUNMUR. Köçürməsək other silindikdə avans balansı itir (pul itkisi).
+          const otherAvans = Number(other.avans ?? 0);
+          if (otherAvans !== 0) {
+            await tx.kontragentler.update({ where: { id: primaryId }, data: { avans: { increment: otherAvans } } });
+            await tx.kontragentler.update({ where: { id: otherId }, data: { avans: 0 } });
+          }
+
           // Borc/alacaq source-of-truth recalc — manual cəm YOX, real cədvəllərdən hesab olunur.
           const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
           const { recalculateSupplierBalance } = await import("@/lib/balance/supplier-balance");

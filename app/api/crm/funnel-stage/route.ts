@@ -4,6 +4,10 @@ import { getFunnelLeadsForStage } from "@/features/crm/funnel-queries";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const { requireCrmActionPerm } = await import("@/features/crm/access-guard");
+  const permCheck = await requireCrmActionPerm("crm.oxu");
+  if (!permCheck.ok) return NextResponse.json({ ok: false, error: permCheck.error }, { status: 403 });
+
   const url = new URL(req.url);
   const status = url.searchParams.get("status") ?? "";
   if (!status) return NextResponse.json({ ok: false, error: "status required" }, { status: 400 });

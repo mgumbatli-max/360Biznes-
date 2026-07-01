@@ -35,6 +35,8 @@ export async function getJourneyItemDetail(
   kind: "sale" | "payment_in" | "payment_out" | "return" | "servis",
   refId: string,
 ): Promise<JourneyItemDetail | null> {
+  const { requireElaqeActionPerm } = await import("./access-guard");
+  if (!(await requireElaqeActionPerm("musteri.oxu")).ok) return null;
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
 

@@ -49,6 +49,9 @@ export type CustomerDrawerData = {
 } | { ok: false; error: string };
 
 export async function getCustomerDrawer(id: string): Promise<CustomerDrawerData> {
+  const { requireElaqeActionPerm } = await import("./access-guard");
+  const permCheck = await requireElaqeActionPerm("musteri.oxu");
+  if (!permCheck.ok) return { ok: false as const, error: permCheck.error };
   try {
     return await withTenant(async () => {
       const k = await prisma.kontragentler.findUnique({ where: { id } });

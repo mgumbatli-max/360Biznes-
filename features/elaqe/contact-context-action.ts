@@ -27,6 +27,9 @@ export type ContactContext = {
 export async function getContactContext(kontragentId: string): Promise<ContactContext | null> {
   if (!kontragentId) return null;
 
+  const { requireElaqeActionPerm } = await import("./access-guard");
+  if (!(await requireElaqeActionPerm("musteri.oxu")).ok) return null;
+
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     const k = await prisma.kontragentler.findFirst({

@@ -174,9 +174,13 @@ export async function getContacts(
         : prisma.kontragentler.count({ where: { ...where, aktiv: true } }),
     ]);
     const aktivCount = maybeAktivCount ?? total;
+    // PII maskalanması — «musteri.gizli» icazəsi olmayana telefon/email/ünvan maskalanır.
+    const { canSeeContactPII, maskContactPII } = await import("./mask-pii");
+    const _t = requireTenant();
+    const _canSeePII = canSeeContactPII(_t.rolAd, _t.icazeler);
 
     return {
-      items: items.map((r) => ({
+      items: items.map((r) => maskContactPII({
         id: r.id,
         nov: r.nov,
         ad: r.ad,
@@ -199,7 +203,7 @@ export async function getContacts(
         funnel_status: r.funnel_status,
         sirket_adi: r.sirket_adi,
         sheher: r.sheher,
-      })),
+      }, _canSeePII)!),
       total,
       stats: {
         count: total,
@@ -213,7 +217,7 @@ export async function getContacts(
 
 export async function getContactDetail(id: string) {
   return withTenant(async () => {
-    return prisma.kontragentler.findUnique({
+    const row = await prisma.kontragentler.findUnique({
       where: { id },
       select: {
         id: true,
@@ -244,6 +248,10 @@ export async function getContactDetail(id: string) {
         istifadeciler: { select: { id: true, ad_soyad: true } },
       },
     });
+    // PII maskalanması — «musteri.gizli» icazəsi olmayana telefon/email/ünvan maskalanır.
+    const { canSeeContactPII, maskContactPII } = await import("./mask-pii");
+    const t = requireTenant();
+    return maskContactPII(row, canSeeContactPII(t.rolAd, t.icazeler));
   });
 }
 
