@@ -19,7 +19,11 @@ export type StaffPerf = {
 
 export async function getStaffPerformance(range: DateRange, limit = 50): Promise<StaffPerf[]> {
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, rolAd, icazeler } = requireTenant();
+    // 🔒 (audit #6) aylik_maas + maaşdan törəyən ROI yalnız maas.view/maas.idare
+    // (və ya imtiyazlı) olana açıq — isci.view tək kifayət deyil.
+    const priv = /(sahibkar|admin|owner|direktor)/.test((rolAd ?? "").toLowerCase());
+    const canViewSalary = priv || (icazeler ?? []).includes("maas.view") || (icazeler ?? []).includes("maas.idare");
     const rows = await prisma.$queryRaw<{
       id: string;
       ad: string;
@@ -27,12 +31,14 @@ export async function getStaffPerformance(range: DateRange, limit = 50): Promise
       aylik_maas: number | null;
       sifaris_say: number;
       cemi: number;
+      umumi: number;
       ort_cek: number;
       endirim: number;
     }[]>`
       SELECT u.id::text, u.ad_soyad AS ad, u.vezife, u.aylik_maas::float AS aylik_maas,
              COUNT(ss.id)::int AS sifaris_say,
              COALESCE(SUM(ss.son_mebleg), 0)::float AS cemi,
+             COALESCE(SUM(ss.umumi_mebleg), 0)::float AS umumi,
              COALESCE(AVG(ss.son_mebleg), 0)::float AS ort_cek,
              COALESCE(SUM(ss.endirim_mebleg), 0)::float AS endirim
         FROM istifadeciler u
@@ -48,19 +54,23 @@ export async function getStaffPerformance(range: DateRange, limit = 50): Promise
     `;
     return rows.map((r) => {
       const cemi = Number(r.cemi);
+      const umumi = Number(r.umumi);
       const endirim = Number(r.endirim);
       const maas = Number(r.aylik_maas ?? 0);
       return {
         id: r.id,
         ad: r.ad,
         vezife: r.vezife,
-        aylik_maas: r.aylik_maas != null ? Number(r.aylik_maas) : null,
+        // Maaş yoxsa null (redaksiya); ROI da maaşdan törədiyi üçün gizlənir.
+        aylik_maas: canViewSalary ? (r.aylik_maas != null ? Number(r.aylik_maas) : null) : null,
         sifaris_say: Number(r.sifaris_say),
         cemi,
         ort_cek: Number(r.ort_cek),
         endirim,
-        endirim_pct: cemi > 0 ? (endirim / cemi) * 100 : 0,
-        roi: maas > 0 ? cemi / maas : 0,
+        // (audit #15) endirim faizi BRUT məbləğə (umumi_mebleg) nisbətdə hesablanır —
+        // əvvəl son_mebleg (endirimdən sonrakı) məxrəc idi, faizi şişirdirdi.
+        endirim_pct: umumi > 0 ? (endirim / umumi) * 100 : 0,
+        roi: canViewSalary && maas > 0 ? cemi / maas : 0,
       };
     });
   });

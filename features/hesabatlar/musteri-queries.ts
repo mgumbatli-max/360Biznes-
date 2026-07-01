@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { canSeeContactPII, maskContactPII } from "@/features/elaqe/mask-pii";
 import type { DateRange } from "./shared";
 
 export type CustomerLtvRow = {
@@ -19,7 +20,9 @@ export type CustomerSegment = "all" | "vip" | "aktiv" | "yatmis" | "borclu";
 
 export async function getTopCustomersLtv(range: DateRange, limit = 50, segment: CustomerSegment = "all"): Promise<CustomerLtvRow[]> {
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, rolAd, icazeler } = requireTenant();
+    // 🔒 (audit #5) telefon yalnız musteri.gizli olana açıq — əks halda maskalanır.
+    const canSeePII = canSeeContactPII(rolAd, icazeler);
     const rows = await prisma.$queryRaw<(CustomerLtvRow & { email: string | null; borc: number })[]>`
       SELECT k.id::text, k.ad, k.telefon, k.sheher, k.email,
              COALESCE(k.borc, 0)::float AS borc,
@@ -55,7 +58,7 @@ export async function getTopCustomersLtv(range: DateRange, limit = 50, segment: 
       if (segment === "borclu") return r.borc > 0;
       return true;
     });
-    return filtered.slice(0, limit).map((r) => ({
+    return filtered.slice(0, limit).map((r) => maskContactPII({
       id: r.id,
       ad: r.ad,
       telefon: r.telefon,
@@ -64,7 +67,7 @@ export async function getTopCustomersLtv(range: DateRange, limit = 50, segment: 
       revenue_period: r.revenue_period,
       ltv: r.ltv,
       last_order: r.last_order,
-    }));
+    }, canSeePII) as CustomerLtvRow);
   });
 }
 
@@ -79,7 +82,9 @@ export type CustomerExportRow = {
 
 export async function getCustomersForExport(segment: CustomerSegment = "all", limit = 5000): Promise<CustomerExportRow[]> {
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, rolAd, icazeler } = requireTenant();
+    // 🔒 (audit #7) export-da telefon/email yalnız musteri.gizli olana açıq.
+    const canSeePII = canSeeContactPII(rolAd, icazeler);
     const rows = await prisma.$queryRaw<{ ad: string; telefon: string | null; email: string | null; sheher: string | null; ltv: number; borc: number; last_order: Date | null; orders: number }[]>`
       SELECT k.ad, k.telefon, k.email, k.sheher,
              COALESCE(SUM(ss.son_mebleg), 0)::float AS ltv,
@@ -106,14 +111,14 @@ export async function getCustomersForExport(segment: CustomerSegment = "all", li
         if (segment === "borclu") return Number(r.borc) > 0;
         return true;
       })
-      .map((r) => ({
+      .map((r) => maskContactPII({
         ad: r.ad,
         telefon: r.telefon,
         email: r.email,
         sheher: r.sheher,
         ltv: Number(r.ltv),
         borc: Number(r.borc),
-      }));
+      }, canSeePII) as CustomerExportRow);
   });
 }
 

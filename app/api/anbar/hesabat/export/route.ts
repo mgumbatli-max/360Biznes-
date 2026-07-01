@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import ExcelJS from "exceljs";
 import { auth } from "@/auth";
+import { requireHesabatActionPerm } from "@/features/hesabatlar/access-guard";
 import {
   getCategoryReport,
   getAgingReport,
@@ -28,6 +29,12 @@ const PROBLEM_LABELS: Record<ProblemKind, string> = {
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 });
+
+  // 🔒 (audit #3/#4) İcazə guard-ı — əvvəl YOX idi: istənilən login olmuş istifadəçi
+  // maya/COGS/qiymət/stok hesabatlarını Excel endirə bilirdi. Digər export route-ları
+  // kimi requireHesabatActionPerm tələb et (API route-ları layout gateRoute-dan kənardır).
+  const perm = await requireHesabatActionPerm("anbar.view");
+  if (!perm.ok) return new NextResponse(perm.error, { status: 403 });
 
   const sp = req.nextUrl.searchParams;
   const mod = sp.get("mod") ?? "kateq";

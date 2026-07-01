@@ -48,6 +48,8 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
           FROM "xerclər"
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND tarix BETWEEN ${range.from} AND ${range.to}
+           -- (audit #9) ləğv edilmiş xərc P&L OPEX-ə düşməsin (getExpenseCategories ilə eyni)
+           AND legv_de IS NULL
       `.catch(() => [{ total: 0 }]),
       prisma.$queryRaw<{ total: number }[]>`
         SELECT COALESCE(SUM(umumi_mebleg), 0)::float AS total
@@ -120,6 +122,7 @@ export async function getFixedVariableBreak(range: DateRange): Promise<FixedVari
         LEFT JOIN xerc_kateqoriyalari xk ON xk.id = x.kateqoriya_id
        WHERE x.sahibkar_id = ${sahibkarId}::uuid
          AND x.tarix BETWEEN ${range.from} AND ${range.to}
+         AND x.legv_de IS NULL -- (audit #9) ləğv xərc daxil olmasın
        GROUP BY xk.ad, xk.qrup
        ORDER BY mebleg DESC
     `.catch(() => [] as { ad: string; mebleg: number; qrup: string | null }[]);
@@ -191,6 +194,7 @@ export async function getMonthlyPl12(): Promise<MonthlyPl[]> {
           FROM "xerclər"
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
+           AND legv_de IS NULL -- (audit #9) ləğv xərc daxil olmasın
          GROUP BY 1
       ),
       -- QA-orta: P&L kartı (getPlSummary) net-of-returns-dur — trend qrafiki eyni tərifi işlətsin

@@ -61,6 +61,9 @@ const GROUP_OPTIONS: { value: GroupKey; label: string }[] = [
 ];
 
 export default async function SatisReportPage({ searchParams }: { searchParams: Promise<SP> }) {
+  // 🔒 (audit #12) Səhifə-səviyyəli guard — yalnız layout gate-ə söykənmə (müdafiə-dərinliyi).
+  const { requireHesabatPagePerm } = await import("@/features/hesabatlar/access-guard");
+  await requireHesabatPagePerm("hesabat.view");
   const sp = await searchParams;
   const range = parseDateRange(sp);
   const filter = {

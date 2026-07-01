@@ -107,6 +107,7 @@ async function fetchRecentSalesByDayRaw(sahibkarId: string, days: number) {
      WHERE sahibkar_id = ${sahibkarId}::uuid
        AND tarix >= ${from}::date
        AND qaralama IS NOT TRUE
+       AND status <> 'legv' -- (audit #17) ləğv satış 30-günlük trendə düşməsin (SalesVsExpense ilə uyğun)
      GROUP BY tarix
      ORDER BY tarix
   `;
@@ -326,12 +327,12 @@ async function fetchMonthlyComparisonRaw(sahibkarId: string): Promise<MonthlyCom
     prismaUnscoped.$queryRaw<{ total: number }[]>`
       -- QA-orta: P&L hesabatları ilə eyni AZN-normalize sahə (mebleg_azn)
       SELECT COALESCE(SUM(mebleg_azn), 0)::float AS total FROM "xerclər"
-       WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${curStart}::date
+       WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${curStart}::date AND legv_de IS NULL
     `.catch(() => [{ total: 0 }]),
     prismaUnscoped.$queryRaw<{ total: number }[]>`
       -- QA-orta: P&L hesabatları ilə eyni AZN-normalize sahə (mebleg_azn)
       SELECT COALESCE(SUM(mebleg_azn), 0)::float AS total FROM "xerclər"
-       WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${prevStart}::date AND tarix <= ${prevEnd}::date
+       WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${prevStart}::date AND tarix <= ${prevEnd}::date AND legv_de IS NULL
     `.catch(() => [{ total: 0 }]),
     prismaUnscoped.kontragentler.count({ where: { sahibkar_id: sahibkarId, nov: "musteri", yaradildi: { gte: curStart } } }).catch(() => 0),
     prismaUnscoped.kontragentler.count({
@@ -700,6 +701,7 @@ async function fetchSalesVsExpense30Raw(sahibkarId: string): Promise<SalesVsExpe
         FROM "xerclər"
        WHERE sahibkar_id = ${sahibkarId}::uuid
          AND tarix >= ${from}::date
+         AND legv_de IS NULL -- (audit #9) ləğv xərc daxil olmasın
        GROUP BY tarix
        ORDER BY tarix
     `.catch(() => [] as { gun: Date; total: number }[]),
@@ -924,7 +926,9 @@ async function fetchTopDebtorsRaw(sahibkarId: string, limit: number): Promise<To
       JOIN satis_sifarisleri s ON s.musteri_id = k.id
      WHERE k.sahibkar_id = ${sahibkarId}::uuid
        AND s.sahibkar_id = ${sahibkarId}::uuid
-       AND s.status <> 'legv'
+       -- (audit #11) tam qaytarılmış/soft-silinmiş satış borc kimi sayılmamalı
+       AND s.status NOT IN ('legv','qaytarilib')
+       AND s.deleted_at IS NULL
        AND COALESCE(s.qaralama, false) = false
        AND s.odenis_nov IN ('nisye', 'borc')
        AND s.son_mebleg - COALESCE(s.odenilmis, 0) > 0

@@ -4,6 +4,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
 import { silentFallback } from "@/lib/safe-query";
+import { canSeeContactPII, maskContactPII } from "@/features/elaqe/mask-pii";
 import type { DateRange } from "./shared";
 
 export type SalesFilter = {
@@ -47,7 +48,9 @@ export async function getSalesKpi(f: SalesFilter, opts?: { bypassStealth?: boole
 
     const where = {
       tarix: { gte: f.range.from, lte: f.range.to },
-      status: { not: "legv" },
+      // (audit #8) getMarjaKpi ilə uyğun — tam qaytarılmış satış gəlirə düşməsin
+      // (əvvəl status:{not:'legv'} idi, iki hesabat fərqli gəlir göstərirdi).
+      status: { notIn: ["legv", "qaytarilib"] },
       qaralama: { not: true },
       ...(f.anbar_id ? { anbar_id: f.anbar_id } : {}),
       ...(f.satici_id ? { satis_meneceri_id: f.satici_id } : {}),
@@ -310,7 +313,10 @@ export type PivotRow = { label: string; sub?: string | null; cemi: number; sifar
  */
 export async function getSalesPivot(f: SalesFilter, group: GroupKey): Promise<PivotRow[]> {
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, rolAd, icazeler } = requireTenant();
+    // 🔒 (audit #2 kritik) musteri qruplaşdırmasında telefon (sub) yalnız
+    // musteri.gizli olan görür — əks halda maskalanır (ekran + Excel export).
+    const canSeePII = canSeeContactPII(rolAd, icazeler);
     let rows: { label: string; sub: string | null; cemi: number; sifaris_say: number }[] = [];
     try {
       if (group === "gun" || group === "hefte" || group === "ay") {
@@ -397,9 +403,13 @@ export async function getSalesPivot(f: SalesFilter, group: GroupKey): Promise<Pi
     return rows.map((r) => {
       const cemi = Number(r.cemi);
       const sayi = Number(r.sifaris_say);
+      // sub yalnız musteri qrupunda telefondur — icazə yoxdursa maskala.
+      const sub = group === "musteri"
+        ? (maskContactPII({ telefon: r.sub }, canSeePII) as { telefon: string | null }).telefon
+        : (r.sub ?? null);
       return {
         label: r.label,
-        sub: r.sub ?? null,
+        sub,
         cemi,
         sifaris_say: sayi,
         orta_chek: sayi > 0 ? cemi / sayi : 0,

@@ -54,8 +54,12 @@ export async function requireHesabatPagePerm(perm: HesabatPerm | HesabatPerm[]):
   if (isHesabatPrivileged(rolAd)) return;
   const icazeler = await getRequestPermissions();
   const perms = Array.isArray(perm) ? perm : [perm];
-  // hesabat.view master kimi əlavə olunur
-  const ok = perms.some((p) => icazeler.includes(p)) || icazeler.includes("hesabat.view");
+  // 🔒 (audit #1 kritik) hesabat.view ARTIQ master DEYİL — yalnız tələb olunan
+  // spesifik icazə(lər) yoxlanır. Əvvəl `|| hesabat.view` bütün həssas səhifələri
+  // (maliyyə P&L, müştəri PII, əməkdaş maaşı) tək hesabat.view ilə açırdı. İndi
+  // /maliyye maliye.view, /musteri musteri.oxu, /emekdas isci.view/maas.view tələb edir.
+  // (Səhifə hesabat.view tələb edirsə, o onsuz da perms-dədir.) Sahibkar/admin yuxarıda bypass edir.
+  const ok = perms.some((p) => icazeler.includes(p));
   if (!ok) {
     const kod = encodeURIComponent(perms.join(","));
     redirect(`/icaze-yox?kod=${kod}&from=hesabatlar`);

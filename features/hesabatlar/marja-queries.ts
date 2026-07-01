@@ -233,6 +233,7 @@ export async function getMarjaBuckets(range: DateRange): Promise<MarjaBucket[]> 
          WHERE sls.sahibkar_id = ${sahibkarId}::uuid
            AND ss.tarix BETWEEN ${range.from} AND ${range.to}
            AND ss.status NOT IN ('legv','qaytarilib')
+           AND ss.qaralama IS NOT TRUE -- (audit #16) qaralama satış digər marja kartları ilə uyğun olsun
          GROUP BY sls.mehsul_id
       )
       , bucketed AS (

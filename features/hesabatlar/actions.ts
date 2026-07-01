@@ -46,7 +46,9 @@ const CustomerExportSchema = z.object({
 export async function exportCustomersCsv(
   input: z.input<typeof CustomerExportSchema>,
 ): Promise<ActionResult<{ csv: string; count: number; filename: string }>> {
-  const permCheck = await requireHesabatActionPerm(["musteri.oxu", "hesabat.view"]);
+  // 🔒 (audit #1/#7) hesabat.view müştəri PII export-u üçün kifayət DEYİL — yalnız
+  // musteri.oxu. (Telefon/email onsuz da getCustomersForExport-da musteri.gizli-ə görə maskalanır.)
+  const permCheck = await requireHesabatActionPerm("musteri.oxu");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
   const parsed = CustomerExportSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
@@ -473,9 +475,12 @@ export async function compareReportPeriods(
       }
 
       async function getValue(from: Date, to: Date): Promise<number> {
+        // (audit #14) modulun qalanı ilə eyni filtr — qaralama/qaytarilmış satış
+        // müqayisə rəqəminə düşməsin (əvvəl yalnız status:{not:'legv'} idi).
+        const activeWhere = { status: { notIn: ["legv", "qaytarilib"] }, qaralama: { not: true } };
         if (d.metric === "satis_cemi") {
           const r = await prisma.satis_sifarisleri.aggregate({
-            where: { tarix: { gte: from, lte: to }, status: { not: "legv" } },
+            where: { tarix: { gte: from, lte: to }, ...activeWhere },
             _sum: { son_mebleg: true },
           });
           return Number(r._sum.son_mebleg ?? 0);
@@ -483,7 +488,7 @@ export async function compareReportPeriods(
         if (d.metric === "mehsul_sayi") {
           const r = await prisma.satis_sifaris_satirlari.aggregate({
             where: {
-              satis_sifarisleri: { tarix: { gte: from, lte: to }, status: { not: "legv" } },
+              satis_sifarisleri: { tarix: { gte: from, lte: to }, ...activeWhere },
             },
             _sum: { miqdar: true },
           });
@@ -491,7 +496,7 @@ export async function compareReportPeriods(
         }
         if (d.metric === "musteri_sayi") {
           const rows = await prisma.satis_sifarisleri.findMany({
-            where: { tarix: { gte: from, lte: to }, status: { not: "legv" }, musteri_id: { not: null } },
+            where: { tarix: { gte: from, lte: to }, ...activeWhere, musteri_id: { not: null } },
             select: { musteri_id: true },
             distinct: ["musteri_id"],
           });
@@ -507,7 +512,8 @@ export async function compareReportPeriods(
             JOIN mehsullar m ON m.id = sls.mehsul_id
            WHERE sls.sahibkar_id = ${sahibkarId}::uuid
              AND ss.tarix >= ${from} AND ss.tarix <= ${to}
-             AND ss.status != 'legv'
+             AND ss.status NOT IN ('legv','qaytarilib')
+             AND ss.qaralama IS NOT TRUE
         `.catch(() => [{ marja: 0 }]);
         return Number(r[0]?.marja ?? 0);
       }
