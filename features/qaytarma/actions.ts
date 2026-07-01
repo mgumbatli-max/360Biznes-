@@ -148,6 +148,9 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    // Loyalty geri-qaytarma məlumatı (audit #8) — tx daxilində doldurulur, tx
+    // commit olduqdan SONRA best-effort tətbiq olunur. (ref: closure narrowing üçün)
+    const reversalRef: { current: { satisId: string; ratio: number } | null } = { current: null };
     try {
       await prisma.$transaction(async (tx) => {
         // QA-orta: FOR UPDATE lock — paralel qəbul (double-click / iki tab)
@@ -231,8 +234,11 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
           });
           if (original) {
             const refundTotal = Number(ret.umumi_mebleg ?? 0);
-            const yeniSonMebleg = Math.max(0, Number(original.son_mebleg ?? 0) - refundTotal);
+            const sonMeblegPre = Number(original.son_mebleg ?? 0);
+            const yeniSonMebleg = Math.max(0, sonMeblegPre - refundTotal);
             const odenilmis = Number(original.odenilmis ?? 0);
+            // Loyalty reversal nisbəti — qaytarılan dəyər / qaytarmadan əvvəlki dəyər.
+            reversalRef.current = { satisId: original.id, ratio: sonMeblegPre > 0.01 ? Math.min(1, refundTotal / sonMeblegPre) : 1 };
             // Status: tam qaytarmadasa "qaytarilib", qismən qaytarmada əvvəlki status qalır
             const tamGeri = yeniSonMebleg < 0.01;
             await tx.satis_sifarisleri.update({
@@ -307,6 +313,13 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
           }
         }
       });
+
+      // 🔄 Loyalty balını geri qaytar (audit #8) — nağd/stok axını commit olduqdan
+      // sonra, best-effort (throw etmir).
+      if (reversalRef.current) {
+        const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
+        await reverseLoyaltyForSale(reversalRef.current.satisId, reversalRef.current.ratio);
+      }
 
       revalidatePath("/ticaret/qaytarma");
       revalidatePath("/ticaret/emeliyyat");

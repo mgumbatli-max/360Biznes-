@@ -148,14 +148,35 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
         preUmumi += line.miqdar * line.qiymet * (1 - line.endirim_faiz / 100);
         if (line.endirim_faiz > maxLineDiscount) maxLineDiscount = line.endirim_faiz;
       }
-      const preSonMebleg = Math.max(0, preUmumi - data.endirim_mebleg);
-      // QA-orta: limit yoxlaması yalnız KASSİRİN verdiyi endirimi saymalıdır —
-      // admin kuponu (applied_campaigns) və müştərinin öz loyalty bonusu
-      // (bonus_mebleg) kassir endirim limitini tetikləməsin.
-      const kuponBonusEndirim =
-        (data.applied_campaigns ?? []).reduce((s, c) => s + Math.max(0, c.endirim_mebleg), 0) +
-        data.bonus_mebleg;
-      const kassirEndirim = Math.min(preUmumi, Math.max(0, data.endirim_mebleg - kuponBonusEndirim));
+      // 🔒 KAMPANIYA/KUPON/BONUS SERVER-AVTORİTATİV YENİDƏN HESABLANMASI (audit K1/K2/K6).
+      // Client `applied_campaigns` və `bonus_mebleg` dəyərlərinə ETİBAR ETMƏ — DB-dən
+      // yenidən validasiya et. Fabrik kampaniya/bonus ilə endirim uydurma və kassir
+      // endirim-limitini bypass vektorunu bağlayır (əvvəl bu dəyərlər limitdən çıxılırdı).
+      const { validateAppliedCampaigns, validateBonusSpend } = await import("@/features/kampaniyalar/matcher");
+      const cartForCampaigns = {
+        lines: data.lines.map((l) => ({ mehsul_id: l.mehsul_id, miqdar: l.miqdar, qiymet: l.qiymet * (1 - l.endirim_faiz / 100) })),
+        cemi: Math.round(preUmumi * 100) / 100,
+        kontragent_id: data.musteri_id ?? null,
+        filial_id: null as number | null,
+        kanal: "pos" as const,
+      };
+      const validatedCampaigns = await validateAppliedCampaigns(data.applied_campaigns, cartForCampaigns);
+      const serverCampaignEndirim = validatedCampaigns.reduce((s, c) => s + Math.max(0, c.endirim_mebleg), 0);
+      let serverBonus: { mebleg: number; kartId: string } | null = null;
+      if (data.bonus_mebleg > 0 && data.musteri_id) {
+        serverBonus = await validateBonusSpend(data.musteri_id, data.bonus_mebleg, cartForCampaigns.cemi);
+      }
+      const serverBonusSpend = serverBonus?.mebleg ?? 0;
+      // Client-in bildirdiyi kampaniya endirimi — kassirin öz əl-endirimini ayırmaq üçün.
+      const clientCampaignEndirim = (data.applied_campaigns ?? []).reduce((s, c) => s + Math.max(0, c.endirim_mebleg), 0);
+      const manualEndirim = Math.max(0, data.endirim_mebleg - clientCampaignEndirim - data.bonus_mebleg);
+      // Faktiki endirim = server-təsdiqli kampaniya + server-təsdiqli bonus + kassir
+      // əl-endirimi. Uydurma kampaniya/bonus BURADA düşür (sonMebleg-ə təsir etmir).
+      const effectiveEndirim = Math.round((serverCampaignEndirim + serverBonusSpend + manualEndirim) * 100) / 100;
+
+      const preSonMebleg = Math.max(0, preUmumi - effectiveEndirim);
+      // Endirim limiti YALNIZ kassir əl-endirimini saymalıdır (kampaniya/bonus yox).
+      const kassirEndirim = Math.min(preUmumi, manualEndirim);
       const overallDiscountPct =
         preUmumi > 0 ? Math.round((kassirEndirim / preUmumi) * 1000) / 10 : 0;
       const effectiveMaxPct = Math.max(maxLineDiscount, overallDiscountPct);
@@ -224,7 +245,8 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
         for (const line of data.lines) {
           umumi += line.miqdar * line.qiymet * (1 - line.endirim_faiz / 100);
         }
-        const sonMebleg = Math.max(0, umumi - data.endirim_mebleg);
+        // Server-avtoritativ endirim (client dəyəri yox — yuxarıda validasiya olundu).
+        const sonMebleg = Math.max(0, umumi - effectiveEndirim);
 
         // 3. Lock stok rows and verify availability
         const stokRows = await tx.$queryRaw<{ id: number; mehsul_id: string; miqdar: number }[]>(
@@ -334,7 +356,7 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
             status: "tamamlandi",
             odenis_nov: data.odenis_nov,
             umumi_mebleg: umumi,
-            endirim_mebleg: data.endirim_mebleg,
+            endirim_mebleg: effectiveEndirim,
             son_mebleg: sonMebleg,
             odenilmis: data.odenis_nov === "nisye" ? 0 : sonMebleg,
             filial_id: kassa.filial_id,
@@ -515,6 +537,35 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
           await recalculateCustomerBalance(data.musteri_id, tx);
         }
 
+        // 10. 🔒 Loyalty bonus sərfi — SATIŞ TRANSACTION-ında atomik debit (audit K3).
+        // Əvvəl bu satışdan SONRA client-dən (fire-and-forget) çağırılırdı: balans
+        // çatmayanda/offline-replay-də səssizcə keçirdi → pulsuz endirim. İndi eyni
+        // transaction-da guard-lı decrement — balans çatmasa bütün satış geri qayıdır.
+        if (serverBonus && serverBonus.mebleg > 0) {
+          const dec = await tx.loyalty_cards.updateMany({
+            where: { id: serverBonus.kartId, balans: { gte: serverBonus.mebleg } },
+            data: {
+              balans: { decrement: serverBonus.mebleg },
+              total_serf: { increment: serverBonus.mebleg },
+              son_alish_de: new Date(),
+              yenilendi: new Date(),
+            },
+          });
+          if (dec.count === 0) throw new Error("Loyalty bonus balansı kifayət deyil");
+          const afterCard = await tx.loyalty_cards.findUnique({ where: { id: serverBonus.kartId }, select: { balans: true } });
+          await tx.loyalty_tx.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              kart_id: serverBonus.kartId,
+              satis_id: sale.id,
+              nov: "serf",
+              mebleg: -serverBonus.mebleg,
+              qaliq: Number(afterCard?.balans ?? 0),
+              qeyd: `Satış #${posCekNomresi}`,
+            },
+          });
+        }
+
         return { id: sale.id, nomre, sonMebleg, posCekNomresi, isDuplicate: false };
       }, { timeout: 20_000 });
 
@@ -531,10 +582,12 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
       // campaign_usage yazılmırdı, kupon/kampaniya sayğacı artmırdı, dead code idi).
       // QA-K7: dup (idempotent təkrar) halında kampaniya/kupon/bonus yan-təsirləri
       // TƏKRARLANMIR — yalnız satış həqiqətən bu çağırışda yarananda işlədilir.
-      if (!result.isDuplicate && data.applied_campaigns && data.applied_campaigns.length > 0) {
+      // DİQQƏT: server-VALİDASİYA olunmuş kampaniyalar yazılır (client dəyəri yox) —
+      // uydurma bonus_qazanildi / endirim_mebleg mint bağlanır (audit K1).
+      if (!result.isDuplicate && validatedCampaigns.length > 0) {
         try {
           const { commitCampaignApplications } = await import("@/features/kampaniyalar/matcher");
-          await commitCampaignApplications(result.id, data.musteri_id ?? null, data.applied_campaigns);
+          await commitCampaignApplications(result.id, data.musteri_id ?? null, validatedCampaigns);
         } catch (e) {
           console.warn("[createSale] commitCampaignApplications skipped:", e);
         }
@@ -551,7 +604,7 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
           odenis_nov: data.odenis_nov,
           son_mebleg: result.sonMebleg,
           line_count: data.lines.length,
-          endirim_mebleg: data.endirim_mebleg,
+          endirim_mebleg: effectiveEndirim,
         },
         sebeb: data.odenis_nov === "nisye" ? "POS borca satış" : "POS satış",
       });

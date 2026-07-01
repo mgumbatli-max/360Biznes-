@@ -1041,15 +1041,10 @@ export function PosClient({
 
       postActionRef.current = null;
 
-      // Loyalty bonus serf et — satış uğurla yaradılandan sonra
-      if (loyaltyCard && bonusAfterDiscount > 0) {
-        try {
-          const { applyBonusToSale } = await import("@/features/kampaniyalar/actions");
-          await applyBonusToSale(loyaltyCard.id, res.satis_id, bonusAfterDiscount);
-        } catch (e) {
-          console.warn("[pos bonus serf]", e);
-        }
-      }
+      // Loyalty bonus sərfi artıq SERVERDƏ satış transaction-ında atomik icra olunur
+      // (bonus_mebleg createSale-ə göndərilir; audit K3). Əvvəlki fire-and-forget
+      // client çağırışı silindi — balans çatmayanda/offline-replay-də pulsuz endirim
+      // yaradırdı və ikiqat debit riski var idi.
 
       getQuickProductsAction(anbarId)
         .then(setQuickProducts)

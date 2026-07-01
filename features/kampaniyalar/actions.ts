@@ -126,14 +126,16 @@ export async function bulkGenerateCoupons(input: z.input<typeof BulkCouponSchema
         });
       }
 
-      await prisma.coupons.createMany({ data, skipDuplicates: true });
+      // Faktiki insert sayı (audit #minor) — skipDuplicates DB-də mövcud kodları
+      // atır, ona görə codes.length yox, r.count qaytarılmalıdır.
+      const r = await prisma.coupons.createMany({ data, skipDuplicates: true });
       revalidatePath(`/kampaniyalar/${campaign_id}`);
       bustKampaniyaCache();
       await audit("bulk_yarat", "kupon", campaign_id, {
-        yeni_data: { prefix, count: codes.length, max_uses_per_kod, bitme: bitme || null, kampaniya: c.ad },
-        sebeb: `${codes.length} ədəd kupon yaradıldı`,
+        yeni_data: { prefix, count: r.count, requested: codes.length, max_uses_per_kod, bitme: bitme || null, kampaniya: c.ad },
+        sebeb: `${r.count} ədəd kupon yaradıldı`,
       });
-      return { ok: true, created: codes.length, sample: codes.slice(0, 5) };
+      return { ok: true, created: r.count, sample: codes.slice(0, 5) };
     } catch (e) {
       console.error("[bulkGenerateCoupons]", e);
       const msg = e instanceof Error ? e.message : "naməlum səhv";
@@ -340,6 +342,12 @@ export async function applyBonusToSale(
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // 🔒 satisId verilibsə tenant-a aid olmalı (audit #minor) — idempotentlik/
+      // audit açarı kimi istifadə olunur, forged foreign UUID dedup-u korlaya bilər.
+      if (satisId) {
+        const s = await prisma.satis_sifarisleri.findFirst({ where: { id: satisId, sahibkar_id: sahibkarId }, select: { id: true } });
+        if (!s) return { ok: false, error: "Satış bu hesaba aid deyil" };
+      }
       // Atomic update — yalnız balans ≥ mebleg olduqda decrement
       const result = await prisma.$transaction(async (tx) => {
         // QA-K7: idempotentlik — eyni satış üçün bonus artıq SƏRF olunubsa
@@ -736,6 +744,10 @@ export async function createLoyaltyCard(kontragentId: string): Promise<Result & 
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // 🔒 kontragentId tenant-a aid olmalı (audit #minor cross-tenant FK) —
+      // client ötürdüyü UUID başqa tenant-ın müştərisi ola bilər.
+      const k = await prisma.kontragentler.findFirst({ where: { id: kontragentId, sahibkar_id: sahibkarId }, select: { id: true } });
+      if (!k) return { ok: false, error: "Müştəri bu hesaba aid deyil" };
       const existing = await prisma.loyalty_cards.findFirst({
         where: { kontragent_id: kontragentId },
       });
@@ -791,31 +803,39 @@ export async function adjustLoyaltyBalans(
       const card = await prisma.loyalty_cards.findFirst({ where: { id: kartId }, include: { kontragentler: { select: { ad: true } } } });
       if (!card) return { ok: false, error: "Kart tapılmadı" };
       const evvelkiBalans = Number(card.balans);
-      const yeniBalans = evvelkiBalans + mebleg;
-      if (yeniBalans < 0) return { ok: false, error: "Kartda kifayət qədər balans yoxdur" };
       const nov = mebleg > 0 ? "manual_artir" : "manual_azalt";
-      await prisma.$transaction([
-        prisma.loyalty_cards.update({
-          where: { id: kartId },
-          data: {
-            balans: yeniBalans,
-            total_qazanc: mebleg > 0 ? { increment: mebleg } : undefined,
-            total_serf: mebleg < 0 ? { increment: Math.abs(mebleg) } : undefined,
-            yenilendi: new Date(),
-          },
-        }),
-        prisma.loyalty_tx.create({
+      // 🔒 Atomik + guard (audit #9 TOCTOU): əvvəl balans transaction xaricində
+      // oxunub absolute yazılırdı — paralel dəyişmə lost-update / mənfi balans
+      // yaradırdı. İndi guard-lı increment/decrement, qaliq tx daxilində oxunur.
+      const yeniBalans = await prisma.$transaction(async (tx) => {
+        if (mebleg >= 0) {
+          await tx.loyalty_cards.update({
+            where: { id: kartId },
+            data: { balans: { increment: mebleg }, total_qazanc: { increment: mebleg }, yenilendi: new Date() },
+          });
+        } else {
+          const abs = Math.abs(mebleg);
+          const dec = await tx.loyalty_cards.updateMany({
+            where: { id: kartId, balans: { gte: abs } },
+            data: { balans: { decrement: abs }, total_serf: { increment: abs }, yenilendi: new Date() },
+          });
+          if (dec.count === 0) throw new Error("INSUFFICIENT_BALANCE");
+        }
+        const after = await tx.loyalty_cards.findUnique({ where: { id: kartId }, select: { balans: true } });
+        const q = Number(after?.balans ?? 0);
+        await tx.loyalty_tx.create({
           data: {
             sahibkar_id: sahibkarId,
             kart_id: kartId,
             nov,
             mebleg,
-            qaliq: yeniBalans,
+            qaliq: q,
             qeyd: qeyd.trim(),
             yaradan_id: istifadeciId,
           },
-        }),
-      ]);
+        });
+        return q;
+      });
       revalidatePath("/kampaniyalar/loyalty");
       bustKampaniyaCache();
       // 💰 KRİTİK audit qeydi — pul ekvivalenti dəyişdirilir
@@ -826,6 +846,9 @@ export async function adjustLoyaltyBalans(
       });
       return { ok: true };
     } catch (e) {
+      if (e instanceof Error && e.message === "INSUFFICIENT_BALANCE") {
+        return { ok: false, error: "Kartda kifayət qədər balans yoxdur" };
+      }
       console.error("[adjustLoyaltyBalans]", e);
       const msg = e instanceof Error ? e.message : "naməlum səhv";
       return { ok: false, error: `Dəyişdirilmədi: ${msg}` };
@@ -878,8 +901,12 @@ export async function assignGiftCardToCustomer(kartId: string, kontragentId: str
   const permCheck = await requireKampaniyaActionPerm("gift.idare");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
-      const before = await prisma.gift_cards.findUnique({ where: { id: kartId }, select: { kart_kod: true, nominal: true } });
+      // 🔒 kontragentId tenant-a aid olmalı (audit #minor cross-tenant FK).
+      const k = await prisma.kontragentler.findFirst({ where: { id: kontragentId, sahibkar_id: sahibkarId }, select: { id: true } });
+      if (!k) return { ok: false, error: "Müştəri bu hesaba aid deyil" };
+      const before = await prisma.gift_cards.findFirst({ where: { id: kartId, sahibkar_id: sahibkarId }, select: { kart_kod: true, nominal: true } });
       if (!before) return { ok: false, error: "Hədiyyə kartı tapılmadı" };
       await prisma.gift_cards.update({
         where: { id: kartId },
@@ -936,6 +963,11 @@ export async function createGiftCard(input: FormData | z.input<typeof GiftSchema
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // 🔒 kontragent_id verilibsə tenant-a aid olmalı (audit #minor cross-tenant FK).
+      if (parsed.data.kontragent_id) {
+        const k = await prisma.kontragentler.findFirst({ where: { id: parsed.data.kontragent_id, sahibkar_id: sahibkarId }, select: { id: true } });
+        if (!k) return { ok: false, error: "Müştəri bu hesaba aid deyil" };
+      }
       // 3 cəhd, kod kolliziyası halında yeni kod try et
       let lastErr: unknown = null;
       for (let attempt = 0; attempt < 3; attempt++) {

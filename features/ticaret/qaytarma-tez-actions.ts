@@ -421,6 +421,8 @@ export async function returnFullSale(
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    // Loyalty geri-qaytarma (audit #8) — tx-dən sonra best-effort. (ref: closure narrowing)
+    const reversalRef: { current: { satisId: string; ratio: number } | null } = { current: null };
     try {
       const result = await prisma.$transaction(async (tx) => {
         const sale = await tx.satis_sifarisleri.findFirst({
@@ -447,6 +449,15 @@ export async function returnFullSale(
             : sale.satis_sifaris_satirlari;
         if (lines.length === 0) throw new Error("Qaytarılacaq sətir tapılmadı");
         const fullReturn = lines.length === sale.satis_sifaris_satirlari.length;
+        // Loyalty reversal nisbəti — qaytarılan sətirlərin ümumi satışdakı dəyər payı.
+        {
+          const lineGross = (l: { miqdar: unknown; vahid_qiymet: unknown; endirim_faiz?: unknown }) =>
+            Number(l.miqdar ?? 0) * Number(l.vahid_qiymet ?? 0) * (1 - Number(l.endirim_faiz ?? 0) / 100);
+          const saleGross = sale.satis_sifaris_satirlari.reduce((s, l) => s + lineGross(l), 0);
+          const returnedGross = lines.reduce((s, l) => s + lineGross(l), 0);
+          const ratio = fullReturn ? 1 : (saleGross > 0.01 ? Math.min(1, returnedGross / saleGross) : 1);
+          reversalRef.current = { satisId: sale.id, ratio };
+        }
 
         // QA-K (ikiqat qaytarma bloku): bu satış üçün artıq qaytarılmış miqdarları
         // (məhsul başına) topla — eyni satışı/sətri dəfələrlə qaytarmaq stoku şişirir,
@@ -751,6 +762,12 @@ export async function returnFullSale(
 
         return { id: ret.id, nomre: ret.nomre, reversedFinance };
       });
+
+      // 🔄 Loyalty balını geri qaytar (audit #8) — tx commit-dən sonra, best-effort.
+      if (reversalRef.current) {
+        const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
+        await reverseLoyaltyForSale(reversalRef.current.satisId, reversalRef.current.ratio);
+      }
 
       revalidatePath("/ticaret/qaytarma");
       revalidatePath("/ticaret/qaytarma/tez");

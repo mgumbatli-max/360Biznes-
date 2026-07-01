@@ -57,8 +57,10 @@ export const ROUTE_RULES: RouteRule[] = [
   { prefix: "/nezaret-merkezi", anyOf: ["nezaret.oxu", "nezaret.dashboard", "audit.view"] },
   // — Ayarlar (yalnız admin / sahibkar; map-də sahibkar/admin bypass-ed olunduğu üçün burada dar saxlayırıq)
   { prefix: "/ayarlar", anyOf: ["ayar.view", "ayar.idare"] },
-  // — Kampaniyalar
-  { prefix: "/kampaniyalar", anyOf: ["kampaniya.view", "marketing.view"] },
+  // — Kampaniyalar (audit #minor: gate perm-i modulun faktiki kodları ilə uyğunlaşdır —
+  // əvvəl yalnız kampaniya.view/marketing.view idi, modul isə kampaniya.oxu/idare +
+  // loyalty/gift/marketing kodlarını işlədir; oxu-olub-view-olmayan rollar bloklanırdı)
+  { prefix: "/kampaniyalar", anyOf: ["kampaniya.view", "marketing.view", "kampaniya.oxu", "kampaniya.idare", "marketing.broadcast", "loyalty.idare", "loyalty.balans", "gift.yarat", "gift.idare"] },
   // — Satınalma planlama (anbar daxili gərək olardı, amma URL var)
   { prefix: "/satinalma", anyOf: ["anbar.oxu", "anbar.view", "satinalma.oxu", "satinalma.view", "trade.view"] },
   // — Sahibkar bölməsi (PIN guard onsuz da var, amma rol kontrolü də etsən pis olmaz)
