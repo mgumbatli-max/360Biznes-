@@ -29,12 +29,10 @@ const LEAD_TIME_GUN = 7; // standart təchizat müddəti — sahibkar settings-d
 const HORIZON_GUN = 21; // bu gün sayında bitəcək məhsullar tövsiyəyə düşür
 
 export async function GET(req: NextRequest) {
+  // 🔒 Fail-CLOSED (audit #4) — CRON_SECRET yoxdursa/yanlışdırsa rədd et.
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const t0 = Date.now();

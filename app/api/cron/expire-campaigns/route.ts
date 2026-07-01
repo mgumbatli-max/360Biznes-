@@ -8,9 +8,9 @@ import { prismaUnscoped } from "@/lib/db/prisma";
  * Tenant-agnostik: birbaşa global SQL ilə işləyir.
  */
 export async function GET(request: Request) {
-  // Cron secret yoxlaması (vercel cron header)
-  const auth = request.headers.get("authorization");
-  if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+  // 🔒 Fail-CLOSED (audit #4) — CRON_SECRET yoxdursa/yanlışdırsa rədd et.
+  const secret = process.env.CRON_SECRET;
+  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 

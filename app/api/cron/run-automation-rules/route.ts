@@ -25,13 +25,10 @@ export const maxDuration = 300; // 5 dəq — bütün tenant + qaydalar üçün
  * (Vercel cron qoşulanda avtomatik göndərir).
  */
 export async function GET(req: NextRequest) {
-  // CRON_SECRET ilə qorun — boş olarsa açıq (yalnız dev üçün)
+  // 🔒 Fail-CLOSED (audit #4) — CRON_SECRET yoxdursa/yanlışdırsa rədd et.
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const t0 = Date.now();

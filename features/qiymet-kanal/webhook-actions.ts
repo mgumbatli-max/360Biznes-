@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/db/prisma";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { generateWebhookSecret } from "@/lib/webhook-verify";
@@ -81,7 +81,10 @@ export async function listWebhookSecretStatus(): Promise<Record<string, { create
  * plaintext secret-ləri qaytarır. Verifikasiya zamanı body-ni hər secret ilə
  * imzalayıb signature ilə müqayisə edirik. Match olan secret-in sahibkar-ı qaytarılır. */
 export async function findWebhookSecretsForKanal(kanal: string): Promise<Array<{ sahibkar_id: string; secret: string }>> {
-  const rows = await prisma.ayarlar.findMany({
+  // ⚠️ prismaUnscoped (audit K1 kritik): bu, tenant təyin OLUNMAMIŞDAN əvvəl (webhook
+  // endpoint girişində) çağırılan CROSS-TENANT axtarışdır — hansı sahibkarın secret-i
+  // uyğun gəlir tapılır. Scoped `prisma` burada tenant-guard ilə çökür (hər webhook 500).
+  const rows = await prismaUnscoped.ayarlar.findMany({
     where: { qrup: QRUP, acar: kanal },
     select: { sahibkar_id: true, deyer: true },
   });

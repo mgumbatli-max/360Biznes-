@@ -4,6 +4,7 @@ import { runWithTenant } from "@/lib/db/tenant-context";
 import { findWebhookSecretsForKanal } from "@/features/qiymet-kanal/webhook-actions";
 import { verifyWebhookSignature } from "@/lib/webhook-verify";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { rateAllow, rateRetryAfterSec } from "@/lib/rate-limiter";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,7 +40,25 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
   const { kanal } = await ctx.params;
   if (!kanal) return NextResponse.json({ error: "kanal boşdur" }, { status: 400 });
 
+  // 🔒 IP+kanal rate-limit (audit #6) — hər sorğu hər tenant secret-i üçün HMAC +
+  // ayarlar tam skanı edir; boğulmasa CPU/DB amplifikasiya DoS.
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const hookRateKey = `mp-hook-ip:${ip}:${kanal}`;
+  if (!rateAllow(hookRateKey, 120)) {
+    return NextResponse.json(
+      { error: "Rate limit aşıldı", retry_after_sec: rateRetryAfterSec(hookRateKey) },
+      { status: 429, headers: { "Retry-After": String(rateRetryAfterSec(hookRateKey)) } },
+    );
+  }
+  // 🔒 Body ölçü limiti (audit #6) — nəhəng gövdə ilə parse/HMAC amplifikasiyası.
+  if (Number(req.headers.get("content-length") ?? 0) > 1_000_000) {
+    return NextResponse.json({ error: "Body çox böyükdür" }, { status: 413 });
+  }
+
   const rawBody = await req.text();
+  if (rawBody.length > 1_000_000) {
+    return NextResponse.json({ error: "Body çox böyükdür" }, { status: 413 });
+  }
   const signature = req.headers.get("x-signature") ?? req.headers.get("x-hub-signature-256");
 
   // 1. Tap kanal üçün bütün sahibkar secret-lərini, müqayisə et
@@ -125,6 +144,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
         select: { id: true },
       });
 
+      // 🔒 Faktiki per-anbar stok (audit #2/#235) — catismir/azaldilan `stok_cemi`
+      // (bütün anbarların cəmi) yox, SATIŞ anbarının (defaultAnbar) real miqdarına
+      // əsaslanmalı. Əks halda stok başqa anbarda olduqda "stok var" deyilir, düşmə
+      // alınmır, amma xəbərdarlıq da yaranmır.
+      const defaultStokMap = new Map<string, number>();
+      if (defaultAnbar && products.length > 0) {
+        const stokRows = await prisma.stok.findMany({
+          where: { anbar_id: defaultAnbar.id, mehsul_id: { in: products.map((p) => p.id) } },
+          select: { mehsul_id: true, miqdar: true },
+        });
+        for (const s of stokRows) if (s.mehsul_id) defaultStokMap.set(s.mehsul_id, Number(s.miqdar ?? 0));
+      }
+
       // 5. Müştəri upsert (telefon ya ad üzrə) — satışdan əvvəl
       let musteriId: string | null = null;
       const phone = body.musteri?.telefon?.trim() ?? null;
@@ -159,9 +191,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
       // idempotentlik external_id unikal indeksi ilə təmin olunur. Əvvəl
       // mehsullar.stok_cemi yenilənirdi, hərəkət/transaction yox idi.
       const nomre = `WH-${kanal.toUpperCase()}-${body.external_id}`.slice(0, 50);
-      let cem = body.umumi_mebleg ?? 0;
-      if (!body.umumi_mebleg) {
-        for (const it of body.items) cem += it.miqdar * it.qiymet;
+      // 🔒 Cəmi HƏMİŞƏ line-item-lərdən hesabla (audit #7) — xarici umumi_mebleg-ə
+      // etibar etmə (HMAC imza yalnız gövdə bütövlüyünü təsdiqləyir, məbləğ
+      // düzgünlüyünü yox → qiymət/gəlir manipulyasiyası). umumi_mebleg yalnız tolerans.
+      const lineSum = body.items.reduce(
+        (s, it) => s + Math.max(0, Number(it.miqdar) || 0) * Math.max(0, Number(it.qiymet) || 0),
+        0,
+      );
+      const cem = Math.round(lineSum * 100) / 100;
+      if (body.umumi_mebleg && Math.abs(Number(body.umumi_mebleg) - lineSum) > 0.01) {
+        console.warn("[webhook] umumi_mebleg line-item cəmindən fərqlidir:", {
+          kanal, external_id: body.external_id, umumi_mebleg: body.umumi_mebleg, lineSum,
+        });
       }
       const itemResults: Array<{ sku: string | null; resolved_id: string | null; miqdar: number; stok_catismir: boolean; azaldilan: number }> = [];
 
@@ -179,7 +220,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
         komissiyaFaiz = PLATFORM_DEFAULTS[kanal] ?? 0;
       }
       const komissiyaMebleg = +(cem * (komissiyaFaiz / 100)).toFixed(2);
-      const netMebleg = +(cem - komissiyaMebleg).toFixed(2);
+      const netMebleg = Math.max(0, +(cem - komissiyaMebleg).toFixed(2));
 
       let satisId: string;
       try {
@@ -207,8 +248,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
               select: { id: true },
             });
 
-            // QA-K22: gözləyən payout — bank yalnız payout qəbul ediləndə artır
-            if (body.status !== "legv") {
+            // QA-K22: gözləyən payout — bank yalnız payout qəbul ediləndə artır.
+            // (audit #11) netMebleg>0 şərti — boş/sıfır payout sətirləri hesabatı çirkləndirməsin.
+            if (body.status !== "legv" && netMebleg > 0.001) {
               const today = new Date();
               await tx.finance_marketplace_payments.create({
                 data: {
@@ -232,10 +274,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
             if (body.status !== "legv") {
               for (const it of body.items) {
                 const p = (it.sku && bySku.get(it.sku)) || (it.barkod && byBarkod.get(it.barkod)) || null;
-                const stokQalig = p ? Number(p.stok_cemi ?? 0) : 0;
-                const catismir = !p || stokQalig < it.miqdar;
+                // Faktiki SATIŞ anbarının stoku (audit #2/#235) — stok_cemi yox.
+                const availableDefault = p ? (defaultStokMap.get(p.id) ?? 0) : 0;
                 let azaldilan = 0;
                 if (p) {
+                  // Xarici sifariş — sətir TAM miqdarla yazılır (platforma artıq
+                  // müştəridən bu qədər aldı); çatışmayan hissə aşağıda flag olunur.
                   await tx.satis_sifaris_satirlari.create({
                     data: {
                       sahibkar_id: sahibkarId,
@@ -245,15 +289,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
                       vahid_qiymet: it.qiymet,
                     },
                   });
-                  if (defaultAnbar && stokQalig > 0) {
-                    azaldilan = Math.min(stokQalig, it.miqdar);
+                  if (defaultAnbar && availableDefault > 0) {
+                    const want = Math.min(availableDefault, it.miqdar);
                     const dec = await safeStockDecrement(tx, {
                       mehsulId: p.id,
                       anbarId: defaultAnbar.id,
-                      miqdar: azaldilan,
+                      miqdar: want,
                       mehsulAd: p.ad ?? undefined,
+                      // audit #10 — aktiv bron altındakı malı kanal sifarişinə satma.
+                      rezervNezereAl: true,
                     });
                     if (dec.ok) {
+                      azaldilan = want;
                       await tx.anbar_hereketleri.create({
                         data: {
                           sahibkar_id: sahibkarId,
@@ -267,11 +314,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
                           qeyd: `Webhook satış (${kanal} #${body.external_id})`,
                         },
                       });
-                    } else {
-                      azaldilan = 0;
                     }
                   }
                 }
+                // stok_catismir FAKTİKİ düşməyə əsaslanır (audit #2/#235) — beləcə
+                // stok başqa anbarda/bron altında olduqda xəbərdarlıq düzgün yaranır.
+                const catismir = !p || azaldilan < it.miqdar;
                 itemResults.push({
                   sku: it.sku ?? null,
                   resolved_id: p?.id ?? null,
@@ -301,27 +349,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
         throw e;
       }
 
-      // 8. Audit log — tarixçə (idempotentlik artıq external_id indeksindədir)
-      await prisma.audit_log.create({
-        data: {
-          sahibkar_id: sahibkarId,
-          istifadeci_ad: `webhook:${kanal}`,
-          emeliyyat: "WEBHOOK_ORDER",
-          resurs_nov: "webhook_order",
-          resurs_id: `${kanal}:${body.external_id}`,
-          yeni_data: {
-            kanal,
-            external_id: body.external_id,
-            satis_id: satisId,
-            musteri_id: musteriId,
-            musteri: body.musteri ?? null,
-            items: itemResults,
-            cem_mebleg: cem,
-            valyuta: body.valyuta ?? "AZN",
-            status: body.status ?? "yeni",
-          } as object,
-        },
-      });
+      // 8. Audit log — tarixçə (idempotentlik artıq external_id indeksindədir).
+      // (audit #8) Satış ARTIQ commit olub — audit yazısı çöksə sifarişi geri qaytarma.
+      try {
+        await prisma.audit_log.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            istifadeci_ad: `webhook:${kanal}`,
+            emeliyyat: "WEBHOOK_ORDER",
+            resurs_nov: "webhook_order",
+            resurs_id: `${kanal}:${body.external_id}`,
+            yeni_data: {
+              kanal,
+              external_id: body.external_id,
+              satis_id: satisId,
+              musteri_id: musteriId,
+              musteri: body.musteri ?? null,
+              items: itemResults,
+              cem_mebleg: cem,
+              valyuta: body.valyuta ?? "AZN",
+              status: body.status ?? "yeni",
+            } as object,
+          },
+        });
+      } catch (e) {
+        console.error("[webhook] audit_log yazıla bilmədi:", e);
+      }
 
       const anyShort = itemResults.some((r) => r.stok_catismir);
 

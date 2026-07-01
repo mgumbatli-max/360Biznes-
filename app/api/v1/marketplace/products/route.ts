@@ -50,6 +50,17 @@ export async function GET(req: NextRequest) {
   if (!kanal) return badRequest("`kanal` query param tələb olunur");
   if (!key) return badRequest("`key` query param tələb olunur", 401);
 
+  // 🔒 IP+kanal rate-limit AUTH-DAN ƏVVƏL (audit #5) — verifyApiKey hər sorğuda bütün
+  // tenant-lar üzrə ayarlar skanı edir; yanlış açarlı sorğular əvvəl boğulmurdu (DoS).
+  const ipEarly = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ipRateKey = `mp-prod-ip:${ipEarly}:${kanal}`;
+  if (!rateAllow(ipRateKey, 120)) {
+    return new NextResponse(
+      JSON.stringify({ error: "Rate limit aşıldı", retry_after_sec: rateRetryAfterSec(ipRateKey) }),
+      { status: 429, headers: { "Content-Type": "application/json", "Retry-After": String(rateRetryAfterSec(ipRateKey)) } },
+    );
+  }
+
   const sahibkarId = await verifyApiKey(key, kanal);
   if (!sahibkarId) return badRequest("API key etibarsızdır və ya kanal mövcud deyil", 401);
 

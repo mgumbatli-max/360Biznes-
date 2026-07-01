@@ -845,20 +845,39 @@ export async function startMarketplaceReconciliation(input: FormData): Promise<A
       const brut = Number(agg._sum.son_mebleg ?? 0);
       const komissiya = Number(agg._sum.komisyon_meblegh ?? 0);
       const xalis = Number(agg._sum.xalis_meblegh ?? brut - komissiya);
+      // 🔒 İkiqat payout bloku (audit #3 kritik): per-order payout sətirləri (satış
+      // anında `[ORDER:...]` qeydi ilə yaradılan) artıq bu dövrün gəlirini əhatə edir.
+      // Reconciliation eyni satışları TOPLAYIB ikinci 'gozleyir' yaradırsa, hər ikisi
+      // qəbul ediləndə bank eyni gəlirlə İKİ DƏFƏ artır. Ona görə yalnız QEYDƏ
+      // ALINMAMIŞ qalıq üçün sətir yaradırıq.
+      const perOrderAgg = await prisma.finance_marketplace_payments.aggregate({
+        where: {
+          sahibkar_id: sahibkarId,
+          platforma: d.platforma,
+          donem_baslama: { gte: fromDate, lte: toDate },
+          qeyd: { startsWith: "[ORDER:" },
+        },
+        _sum: { gozlenen_meblegh: true },
+      });
+      const alreadyRecorded = Number(perOrderAgg._sum.gozlenen_meblegh ?? 0);
+      const remaining = +(xalis - alreadyRecorded).toFixed(2);
       try {
-        await prisma.finance_marketplace_payments.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            platforma: d.platforma,
-            donem_baslama: fromDate,
-            donem_bitme: toDate,
-            gozlenen_meblegh: xalis,
-            komissiya,
-            ferq: 0,
-            status: "gozleyir",
-            qeyd: `Avtomatik reconciliation: ${agg._count._all} sifariş`,
-          },
-        });
+        // Per-order sətirlər gəliri tam əhatə edibsə (remaining≈0) yeni sətir yaratma.
+        if (remaining > 0.01) {
+          await prisma.finance_marketplace_payments.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              platforma: d.platforma,
+              donem_baslama: fromDate,
+              donem_bitme: toDate,
+              gozlenen_meblegh: remaining,
+              komissiya,
+              ferq: 0,
+              status: "gozleyir",
+              qeyd: `Avtomatik reconciliation: ${agg._count._all} sifariş (qeydə alınmamış qalıq)`,
+            },
+          });
+        }
       } catch (e) {
         console.warn("[startMarketplaceReconciliation] payments record skipped:", e);
       }

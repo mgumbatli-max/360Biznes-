@@ -22,12 +22,15 @@ export const maxDuration = 300; // 5 dəq — çoxlu məhsullu sahibkarlar üç�
  * Auth: CRON_SECRET env (Vercel cron header)
  */
 export async function GET(req: NextRequest) {
+  // 🔒 Fail-CLOSED (audit #4): əvvəl `if(secret){...}` idi — CRON_SECRET təyin
+  // edilməsə auth tamamilə atlanıb endpoint anonim açıq olurdu (bütün tenant-ları
+  // gəzib outbound push tetiklyir). İndi secret yoxdursa 500, yanlışdırsa 401.
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: "Server konfiqurasiya xətası (CRON_SECRET yox)" }, { status: 500 });
+  }
+  if (req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const startedAt = Date.now();
