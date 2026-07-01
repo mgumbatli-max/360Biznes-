@@ -105,6 +105,17 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // 🔒 Client FK-lər CARI tenant-ə aid olmalıdır (cross-tenant referans qoruması).
+      if (d.musteri_id && !(await prisma.kontragentler.findFirst({ where: { id: d.musteri_id, sahibkar_id: sahibkarId }, select: { id: true } }))) {
+        return { ok: false, error: "Müştəri bu hesaba aid deyil" };
+      }
+      if (d.mehsul_id && !(await prisma.mehsullar.findFirst({ where: { id: d.mehsul_id, sahibkar_id: sahibkarId }, select: { id: true } }))) {
+        return { ok: false, error: "Məhsul bu hesaba aid deyil" };
+      }
+      if (d.servis_iscisi_id && !(await prisma.istifadeciler.findFirst({ where: { id: d.servis_iscisi_id, sahibkar_id: sahibkarId }, select: { id: true } }))) {
+        return { ok: false, error: "Servis işçisi bu hesaba aid deyil" };
+      }
+
       const nomre = await nextNomre();
       // Free-form daxili note + inline priority tag (legacy convention)
       const noteSeed = d.daxili_qeyd?.trim() || null;
