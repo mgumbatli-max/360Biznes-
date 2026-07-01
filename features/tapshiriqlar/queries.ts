@@ -75,18 +75,25 @@ function buildOrderBy(sort: TaskSort | undefined) {
 
 export async function getTasks(filter: TaskFilter, page = 1, pageSize = 50): Promise<{ items: TaskListItem[]; total: number }> {
   return withTenant(async () => {
-    const { istifadeciId } = requireTenant();
+    const { istifadeciId, rolAd, icazeler } = requireTenant();
+    // 🔒 Yalnız privileged və ya tapshiriq.idare olan bütün komandanın tapşırıqlarını
+    // ("hamisi") görür. Əks halda "hamisi" seçilsə belə öz tapşırıqlarına endirilir
+    // (məhdud işçi başqalarının tapşırığını görməsin — mobil route ilə eyni davranış).
+    const canSeeAll =
+      /(sahibkar|admin|owner)/.test((rolAd ?? "").toLowerCase()) ||
+      (icazeler ?? []).includes("tapshiriq.idare");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
 
-    if (filter.scope === "menim") {
+    if (filter.scope === "yaratdigim") {
+      where.yaradan_id = istifadeciId;
+    } else if (filter.scope === "menim" || !canSeeAll) {
       where.OR = [
         { mesul_id: istifadeciId },
         { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
       ];
-    } else if (filter.scope === "yaratdigim") {
-      where.yaradan_id = istifadeciId;
     }
+    // else: scope="hamisi" + canSeeAll → istifadəçi filtri yox (bütün komanda)
 
     if (filter.status?.length) where.status = { in: filter.status };
     if (filter.prioritet?.length) where.prioritet = { in: filter.prioritet };

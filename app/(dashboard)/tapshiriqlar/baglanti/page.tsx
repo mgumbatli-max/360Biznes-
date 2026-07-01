@@ -66,6 +66,15 @@ const STATUS_DOT: Record<string, string> = {
 };
 
 export default async function ModulBaglantiPage() {
+  // 🔒 Digər tapşırıq səhifələri kimi guard — cross-modul tapşırıq xülasəsi
+  // (bütün komanda tapşırıqları + obyekt adları) icazə tələb edir.
+  const { requireTapshiriqPerm } = await import("@/features/tapshiriqlar/actions");
+  const permCheck = await requireTapshiriqPerm("tapshiriq.oxu");
+  if (!permCheck.ok) {
+    const { redirect } = await import("next/navigation");
+    redirect("/dashboard");
+  }
+
   const counts = await getModuleTaskCounts();
 
   // Fetch recent tasks for each module (top 5 each, parallel)

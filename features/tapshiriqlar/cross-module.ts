@@ -45,11 +45,20 @@ export async function createTaskFor(input: z.input<typeof Schema>): Promise<Resu
   const permCheck = await requireTapshiriqPerm("tapshiriq.yarat");
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
 
-  return withTenant(async () => {
+    return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // Deadline validasiyası — Invalid Date DB-yə yazılmasın.
       const deadline = d.deadline ? new Date(d.deadline) : null;
+      if (deadline && Number.isNaN(deadline.getTime())) {
+        return { ok: false as const, error: "Deadline tarixi yanlışdır" };
+      }
       const mesulId = d.mesul_id ?? istifadeciId;
+      // Başqa işçiyə təyinat üçün tapshiriq.atayir icazəsi (öz-özünə istisnadır).
+      if (d.mesul_id && d.mesul_id !== istifadeciId) {
+        const assign = await requireTapshiriqPerm("tapshiriq.atayir");
+        if (!assign.ok) return { ok: false as const, error: "Başqa işçiyə tapşırıq təyin etmək icazəniz yoxdur" };
+      }
 
       const task = await prisma.$transaction(async (tx) => {
         const t = await tx.tapshiriqlar.create({

@@ -443,6 +443,11 @@ export async function changeTaskStatus(
         select: { status: true, yaradan_id: true, basliq: true, mesul_id: true, requires_approval: true, approved_by: true },
       });
       if (!existing) return { ok: false, error: "Tapşırıq tapılmadı" };
+      // Ləğv edilmiş (legv) tapşırıq terminal-dır — statusu dəyişdirilə bilməz
+      // (sərbəst geri-açılışın qarşısını alır).
+      if (existing.status === "legv" && status !== "legv") {
+        return { ok: false, error: "Ləğv edilmiş tapşırığın statusu dəyişdirilə bilməz" };
+      }
 
       // 🔒 requires_approval gate — rəhbər təsdiqi tələb edən tapşırıq icraçı
       // tərəfindən birbaşa "tamamlandi"-yə keçirilə bilməz. Yalnız yaradan və ya

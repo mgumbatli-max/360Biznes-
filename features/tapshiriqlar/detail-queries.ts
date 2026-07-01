@@ -1,10 +1,12 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
+import { requireTenant } from "@/lib/db/tenant-context";
 
 export async function getTaskDetail(id: string) {
   return withTenant(async () => {
-    return prisma.tapshiriqlar.findUnique({
+    const { istifadeciId, rolAd, icazeler } = requireTenant();
+    const task = await prisma.tapshiriqlar.findUnique({
       where: { id },
       include: {
         istifadeciler_tapshiriqlar_mesul_idToistifadeciler: { select: { id: true, ad_soyad: true } },
@@ -17,5 +19,18 @@ export async function getTaskDetail(id: string) {
         },
       },
     });
+    if (!task) return null;
+    // 🔒 Üzvlük yoxlaması — privileged/tapshiriq.idare olmayan yalnız öz tapşırığını görər.
+    const canSeeAll =
+      /(sahibkar|admin|owner)/.test((rolAd ?? "").toLowerCase()) ||
+      (icazeler ?? []).includes("tapshiriq.idare");
+    if (!canSeeAll) {
+      const isMember =
+        task.mesul_id === istifadeciId ||
+        task.yaradan_id === istifadeciId ||
+        task.tapshiriq_iscilier?.some((i) => i.istifadeci_id === istifadeciId);
+      if (!isMember) return null;
+    }
+    return task;
   });
 }
