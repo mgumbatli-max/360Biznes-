@@ -38,6 +38,9 @@ export default async function KpiDashboardPage({
 }: {
   searchParams?: Promise<SP>;
 }) {
+  const { requireHrPagePerm } = await import("@/features/iscilier/access-guard");
+  await requireHrPagePerm("maas.view");
+
   const sp = (await searchParams) ?? {};
   const sortKey: SortKey = isValidSortKey(sp.sort) ? sp.sort : "performans";
   const sortDir: SortDir = sp.dir === "asc" ? "asc" : "desc";

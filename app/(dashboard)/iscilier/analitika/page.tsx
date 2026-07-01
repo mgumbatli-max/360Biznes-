@@ -10,6 +10,9 @@ import { generateInsight } from "@/features/iscilier/analitika-insight";
 export const metadata: Metadata = { title: "HR Analitika" };
 
 export default async function AnalitikaPage() {
+  const { requireHrPagePerm } = await import("@/features/iscilier/access-guard");
+  await requireHrPagePerm("maas.view");
+
   const [data, stats] = await Promise.all([getAnalitika(), getEmployeeStats()]);
   const insight = await generateInsight(data, stats);
 

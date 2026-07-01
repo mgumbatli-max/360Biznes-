@@ -30,7 +30,12 @@ export async function getPayrollContext(istifadeciId: string): Promise<PayrollCo
   if (!istifadeciId) return null;
 
   return withTenant(async () => {
-    const { sahibkarId } = requireTenant();
+    const { sahibkarId, istifadeciId: currentUserId } = requireTenant();
+    // 🔒 Maaş/payroll datası həssasdır — öz məlumatı VƏ YA maas.view/idare icazəsi lazımdır.
+    if (istifadeciId !== currentUserId) {
+      const { requireHrActionPerm } = await import("./access-guard");
+      if (!(await requireHrActionPerm(["maas.view", "maas.idare"])).ok) return null;
+    }
     const u = await prisma.istifadeciler.findFirst({
       where: { id: istifadeciId, sahibkar_id: sahibkarId },
       select: { id: true, ad_soyad: true, vezife: true, aylik_maas: true },

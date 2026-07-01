@@ -10,6 +10,9 @@ export default async function DavamiyyetPage({
 }: {
   searchParams?: Promise<{ month?: string; istifadeci_id?: string; status?: string }>;
 }) {
+  const { requireHrPagePerm } = await import("@/features/iscilier/access-guard");
+  await requireHrPagePerm("davamiyyet.view");
+
   const sp = (await searchParams) ?? {};
   const data = await getDavamiyyetData({
     month: sp.month,

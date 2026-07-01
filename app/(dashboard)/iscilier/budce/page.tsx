@@ -9,6 +9,9 @@ import { formatMoney } from "@/lib/utils";
 export const metadata: Metadata = { title: "Büdcə və headcount" };
 
 export default async function BudcePage() {
+  const { requireHrPagePerm } = await import("@/features/iscilier/access-guard");
+  await requireHrPagePerm("hr.budce");
+
   const data = await getBudce();
   return (
     <div className="mx-auto max-w-7xl space-y-5">

@@ -108,6 +108,9 @@ export async function getEmployeeAttendance(id: string, monthStr?: string) {
 
 export async function getEmployeeBordroHistory(id: string, limit = 12) {
   return withTenant(async () => {
+    // 🔒 Maaş/bordro həssasdır — icazə (maas.view) və ya öz məlumatı olmalıdır.
+    const { canViewSalary } = await import("./access-guard");
+    if (!(await canViewSalary(id))) return { total: 0, avg: 0, bonus: 0, cerime: 0, rows: [] };
     const rows = await prisma.maas_hesablamalar.findMany({
       where: { istifadeci_id: id },
       orderBy: [{ il: "desc" }, { ay: "desc" }],
@@ -220,6 +223,9 @@ export type BonusPenaltyEvent = {
 
 export async function getEmployeeBonusEvents(id: string, limit = 100): Promise<BonusPenaltyEvent[]> {
   return withTenant(async () => {
+    // 🔒 Bonus/cərimə məbləğləri həssasdır — icazə (maas.view) və ya öz məlumatı.
+    const { canViewSalary } = await import("./access-guard");
+    if (!(await canViewSalary(id))) return [];
     const rows = await prisma.maas_hesablamalar.findMany({
       where: { istifadeci_id: id },
       orderBy: [{ il: "desc" }, { ay: "desc" }],
