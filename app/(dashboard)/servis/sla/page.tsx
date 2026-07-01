@@ -12,6 +12,9 @@ import { formatDate } from "@/lib/utils";
 export const metadata: Metadata = { title: "Servis SLA" };
 
 export default async function ServisSLAPage() {
+  const { requireServisPerm } = await import("@/features/servis/access-guard");
+  await requireServisPerm();
+
   const data = await getSLAOverview();
 
   const totalBreach = data.perStatus.reduce((s, r) => s + r.say, 0);

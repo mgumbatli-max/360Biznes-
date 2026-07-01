@@ -98,6 +98,9 @@ const ServisSchema = z.object({
 export async function createServisRequest(input: FormData): Promise<ActionResult> {
   const permCheck = await requireServisActionPerm(["servis.yarat", "servis.idare"]);
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  // Emergency freeze — donmuş modul yeni servis qəbul etməməlidir.
+  const { isServisFrozen } = await import("./extra-actions");
+  if (await isServisFrozen()) return { ok: false, error: "Servis qəbulu müvəqqəti dayandırılıb." };
   const parsed = ServisSchema.safeParse(Object.fromEntries(input.entries()));
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
@@ -275,6 +278,11 @@ export async function changeServisStatus(
         select: { status: true, daxili_qeyd: true, mehsul_id: true, musteri_id: true },
       });
       if (!prev) return { ok: false, error: "Sifariş tapılmadı" };
+      // Bağlanmış (rədd/qaytarıldı) servisin statusu dəyişdirilə bilməz — stok/pul
+      // əməliyyatlarının təkrar-emalının (re-processing) qarşısını alır.
+      if ((prev.status === "redd_edildi" || prev.status === "qaytarildi") && status !== prev.status) {
+        return { ok: false, error: "Bağlanmış servisin statusu dəyişdirilə bilməz" };
+      }
 
       const data: Record<string, unknown> = { status, yenilendi: new Date() };
       if (status === "musteriye_tehvil") {

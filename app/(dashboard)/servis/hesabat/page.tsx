@@ -24,6 +24,9 @@ import { formatMoney } from "@/lib/utils";
 export const metadata: Metadata = { title: "Servis hesabatı" };
 
 export default async function ServisHesabatPage() {
+  const { requireServisPerm } = await import("@/features/servis/access-guard");
+  await requireServisPerm();
+
   const [data, cycle, bottleneck, costRev, defekt, source] = await Promise.all([
     getServisHesabat(),
     getCycleTimeByMonth(),

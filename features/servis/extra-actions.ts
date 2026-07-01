@@ -101,6 +101,15 @@ export async function bulkChangeServisStatus(
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // Tarixçə üçün əvvəlki statusları updateMany-dən ƏVVƏL oxu (əks halda itir).
+      const affected = await prisma.servis_qeydleri.findMany({
+        where: {
+          sahibkar_id: sahibkarId,
+          id: { in: ids },
+          status: { notIn: ["qaytarildi", "redd_edildi", "musteriye_tehvil"] },
+        },
+        select: { id: true, status: true },
+      });
       const r = await prisma.servis_qeydleri.updateMany({
         where: {
           sahibkar_id: sahibkarId,
@@ -115,6 +124,18 @@ export async function bulkChangeServisStatus(
             : {}),
         },
       });
+      // Status tarixçəsi — hər dəyişən servis üçün (əvvəl toplu-da yazılmırdı).
+      if (affected.length) {
+        await prisma.servis_status_tarixce.createMany({
+          data: affected.map((a) => ({
+            servis_id: a.id,
+            evvelki_status: a.status,
+            yeni_status,
+            deyisen_id: istifadeciId,
+            qeyd: qeyd ?? "Toplu status dəyişikliyi",
+          })),
+        });
+      }
       try {
         await safeAuditLog({
           sahibkar_id: sahibkarId,
