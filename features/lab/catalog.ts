@@ -897,7 +897,7 @@ export const LAB_FEATURES: LabFeature[] = [
     faydasi: ["Barkodsuz tanıma", "Sayım 5× sürət", "Yaş məhsullar üçün ideal", "Şəkildən axtarış"],
   },
   {
-    id: "loyalty-engine",
+    id: "loyalty-rfm-engine",
     ad: "Müştəri Sədaqət Engine (RFM + Tier)",
     tesvir: "Hər müştəri avto-segmentasiya: Bronze/Silver/Gold/VIP. RFM analizi əsasında. Auto-təklif (doğum günü, dönüş, VIP-bonus).",
     icon: Crown, reng: "amber",
@@ -1014,7 +1014,7 @@ export const LAB_FEATURES: LabFeature[] = [
     faydasi: ["Marketinq avto", "AI mətn", "Optimal saat", "Müştəri cəlb avto"],
   },
   {
-    id: "customer-portal",
+    id: "customer-invoice-portal",
     ad: "Müştəri Online Qaimə Portalı",
     tesvir: "Müştəri öz qaiməsini portaldan görsün, ödəsin (Kart, Hyper, m10). Sənəd yığımı asanlaşır, müştəri sahibkarı zəngləməyə bilməz.",
     icon: CreditCard, reng: "sky",
