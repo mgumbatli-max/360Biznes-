@@ -856,7 +856,7 @@ export async function getCustomerCreditStatus(
           FROM satis_sifarisleri
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND musteri_id = ${c.id}::uuid
-           AND status <> 'legv'
+           AND status NOT IN ('legv', 'qaytarilib')
            AND COALESCE(qaralama, false) = false
            AND odenis_nov IN ('nisye', 'borc')
            AND son_mebleg - COALESCE(odenilmis, 0) > 0
@@ -883,7 +883,7 @@ export async function getCustomerCreditStatus(
           FROM satis_sifarisleri
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND musteri_id = ${c.id}::uuid
-           AND status <> 'legv'
+           AND status NOT IN ('legv', 'qaytarilib')
            AND COALESCE(qaralama, false) = false
            AND odenis_nov IN ('nisye', 'borc')
            AND tarix < ${cutoff}

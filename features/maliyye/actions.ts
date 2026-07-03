@@ -836,7 +836,9 @@ export async function startMarketplaceReconciliation(input: FormData): Promise<A
         where: {
           sahibkar_id: sahibkarId,
           tarix: { gte: fromDate, lte: toDate },
-          status: { not: "legv" },
+          // QA-M21: qaytarılmış marketplace satışları gözlənən payout-a düşməsin
+          // (əvvəl yalnız 'legv' istisna idi → qaytarılmış satış payout-u şişirdirdi).
+          status: { notIn: ["legv", "qaytarilib"] },
           marketplace_platform: d.platforma,
         },
         _sum: { son_mebleg: true, komisyon_meblegh: true, xalis_meblegh: true },
