@@ -2477,7 +2477,17 @@ async function applyExpenseToInvoice(
 async function recalculateProductCostInternal(mehsul_id: string, sahibkarId: string) {
   try {
     const lines = await prisma.alis_sifaris_satirlari.findMany({
-      where: { mehsul_id, sahibkar_id: sahibkarId },
+      // QA-M13: ləğv/təsdiq-gözləyən/silinmiş alış sətirləri weighted-average mayaya
+      // (COGS bazası) düşməməlidir → mənfəət/marja/inventar dəyəri çirklənməsin.
+      // Orphan (sifaris_id=null) sətirlər saxlanılır.
+      where: {
+        mehsul_id,
+        sahibkar_id: sahibkarId,
+        OR: [
+          { sifaris_id: null },
+          { alis_sifarisleri: { status: { notIn: ["legv", "tesdiq_gozleyir"] }, deleted_at: null } },
+        ],
+      },
       select: { miqdar: true, vahid_qiymet: true, real_maya_eded: true, paylanan_xerc: true },
     });
     if (lines.length === 0) return;
