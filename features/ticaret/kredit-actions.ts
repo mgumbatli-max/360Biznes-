@@ -116,10 +116,18 @@ export async function recordKreditPayment(
             })
           : null;
 
+        // QA-M9: ləğv edilmiş satışa kredit ödənişi fantom finance mədaxili yaradırdı
+        // (acceptKreditPayment:33 ilə simmetrik guard — orada var idi, burada yox).
+        if (sale && sale.status === "legv") throw new Error("Ləğv edilmiş satışa ödəniş edilə bilməz");
+        if (k.status === "tamamlandi") throw new Error("Bu kredit artıq tam ödənilib");
+
         const magazaNet = Number(k.magaza_net ?? 0);
         const odenilmisIndi = Number(sale?.odenilmis ?? 0);
         const qaliqNet = Math.max(0, magazaNet - odenilmisIndi);
-        const tutulan = Math.min(mebleg, qaliqNet > 0 ? qaliqNet : mebleg);
+        // QA-M10: əvvəl qaliqNet=0-da `tutulan=mebleg` olurdu → tam ödənilmiş kreditə
+        // təkrar ödəniş İKİQAT finance mədaxili + hesab balansı şişməsi yaradırdı.
+        if (qaliqNet <= 0.001) throw new Error("Bu kredit artıq tam ödənilib");
+        const tutulan = Math.min(mebleg, qaliqNet);
 
         // Find or create operation type "qaime"
         let type = await tx.finance_operation_types
