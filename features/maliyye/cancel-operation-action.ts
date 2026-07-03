@@ -69,6 +69,7 @@ export async function cancelFinanceOperation(
             isci_id: true,
             satis_id: true,
             alish_id: true,
+            servis_id: true,
             // QA-orta: avans reversal üçün lazım olan sahələr
             y_n: true,
             qeyd: true,
@@ -142,6 +143,24 @@ export async function cancelFinanceOperation(
               WHERE id = ${op.alish_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid
             `;
             touchedAlis.add(op.alish_id);
+          }
+          if (op.servis_id) {
+            // QA-M17: servis ödənişinin ləğvi əvvəl servis_qeydleri.musteriden_alinan-ı
+            // geri açmırdı → servis borcu gizli qalır, ödəniş hələ görünürdü.
+            // musteriden_alinan-ı op məbləği qədər azalt (0-dan aşağı düşməsin) + balans recalc.
+            const srv = await tx.servis_qeydleri.findFirst({
+              where: { id: op.servis_id, sahibkar_id: sahibkarId },
+              select: { musteri_id: true },
+            });
+            await tx.$executeRaw`
+              UPDATE servis_qeydleri
+              SET musteriden_alinan = GREATEST(0, COALESCE(musteriden_alinan, 0) - ${opMebleg}::numeric)
+              WHERE id = ${op.servis_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid
+            `;
+            if (srv?.musteri_id) {
+              const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+              await recalculateCustomerBalance(srv.musteri_id, tx);
+            }
           }
         }
 
