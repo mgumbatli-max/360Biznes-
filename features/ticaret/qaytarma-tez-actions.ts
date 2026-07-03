@@ -139,6 +139,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      let loyaltyRatio = 0; // QA-M2: post-commit loyalty reversal nisbəti (tx daxilində təyin olunur)
       const result = await prisma.$transaction(async (tx) => {
         // Resolve anbar
         let anbarId = input.anbar_id ?? null;
@@ -277,6 +278,8 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           });
           if (origSale) {
             const son = Number(origSale.son_mebleg ?? 0);
+            // QA-M2/M16/M22: qaytarılan/satış nisbəti — post-commit loyalty reversal üçün.
+            loyaltyRatio = son > 0 ? Math.min(1, total / son) : 1;
             const odenilmis = Number(origSale.odenilmis ?? 0);
             const qalig = son - odenilmis;
             const isNisye = origSale.odenis_nov === "nisye" || origSale.odenis_nov === "borc";
@@ -336,6 +339,14 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
 
         return { id: ret.id, nomre: ret.nomre };
       });
+
+      // 🔄 QA-M2/M6/M16/M22: fastReturn loyalty balını geri qaytarmırdı (returnFullSale
+      // ilə asimmetrik → al→bal qazan→tez-qaytar = point farming; sərf olunan bal itirdi).
+      // tx commit-dən sonra, best-effort (funksiya throw etmir).
+      if (input.original_sale_id && loyaltyRatio > 0) {
+        const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
+        await reverseLoyaltyForSale(input.original_sale_id, loyaltyRatio);
+      }
 
       revalidatePath("/ticaret/qaytarma");
       revalidatePath("/ticaret/qaytarma/tez");

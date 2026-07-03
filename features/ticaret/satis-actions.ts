@@ -435,6 +435,12 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
         }
       });
 
+      // 🔄 QA-M1: satış ləğvində loyalty balını geri qaytar (returnFullSale ilə parity).
+      // Əvvəl ləğv loyalty-ə toxunmurdu: al→bal qazan→ləğv = point farming; sərf olunan
+      // bal isə geri qayıtmırdı. tx commit-dən sonra, best-effort (funksiya throw etmir).
+      const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
+      await reverseLoyaltyForSale(saleId, 1);
+
       // Auto-clear stock alerts if stock back to safe levels
       if (restoredMehsulIds.length > 0) {
         await checkAndCreateStockAlertBatch(restoredMehsulIds);
