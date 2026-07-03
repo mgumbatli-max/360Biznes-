@@ -467,61 +467,68 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
               // QA-orta: kart/köçürmə pulu nağd kassa hesabına yazılmasın deyə
               // ödəniş növünə uyğun hesab (kart→kart, kecirme→bank) üstün tutulur
               // (satis-actions.ts fallbackNov pattern-i); tapılmasa kassa hesabı.
-              let hesabIdForOp: string | null = null;
-              if (data.odenis_nov === "kart" || data.odenis_nov === "kecirme") {
-                const novHesab = await tx.maliye_hesablari.findFirst({
-                  where: {
+              // QA-M14: qarışıq ödənişdə finance_operations də HƏR metod üçün AYRICA
+              // sətir + öz hesabına yazılsın (əvvəl tam məbləğ tək hesaba düşürdü →
+              // kassa split-i düzgün, maliyyə hesabı drift edirdi). `parts` kassa ilə eynidir;
+              // non-split satışda tək element → geriyə uyğun.
+              const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+              const touchedAccs = new Set<string>();
+              for (const part of parts) {
+                let hesabIdForOp: string | null = null;
+                if (part.nov === "kart" || part.nov === "kecirme") {
+                  const novHesab = await tx.maliye_hesablari.findFirst({
+                    where: {
+                      sahibkar_id: sahibkarId,
+                      aktiv: true,
+                      nov: part.nov === "kart" ? "kart" : "bank",
+                    },
+                    orderBy: { yaradildi: "asc" },
+                    select: { id: true },
+                  });
+                  hesabIdForOp = novHesab?.id ?? null;
+                }
+                if (!hesabIdForOp) hesabIdForOp = kassa.maliye_hesab_id ?? null;
+                if (!hesabIdForOp) {
+                  const def = await tx.maliye_hesablari.findFirst({
+                    where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
+                    orderBy: { yaradildi: "asc" },
+                    select: { id: true },
+                  });
+                  hesabIdForOp = def?.id ?? null;
+                }
+                if (!hesabIdForOp) {
+                  // SELF-HEAL: heç bir hesab yoxdursa default nağd hesab yarat ki,
+                  // pul finance_operations-da hesaba attribute olunsun (drift önlənir).
+                  const createdAcc = await tx.maliye_hesablari.create({
+                    data: { sahibkar_id: sahibkarId, ad: "Nağd kassa", nov: "negd", qaliq: 0, valyuta: "AZN", aktiv: true },
+                    select: { id: true },
+                  });
+                  hesabIdForOp = createdAcc.id;
+                }
+                await tx.finance_operations.create({
+                  data: {
                     sahibkar_id: sahibkarId,
-                    aktiv: true,
-                    nov: data.odenis_nov === "kart" ? "kart" : "bank",
+                    type_id: type.id,
+                    type_kod: type.kod,
+                    y_n: "daxil",
+                    tarix: new Date(),
+                    meblegh: new Prisma.Decimal(part.mebleg),
+                    valyuta: "AZN",
+                    mezenne: 1,
+                    azn_meblegh: new Prisma.Decimal(part.mebleg),
+                    hesab_id: hesabIdForOp,
+                    kontragent_id: data.musteri_id ?? null,
+                    satis_id: sale.id,
+                    sened_nomresi: posCekNomresi,
+                    qeyd: `POS satış #${posCekNomresi} — ${part.nov}`,
+                    yaradan_id: istifadeciId,
                   },
-                  orderBy: { yaradildi: "asc" },
-                  select: { id: true },
                 });
-                hesabIdForOp = novHesab?.id ?? null;
+                if (hesabIdForOp) touchedAccs.add(hesabIdForOp);
               }
-              if (!hesabIdForOp) hesabIdForOp = kassa.maliye_hesab_id ?? null;
-              if (!hesabIdForOp) {
-                const def = await tx.maliye_hesablari.findFirst({
-                  where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
-                  orderBy: { yaradildi: "asc" },
-                  select: { id: true },
-                });
-                hesabIdForOp = def?.id ?? null;
-              }
-              if (!hesabIdForOp) {
-                // SELF-HEAL: heç bir hesab yoxdursa default nağd hesab yarat ki,
-                // pul finance_operations-da hesaba attribute olunsun (drift önlənir —
-                // əvvəl hesab_id=null yazılırdı, balans yenilənmirdi).
-                const createdAcc = await tx.maliye_hesablari.create({
-                  data: { sahibkar_id: sahibkarId, ad: "Nağd kassa", nov: "negd", qaliq: 0, valyuta: "AZN", aktiv: true },
-                  select: { id: true },
-                });
-                hesabIdForOp = createdAcc.id;
-              }
-              await tx.finance_operations.create({
-                data: {
-                  sahibkar_id: sahibkarId,
-                  type_id: type.id,
-                  type_kod: type.kod,
-                  y_n: "daxil",
-                  tarix: new Date(),
-                  meblegh: new Prisma.Decimal(sonMebleg),
-                  valyuta: "AZN",
-                  mezenne: 1,
-                  azn_meblegh: new Prisma.Decimal(sonMebleg),
-                  hesab_id: hesabIdForOp,
-                  kontragent_id: data.musteri_id ?? null,
-                  satis_id: sale.id,
-                  sened_nomresi: posCekNomresi,
-                  qeyd: `POS satış #${posCekNomresi} — ${data.odenis_nov}`,
-                  yaradan_id: istifadeciId,
-                },
-              });
-              // Source-of-truth-dan hesab qaliqını yenilə → real bank/nağd balansı sinxronlanır
-              if (hesabIdForOp) {
-                const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
-                await recalculateAccountBalance(hesabIdForOp, tx);
+              // Source-of-truth-dan hər toxunulan hesabın qaliqını yenilə
+              for (const acc of touchedAccs) {
+                await recalculateAccountBalance(acc, tx);
               }
             }
           } catch (e) {
