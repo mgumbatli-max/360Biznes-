@@ -7,7 +7,8 @@ import { formatDistanceToNow } from "date-fns";
 import { az } from "date-fns/locale";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 import { toast } from "sonner";
 import { PriorityBadge } from "./task-badges";
 import { ReminderDialog } from "./reminder-dialog";
@@ -98,24 +99,28 @@ export function KanbanBoard({ items, users = [] }: { items: TaskListItem[]; user
   );
 }
 
-function reminderTone(t: TaskListItem, now: Date): { color: string; tip: string } {
+function reminderTone(t: TaskListItem, now: Date, mounted: boolean): { color: string; tip: string } {
   if (!t.xatirlatma) {
     return { color: "text-slate-400 hover:text-slate-600", tip: "Xatırlatma qoy" };
   }
-  if (t.xatirlatma.getTime() < now.getTime()) {
+  // "keçib" render-də cari vaxtla müqayisə → SSR/hidratasiya fərqi (React #418).
+  // Mount-dan əvvəl neytral "planlaşdırılıb", sonra brauzerdə cari vaxta görə yenilənir.
+  if (mounted && t.xatirlatma.getTime() < now.getTime()) {
     return { color: "text-rose-500", tip: "Xatırlatma vaxtı keçib" };
   }
   return { color: "text-emerald-500", tip: "Xatırlatma planlaşdırılıb" };
 }
 
 function KanbanCard({ task, onReminder }: { task: TaskListItem; onReminder: () => void }) {
+  const mounted = useMounted();
   const now = new Date();
   const overdue =
+    mounted &&
     task.deadline &&
     task.deadline < now &&
     task.status !== "tamamlandi" &&
     task.status !== "legv";
-  const rem = reminderTone(task, now);
+  const rem = reminderTone(task, now, mounted);
   const reng = colorHexFor(task.reng);
 
   return (
@@ -138,7 +143,7 @@ function KanbanCard({ task, onReminder }: { task: TaskListItem; onReminder: () =
             {task.deadline && (
               <span className={cn("inline-flex items-center gap-0.5", overdue && "text-danger")}>
                 <CalendarClock className="h-2.5 w-2.5" />
-                {formatDistanceToNow(task.deadline, { addSuffix: true, locale: az })}
+                {mounted ? formatDistanceToNow(task.deadline, { addSuffix: true, locale: az }) : formatDate(task.deadline)}
               </span>
             )}
             {task.comment_count > 0 && (

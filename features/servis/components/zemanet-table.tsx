@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { ProductInline } from "@/features/anbar/components/product-inline";
 import { formatDate, formatMoney } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 import { deactivateZemanet, createServisFromZemanet } from "../zemanet-actions";
 import { ZemanetQrCell } from "./zemanet-qr-cell";
 import type { ZemanetRow } from "../types";
@@ -48,6 +49,7 @@ export function ZemanetTable({ rows }: { rows: ZemanetRow[] }) {
   const [activeOnly, setActiveOnly] = useState(false);
   const [expiringSoon, setExpiringSoon] = useState(false);
   const [pending, startTransition] = useTransition();
+  const mounted = useMounted();
 
   const filtered = useMemo(() => {
     const now = new Date();
@@ -153,7 +155,7 @@ export function ZemanetTable({ rows }: { rows: ZemanetRow[] }) {
             </thead>
             <tbody>
               {filtered.map((z) => {
-                const isActive = z.status === "aktiv" && new Date(z.bitme_tarixi) > new Date();
+                const isActive = mounted && z.status === "aktiv" && new Date(z.bitme_tarixi) > new Date();
                 return (
                   <tr key={z.id} className={`border-b border-border/30 hover:bg-secondary/40 ${pending ? "opacity-50" : ""}`}>
                     {cols.order.map((k) => {

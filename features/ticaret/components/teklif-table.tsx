@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { formatDate, formatMoney } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 import type { TeklifListItem } from "../teklif-queries";
 import { CustomerDrawer } from "@/features/elaqe/components/customer-drawer";
 
@@ -101,6 +102,7 @@ export function TeklifTable({
   }, []);
 
   const cols = useColumnToggle(STORAGE_KEY, COLUMN_DEFS, DEFAULT_ORDER);
+  const mounted = useMounted();
   const router = useRouter();
   const sp = useSearchParams();
   const pathname = usePathname();
@@ -205,7 +207,7 @@ export function TeklifTable({
             {sorted.map((t) => {
               const st = STATUS[t.status] ?? STATUS.qaralama;
               const isExpired =
-                t.bitme_tarixi && new Date(t.bitme_tarixi) < new Date() && !t.satish_id && t.status !== "redd";
+                mounted && t.bitme_tarixi && new Date(t.bitme_tarixi) < new Date() && !t.satish_id && t.status !== "redd";
 
               const cells: Record<string, React.ReactNode> = {
                 nomre: (

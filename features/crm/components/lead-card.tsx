@@ -18,12 +18,14 @@ import {
 import { LeadDialog } from "./lead-dialog";
 import { changeLeadStage, convertLeadToMusteri, convertLeadToSale, deleteLead } from "../actions";
 import { LEAD_STAGES, LEAD_PRIORITY, type LeadCard, type LeadStatus } from "../types";
-import { cn, formatMoney } from "@/lib/utils";
+import { cn, formatMoney, formatDate } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 
 export function LeadCardItem({ lead }: { lead: LeadCard }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const overdue = lead.novbeti_elaqe && lead.novbeti_elaqe < new Date();
+  const mounted = useMounted();
+  const overdue = mounted && lead.novbeti_elaqe && lead.novbeti_elaqe < new Date();
 
   function moveStage(s: LeadStatus) {
     startTransition(async () => {
@@ -116,7 +118,7 @@ export function LeadCardItem({ lead }: { lead: LeadCard }) {
         {lead.novbeti_elaqe && (
           <div className={cn("flex items-center gap-1.5", overdue && "text-danger")}>
             <CalendarClock className="h-3 w-3" />
-            <span>{formatDistanceToNow(lead.novbeti_elaqe, { addSuffix: true, locale: az })}</span>
+            <span>{mounted ? formatDistanceToNow(lead.novbeti_elaqe, { addSuffix: true, locale: az }) : formatDate(lead.novbeti_elaqe)}</span>
           </div>
         )}
       </div>

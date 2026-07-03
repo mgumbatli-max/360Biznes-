@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 import { Button } from "@/components/ui/button";
 import type { TaskListItem } from "../queries";
 
@@ -30,6 +31,7 @@ function priorityColor(p: string): string {
 }
 
 export function CalendarView({ items }: { items: TaskListItem[] }) {
+  const mounted = useMounted();
   const today = new Date();
   const [cursor, setCursor] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1));
   const [activeDay, setActiveDay] = useState<string | null>(null);
@@ -62,7 +64,10 @@ export function CalendarView({ items }: { items: TaskListItem[] }) {
   }, [items]);
 
   const monthLabel = `${AZ_MONTHS[cursor.getMonth()]} ${cursor.getFullYear()}`;
-  const todayKey = ymdKey(today);
+  // "Bu gün" xanası render-də cari günə əsaslanır; ymdKey lokal getter-lərlə (server
+  // UTC vs brauzer Bakı) gecəyarısına yaxın FƏRQLİ gün verə bilər → React #418.
+  // Mount-dan əvvəl heç bir xana işıqlanmır, sonra brauzerdə cari günə görə yenilənir.
+  const todayKey = mounted ? ymdKey(today) : null;
 
   function shift(months: number) {
     const next = new Date(cursor);

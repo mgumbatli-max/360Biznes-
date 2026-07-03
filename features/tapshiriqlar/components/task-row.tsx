@@ -4,6 +4,7 @@ import Link from "next/link";
 import { MessageSquare, CheckSquare, Eye } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 import { PriorityBadge, TaskStatusBadge } from "./task-badges";
 import { QuickStatusButtons } from "./quick-status-buttons";
 import { DeadlineCountdown } from "./deadline-countdown";
@@ -11,7 +12,8 @@ import { colorHexFor } from "./color-picker";
 import type { TaskListItem } from "../queries";
 
 export function TaskRow({ task }: { task: TaskListItem }) {
-  const overdue = task.deadline && task.deadline < new Date() && task.status !== "tamamlandi" && task.status !== "legv";
+  const mounted = useMounted();
+  const overdue = mounted && task.deadline && task.deadline < new Date() && task.status !== "tamamlandi" && task.status !== "legv";
   const checklistRatio = task.checklist_total > 0 ? task.checklist_done / task.checklist_total : 0;
   const reng = colorHexFor(task.reng);
 

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatDate } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 import { addEmployeeDocument, deleteEmployeeDocument } from "../documents-actions";
 import type { EmployeeDocument } from "../documents-queries";
 
@@ -37,6 +38,7 @@ export function DocumentsPanel({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [delPending, startDelTransition] = useTransition();
+  const mounted = useMounted();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -103,7 +105,7 @@ export function DocumentsPanel({
                 </thead>
                 <tbody>
                   {documents.map((d) => {
-                    const expired = d.bitme_tarixi && new Date(d.bitme_tarixi) < new Date();
+                    const expired = mounted && d.bitme_tarixi && new Date(d.bitme_tarixi) < new Date();
                     return (
                       <tr key={d.id} className="border-b border-border/30">
                         <td className="px-3 py-2 text-xs">

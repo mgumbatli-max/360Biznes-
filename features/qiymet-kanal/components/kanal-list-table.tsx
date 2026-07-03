@@ -4,6 +4,8 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, Loader2 } from "lucide-react";
 import { toast } from "@/lib/toast";
+import { formatDate } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { KanalFormDialog } from "./kanal-form-dialog";
@@ -54,6 +56,9 @@ export function KanalListTable({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // "Son istifadə" sütunu timeAgo() ilə cari vaxta əsaslanır → SSR-də mütləq tarix,
+  // mount-dan sonra relative (React #418 qoruyucusu).
+  const mounted = useMounted();
 
   function onDelete(k: KanalKomissiya) {
     if (
@@ -172,7 +177,11 @@ export function KanalListTable({
               <td className="px-3 py-2.5 text-right text-[10.5px] text-muted-foreground">
                 {stats[k.kanal]?.last_call ? (
                   <>
-                    <div>{timeAgo(stats[k.kanal].last_call)}</div>
+                    <div>
+                      {mounted
+                        ? timeAgo(stats[k.kanal].last_call)
+                        : formatDate(stats[k.kanal].last_call, { dateStyle: "short", timeStyle: "short" })}
+                    </div>
                     <div className="text-emerald-600">
                       bu gün: {stats[k.kanal].today_count} · cəm: {stats[k.kanal].total_count}
                     </div>

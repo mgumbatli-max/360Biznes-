@@ -34,6 +34,7 @@ import { PaymentForm } from "./payment-form";
 import { NotesTab } from "./notes-tab";
 import { RejectReasonDialog } from "./reject-reason-dialog";
 import { formatMoney, formatDate } from "@/lib/utils";
+import { useMounted } from "@/lib/hooks/use-mounted";
 
 const VisuallyHidden = VisuallyHiddenPrimitive.Root;
 
@@ -133,6 +134,7 @@ export function ServisDetailModal({
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
+  const mounted = useMounted();
   const open = !!data;
 
   function close() {
@@ -161,7 +163,7 @@ export function ServisDetailModal({
 
   const stat = SERVIS_STATUS_LABELS[data.status] ?? SERVIS_STATUS_LABELS.qebul_edildi;
   const next = NEXT_STAGES[data.status] ?? [];
-  const overdue = data.texmini_tehvil && new Date(data.texmini_tehvil) < new Date() && !data.qapanma_tarixi;
+  const overdue = mounted && data.texmini_tehvil && new Date(data.texmini_tehvil) < new Date() && !data.qapanma_tarixi;
   const balance = data.temir_xerci - data.musteriden_alinan;
   const netProfit = data.musteriden_alinan - data.temir_xerci;
 
