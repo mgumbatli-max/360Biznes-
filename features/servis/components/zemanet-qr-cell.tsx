@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QrCode, Printer, ExternalLink, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -21,10 +21,13 @@ export function ZemanetQrCell({
   mehsulAd?: string | null;
 }) {
   const [open, setOpen] = useState(false);
-  // The QR payload is the public URL to verify warranty
-  const url = typeof window !== "undefined"
-    ? `${window.location.origin}/zemanet/${qrToken}`
-    : `/zemanet/${qrToken}`;
+  // The QR payload is the public URL to verify warranty.
+  // origin SSR-də və ilk client render-də boş → <img src> hər iki tərəfdə eyni (nisbi
+  // URL); mount sonrası mütləq origin. `typeof window`-u birbaşa render-də oxumaq
+  // SSR(nisbi) ≠ client(mütləq) img src → React #418 yaradırdı.
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  const url = `${origin}/zemanet/${qrToken}`;
   const small = `https://api.qrserver.com/v1/create-qr-code/?size=32x32&margin=0&data=${encodeURIComponent(url)}`;
   const big = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(url)}`;
 

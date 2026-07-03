@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Send, Link2, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -26,10 +26,12 @@ export function QiymetTeklifForm({
   const [qeyd, setQeyd] = useState("");
   const [pending, startTransition] = useTransition();
 
-  const publicLink =
-    trackToken && typeof window !== "undefined"
-      ? `${window.location.origin}/servis-track/${trackToken}/teklif/${id}`
-      : "";
+  // origin SSR-də və ilk client render-də boş → publicLink hər iki tərəfdə "" (blok
+  // render olunmur); mount sonrası mütləq origin qoyulur. `typeof window`-u birbaşa
+  // render-də oxumaq SSR("") ≠ client(link var) → şərti blok #418 yaradırdı.
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+  const publicLink = trackToken && origin ? `${origin}/servis-track/${trackToken}/teklif/${id}` : "";
 
   function copyLink() {
     if (!publicLink) return;

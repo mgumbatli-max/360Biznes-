@@ -1,20 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, RefreshCw } from "lucide-react";
+import { seededRandom } from "@/lib/seeded-random";
 
 type Cohort = { month: string; size: number; retention: number[] }; // retention[i] = % returned i months later
 
-function generateCohorts(): Cohort[] {
+function generateCohorts(rand: () => number = Math.random): Cohort[] {
   const months = ["Mart", "Aprel", "May", "İyun", "İyul", "Avqust"];
   return months.map((m, idx) => {
-    const size = Math.floor(80 + Math.random() * 120);
+    const size = Math.floor(80 + rand() * 120);
     const len = months.length - idx;
     const retention: number[] = [100];
     let last = 100;
     for (let i = 1; i < len; i++) {
-      const decay = 10 + Math.random() * 18 - i * 1.5;
+      const decay = 10 + rand() * 18 - i * 1.5;
       last = Math.max(8, last - decay);
       retention.push(Math.round(last));
     }
@@ -23,7 +24,9 @@ function generateCohorts(): Cohort[] {
 }
 
 export function SandboxCohort() {
-  const [cohorts, setCohorts] = useState<Cohort[]>(() => generateCohorts());
+  // İlkin data seed-li (deterministik) → SSR=client, #418 yoxdur; mount sonrası randomlaşır.
+  const [cohorts, setCohorts] = useState<Cohort[]>(() => generateCohorts(seededRandom(1)));
+  useEffect(() => setCohorts(generateCohorts()), []);
   const maxLen = useMemo(() => Math.max(...cohorts.map((c) => c.retention.length)), [cohorts]);
 
   const bg = (v: number) => {

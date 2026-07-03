@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, RefreshCw } from "lucide-react";
+import { seededRandom } from "@/lib/seeded-random";
 
 /** Simple linear regression: y = a + b*x */
 function linearRegression(values: number[]) {
@@ -20,15 +21,17 @@ function linearRegression(values: number[]) {
   return { a, b };
 }
 
-function generate(): number[] {
+function generate(rand: () => number = Math.random): number[] {
   const base = 800;
   const trend = 12; // upward
   const noise = 100;
-  return Array.from({ length: 14 }, (_, i) => Math.max(0, Math.round(base + trend * i + (Math.random() - 0.5) * noise)));
+  return Array.from({ length: 14 }, (_, i) => Math.max(0, Math.round(base + trend * i + (rand() - 0.5) * noise)));
 }
 
 export function SandboxTrendForecast() {
-  const [history, setHistory] = useState<number[]>(() => generate());
+  // İlkin data seed-li (deterministik) → SSR=client, #418 yoxdur; mount sonrası randomlaşır.
+  const [history, setHistory] = useState<number[]>(() => generate(seededRandom(3)));
+  useEffect(() => setHistory(generate()), []);
   const days = 7;
 
   const { forecast, slope } = useMemo(() => {
