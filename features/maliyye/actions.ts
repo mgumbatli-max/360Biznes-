@@ -2018,6 +2018,14 @@ export async function paySupplierInvoice(
       }
       const totalApplied = +distribution.reduce((s, x) => s + x.applied, 0).toFixed(2);
       const overpay = +Math.max(0, remain).toFixed(2);
+      // QA-M12: artıq ödəniş (overpay) SƏSSİZ İTİRDİ — pul hesabdan tam çıxırdı, təchizatçı
+      // borcu yalnız totalApplied qədər azalırdı, fərq nə borc nə avans kimi izlənmirdi.
+      // paySupplierAllOpen:1852 ilə simmetrik guard — artıq ödənişi blokla.
+      if (d.mebleg > totalApplied + 0.01) {
+        throw new Error(
+          `Məbləğ açıq borcdan çoxdur: açıq borc ${totalApplied.toFixed(2)} ₼, daxil etdiyiniz ${d.mebleg.toFixed(2)} ₼. Artıq ödəniş izlənmir — məbləği ${totalApplied.toFixed(2)} ₼-ə düzəldin.`,
+        );
+      }
 
       await prisma.$transaction(async (tx) => {
         for (const dist of distribution) {
