@@ -15,15 +15,22 @@ import { requireTenant } from "@/lib/db/tenant-context";
  * BEST-EFFORT — throw etmir ki, qaytarmanın əsas nağd/stok axını bloklanmasın.
  * Qaytarma transaction-ı commit olduqdan SONRA çağırılmalıdır.
  */
-export async function reverseLoyaltyForSale(satisId: string, ratio: number): Promise<void> {
+export async function reverseLoyaltyForSale(satisId: string, ratio: number, returnRef?: string | null): Promise<void> {
   const r = Math.min(1, Math.max(0, ratio || 0));
   if (r <= 0 || !satisId) return;
+  const refTag = returnRef ? ` #ret:${returnRef}` : "";
   try {
     await withTenant(async () => {
       const { sahibkarId } = requireTenant();
-      // İdempotentlik — bu satış üçün artıq reversal qeydi varsa təkrarlama.
+      // İdempotentlik — returnRef verilibsə həmin QAYTARMA SƏNƏDİ üçün (QA-M3/M23:
+      // çoxlu hissəvi qaytarmada hər biri bir dəfə reverse olsun, yalnız birinci yox);
+      // yoxsa satış səviyyəsində (legacy — məs. cancelSale tam ləğv).
       const already = await prisma.loyalty_tx.findFirst({
-        where: { satis_id: satisId, nov: { in: ["qaytarma_geri", "qaytarma_serf_geri"] } },
+        where: {
+          satis_id: satisId,
+          nov: { in: ["qaytarma_geri", "qaytarma_serf_geri"] },
+          ...(returnRef ? { qeyd: { contains: `#ret:${returnRef}` } } : {}),
+        },
         select: { id: true },
       });
       if (already) return;
@@ -61,7 +68,7 @@ export async function reverseLoyaltyForSale(satisId: string, ratio: number): Pro
                 data: {
                   sahibkar_id: sahibkarId, kart_id: kartId, satis_id: satisId,
                   nov: "qaytarma_geri", mebleg: -take, qaliq: Number(after?.balans ?? 0),
-                  qeyd: `Satış qaytarıldı — qazanılan bal geri alındı #${satisId.slice(0, 8)}`,
+                  qeyd: `Satış qaytarıldı — qazanılan bal geri alındı #${satisId.slice(0, 8)}${refTag}`,
                 },
               });
             }
@@ -76,7 +83,7 @@ export async function reverseLoyaltyForSale(satisId: string, ratio: number): Pro
               data: {
                 sahibkar_id: sahibkarId, kart_id: kartId, satis_id: satisId,
                 nov: "qaytarma_serf_geri", mebleg: refundPoints, qaliq: Number(after?.balans ?? 0),
-                qeyd: `Satış qaytarıldı — sərf olunan bal qaytarıldı #${satisId.slice(0, 8)}`,
+                qeyd: `Satış qaytarıldı — sərf olunan bal qaytarıldı #${satisId.slice(0, 8)}${refTag}`,
               },
             });
           }

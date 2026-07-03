@@ -323,6 +323,17 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
                 kassaId: origSale.kassa_id, odenisNov: kassaOdenisNov, refund: total,
                 istifadeciId, qeyd: `Tez qaytarma refund: ${input.sebeb}`,
               });
+              // QA-M8/M15: nağd/kart satışda son_mebleg-i qaytarılan qədər azalt
+              // (returnFullSale ilə parity) → gəlir/marja hesabatı şişik qalmasın.
+              const yeniSonR = Math.max(0, son - total);
+              await tx.satis_sifarisleri.update({
+                where: { id: origSale.id },
+                data: {
+                  son_mebleg: yeniSonR,
+                  odenilmis: Math.min(odenilmis, yeniSonR),
+                  yenilendi: new Date(),
+                },
+              });
             }
 
             // Müştəri balansını source-of-truth-dan recalc
@@ -345,7 +356,8 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
       // tx commit-dən sonra, best-effort (funksiya throw etmir).
       if (input.original_sale_id && loyaltyRatio > 0) {
         const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
-        await reverseLoyaltyForSale(input.original_sale_id, loyaltyRatio);
+        // QA-M3/M23: returnRef = qaytarma sənədi → çoxlu hissəvi qaytarma düzgün.
+        await reverseLoyaltyForSale(input.original_sale_id, loyaltyRatio, result.id);
       }
 
       revalidatePath("/ticaret/qaytarma");
@@ -786,7 +798,8 @@ export async function returnFullSale(
       // 🔄 Loyalty balını geri qaytar (audit #8) — tx commit-dən sonra, best-effort.
       if (reversalRef.current) {
         const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
-        await reverseLoyaltyForSale(reversalRef.current.satisId, reversalRef.current.ratio);
+        // QA-M3/M23: returnRef = qaytarma sənədi → çoxlu hissəvi qaytarmada hər biri reverse olsun.
+        await reverseLoyaltyForSale(reversalRef.current.satisId, reversalRef.current.ratio, result.id);
       }
 
       revalidatePath("/ticaret/qaytarma");
