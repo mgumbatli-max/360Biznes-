@@ -250,7 +250,7 @@ async function fetchCeoKpisRaw(sahibkarId: string) {
       _sum: { son_mebleg: true },
     }),
     prismaUnscoped.$queryRaw<{ cogs: number }[]>`
-      SELECT COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs
+      SELECT COALESCE(SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)), 0)::float AS cogs
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
         JOIN mehsullar m ON m.id = sls.mehsul_id

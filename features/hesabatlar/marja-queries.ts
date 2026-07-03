@@ -20,7 +20,7 @@ export async function getMarjaKpi(range: DateRange): Promise<MarjaKpi> {
     const [agg, leaders] = await Promise.all([
       prisma.$queryRaw<{ revenue: number; cogs: number; units: number }[]>`
         SELECT COALESCE(SUM(sls.cemi), 0)::float AS revenue,
-               COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs,
+               COALESCE(SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)), 0)::float AS cogs,
                COALESCE(SUM(sls.miqdar), 0)::float AS units
           FROM satis_sifaris_satirlari sls
           JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
@@ -40,7 +40,7 @@ export async function getMarjaKpi(range: DateRange): Promise<MarjaKpi> {
              AND ss.tarix BETWEEN ${range.from} AND ${range.to}
              AND ss.status NOT IN ('legv','qaytarilib')
            GROUP BY sls.mehsul_id
-          HAVING SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) < 0
+          HAVING SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) < 0
         ) sub
       `,
     ]);
@@ -77,10 +77,10 @@ export async function getMarjaByCategory(range: DateRange): Promise<MarjaCategor
       SELECT COALESCE(c.ad, '—') AS kateqoriya,
              SUM(sls.miqdar)::float AS units,
              SUM(sls.cemi)::float AS revenue,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS cogs,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS margin,
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS cogs,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS margin,
              CASE WHEN SUM(sls.cemi) > 0
-                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
+                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
                   ELSE 0 END AS margin_pct
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
@@ -134,10 +134,10 @@ export async function getMarjaProducts(
       SELECT m.id::text AS mehsul_id, m.ad, m.kod, COALESCE(c.ad, '—') AS kateqoriya,
              SUM(sls.miqdar)::float AS units,
              SUM(sls.cemi)::float AS revenue,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS cogs,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS margin,
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS cogs,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS margin,
              CASE WHEN SUM(sls.cemi) > 0
-                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
+                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
                   ELSE 0 END AS margin_pct
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
@@ -185,10 +185,10 @@ export async function getMarjaByCustomer(range: DateRange, limit = 20): Promise<
       SELECT k.id::text AS musteri_id, k.ad,
              COUNT(DISTINCT ss.id)::int AS orders,
              SUM(sls.cemi)::float AS revenue,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS cogs,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS margin,
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS cogs,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS margin,
              CASE WHEN SUM(sls.cemi) > 0
-                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
+                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
                   ELSE 0 END AS margin_pct
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
@@ -223,9 +223,9 @@ export async function getMarjaBuckets(range: DateRange): Promise<MarjaBucket[]> 
       WITH per_product AS (
         SELECT sls.mehsul_id,
                SUM(sls.cemi)::float AS revenue,
-               (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS margin,
+               (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS margin,
                CASE WHEN SUM(sls.cemi) > 0
-                    THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
+                    THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
                     ELSE 0 END AS margin_pct
           FROM satis_sifaris_satirlari sls
           JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id

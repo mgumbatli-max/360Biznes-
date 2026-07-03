@@ -5156,6 +5156,9 @@ model satis_sifaris_satirlari {
   vahid_qiymet      Decimal            @db.Decimal(12, 2)
   endirim_faiz      Decimal?           @default(0) @db.Decimal(5, 2)
   cemi              Decimal?           @default(dbgenerated("((miqdar * vahid_qiymet) * ((1)::numeric - (endirim_faiz / (100)::numeric)))")) @db.Decimal(12, 2)
+  // QA-M5: COGS snapshot — satış anındakı vahid maya (alış qiyməti). Sonrakı alış maya
+  // dəyişəndə keçmiş mənfəət retroaktiv sürüşməsin. NULL = köhnə sətir (cari mayaya fallback).
+  vahid_maya        Decimal?           @db.Decimal(12, 2)
   sahibkar_id       String             @db.Uuid
   mehsullar         mehsullar?         @relation(fields: [mehsul_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sahibkarlar       sahibkarlar        @relation(fields: [sahibkar_id], references: [id], onDelete: Cascade, onUpdate: NoAction)

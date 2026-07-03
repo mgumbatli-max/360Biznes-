@@ -33,7 +33,7 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
            AND s.status != 'legv' AND s.qaralama IS NOT TRUE
       `,
       prisma.$queryRaw<{ cogs: number }[]>`
-        SELECT COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs
+        SELECT COALESCE(SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)), 0)::float AS cogs
           FROM satis_sifaris_satirlari sls
           JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
           JOIN mehsullar m ON m.id = sls.mehsul_id
@@ -178,7 +178,7 @@ export async function getMonthlyPl12(): Promise<MonthlyPl[]> {
       ),
       cogs AS (
         SELECT to_char(ss.tarix, 'YYYY-MM') AS ay,
-               SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS cogs
+               SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS cogs
           FROM satis_sifaris_satirlari sls
           JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
           JOIN mehsullar m ON m.id = sls.mehsul_id

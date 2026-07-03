@@ -133,10 +133,10 @@ export async function getMarginAnalysis(limit = 20, range?: DateRange) {
       SELECT m.id::text AS mehsul_id, m.ad,
              SUM(sls.miqdar)::float AS satilan,
              SUM(sls.cemi)::float AS gelir,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS xerc,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS "mənfeet",
-             CASE WHEN SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) > 0
-                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) * 100)::float
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS xerc,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS "mənfeet",
+             CASE WHEN SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) > 0
+                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) * 100)::float
                   ELSE NULL END AS margin_faiz
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
@@ -197,7 +197,7 @@ export async function getProfitLoss(range?: DateRange) {
       }),
       // Cost of goods sold = sum of (miqdar × alish_qiymeti) for sold items
       prisma.$queryRaw<{ cogs: number }[]>`
-        SELECT COALESCE(SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS cogs
+        SELECT COALESCE(SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)), 0)::float AS cogs
           FROM satis_sifaris_satirlari sls
           JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
           JOIN mehsullar m ON m.id = sls.mehsul_id

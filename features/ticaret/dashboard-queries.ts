@@ -388,7 +388,7 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
     // 5) High-margin opportunity — products selling well but low stock
     const topMarginLow = await prisma.$queryRaw<Array<{ ad: string; profit: number }>>`
       SELECT m.ad,
-             SUM(ss.miqdar * (ss.vahid_qiymet - COALESCE(m.alish_qiymeti, 0)))::float AS profit
+             SUM(ss.miqdar * (ss.vahid_qiymet - COALESCE(ss.vahid_maya, m.alish_qiymeti, 0)))::float AS profit
       FROM satis_sifaris_satirlari ss
       JOIN satis_sifarisleri s ON s.id = ss.sifaris_id
       JOIN mehsullar m ON m.id = ss.mehsul_id

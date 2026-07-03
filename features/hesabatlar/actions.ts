@@ -505,7 +505,7 @@ export async function compareReportPeriods(
         // marja
         const r = await prisma.$queryRaw<{ marja: number }[]>`
           SELECT COALESCE(
-            (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) /
+            (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) /
             NULLIF(SUM(sls.cemi), 0) * 100, 0)::float AS marja
             FROM satis_sifaris_satirlari sls
             JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id

@@ -472,10 +472,10 @@ export async function getMarginByProduct(f: SalesFilter, limit = 20, order: "bes
       SELECT m.id::text AS mehsul_id, m.ad, m.kod,
              SUM(sls.miqdar)::float AS qty,
              SUM(sls.cemi)::float AS revenue,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS cogs,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS margin,
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS cogs,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS margin,
              CASE WHEN SUM(sls.cemi) > 0
-                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
+                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.cemi) * 100)::float
                   ELSE 0 END AS margin_pct
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id

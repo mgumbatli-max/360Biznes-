@@ -114,10 +114,10 @@ export async function getTopMovers(range: DateRange, limit = 20): Promise<Produc
       SELECT m.id::text AS mehsul_id, m.ad, m.kod,
              SUM(sls.miqdar)::float AS satilan,
              SUM(sls.cemi)::float AS gelir,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS xerc,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS "mənfeet",
-             CASE WHEN SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) > 0
-                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) * 100)::float
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS xerc,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS "mənfeet",
+             CASE WHEN SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) > 0
+                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) * 100)::float
                   ELSE NULL END AS margin_faiz
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
@@ -141,10 +141,10 @@ export async function getMostProfitable(range: DateRange, limit = 20): Promise<P
       SELECT m.id::text AS mehsul_id, m.ad, m.kod,
              SUM(sls.miqdar)::float AS satilan,
              SUM(sls.cemi)::float AS gelir,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS xerc,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS "mənfeet",
-             CASE WHEN SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) > 0
-                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) * 100)::float
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS xerc,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS "mənfeet",
+             CASE WHEN SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) > 0
+                  THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) * 100)::float
                   ELSE NULL END AS margin_faiz
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
@@ -168,8 +168,8 @@ export async function getSlowMovers(range: DateRange, limit = 20): Promise<Produ
       SELECT m.id::text AS mehsul_id, m.ad, m.kod,
              SUM(sls.miqdar)::float AS satilan,
              SUM(sls.cemi)::float AS gelir,
-             SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS xerc,
-             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)))::float AS "mənfeet",
+             SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))::float AS xerc,
+             (SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)))::float AS "mənfeet",
              NULL::float AS margin_faiz
         FROM satis_sifaris_satirlari sls
         JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id

@@ -36,8 +36,8 @@ export async function buildAiInsights(): Promise<{ insights: Insight[]; ai_text:
       prisma.$queryRaw<{ kateqoriya: string; gelir: number; margin: number | null }[]>`
         SELECT COALESCE(c.ad, '—') AS kateqoriya,
                SUM(sls.cemi)::float AS gelir,
-               CASE WHEN SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) > 0
-                    THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(m.alish_qiymeti, 0)) * 100)::float
+               CASE WHEN SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) > 0
+                    THEN ((SUM(sls.cemi) - SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0))) / SUM(sls.miqdar * COALESCE(sls.vahid_maya, m.alish_qiymeti, 0)) * 100)::float
                     ELSE NULL END AS margin
           FROM satis_sifaris_satirlari sls
           JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
