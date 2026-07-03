@@ -1505,9 +1505,11 @@ export async function markPayoutReceived(input: FormData): Promise<ActionResult>
       }
 
       await prisma.$transaction(async (tx) => {
-        // 1) Payout statusunu yenilə
-        await tx.finance_marketplace_payments.update({
-          where: { id: d.payout_id },
+        // 1) Payout statusunu ATOMİK yenilə — QA-M20: status yoxlaması (yuxarıda,
+        // tranzaksiyadan KƏNARDA) paralel submit-də ikiqat payout kreditləyirdi.
+        // Şərtli updateMany yalnız hələ ödənilməmişi tutur; uduzan submit abort olur.
+        const upd = await tx.finance_marketplace_payments.updateMany({
+          where: { id: d.payout_id, sahibkar_id: sahibkarId, status: { not: "odenildi" } },
           data: {
             status: "odenildi",
             banka_dushen: d.faktiki_mebleg,
@@ -1519,6 +1521,7 @@ export async function markPayoutReceived(input: FormData): Promise<ActionResult>
             ].filter(Boolean).join(" · "),
           },
         });
+        if (upd.count === 0) throw new Error("Bu payout artıq ödənilib");
 
         // 2-3) QA-K18: əvvəl manual qaliq increment + (type yoxdursa) finance_op
         // YARANMIRDI → gələcək recalc balansı silirdi. İndi layihə standartı:
@@ -2693,6 +2696,10 @@ export async function runRecurringCheck(): Promise<{ ok: true; yaradilan: number
         where: {
           sahibkar_id: sahibkarId,
           qeyd: { contains: "[RECUR:" },
+          // QA-K3: yaradılan instansiyalar qeyd-də orijinal [RECUR:] tag-ını daşıyır
+          // (`[RECUR_INST:id] [RECUR:ayliq] ...`) → template kimi yenidən seçilib
+          // EKSPONENSİAL təkrar yaradırdı. İnstansiyaları template siyahısından çıxar.
+          NOT: { qeyd: { contains: "[RECUR_INST:" } },
           status: { in: ["aktiv", "tesdiq_gozleyir"] },
         },
         orderBy: { tarix: "desc" },

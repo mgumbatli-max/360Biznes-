@@ -624,12 +624,15 @@ export async function returnFullSale(
                 sahibkar_id: sahibkarId,
                 type_id: origOp.type_id,
                 type_kod: origOp.type_kod,
+                // QA-K1: balans = SUM(daxil) − SUM(xaric). Payout 'daxil' idi;
+                // reversal 'xaric' + MÜSBƏT azn olmalıdır ki, balansı AZALTSIN.
+                // Əvvəl MƏNFİ azn işarəsi balansı ARTIRIRDI (2× səhv). recordRefundFinanceOp ilə eyni.
                 y_n: "xaric",
                 tarix: new Date(),
-                meblegh: -Math.abs(netReverse),
+                meblegh: Math.abs(netReverse),
                 valyuta: origOp.valyuta,
                 mezenne: origOp.mezenne,
-                azn_meblegh: -Math.abs(netReverse),
+                azn_meblegh: Math.abs(netReverse),
                 komissiya: -Math.abs(komisyonReverse),
                 hesab_id: origOp.hesab_id,
                 satis_id: sale.id,
@@ -641,6 +644,12 @@ export async function returnFullSale(
                 yaradan_id: istifadeciId,
               },
             });
+            // QA-K1: reversal balansı source-of-truth-dan yenilə (əvvəl recalc çağırılmırdı,
+            // maliye_hesablari.qaliq köhnə/yanlış qalırdı).
+            if (origOp.hesab_id) {
+              const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+              await recalculateAccountBalance(origOp.hesab_id, tx);
+            }
             reversedFinance = true;
           } else {
             // QA-orta: payout hələ GÖZLƏYİRSƏ (marketplace_payout op-u yoxdur) pending
