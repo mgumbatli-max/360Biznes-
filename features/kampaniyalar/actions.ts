@@ -1124,7 +1124,8 @@ export async function getCampaignRoi(campaignId: string): Promise<{ ok: true; da
       const sales = await prisma.satis_sifarisleri.aggregate({
         where: {
           campaign_usage: { some: { campaign_id: campaignId } },
-          status: { not: "legv" },
+          // QA-minor: qaytarılmış satışlar kampaniya ROI gəlirinə düşməsin (ROI şişməsin).
+          status: { notIn: ["legv", "qaytarilib"] },
         },
         _sum: { son_mebleg: true },
       }).catch(() => ({ _sum: { son_mebleg: 0 } }));

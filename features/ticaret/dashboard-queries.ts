@@ -290,18 +290,19 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
     // 1) Sales trend (this week vs last week)
     const [sale7, sale14] = await Promise.all([
       prisma.satis_sifarisleri.aggregate({
-        where: { sahibkar_id: sahibkarId, tarix: { gte: d7 }, status: { not: "legv" } },
-        _sum: { umumi_mebleg: true },
+        // QA-minor: son_mebleg (faktiki gəlir, umumi_mebleg deyil) + qaytarılmış/qaralama istisna.
+        where: { sahibkar_id: sahibkarId, tarix: { gte: d7 }, status: { notIn: ["legv", "qaytarilib"] }, qaralama: { not: true } },
+        _sum: { son_mebleg: true },
         _count: { _all: true },
       }),
       prisma.satis_sifarisleri.aggregate({
-        where: { sahibkar_id: sahibkarId, tarix: { gte: d14, lt: d7 }, status: { not: "legv" } },
-        _sum: { umumi_mebleg: true },
+        where: { sahibkar_id: sahibkarId, tarix: { gte: d14, lt: d7 }, status: { notIn: ["legv", "qaytarilib"] }, qaralama: { not: true } },
+        _sum: { son_mebleg: true },
         _count: { _all: true },
       }),
     ]);
-    const cur = Number(sale7._sum.umumi_mebleg ?? 0);
-    const prev = Number(sale14._sum.umumi_mebleg ?? 0);
+    const cur = Number(sale7._sum.son_mebleg ?? 0);
+    const prev = Number(sale14._sum.son_mebleg ?? 0);
     if (prev > 0) {
       const pct = ((cur - prev) / prev) * 100;
       if (pct >= 15) {
