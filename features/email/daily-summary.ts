@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { runWithTenant } from "@/lib/db/tenant-context";
+import { formatDate } from "@/lib/utils";
 
 export type DailySummary = {
   sahibkar_id: string;
@@ -214,7 +215,7 @@ export async function buildDailySummary(sahibkarId: string): Promise<DailySummar
 /** Summary objektindən HTML email yarad. */
 export function renderDailySummaryHtml(s: DailySummary): { subject: string; html: string } {
   const fmtAzn = (n: number) => `${n.toFixed(2)} ₼`;
-  const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("az-AZ", { day: "numeric", month: "long", year: "numeric" });
+  const fmtDate = (iso: string) => formatDate(iso, { day: "numeric", month: "long", year: "numeric" });
   const subject = `📊 Günlük xülasə — ${fmtDate(s.date)} · Satış ${fmtAzn(s.sales.total)}`;
   const topRows = s.top_products
     .map(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { auth } from "@/auth";
 import { getProposalDetail } from "@/features/satinalma/queries";
+import { formatDate } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     ["Ad:", teklif.ad ?? "—"],
     ["Yaradan:", teklif.yaradan?.ad_soyad ?? "—"],
     ["Filial:", teklif.filial?.ad ?? "—"],
-    ["Yaradıldı:", new Date(teklif.yaradildi).toLocaleString("az-AZ")],
+    ["Yaradıldı:", formatDate(teklif.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })],
     ["Status:", teklif.status],
   ];
   for (let i = 0; i < metaRows.length; i++) {
@@ -156,7 +157,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     ["Yaradan əməkdaş", teklif.yaradan?.ad_soyad ?? "—"],
     ["Email", teklif.yaradan?.email ?? "—"],
     ["Filial", teklif.filial?.ad ?? "—"],
-    ["Yaradıldı", new Date(teklif.yaradildi).toLocaleString("az-AZ")],
+    ["Yaradıldı", formatDate(teklif.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })],
     ["Status", teklif.status],
     ["", ""],
     ["Cəmi sətir", teklif.satirlar.length],

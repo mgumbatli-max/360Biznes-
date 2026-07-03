@@ -11,7 +11,7 @@ import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { getCampaigns, getCampaignStats } from "@/features/kampaniyalar/queries";
 import { TIP_META, STATUS_META, type KampaniyaTip, type KampaniyaStatus } from "@/features/kampaniyalar/types";
 import { TEMPLATES } from "@/features/kampaniyalar/templates";
-import { cn, formatMoney } from "@/lib/utils";
+import { cn, formatMoney, formatDate } from "@/lib/utils";
 import { liteGate } from "@/lib/lite/config";
 
 export const metadata: Metadata = { title: "Kampaniyalar — endirim, loyalty, kuponlar" };
@@ -164,7 +164,7 @@ export default async function KampaniyalarPage() {
                         <Badge variant="outline" className="text-[10px]">{tipMeta.ad}</Badge>
                         {c.bitme && (
                           <Badge variant="outline" className="text-[10px]">
-                            {c.bitme < new Date() ? "🔚 Bitdi" : `🗓 ${new Date(c.bitme).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" })}`}
+                            {c.bitme < new Date() ? "🔚 Bitdi" : `🗓 ${formatDate(c.bitme, { day: "2-digit", month: "short" })}`}
                           </Badge>
                         )}
                         {c.stackable && <Badge variant="outline" className="text-[10px]">Stack</Badge>}

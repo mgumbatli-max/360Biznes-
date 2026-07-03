@@ -4,6 +4,7 @@ import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant, runWithTenant } from "@/lib/db/tenant-context";
 import { isMockMode } from "@/lib/ai/anthropic";
+import { formatNumber, formatDate } from "@/lib/utils";
 
 /**
  * Owner mode-a kim girir? — sahibkar / admin / direktor / owner.
@@ -105,12 +106,12 @@ async function _computeBusinessContext(
       select: { ad: true },
     }).catch(() => null);
     const valyuta = "AZN";
-    const fmt = (n: number) => n.toLocaleString("az-AZ", { maximumFractionDigits: 0 });
+    const fmt = (n: number) => formatNumber(Math.round(n));
 
     const lines: string[] = [
       `<biznes_konteksti>`,
       `Şirkət: ${sahibkar?.ad ?? "—"}`,
-      `Tarix: ${now.toLocaleDateString("az-AZ", { day: "2-digit", month: "long", year: "numeric" })}`,
+      `Tarix: ${formatDate(now, { day: "2-digit", month: "long", year: "numeric" })}`,
       `İstifadəçi rolu: ${isOwner ? "Sahibkar (tam giriş)" : "Əməkdaş (məhdud giriş)"}`,
       ``,
     ];

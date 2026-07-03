@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { safeAuditLog } from "@/lib/audit/safe-log";
 import { audit } from "@/lib/audit/log";
 import { requireCrmActionPerm, bustCrmCache, getCrmScopeFilter } from "./access-guard";
+import { formatDate } from "@/lib/utils";
 
 const LeadSchema = z.object({
   id: z.string().uuid().optional(),
@@ -385,7 +386,7 @@ export async function appendLeadNote(input: FormData): Promise<ActionResult> {
     try {
       const existing = await prisma.leads.findFirst({ where: { id: d.lead_id }, select: { qeyd: true, ad: true } });
       if (!existing) return { ok: false, error: "Lead tapılmadı" };
-      const stamp = new Date().toLocaleString("az-AZ");
+      const stamp = formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
       const next = [existing.qeyd ?? "", `\n[${stamp}] ${d.qeyd}`].filter(Boolean).join("");
       await prisma.leads.update({
         where: { id: d.lead_id },

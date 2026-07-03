@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import ExcelJS from "exceljs";
 import { auth } from "@/auth";
 import { getDavamiyyetData } from "@/features/iscilier/davamiyyet-queries";
+import { formatDate } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -65,8 +66,8 @@ export async function GET(req: NextRequest) {
       tarix: new Date(r.tarix).toISOString().slice(0, 10),
       ad: r.istifadeci_ad,
       shift: r.shift ? SHIFT_LABEL[r.shift] ?? r.shift : "",
-      giris: r.giris ? new Date(r.giris).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit" }) : "",
-      cixis: r.cixis ? new Date(r.cixis).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit" }) : "",
+      giris: r.giris ? formatDate(r.giris, { hour: "2-digit", minute: "2-digit" }) : "",
+      cixis: r.cixis ? formatDate(r.cixis, { hour: "2-digit", minute: "2-digit" }) : "",
       fasile: r.fasile_dq,
       saat: r.ish_saatlari ?? 0,
       gec: r.gec_dq,

@@ -33,7 +33,7 @@ import { ServisFayllar, type ServisFaylItem } from "./servis-fayllar";
 import { PaymentForm } from "./payment-form";
 import { NotesTab } from "./notes-tab";
 import { RejectReasonDialog } from "./reject-reason-dialog";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 
 const VisuallyHidden = VisuallyHiddenPrimitive.Root;
 
@@ -191,7 +191,7 @@ export function ServisDetailModal({
             </div>
             {data.yaradildi && (
               <div className="mt-0.5 text-xs text-muted-foreground">
-                Qəbul: {new Date(data.yaradildi).toLocaleString("az-AZ")}
+                Qəbul: {formatDate(data.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               </div>
             )}
           </div>
@@ -264,7 +264,7 @@ export function ServisDetailModal({
                     <Calendar className="h-3 w-3 text-muted-foreground" />
                     <span className="text-muted-foreground">Vəd tarixi:</span>
                     <span className={overdue ? "font-medium text-rose-400" : "font-medium"}>
-                      {new Date(data.texmini_tehvil).toLocaleDateString("az-AZ")}
+                      {formatDate(data.texmini_tehvil)}
                     </span>
                   </div>
                 )}
@@ -273,7 +273,7 @@ export function ServisDetailModal({
                     <Calendar className="h-3 w-3 text-emerald-400" />
                     <span className="text-muted-foreground">Bitmə:</span>
                     <span className="font-medium text-emerald-400">
-                      {new Date(data.qapanma_tarixi).toLocaleDateString("az-AZ")}
+                      {formatDate(data.qapanma_tarixi)}
                     </span>
                   </div>
                 )}
@@ -292,8 +292,8 @@ export function ServisDetailModal({
                     </Badge>
                     {data.zemanet_baslama && data.zemanet_bitme && (
                       <div className="mt-1.5 text-xs text-muted-foreground">
-                        {new Date(data.zemanet_baslama).toLocaleDateString("az-AZ")} →{" "}
-                        {new Date(data.zemanet_bitme).toLocaleDateString("az-AZ")}
+                        {formatDate(data.zemanet_baslama)} →{" "}
+                        {formatDate(data.zemanet_bitme)}
                       </div>
                     )}
                   </div>
@@ -420,7 +420,7 @@ export function ServisDetailModal({
                               )}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {p.tarix ? new Date(p.tarix).toLocaleString("az-AZ") : "—"}
+                              {p.tarix ? formatDate(p.tarix, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
                               {p.qeyd && ` · ${p.qeyd}`}
                             </div>
                           </div>
@@ -541,7 +541,7 @@ function TimelineList({ entries }: { entries: DetailTimelineEntry[] }) {
               {e.deyisen_ad && <span className="text-xs text-muted-foreground">· {e.deyisen_ad}</span>}
               {e.yaradildi && (
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {new Date(e.yaradildi).toLocaleString("az-AZ")}
+                  {formatDate(e.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
             </div>
@@ -589,7 +589,7 @@ function TaskList({ tasks }: { tasks: DetailTask[]; servisId: string }) {
             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {t.mesul_ad && <span>· {t.mesul_ad}</span>}
               {t.deadline && (
-                <span>· son: {new Date(t.deadline).toLocaleDateString("az-AZ")}</span>
+                <span>· son: {formatDate(t.deadline)}</span>
               )}
             </div>
           </div>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Package, ShoppingCart, Percent, Users, Phone, MapPin, Hash, Tag, Truck, Building2, Wallet, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatMoney, formatNumber } from "@/lib/utils";
+import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
 
 function marginBadge(pct: number) {
   if (pct >= 30) return { cls: "bg-emerald-500/15 text-emerald-500 border-emerald-500/40", label: "Əla" };
@@ -214,7 +214,7 @@ export function MusteriBrick({
 
         {last_order && (
           <div className="mt-2 text-right text-[10px] text-muted-foreground">
-            Son sifariş: {new Date(last_order).toLocaleDateString("az-AZ", { day: "numeric", month: "short", year: "2-digit" })}
+            Son sifariş: {formatDate(last_order, { day: "numeric", month: "short", year: "2-digit" })}
           </div>
         )}
       </div>
@@ -385,7 +385,7 @@ export function TedarukciBrick({
 
         <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
           {last_order ? (
-            <span>Son: {new Date(last_order).toLocaleDateString("az-AZ", { day: "numeric", month: "short" })}</span>
+            <span>Son: {formatDate(last_order, { day: "numeric", month: "short" })}</span>
           ) : (
             <span>—</span>
           )}

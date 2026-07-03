@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
 import { SERVIS_STATUS_LABELS } from "../types";
 
 export type TimelineEntry = {
@@ -34,7 +35,7 @@ export function StatusTimeline({ entries, dense = false }: { entries: TimelineEn
               )}
               {e.yaradildi && (
                 <span className="ml-auto text-xs text-muted-foreground">
-                  {new Date(e.yaradildi).toLocaleString("az-AZ")}
+                  {formatDate(e.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                 </span>
               )}
             </div>

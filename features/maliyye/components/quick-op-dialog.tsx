@@ -12,7 +12,7 @@ import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { toast } from "sonner";
 import { saveQuickOperation, payAllOpenInvoices, applyAdvanceToInvoice } from "../actions";
 import { getCustomerOpenInvoicesAction, type OpenInvoice } from "../customer-invoices-action";
-import { formatMoney } from "@/lib/utils";
+import { formatDate, formatMoney } from "@/lib/utils";
 import { ContactContextPanel } from "@/features/elaqe/components/contact-context-panel";
 
 type EntityOpt = { id: string; ad: string };
@@ -249,7 +249,7 @@ function QuickOpDialogInner({ hesablar, iscilier, kontragentler }: Props) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="tarix">Tarix *</Label>
-              <Input id="tarix" name="tarix" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} disabled={pending} />
+              <Input id="tarix" name="tarix" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} disabled={pending} suppressHydrationWarning />
             </div>
           </div>
 
@@ -478,7 +478,7 @@ function QuickOpDialogInner({ hesablar, iscilier, kontragentler }: Props) {
                               <div className="font-mono font-medium truncate">#{inv.nomre}</div>
                               <div className="text-[10px] text-muted-foreground inline-flex items-center gap-1">
                                 <Calendar className="h-2.5 w-2.5" />
-                                {new Date(inv.tarix).toLocaleDateString("az-AZ")}
+                                {formatDate(inv.tarix)}
                                 {inv.gun > 0 && ` · ${inv.gun} gün`}
                               </div>
                             </div>

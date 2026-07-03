@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { TrendingUp, TrendingDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 import type { ForecastBucket } from "../cashflow-queries";
 
 type Range = 30 | 60 | 90;
@@ -85,7 +85,7 @@ export function CashflowForecast({ initialRange = 30, data }: { initialRange?: R
           {data.map((b, i) => {
             const inPct = (b.expected_in / maxAbs) * 100;
             const outPct = ((b.recurring_out + b.supplier_out) / maxAbs) * 100;
-            const weekLabel = new Date(b.bucket).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" });
+            const weekLabel = formatDate(b.bucket, { day: "2-digit", month: "short" });
             return (
               <div key={b.bucket} className="grid grid-cols-[80px_1fr_100px] items-center gap-2 text-xs">
                 <span className="text-muted-foreground">H{i + 1} · {weekLabel}</span>

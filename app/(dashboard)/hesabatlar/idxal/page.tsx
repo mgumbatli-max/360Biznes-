@@ -13,7 +13,7 @@ import {
   getImportStatusBreakdown,
 } from "@/features/hesabatlar/idxal-queries";
 import { parseDateRange, formatDateInput, rangeLabel } from "@/features/hesabatlar/shared";
-import { formatMoney, formatNumber, cn } from "@/lib/utils";
+import { formatDate, formatMoney, formatNumber, cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İdxal/Alış hesabatı" };
 
@@ -276,7 +276,7 @@ export default async function IdxalReportPage({ searchParams }: { searchParams: 
                           {s.son_sifaris ? (
                             <span className="inline-flex items-center gap-0.5">
                               <Calendar className="h-2.5 w-2.5" />
-                              {new Date(s.son_sifaris).toLocaleDateString("az-AZ", { day: "numeric", month: "short" })}
+                              {formatDate(s.son_sifaris, { day: "numeric", month: "short" })}
                             </span>
                           ) : "—"}
                         </td>

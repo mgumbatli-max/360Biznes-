@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "@/lib/toast";
+import { formatDate } from "@/lib/utils";
 import { generateKanalApiKey, revokeKanalApiKey } from "../api-key-actions";
 
 export function KanalApiKeyButton({
@@ -160,7 +161,7 @@ export function KanalApiKeyButton({
 
             {created && (
               <p className="text-[10.5px] text-muted-foreground">
-                Köhnə key yaradılma tarixi: {new Date(created).toLocaleString("az-AZ")} — artıq işləməyəcək
+                Köhnə key yaradılma tarixi: {formatDate(created, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })} — artıq işləməyəcək
               </p>
             )}
           </div>

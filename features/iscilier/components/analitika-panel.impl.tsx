@@ -18,7 +18,7 @@ import {
 } from "recharts";
 import { Sparkles, Cake } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { formatMoney } from "@/lib/utils";
+import { formatDate, formatMoney } from "@/lib/utils";
 import type { AnalitikaData } from "../analitika-queries";
 
 const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#0ea5e9", "#a855f7", "#14b8a6", "#f97316"];
@@ -141,7 +141,7 @@ export function AnalitikaPanel({
                       <div className="text-xs text-muted-foreground">{b.vezife ?? "—"}</div>
                     </div>
                     <Badge variant="outline" className="text-[10px]">
-                      {new Date(b.tarix).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" })}
+                      {formatDate(b.tarix, { day: "2-digit", month: "short" })}
                     </Badge>
                   </li>
                 ))}

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getSahibkarState } from "@/lib/sahibkar/guard";
 import { getBackupTables } from "@/features/sahibkar/backup/queries";
+import { formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Backup və eksport" };
 
@@ -58,7 +59,7 @@ export default async function SahibkarBackupPage() {
             <FileJson className="h-10 w-10 text-emerald-600" />
             <div>
               <div className="text-3xl font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                {totalRows.toLocaleString("az-AZ")}
+                {formatNumber(totalRows)}
               </div>
               <div className="text-xs text-muted-foreground">cəmi sətr · {tables.length} cədvəl</div>
             </div>
@@ -123,7 +124,7 @@ export default async function SahibkarBackupPage() {
                   <span className="text-base">{meta.emoji}</span>
                   {meta.label}
                   <Badge variant="outline" className="ml-auto text-[10px]">
-                    {groupTotal.toLocaleString("az-AZ")} sətr
+                    {formatNumber(groupTotal)} sətr
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -135,7 +136,7 @@ export default async function SahibkarBackupPage() {
                       <span>{t.azAd}</span>
                     </span>
                     <span className="font-bold tabular-nums text-muted-foreground">
-                      {t.sayi.toLocaleString("az-AZ")}
+                      {formatNumber(t.sayi)}
                     </span>
                   </div>
                 ))}

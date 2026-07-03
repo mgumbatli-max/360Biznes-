@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
+import { formatDate } from "@/lib/utils";
 import type { Blocker } from "./types";
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
@@ -34,7 +35,7 @@ export async function findSaleBlockers(
   });
   for (const p of payments) {
     const mebleg = Number(p.meblegh ?? 0);
-    const dateStr = p.tarix ? new Date(p.tarix).toLocaleDateString("az-AZ") : "";
+    const dateStr = p.tarix ? formatDate(p.tarix) : "";
     blockers.push({
       type: "odenis",
       id: p.id,

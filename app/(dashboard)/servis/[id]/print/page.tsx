@@ -134,7 +134,7 @@ function A4Layout({
           )}
           {s.yaradildi && (
             <div className="mt-1 text-[11px] text-neutral-600">
-              Qəbul tarixi: {new Date(s.yaradildi).toLocaleString("az-AZ")}
+              Qəbul tarixi: {formatDate(s.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
             </div>
           )}
         </div>
@@ -262,7 +262,7 @@ function ThermalLayout({
         <div className="text-[10px] uppercase">Servis qəbz</div>
         <div className="text-[14px] font-bold">{s.nomre}</div>
         {s.yaradildi && (
-          <div className="text-[10px]">{new Date(s.yaradildi).toLocaleString("az-AZ")}</div>
+          <div className="text-[10px]">{formatDate(s.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
         )}
       </div>
       <Hr />

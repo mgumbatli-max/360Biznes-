@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { SettingsTopNav } from "@/features/ayar/components/settings-top-nav";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Data sağlamlığı" };
 export const dynamic = "force-dynamic";
@@ -147,7 +147,7 @@ export default async function Page() {
         <Card className="glass">
           <CardContent className="py-4">
             <div className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Cəmi problem qeydi</div>
-            <div className="mt-1 text-3xl font-bold tabular-nums">{totalProblems.toLocaleString("az-AZ")}</div>
+            <div className="mt-1 text-3xl font-bold tabular-nums">{formatNumber(totalProblems)}</div>
             <div className="mt-1 text-[11px] text-muted-foreground">
               düzəldilməli qeyd
             </div>
@@ -192,7 +192,7 @@ function CheckRow({ check }: { check: Check }) {
               check.tone === "info" && "border-sky-500/40 text-sky-600",
               check.tone === "danger" && "border-rose-500/40 text-rose-600",
             )}>
-              {check.count.toLocaleString("az-AZ")} qeyd
+              {formatNumber(check.count)} qeyd
               {check.total > 0 && ` (${ratio.toFixed(1)}%)`}
             </Badge>
           )}

@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { withTenant } from "@/lib/db/with-tenant";
 import { getReorderList } from "@/features/hesabatlar/mehsul-queries";
 import { requireHesabatActionPerm } from "@/features/hesabatlar/access-guard";
+import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     return true;
   });
 
-  const today = new Date().toLocaleDateString("az-AZ", { day: "numeric", month: "long", year: "numeric" });
+  const today = formatDate(new Date(), { day: "numeric", month: "long", year: "numeric" });
   const escapeHtml = (s: string) => s.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] || c);
   const tbody = filtered
     .map(

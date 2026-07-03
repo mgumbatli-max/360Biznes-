@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ShieldAlert, FileBarChart, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/types";
 
 function getGreeting(): { label: string; emoji: string } {
-  const hour = new Date().getHours();
+  // Bakı saatı (UTC+4) — server UTC-də işlədiyi üçün getHours() səhv salamlama verirdi.
+  const hour = (new Date().getUTCHours() + 4) % 24;
   if (hour < 6) return { label: "Sakit gecələr", emoji: "🌙" };
   if (hour < 12) return { label: "Sabahın xeyir", emoji: "☀️" };
   if (hour < 17) return { label: "Gününüz xeyir", emoji: "🌤️" };
@@ -14,7 +16,7 @@ function getGreeting(): { label: string; emoji: string } {
 
 export function DashboardHeader({ user }: { user: SessionUser }) {
   const greet = getGreeting();
-  const today = new Date().toLocaleDateString("az-AZ", {
+  const today = formatDate(new Date(), {
     weekday: "long",
     year: "numeric",
     month: "long",

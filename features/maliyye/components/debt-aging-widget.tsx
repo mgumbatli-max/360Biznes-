@@ -1,6 +1,6 @@
 import { TrendingDown, AlertTriangle, Clock, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 type Bucket = { label: string; amount: number; count: number };
 
@@ -19,7 +19,7 @@ const BUCKET_TONE: Record<number, string> = {
 };
 
 function fmt(n: number) {
-  return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 0 }).format(n) + " ₼";
+  return formatNumber(Math.round(n), 0) + " ₼";
 }
 
 export function DebtAgingWidget({ buckets, totalAmount, title = "Borc müddəti analizi" }: Props) {

@@ -13,7 +13,7 @@ import {
 import { getPlSummary } from "@/features/hesabatlar/maliyye-queries";
 import { thisMonthRange } from "@/features/hesabatlar/shared";
 import { requireHesabatPagePerm } from "@/features/hesabatlar/access-guard";
-import { formatMoney } from "@/lib/utils";
+import { formatDate, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Pul axını hesabatı" };
 
@@ -83,8 +83,8 @@ export default async function PulReportPage() {
         <KpiCard icon={Activity} label="Cash runway" value={summary.runway_days != null ? `${summary.runway_days} gün` : "—"} subline="Burn rate-lə qalan" tone={summary.runway_days != null && summary.runway_days < 30 ? "danger" : "neutral"} />
         <KpiCard icon={TrendingDown} label="Burn (günlük)" value={formatMoney(summary.burn_per_day)} subline="Orta xərc/gün" tone="warning" />
         <KpiCard icon={TrendingUp} label="Run rate (illik)" value={formatMoney(summary.run_rate_annual)} subline="Orta dövr × 365" tone={summary.run_rate_annual >= 0 ? "success" : "danger"} />
-        <KpiCard icon={TrendingDown} label="Min qalıq" value={formatMoney(summary.min_day?.balance ?? 0)} subline={summary.min_day ? new Date(summary.min_day.date).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" }) : "—"} />
-        <KpiCard icon={TrendingUp} label="Max qalıq" value={formatMoney(summary.max_day?.balance ?? 0)} subline={summary.max_day ? new Date(summary.max_day.date).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" }) : "—"} />
+        <KpiCard icon={TrendingDown} label="Min qalıq" value={formatMoney(summary.min_day?.balance ?? 0)} subline={summary.min_day ? formatDate(summary.min_day.date, { day: "2-digit", month: "short" }) : "—"} />
+        <KpiCard icon={TrendingUp} label="Max qalıq" value={formatMoney(summary.max_day?.balance ?? 0)} subline={summary.max_day ? formatDate(summary.max_day.date, { day: "2-digit", month: "short" }) : "—"} />
       </section>
 
       <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">

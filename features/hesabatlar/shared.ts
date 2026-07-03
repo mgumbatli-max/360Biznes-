@@ -1,4 +1,5 @@
 import "server-only";
+import { formatDate } from "@/lib/utils";
 
 export type DateRange = { from: Date; to: Date };
 
@@ -71,7 +72,7 @@ export function formatDateInput(d: Date): string {
 }
 
 export function rangeLabel(r: DateRange): string {
-  return `${r.from.toLocaleDateString("az-AZ", { day: "numeric", month: "long", year: "numeric" })} — ${r.to.toLocaleDateString("az-AZ", { day: "numeric", month: "long", year: "numeric" })}`;
+  return `${formatDate(r.from, { day: "numeric", month: "long", year: "numeric" })} — ${formatDate(r.to, { day: "numeric", month: "long", year: "numeric" })}`;
 }
 
 /** Returns the immediately-preceding range of equal length. */

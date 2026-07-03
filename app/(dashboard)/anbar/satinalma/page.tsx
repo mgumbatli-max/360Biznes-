@@ -22,7 +22,7 @@ import {
   getProposalStats,
   getPlanningTable,
 } from "@/features/satinalma/queries";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satınalma Planlama" };
 
@@ -38,12 +38,12 @@ const STATUS_BADGES: Record<string, { label: string; cls: string; icon: React.Co
 
 function fmtMoney(n: { toNumber(): number } | number | null | undefined) {
   const num = n == null ? 0 : typeof n === "number" ? n : n.toNumber();
-  return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 2 }).format(num) + " ₼";
+  return formatMoney(num);
 }
 
 function fmtDate(d: Date | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("az-AZ", { dateStyle: "short", timeStyle: "short" }).format(d);
+  return formatDate(d, { dateStyle: "short", timeStyle: "short" });
 }
 
 export default async function SatinalmaPage({ searchParams }: { searchParams: SearchParams }) {

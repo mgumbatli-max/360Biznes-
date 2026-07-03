@@ -15,7 +15,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { MiniBarcode } from "@/components/ui/barcode";
 import { BarcodeScanDialog } from "@/components/ui/barcode-scan-dialog";
 import { AnbarBreakdownCell, AnbarHoverBadge } from "./anbar-breakdown-cell";
-import { cn, formatMoney, formatNumber } from "@/lib/utils";
+import { cn, formatMoney, formatNumber, formatDate } from "@/lib/utils";
 import type { ProductListRow } from "../queries";
 import { InlineEditNumber } from "@/components/ui/inline-edit-cell";
 import { setProductCost, setProductSalePrice } from "../quick-fix-actions";
@@ -700,12 +700,12 @@ export function ProductTable({
                 ),
                 yaradildi: (
                   <td key="yaradildi" className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {p.yaradildi ? new Date(p.yaradildi).toLocaleDateString("az-AZ") : "—"}
+                    {p.yaradildi ? formatDate(p.yaradildi) : "—"}
                   </td>
                 ),
                 son_satis: (
                   <td key="son_satis" className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {p.son_satis_de ? new Date(p.son_satis_de).toLocaleDateString("az-AZ") : <span className="text-muted-foreground/50">heç vaxt</span>}
+                    {p.son_satis_de ? formatDate(p.son_satis_de) : <span className="text-muted-foreground/50">heç vaxt</span>}
                   </td>
                 ),
                 etiketsiz: (

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeftRight, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
+import { formatNumber } from "@/lib/utils";
 
 const RATES_TO_AZN: Record<string, number> = {
   AZN: 1,
@@ -90,7 +91,7 @@ export function SandboxCurrencyFx() {
           <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Nəticə</div>
             <div className="mt-1 text-3xl font-bold tabular-nums">
-              {converted.toLocaleString("az-AZ", { maximumFractionDigits: 2 })} <span className="text-base text-muted-foreground">{to}</span>
+              {formatNumber(converted, 2)} <span className="text-base text-muted-foreground">{to}</span>
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               1 {from} = {(RATES_TO_AZN[from] / RATES_TO_AZN[to]).toFixed(4)} {to}

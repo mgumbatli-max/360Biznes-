@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { SettingsTopNav } from "@/features/ayar/components/settings-top-nav";
 import { getMessageLog, getMessageLogStats } from "@/features/team/queries";
-import { cn } from "@/lib/utils";
+import { cn, formatDate as fmtDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Team mesaj logu" };
 
@@ -39,7 +39,7 @@ const EVENTS: Record<string, { label: string; icon: React.ComponentType<{ classN
 
 function formatDate(d: Date | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("az-AZ", { dateStyle: "short", timeStyle: "medium" }).format(d);
+  return fmtDate(d, { dateStyle: "short", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export default async function TeamMessageLogPage({ searchParams }: { searchParams: SearchParams }) {

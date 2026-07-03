@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { formatNumber } from "@/lib/utils";
 
 type Drilldown = {
   topProducts: { ad: string; satilan: number; gelir: number }[];
@@ -44,7 +45,7 @@ export function PlatformDrilldownTrigger({
     });
   }, [open, platform, from, to, data]);
 
-  const fmt = (n: number) => new Intl.NumberFormat("az-AZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  const fmt = (n: number) => formatNumber(n, 2);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

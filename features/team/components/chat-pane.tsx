@@ -23,7 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDate as fmtDate } from "@/lib/utils";
 import {
   sendTeamMessage,
   deleteTeamMessage,
@@ -65,17 +65,25 @@ type Message = {
 };
 
 function fmtTime(d: Date) {
-  return new Intl.DateTimeFormat("az-AZ", { hour: "2-digit", minute: "2-digit" }).format(new Date(d));
+  return fmtDate(d, { hour: "2-digit", minute: "2-digit" });
 }
 
-function fmtDay(d: Date) {
-  const now = new Date();
-  const date = new Date(d);
-  if (date.toDateString() === now.toDateString()) return "Bu gün";
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "Dünən";
-  return new Intl.DateTimeFormat("az-AZ", { day: "2-digit", month: "long", year: "numeric" }).format(date);
+function fmtDayAbs(d: Date) {
+  return fmtDate(d, { day: "2-digit", month: "long", year: "numeric" });
+}
+
+// `relative` YALNIZ mount-dan sonra true olur: server + ilk client render deterministik
+// mütləq tarixi verir (fmtDayAbs) → React #418 yoxdur. Mount-dan sonra "Bu gün"/"Dünən".
+function fmtDay(d: Date, relative: boolean) {
+  if (relative) {
+    const now = new Date();
+    const date = new Date(d);
+    if (date.toDateString() === now.toDateString()) return "Bu gün";
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return "Dünən";
+  }
+  return fmtDayAbs(d);
 }
 
 export function ChatPane({
@@ -97,7 +105,11 @@ export function ChatPane({
   const [oneTimeMode, setOneTimeMode] = useState(false);
   const [lockPassword, setLockPassword] = useState("");
   const [showLockInput, setShowLockInput] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Nisbi gün etiketləri ("Bu gün"/"Dünən") yalnız mount-dan sonra — hidratasiya sabit
+  useEffect(() => setMounted(true), []);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -191,14 +203,16 @@ export function ChatPane({
     : null;
   const displayName = dmOther?.ad_soyad ?? channel.ad;
 
-  // Group messages by day
-  const grouped: Array<{ day: string; msgs: Message[] }> = [];
-  let currentDay = "";
+  // Group messages by day — açar deterministik mütləq tarixdir (server=client),
+  // görünən etiket isə mount-dan sonra nisbi olur.
+  const grouped: Array<{ key: string; day: string; msgs: Message[] }> = [];
+  let currentKey = "";
   for (const m of messages) {
-    const day = fmtDay(m.yaradildi);
-    if (day !== currentDay) {
-      grouped.push({ day, msgs: [m] });
-      currentDay = day;
+    const key = fmtDayAbs(m.yaradildi);
+    const day = fmtDay(m.yaradildi, mounted);
+    if (key !== currentKey) {
+      grouped.push({ key, day, msgs: [m] });
+      currentKey = key;
     } else {
       grouped[grouped.length - 1].msgs.push(m);
     }
@@ -258,7 +272,7 @@ export function ChatPane({
             </div>
           ) : (
             grouped.map((g) => (
-              <div key={g.day} className="space-y-1.5">
+              <div key={g.key} className="space-y-1.5">
                 <div className="sticky top-0 z-10 my-2 flex items-center justify-center">
                   <span className="rounded-full bg-card px-3 py-0.5 text-[10px] font-semibold text-muted-foreground shadow">
                     {g.day}

@@ -1,6 +1,7 @@
 import "server-only";
 import ExcelJS from "exceljs";
 import { TemplateDef } from "./templates";
+import { formatDate } from "@/lib/utils";
 
 export async function generateTemplate(template: TemplateDef): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
@@ -87,7 +88,7 @@ export async function generateTemplate(template: TemplateDef): Promise<Buffer> {
   }
 
   info.addRow(["Hədəf cədvəl", template.target]).font = { color: { argb: "FF64748B" } };
-  info.addRow(["Yaradıldı", new Date().toLocaleString("az-AZ")]);
+  info.addRow(["Yaradıldı", formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })]);
 
   // === DATA VALIDATION FOR ENUM-LIKE FIELDS ===
   applyDataValidations(sheet, template);

@@ -16,7 +16,7 @@ import {
   SERVIS_STATUS_LABELS,
   type ServisRow,
 } from "../types";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 import { fetchProblemMehsulRows, fetchProductServisTrend } from "../actions-problemli";
 import { TopFailChart, TrendChart } from "./hesabat-charts";
 
@@ -36,7 +36,7 @@ type Row = {
 
 function fmt(d: Date | string | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("az-AZ");
+  return formatDate(d);
 }
 
 export function ProblemMehsullarTable({

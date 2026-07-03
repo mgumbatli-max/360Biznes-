@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { formatDate as fmtDate } from "@/lib/utils";
 import { TEMPLATES } from "@/features/inteqrasiya/templates";
 
 export const metadata: Metadata = { title: "İdxal tarixçəsi" };
@@ -32,7 +33,7 @@ async function getHistory() {
 
 function formatDate(d: Date | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("az-AZ", { dateStyle: "short", timeStyle: "short" }).format(d);
+  return fmtDate(d, { dateStyle: "short", timeStyle: "short" });
 }
 
 export default async function Page() {

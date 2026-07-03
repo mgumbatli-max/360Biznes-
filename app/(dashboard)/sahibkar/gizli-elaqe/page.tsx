@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
+import { formatDate } from "@/lib/utils";
 import { listGizliElaqe, createGizliElaqe, deleteGizliElaqe, type GizliElaqe } from "@/features/sahibkar/gizli-elaqe-actions";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
 import { EntityLinkInput, EntityLinkBadge, toEntityLinkNov } from "@/features/sahibkar/components/entity-link-input";
@@ -292,7 +293,7 @@ export default async function GizliElaqePage({ searchParams }: { searchParams: P
                     </div>
                   )}
                   <div className="flex items-center justify-between border-t border-border/30 pt-2 text-[10px] text-muted-foreground">
-                    <span>{c.yaradildi ? new Date(c.yaradildi).toLocaleDateString("az-AZ", { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>
+                    <span>{c.yaradildi ? formatDate(c.yaradildi, { day: "numeric", month: "short", year: "numeric" }) : "—"}</span>
                     <form
                       action={async () => {
                         "use server";

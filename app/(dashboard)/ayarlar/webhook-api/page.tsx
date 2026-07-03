@@ -8,6 +8,7 @@ import { SettingsTopNav } from "@/features/ayar/components/settings-top-nav";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { ApiKeysPanel, type ApiKeyRow } from "@/features/ayarlar/components/api-keys-panel";
+import { formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Webhook və API" };
 export const dynamic = "force-dynamic";
@@ -208,7 +209,7 @@ function Stat({
           tone === "info" ? "text-sky-600" :
           "text-foreground"
         }`}>
-          {value.toLocaleString("az-AZ")}
+          {formatNumber(value)}
         </div>
       </CardContent>
     </Card>

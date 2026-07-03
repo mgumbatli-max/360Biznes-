@@ -451,7 +451,7 @@ export default async function MyProfilePage() {
                   <CardContent className="p-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs font-medium text-muted-foreground">
-                        {new Date(r.ts).toLocaleDateString("az-AZ", {
+                        {formatDate(r.ts, {
                           year: "numeric",
                           month: "long",
                           day: "numeric",

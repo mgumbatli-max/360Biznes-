@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { cn, formatDate, formatNumber } from "@/lib/utils";
 import type { ActiveDevice } from "../active-devices-queries";
 import { createIpBlock } from "../security-actions";
 import { deactivateEmployee } from "@/features/iscilier/actions";
@@ -51,7 +51,7 @@ function formatRelative(d: Date): string {
   if (min < 60) return `${min}dəq əvvəl`;
   const h = Math.floor(min / 60);
   if (h < 24) return `${h} saat əvvəl`;
-  return d.toLocaleDateString("az-AZ", { day: "2-digit", month: "short" });
+  return formatDate(d, { day: "2-digit", month: "short" });
 }
 
 type UserGroup = {
@@ -242,10 +242,13 @@ function DeviceRow({
   device: ActiveDevice;
   onBlockIp: (ip: string) => void;
 }) {
-  // Onlayn göstəricisi — son 5 dəq aktivlik
+  // Onlayn göstəricisi — son 5 dəq aktivlik. Date.now() render-də serverlə klient
+  // arasında fərqli instant verir → mounted guard ilə hidrasiyadan sonra hesablanır.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const minutesSinceLast = (Date.now() - device.son_aktivlik.getTime()) / 60000;
-  const isOnline = minutesSinceLast < 5;
-  const wasRecent = minutesSinceLast < 30;
+  const isOnline = mounted && minutesSinceLast < 5;
+  const wasRecent = mounted && minutesSinceLast < 30;
 
   // Cihazın audit log-una filter ilə keçid: user_id + bu user_agent.
   // ip_adres-dən q dolu olsa istifadə edirik (cihaz fingerprint istənilir).
@@ -318,13 +321,13 @@ function DeviceRow({
             )}
             <span className="inline-flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Son: <span className="text-foreground/80">{formatRelative(device.son_aktivlik)}</span>
+              Son: <span className="text-foreground/80" suppressHydrationWarning>{formatRelative(device.son_aktivlik)}</span>
             </span>
             <span className="inline-flex items-center gap-1">
-              {device.aktivlik_sayi.toLocaleString("az-AZ")} əməliyyat (24s)
+              {formatNumber(device.aktivlik_sayi)} əməliyyat (24s)
             </span>
             <span className="inline-flex items-center gap-1">
-              İlk: {device.ilk_qeyd.toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })}
+              İlk: {formatDate(device.ilk_qeyd, { dateStyle: "short", timeStyle: "short" })}
             </span>
           </div>
         </div>

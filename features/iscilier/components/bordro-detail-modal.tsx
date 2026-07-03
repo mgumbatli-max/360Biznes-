@@ -99,7 +99,7 @@ export function BordroDetailRow({
                           </Badge>
                           {e.sebeb}
                         </div>
-                        <div className="text-[10.5px] text-muted-foreground">{e.ts ? new Date(e.ts).toLocaleString("az-AZ") : "—"}</div>
+                        <div className="text-[10.5px] text-muted-foreground">{e.ts ? formatDate(e.ts, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}</div>
                       </div>
                       <span className={`tabular-nums ${e.nov === "bonus" ? "text-success" : "text-danger"}`}>
                         {e.nov === "bonus" ? "+" : "−"}{formatMoney(Number(e.meblegh ?? 0))}

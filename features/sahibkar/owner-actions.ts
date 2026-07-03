@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { formatDate } from "@/lib/utils";
 
 type ActionResult = { ok: true; id?: string | number } | { ok: false; error: string };
 
@@ -182,7 +183,8 @@ export async function takeSnapshot(): Promise<ActionResult> {
         sahibkar_id: sahibkarId,
         istifadeci_id: istifadeciId,
         obyekt_nov: "gunluk",
-        basliq: `Gündəlik snapshot — ${now.toLocaleDateString("az-AZ")}`,
+        // başlıq tarixi `tarix`/`dayStart` ilə eyni bazadan (Baku gecəyarısı sürüşməsi olmasın)
+        basliq: `Gündəlik snapshot — ${formatDate(dayStart)}`,
         tarix: dayStart,
         mebleg: revenue,
         snapshot_json: snap,

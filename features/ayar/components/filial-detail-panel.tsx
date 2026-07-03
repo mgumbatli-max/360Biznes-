@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 import { FilialDialog } from "./filial-dialog";
 import { LiveToggle } from "./live-toggle";
 import { AnbarQuickCreate, AnbarEditDelete } from "./anbar-quick-create";
@@ -111,10 +111,6 @@ const PERMISSION_KEYS = [
   { key: "hesabat_biler", label: "Hesabat", icon: BarChart3 },
   { key: "gizli_alish_biler", label: "Gizli alış qiyməti", icon: Shield },
 ] as const;
-
-function formatMoney(n: number) {
-  return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 2 }).format(n) + " ₼";
-}
 
 function formatTime(d: Date | null) {
   if (!d) return "—";

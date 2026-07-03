@@ -17,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatMoney, formatNumber } from "@/lib/utils";
+import { formatDate, formatMoney, formatNumber } from "@/lib/utils";
 
 export const PALETTE = [
   "#6366f1",
@@ -47,7 +47,7 @@ export function DailyLineChart({ data, height = 260 }: { data: DailyPoint[]; hei
   if (!data.length || data.every((d) => d.amount === 0)) return <EmptyState msg="Bu dövrdə satış yoxdur" height={height} />;
   const display = data.map((d) => ({
     ...d,
-    label: new Date(d.date).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" }),
+    label: formatDate(d.date, { day: "2-digit", month: "short" }),
   }));
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -167,7 +167,7 @@ export function InOutLineChart({ data, height = 280 }: { data: InOutDay[]; heigh
   if (!data.length || data.every((d) => d.daxil === 0 && d.xaric === 0)) return <EmptyState msg="Hərəkət yoxdur" height={height} />;
   const display = data.map((d) => ({
     ...d,
-    label: new Date(d.date).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" }),
+    label: formatDate(d.date, { day: "2-digit", month: "short" }),
     net: d.daxil - d.xaric,
   }));
   return (

@@ -2,6 +2,7 @@
 
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { TopProductRow } from "../queries";
+import { formatMoney } from "@/lib/utils";
 
 type Props = { data: TopProductRow[] };
 
@@ -40,7 +41,7 @@ export function TopProductsChart({ data }: Props) {
               <div className="glass rounded-lg border border-border/60 px-3 py-2 text-xs">
                 <div className="font-semibold">{it.ad}</div>
                 <div className="mt-0.5 text-muted-foreground">
-                  Məbləğ: <span className="font-medium text-foreground">{it.mebleg.toLocaleString("az-AZ")} ₼</span>
+                  Məbləğ: <span className="font-medium text-foreground">{formatMoney(it.mebleg)}</span>
                 </div>
                 <div className="text-muted-foreground">
                   Miqdar: <span className="font-medium text-foreground">{it.miqdar}</span>

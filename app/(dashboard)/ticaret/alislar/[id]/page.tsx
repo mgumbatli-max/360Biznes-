@@ -77,7 +77,7 @@ export default async function PurchaseDetailPage({ params }: { params: Promise<{
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             <Calendar className="h-3 w-3" />
-            {new Date(p.tarix).toLocaleDateString("az-AZ", {
+            {formatDate(p.tarix, {
               day: "2-digit",
               month: "long",
               year: "numeric",

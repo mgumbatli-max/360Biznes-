@@ -147,7 +147,7 @@ export default async function ServisTrackPage({
                         </Badge>
                         {t.yaradildi && (
                           <span className="text-[10.5px] text-muted-foreground">
-                            {new Date(t.yaradildi).toLocaleString("az-AZ")}
+                            {formatDate(t.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                           </span>
                         )}
                       </div>

@@ -10,10 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatDate } from "@/lib/utils";
 import type { KanalStat } from "../api-stats";
 
 function fmt(iso: string): string {
-  return new Date(iso).toLocaleString("az-AZ", {
+  return formatDate(iso, {
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",

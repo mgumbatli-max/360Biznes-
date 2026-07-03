@@ -10,7 +10,7 @@ import { AutoOrderButton } from "@/features/satinalma/components/auto-order-butt
 import { RecomputeButton } from "@/features/satinalma/components/recompute-button";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
-import { formatMoney, formatNumber } from "@/lib/utils";
+import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satınalma Planlama" };
 
@@ -110,8 +110,8 @@ export default async function SatinalmaPage({ searchParams }: { searchParams: Pr
             {lastComputed?.hesablandi && (
               <span className="text-foreground/80">
                 Son hesablama:{" "}
-                <span title={lastComputed.hesablandi.toLocaleString("az-AZ")}>
-                  {lastComputed.hesablandi.toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })}
+                <span title={formatDate(lastComputed.hesablandi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}>
+                  {formatDate(lastComputed.hesablandi, { dateStyle: "short", timeStyle: "short" })}
                 </span>
               </span>
             )}{" "}

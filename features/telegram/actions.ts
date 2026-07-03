@@ -9,6 +9,7 @@ import { audit } from "@/lib/audit/log";
 import { sendTelegramMessage, isTelegramConfigured } from "@/lib/telegram/notifier";
 import { encryptString, decryptString, maskSecret } from "@/lib/security/encrypt";
 import { requireAyarActionPerm, bustAyarCache } from "@/features/ayarlar/access-guard";
+import { formatDate } from "@/lib/utils";
 
 const QRUP = "telegram";
 
@@ -88,7 +89,7 @@ export async function sendTestTelegram(): Promise<Result> {
     if (!chatId) return { ok: false, error: "chat_id boşdur" };
     const res = await sendTelegramMessage({
       chatId,
-      text: `🧪 *360biznes test bildirişi*\nSistem işləyir, chat ID doğru qurulub.\nVaxt: ${new Date().toLocaleString("az-AZ")}`,
+      text: `🧪 *360biznes test bildirişi*\nSistem işləyir, chat ID doğru qurulub.\nVaxt: ${formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`,
       parseMode: "MarkdownV2",
     });
     if (!res.ok) return { ok: false, error: res.error };

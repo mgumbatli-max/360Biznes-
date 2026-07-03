@@ -12,6 +12,7 @@ import { calcTier, TIP_META, type KampaniyaTip } from "./types";
 import { applyCoupon as _applyCoupon, type AppliedCampaign } from "./matcher";
 import { requireKampaniyaActionPerm, bustKampaniyaCache } from "./access-guard";
 import { checkBroadcastRateLimit } from "./broadcast-limit";
+import { formatDate } from "@/lib/utils";
 
 type Result = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -199,7 +200,7 @@ export async function broadcastCampaignToTelegram(
             valueStr ? `🎯 <b>${valueStr}</b> endirim` : "",
             c.aciqlamaq ? `\n${escapeTelegramHtml(c.aciqlamaq)}` : "",
             rules.min_cart ? `\n🛒 Min səbət: <b>${rules.min_cart} ₼</b>` : "",
-            c.bitme ? `\n🗓 Bitir: ${new Date(c.bitme).toLocaleDateString("az-AZ", { day: "2-digit", month: "long", year: "numeric" })}` : "",
+            c.bitme ? `\n🗓 Bitir: ${formatDate(c.bitme, { day: "2-digit", month: "long", year: "numeric" })}` : "",
             "\n#kampaniya #endirim",
           ].filter(Boolean).join("");
 

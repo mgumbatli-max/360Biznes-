@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Phone, AlertTriangle, Tag, Calendar, Repeat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SERVIS_STATUS_LABELS, SERVIS_PRIORITY_LABELS, type ServisRow } from "../types";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 
 const COLUMNS: { key: string; label: string }[] = [
   { key: "qebul_edildi", label: "Qəbul edildi" },
@@ -33,7 +33,7 @@ const STATUS_MAP: Record<string, string> = {
 
 function fmt(d: Date | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("az-AZ");
+  return formatDate(d);
 }
 
 export function ServisKanban({ rows }: { rows: ServisRow[] }) {
@@ -78,8 +78,14 @@ export function ServisKanban({ rows }: { rows: ServisRow[] }) {
 }
 
 function KanbanCard({ r }: { r: ServisRow }) {
+  // `new Date()` (cari an) render zamanı server (SSR) və brauzerdə fərqli instant
+  // qaytarır → `overdue` boolean SSR HTML ilə hidratasiya arasında fərqlənə bilər
+  // (React #418). Mount-dan sonra hesablayırıq: hər iki tərəf ilkin render-də
+  // `overdue = false` göstərir, sonra brauzerdə cari vaxta görə yenilənir.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const overdue =
-    r.texmini_tehvil && new Date(r.texmini_tehvil) < new Date() && !r.qapanma_tarixi;
+    mounted && r.texmini_tehvil && new Date(r.texmini_tehvil) < new Date() && !r.qapanma_tarixi;
   const prio = SERVIS_PRIORITY_LABELS[r.prioritet] ?? SERVIS_PRIORITY_LABELS.orta;
 
   return (

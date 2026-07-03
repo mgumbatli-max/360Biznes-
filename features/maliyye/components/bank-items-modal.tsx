@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition } from "react";
 import { ListChecks, Loader2, Sparkles, Link2Off, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { formatDate } from "@/lib/utils";
 import { autoMatchStatement, unmatchBankItem } from "../bank-reconcile-actions";
 
 type StatementItem = {
@@ -148,7 +149,7 @@ export function BankItemsModal({ statementId, satirSayi }: { statementId: string
                     const matched = r.status === "eslesdi";
                     return (
                       <tr key={r.id} className={`border-b border-border/30 ${matched ? "bg-emerald-50/30" : ""}`}>
-                        <td className="px-3 py-2 text-xs">{r.tarix ? new Date(r.tarix).toLocaleDateString("az-AZ") : "—"}</td>
+                        <td className="px-3 py-2 text-xs">{r.tarix ? formatDate(r.tarix) : "—"}</td>
                         <td className="px-3 py-2 text-xs">{r.qarsi_teref ?? "—"}</td>
                         <td className="px-3 py-2 text-xs text-muted-foreground line-clamp-1">{r.qeyd ?? "—"}</td>
                         <td className={`px-3 py-2 text-right tabular-nums font-semibold ${r.meblegh >= 0 ? "text-success" : "text-danger"}`}>

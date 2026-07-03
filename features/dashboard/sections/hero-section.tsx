@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Sparkline } from "@/components/ui/sparkline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn, formatMoney, formatNumber } from "@/lib/utils";
+import { cn, formatMoney, formatNumber, formatDate } from "@/lib/utils";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { SalesChart } from "@/features/dashboard/components/sales-chart";
 import { SalesExpenseChart } from "@/features/dashboard/components/sales-expense-chart";
@@ -444,7 +444,7 @@ export async function HeroSection({
                             isOverdue ? "font-bold text-rose-500" : "text-muted-foreground",
                           )}>
                             <Clock className="mr-0.5 inline h-2.5 w-2.5" />
-                            {new Date(t.deadline).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" })}
+                            {formatDate(t.deadline, { day: "2-digit", month: "short" })}
                           </span>
                         )}
                       </Link>

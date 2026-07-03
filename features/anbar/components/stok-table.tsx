@@ -10,7 +10,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { useColumnToggle, type ColumnDef } from "@/components/ui/column-toggle";
 import { SortableTh, type SortDir } from "@/components/ui/sortable-th";
 import { TransferDialog } from "@/features/anbar/components/transfer-dialog";
-import { formatMoney, formatNumber } from "@/lib/utils";
+import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
 import type { StokRow } from "@/features/anbar/stok-queries";
 
 type Anbar = { id: number; ad: string };
@@ -383,12 +383,12 @@ export function StokTable({ rows, anbarlar, exportHref }: Props) {
                 ),
                 yaradildi: (
                   <td key="yaradildi" className="px-3 py-2 text-xs text-muted-foreground">
-                    {r.yaradildi ? new Date(r.yaradildi).toLocaleDateString("az-AZ") : "—"}
+                    {r.yaradildi ? formatDate(r.yaradildi) : "—"}
                   </td>
                 ),
                 son_hereket: (
                   <td key="son_hereket" className="px-3 py-2 text-xs text-muted-foreground">
-                    {r.son_hereket_de ? new Date(r.son_hereket_de).toLocaleDateString("az-AZ") : <span className="text-muted-foreground/50">heç vaxt</span>}
+                    {r.son_hereket_de ? formatDate(r.son_hereket_de) : <span className="text-muted-foreground/50">heç vaxt</span>}
                   </td>
                 ),
                 son_ay_say: (

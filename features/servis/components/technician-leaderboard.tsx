@@ -1,7 +1,7 @@
 import { Trophy, Medal, Award, Wrench, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 type Row = {
   texnik_id: string | null;
@@ -13,7 +13,8 @@ type Row = {
 };
 
 function fmt(n: number) {
-  return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 0 }).format(n) + " ₼";
+  // Deterministik (Intl.NumberFormat ICU Node≠brauzer → hidratasiya #418).
+  return formatNumber(Math.round(n), 0) + " ₼";
 }
 
 const RANK_ICON = [Trophy, Medal, Award];

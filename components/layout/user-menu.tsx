@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/types";
 
 type Props = {
@@ -98,7 +99,7 @@ export function UserMenu({ user }: Props) {
             <div className="mt-1 flex items-center justify-between">
               <span>Bitir</span>
               <span className="font-medium text-foreground">
-                {new Date(user.abune_bitme).toLocaleDateString("az-AZ")}
+                {formatDate(user.abune_bitme)}
               </span>
             </div>
           )}

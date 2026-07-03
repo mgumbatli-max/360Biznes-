@@ -1,6 +1,6 @@
 import { Filter, FileText, ShoppingCart, XCircle, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 type Funnel = {
   leads: number;
@@ -9,7 +9,8 @@ type Funnel = {
   lost: number;
 };
 
-const fmt = (n: number) => new Intl.NumberFormat("az-AZ").format(n);
+// Deterministik (Intl.NumberFormat ICU Node≠brauzer → hidratasiya #418).
+const fmt = (n: number) => formatNumber(n);
 
 export function SalesFunnel({ data }: { data: Funnel }) {
   const max = Math.max(data.leads, 1);

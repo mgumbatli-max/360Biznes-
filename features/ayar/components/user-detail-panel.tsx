@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { cn, formatDate as fmtDate } from "@/lib/utils";
 import { LiveToggle } from "./live-toggle";
 import {
   UserProfileEditDialog,
@@ -83,7 +83,7 @@ const TABS = [
 
 function formatDate(d: Date | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("az-AZ", { dateStyle: "short", timeStyle: "short" }).format(d);
+  return fmtDate(d, { dateStyle: "short", timeStyle: "short" });
 }
 
 type RoleOption = {

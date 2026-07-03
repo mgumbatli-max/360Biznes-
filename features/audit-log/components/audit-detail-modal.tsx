@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatDate, formatDecimal } from "@/lib/utils";
 import { OP_META as SHARED_OP_META, RESOURCE_LABEL as SHARED_RESOURCE_LABEL, type AuditTone } from "../labels";
 
 type Detail = {
@@ -132,7 +132,7 @@ function formatRelative(d: Date): string {
   if (h < 24) return `${h} saat əvvəl`;
   const day = Math.floor(h / 24);
   if (day < 7) return `${day} gün əvvəl`;
-  return d.toLocaleDateString("az-AZ", { day: "2-digit", month: "short", year: "numeric" });
+  return formatDate(d, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 export function AuditDetailModal() {
@@ -276,7 +276,7 @@ function DetailBody({ d }: { d: Detail }) {
                 <Clock className="h-3 w-3" />
                 <span>{formatRelative(yaradildi)}</span>
                 <span className="text-foreground/30">·</span>
-                <span>{yaradildi.toLocaleString("az-AZ", { dateStyle: "medium", timeStyle: "medium" })}</span>
+                <span>{formatDate(yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
               </div>
             )}
           </div>
@@ -517,7 +517,7 @@ function buildDiffRows(before: unknown, after: unknown): { key: string; before: 
 function renderValue(v: unknown): React.ReactNode {
   if (v === null || v === undefined) return <span className="text-muted-foreground">—</span>;
   if (typeof v === "boolean") return <Badge variant="outline" className="text-[10px]">{v ? "✓ bəli" : "✗ xeyr"}</Badge>;
-  if (typeof v === "number") return <span className="font-mono tabular-nums">{v.toLocaleString("az-AZ")}</span>;
+  if (typeof v === "number") return <span className="font-mono tabular-nums">{formatDecimal(v)}</span>;
   if (typeof v === "string") {
     if (v.length > 80) return <span className="break-all">{v.slice(0, 80)}…</span>;
     return <span className="break-all">{v}</span>;

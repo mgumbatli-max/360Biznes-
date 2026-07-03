@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Ban, Unlock, Trash2, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { createIpBlock, unblockIp, deleteIpBlock } from "../security-actions";
+import { formatDate as fmtDateTime } from "@/lib/utils";
 
 type IpBlock = {
   id: number;
@@ -42,6 +43,9 @@ export function IpBlockManager({
   const [ip, setIp] = useState("");
   const [sebeb, setSebeb] = useState("");
   const [bitme, setBitme] = useState("");
+  // Cari vaxt yalnız mount-dan sonra hesablanır (SSR/hidratasiya uyğunsuzluğunun qarşısını alır — React #418)
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => setNow(Date.now()), []);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -179,7 +183,7 @@ export function IpBlockManager({
                 </thead>
                 <tbody>
                   {aktivBloks.map((b) => {
-                    const expired = b.bitme_tarixi && b.bitme_tarixi < new Date();
+                    const expired = now !== null && b.bitme_tarixi != null && b.bitme_tarixi.getTime() < now;
                     return (
                       <tr key={b.id} className="border-b border-border/20">
                         <td className="px-3 py-2 font-mono text-xs">{b.ip_adres}</td>
@@ -318,5 +322,5 @@ export function IpBlockManager({
 
 function formatDate(d: Date | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("az-AZ", { dateStyle: "short", timeStyle: "short" }).format(d);
+  return fmtDateTime(d, { dateStyle: "short", timeStyle: "short" });
 }

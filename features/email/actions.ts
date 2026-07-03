@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { sendEmail, isEmailRealMode } from "@/lib/email/adapter";
+import { formatDate } from "@/lib/utils";
 
 const QRUP = "email_notification";
 
@@ -78,7 +79,7 @@ export async function sendTestEmail(): Promise<Result> {
         <div style="font-family:system-ui,sans-serif;max-width:600px;padding:24px;background:#f8fafc">
           <h1 style="color:#0f172a">🧪 Test bildirişi</h1>
           <p style="color:#334155">Sistem işləyir, email ünvanınız düzgün qurulub.</p>
-          <p style="color:#64748b;font-size:12px">Vaxt: ${new Date().toLocaleString("az-AZ")}</p>
+          <p style="color:#64748b;font-size:12px">Vaxt: ${formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
         </div>`,
     });
     if (!res.ok) return { ok: false, error: res.error };

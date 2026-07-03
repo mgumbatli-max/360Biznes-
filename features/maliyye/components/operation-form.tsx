@@ -32,7 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
 import { toast } from "sonner";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 import { saveQuickOperation, payAllOpenInvoices, applyAdvanceToInvoice, paySupplierAllOpen, paySupplierInvoice } from "../actions";
 import { KIND_META, XERC_KATEQORIYALARI } from "./quick-op-dialog";
 import { getCustomerOpenInvoicesAction, type OpenInvoice } from "../customer-invoices-action";
@@ -774,7 +774,7 @@ export function OperationForm({ initialTip, hesablar, iscilier, kontragentler, o
                                 <div className="font-mono font-semibold truncate">#{inv.nomre}</div>
                                 <div className={`text-[10px] inline-flex items-center gap-1 ${ageTone}`}>
                                   <Calendar className="h-2.5 w-2.5" />
-                                  {new Date(inv.tarix).toLocaleDateString("az-AZ")}
+                                  {formatDate(inv.tarix)}
                                   {inv.gun > 0 && ` · ${inv.gun} gün`}
                                 </div>
                               </div>
@@ -895,7 +895,7 @@ export function OperationForm({ initialTip, hesablar, iscilier, kontragentler, o
                                 <div className="font-mono font-semibold truncate">#{p.nomre}</div>
                                 <div className={`text-[10px] inline-flex items-center gap-1 ${ageTone}`}>
                                   <Calendar className="h-2.5 w-2.5" />
-                                  {new Date(p.tarix).toLocaleDateString("az-AZ")}
+                                  {formatDate(p.tarix)}
                                   {p.gun > 0 && ` · ${p.gun} gün`}
                                   {p.qaime_nomre && ` · qaimə: ${p.qaime_nomre}`}
                                 </div>

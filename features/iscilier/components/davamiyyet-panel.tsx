@@ -85,7 +85,7 @@ type Props = {
 
 function formatTime(d: Date | null): string {
   if (!d) return "—";
-  return new Date(d).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit" });
+  return formatDate(d, { hour: "2-digit", minute: "2-digit" });
 }
 
 export function DavamiyyetPanel({ month, rows, employees, grid, kpi, report, currentFilters }: Props) {

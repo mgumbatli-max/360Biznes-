@@ -154,7 +154,7 @@ export function CustomerJourneyClient({
       const boundLine = (e.meta?.bound_invoices ?? []).join(", ");
       return `
         <tr>
-          <td>${new Date(e.ts).toLocaleDateString("az-AZ")}</td>
+          <td>${formatDate(e.ts)}</td>
           <td><span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;border:1px solid #ccc">${meta.label}</span></td>
           <td>${e.meta?.sened_nomresi ?? ""}</td>
           <td>${e.title}${e.subtitle ? `<br/><small style="color:#666">${e.subtitle}</small>` : ""}${productsLine ? `<br/><small>📦 ${productsLine}</small>` : ""}${boundLine ? `<br/><small style="color:#059669">→ ${boundLine}</small>` : ""}</td>
@@ -183,7 +183,7 @@ export function CustomerJourneyClient({
         }
       </style></head><body>
       <h1>${customerName} — Səfər tarixçəsi</h1>
-      <div class="meta">Çap tarixi: ${new Date().toLocaleString("az-AZ")} · ${filtered.length} əməliyyat${from || to ? ` · Dövr: ${from || "başlanğıc"} → ${to || "indi"}` : ""}</div>
+      <div class="meta">Çap tarixi: ${formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })} · ${filtered.length} əməliyyat${from || to ? ` · Dövr: ${from || "başlanğıc"} → ${to || "indi"}` : ""}</div>
       <div class="summary">
         <div><div class="lab">Əməliyyat</div><div class="val">${summary.count}</div></div>
         <div><div class="lab">Cəmi gəlir</div><div class="val" style="color:#059669">+${formatMoney(summary.inSum)}</div></div>

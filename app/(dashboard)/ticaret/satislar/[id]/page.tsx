@@ -27,7 +27,7 @@ import {
   getLinkedTasksForSale,
 } from "@/features/ticaret/satis-actions";
 import { getCustomerCreditStatus } from "@/features/ticaret/satis-yeni-actions";
-import { formatMoney, formatNumber } from "@/lib/utils";
+import { formatDate, formatMoney, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Satış detayı" };
 
@@ -88,7 +88,7 @@ export default async function SatisDetailPage({ params }: { params: Promise<{ id
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Calendar className="h-3 w-3" />
-              {new Date(sale.tarix).toLocaleDateString("az-AZ", {
+              {formatDate(sale.tarix, {
                 day: "2-digit",
                 month: "long",
                 year: "numeric",

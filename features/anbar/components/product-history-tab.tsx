@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { History, User, Trash2, ChevronDown, ChevronRight, Globe } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { deleteProductHistoryEntry } from "@/features/anbar/product-history-actions";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 type Entry = {
   id: string;
@@ -51,7 +51,7 @@ function formatFieldName(field: string): string {
 function formatValue(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "✓" : "✗";
-  if (typeof v === "number") return new Intl.NumberFormat("az-AZ").format(v);
+  if (typeof v === "number") return formatNumber(v);
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }

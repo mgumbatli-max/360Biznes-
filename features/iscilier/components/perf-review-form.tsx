@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
 import { savePerformanceReview, saveOneOnOne } from "../hr-actions";
 import type { PerfReview, OneOnOne } from "../hr-types";
 
@@ -270,7 +271,7 @@ export function PerfReviewForm({
               {oneOnOnes.slice(0, 5).map((o, i) => (
                 <div key={i} className="rounded-md border border-border/40 p-2 text-xs">
                   <div className="text-muted-foreground">
-                    {new Date(o.ts).toLocaleString("az-AZ")}
+                    {formatDate(o.ts, { dateStyle: "short", timeStyle: "short" })}
                   </div>
                   <div className="mt-0.5 whitespace-pre-wrap">{o.qeyd}</div>
                 </div>
@@ -297,7 +298,7 @@ export function PerfReviewForm({
                 <div key={i} className="rounded-md border border-border/40 p-2 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">
-                      {new Date(r.ts).toLocaleDateString("az-AZ")}
+                      {formatDate(r.ts)}
                     </span>
                     <Badge variant="outline" className="text-[10px]">
                       Ortalama {avg.toFixed(2)}

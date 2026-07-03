@@ -180,7 +180,7 @@ export default async function DefektPage() {
                         <td className="px-3 py-2.5 text-xs">
                           <div className="font-medium">{formatDate(q.yaradildi)}</div>
                           <div className="text-[10px] text-muted-foreground">
-                            {new Date(q.yaradildi).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit" })}
+                            {formatDate(q.yaradildi, { hour: "2-digit", minute: "2-digit" })}
                           </div>
                         </td>
                         <td className="px-3 py-2.5">

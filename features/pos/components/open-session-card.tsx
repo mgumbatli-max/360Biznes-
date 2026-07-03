@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Combobox, type ComboOption } from "@/components/ui/combobox";
+import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { openKassa } from "../session-actions";
 import type { FilialOption } from "../session-queries";
@@ -82,7 +83,7 @@ export function OpenSessionCard({
             <Input
               id="ad"
               name="ad"
-              defaultValue={`Kassa ${new Date().toLocaleDateString("az-AZ")}`}
+              defaultValue={`Kassa ${formatDate(new Date())}`}
               required
               maxLength={100}
               disabled={pending}

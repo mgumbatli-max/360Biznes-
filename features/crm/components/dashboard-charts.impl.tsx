@@ -16,6 +16,7 @@ import {
   YAxis,
 } from "recharts";
 import type { DailyLeadPoint, FunnelSlice, LeadSourceSlice, LeadSourceAnalytics } from "../dashboard-queries";
+import { formatDate, formatMoney, formatNumber } from "@/lib/utils";
 
 const PALETTE = ["#6366f1", "#22d3ee", "#a78bfa", "#f59e0b", "#34d399", "#f87171", "#fb7185", "#facc15"];
 
@@ -24,7 +25,7 @@ export function DailyChart({ data }: { data: DailyLeadPoint[] }) {
     () =>
       data.map((d) => ({
         ...d,
-        label: new Date(d.date).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" }),
+        label: formatDate(d.date, { day: "2-digit", month: "short" }),
       })),
     [data]
   );
@@ -132,7 +133,7 @@ export function FunnelChart({ data }: { data: FunnelSlice[] }) {
                 <div className="text-muted-foreground">
                   Dəyər:{" "}
                   <span className="font-medium text-foreground">
-                    {new Intl.NumberFormat("az-AZ", { style: "currency", currency: "AZN" }).format(p.value)}
+                    {formatMoney(p.value)}
                   </span>
                 </div>
               </div>
@@ -190,7 +191,7 @@ export function SourceAnalyticsChart({ data }: { data: LeadSourceAnalytics[] }) 
                   <div className="mt-1 text-muted-foreground">Cəmi lead: <span className="font-medium text-foreground">{p.total}</span></div>
                   <div className="text-muted-foreground">Qazanıldı: <span className="font-medium text-emerald-300">{p.won}</span></div>
                   <div className="text-muted-foreground">Dönüşüm: <span className="font-medium text-foreground">{p.conversion.toFixed(1)}%</span></div>
-                  <div className="text-muted-foreground">Gəlir: <span className="font-medium text-foreground">{new Intl.NumberFormat("az-AZ", { style: "currency", currency: "AZN" }).format(p.revenue)}</span></div>
+                  <div className="text-muted-foreground">Gəlir: <span className="font-medium text-foreground">{formatMoney(p.revenue)}</span></div>
                 </div>
               );
             }}
@@ -222,8 +223,8 @@ export function SourceAnalyticsChart({ data }: { data: LeadSourceAnalytics[] }) 
                 <td className="px-3 py-1.5 text-right tabular-nums">{d.total}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums text-emerald-300">{d.won}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{d.conversion.toFixed(1)}%</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">{new Intl.NumberFormat("az-AZ", { style: "currency", currency: "AZN", maximumFractionDigits: 0 }).format(d.revenue)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{d.cost > 0 ? new Intl.NumberFormat("az-AZ", { style: "currency", currency: "AZN", maximumFractionDigits: 0 }).format(d.cost) : "—"}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{formatNumber(Math.round(d.revenue), 0) + " ₼"}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{d.cost > 0 ? formatNumber(Math.round(d.cost), 0) + " ₼" : "—"}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{d.roi > 0 ? `${d.roi.toFixed(1)}x` : "—"}</td>
               </tr>
             ))}

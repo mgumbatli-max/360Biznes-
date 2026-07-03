@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn, formatMoney } from "@/lib/utils";
+import { cn, formatMoney, formatDate } from "@/lib/utils";
 import {
   scanLookup,
   fastReturn,
@@ -632,7 +632,7 @@ function CustomerLineResult({
                 Son satış:{" "}
                 <span className="font-mono">{result.recent_sale.nomre}</span>{" "}
                 · {result.recent_sale.musteri_ad ?? "müştəri yox"}{" "}
-                · {new Date(result.recent_sale.tarix).toLocaleDateString("az-AZ")}
+                · {formatDate(result.recent_sale.tarix)}
               </div>
             )}
           </div>
@@ -697,7 +697,7 @@ function MarketplaceSaleResult({ result }: { result: SaleByCodeResult }) {
             <div className="font-mono text-sm font-semibold">{result.nomre}</div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">
               {result.musteri_ad ?? "—"} · {result.anbar_ad ?? "—"} ·{" "}
-              {new Date(result.tarix).toLocaleDateString("az-AZ")}
+              {formatDate(result.tarix)}
             </div>
             {result.marketplace_platform && (
               <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-medium text-rose-700">

@@ -38,7 +38,7 @@ import { getNewReturning, getDebtBuckets } from "@/features/hesabatlar/musteri-q
 import { getDailyCashFlow30, getCashFlowSummary30 } from "@/features/hesabatlar/pul-queries";
 import { buildAiInsightsCached as buildAiInsights } from "@/features/hesabatlar/ai-insights";
 import { thisMonthRange, lastMonthRange } from "@/features/hesabatlar/shared";
-import { formatMoney, formatNumber, cn } from "@/lib/utils";
+import { formatMoney, formatNumber, formatDate, cn } from "@/lib/utils";
 import { getStealthState } from "@/lib/stealth/server"; // QA-orta: gizli rejim miqyası
 
 export const metadata: Metadata = { title: "Hesabatlar — Executive Hub" };
@@ -155,8 +155,8 @@ export default async function HesabatlarHubPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               Bu ayın xülasəsi, AI insight-lar və bütün alt-hesabatlara giriş —{" "}
               <span className="font-medium text-foreground">
-                {thisR.from.toLocaleDateString("az-AZ", { day: "numeric", month: "long" })} —{" "}
-                {new Date().toLocaleDateString("az-AZ", { day: "numeric", month: "long" })}
+                {formatDate(thisR.from, { day: "numeric", month: "long" })} —{" "}
+                {formatDate(new Date(), { day: "numeric", month: "long" })}
               </span>
             </p>
           </div>

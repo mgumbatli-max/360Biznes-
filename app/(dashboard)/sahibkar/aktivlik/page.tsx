@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { getSahibkarState } from "@/lib/sahibkar/guard";
 import { getAktivlikDashboard } from "@/features/sahibkar/aktivlik-queries";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Əməkdaş aktivlik nəzarəti" };
 
@@ -84,7 +84,7 @@ export default async function AktivlikPage({
       {/* KPI strip */}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <KpiCard icon={User} label="Əməkdaş" value={String(rows.length)} subline="Aktiv izlənir" />
-        <KpiCard icon={Activity} label="Cəmi əməliyyat" value={cemiEmeliyyat.toLocaleString("az-AZ")} subline={`Son ${days} gün`} />
+        <KpiCard icon={Activity} label="Cəmi əməliyyat" value={formatNumber(cemiEmeliyyat)} subline={`Son ${days} gün`} />
         <KpiCard icon={AlertTriangle} label="Yüksək risk" value={String(yuksekRisk)} subline="50+ skor" tone={yuksekRisk > 0 ? "danger" : "neutral"} />
         <KpiCard icon={Moon} label="Gecə əməliyyat" value={String(cemiGece)} subline="22:00-08:00" tone={cemiGece > 0 ? "warning" : "neutral"} />
         <KpiCard icon={Calendar} label="Həftəsonu" value={String(cemiAsta)} subline="Şənbə/Bazar" tone={cemiAsta > 0 ? "warning" : "neutral"} />
@@ -152,7 +152,7 @@ export default async function AktivlikPage({
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-right text-sm font-bold tabular-nums">
-                          {r.toplam_emeliyyat.toLocaleString("az-AZ")}
+                          {formatNumber(r.toplam_emeliyyat)}
                         </td>
                         <td className="px-3 py-2.5 text-right text-xs tabular-nums text-emerald-600">
                           {r.yarat || "—"}

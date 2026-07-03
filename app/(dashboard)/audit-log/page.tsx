@@ -24,7 +24,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { AutoRefresh } from "@/features/audit-log/components/auto-refresh";
 import { SettingsTopNav } from "@/features/ayar/components/settings-top-nav";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import {
   getAuditLog,
   getAuditStats,
@@ -105,7 +105,7 @@ export default async function AuditLogPage({
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Audit log & Təhlükəsizlik</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Bütün dəyişikliklər izlənilir. {total.toLocaleString("az-AZ")} qeyd ·{" "}
+            Bütün dəyişikliklər izlənilir. {formatNumber(total)} qeyd ·{" "}
             <span className="text-foreground/80">{deviceSummary.total_active_devices} aktiv cihaz</span>
             {deviceSummary.new_devices_24h > 0 && (
               <span className="ml-1 font-semibold text-amber-600">

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
-import { formatDate, formatMoney, cn } from "@/lib/utils";
+import { formatDate, formatMoney, formatDecimal, cn } from "@/lib/utils";
 import { ApprovalActions } from "@/features/tesdiq/components/approval-actions";
 import { EditApprovalForm } from "@/features/tesdiq/components/edit-approval-form";
 import { canApproveDocApproval } from "@/features/tesdiq/permissions";
@@ -307,7 +307,7 @@ function MetaCard({
 
 function formatValue(v: unknown): string {
   if (v == null) return "—";
-  if (typeof v === "number") return v.toLocaleString("az-AZ");
+  if (typeof v === "number") return formatDecimal(v);
   if (typeof v === "string") return v;
   if (typeof v === "boolean") return v ? "Hə" : "Yox";
   return JSON.stringify(v);

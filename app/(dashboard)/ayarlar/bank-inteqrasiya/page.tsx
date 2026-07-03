@@ -6,6 +6,7 @@ import { BankReconUploader } from "@/features/bank/components/recon-uploader";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Bank inteqrasiya" };
 
@@ -22,7 +23,7 @@ async function getHistory() {
 
 function fmtDate(d: Date | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("az-AZ", { dateStyle: "short", timeStyle: "short" }).format(d);
+  return formatDate(d, { dateStyle: "short", timeStyle: "short" });
 }
 
 export default async function Page() {

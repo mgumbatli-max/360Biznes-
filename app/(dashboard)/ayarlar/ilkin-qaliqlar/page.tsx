@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { getIlkinQaliqStats } from "@/features/ayar/queries";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "İlkin qalıqlar" };
 
@@ -36,10 +36,6 @@ const STEPS = [
 ] as const;
 
 type SearchParams = Promise<{ step?: string }>;
-
-function formatMoney(n: number) {
-  return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 2 }).format(n) + " ₼";
-}
 
 export default async function IlkinQaliqlarPage({ searchParams }: { searchParams: SearchParams }) {
   const { step: stepParam } = await searchParams;

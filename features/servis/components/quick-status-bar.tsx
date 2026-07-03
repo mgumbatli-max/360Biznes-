@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { changeServisStatus, addRepairNote } from "../actions";
+import { formatDate } from "@/lib/utils";
 import type { ServisStatus } from "../types";
 
 type Action = {
@@ -48,7 +49,16 @@ export function QuickStatusBar({
       // log a repair note + open tel:
       const fd = new FormData();
       fd.set("id", id);
-      fd.set("qeyd", `Müştəriyə zəng edildi (${new Date().toLocaleString("az-AZ")})`);
+      fd.set(
+        "qeyd",
+        `Müştəriyə zəng edildi (${formatDate(new Date(), {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })})`,
+      );
       startTransition(async () => {
         const res = await addRepairNote(fd);
         if (res.ok) toast.success("Zəng qeyd edildi");

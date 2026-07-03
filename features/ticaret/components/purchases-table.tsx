@@ -191,7 +191,7 @@ export function PurchasesTable({ items, total, canReceive = false, canCancel = f
                 ),
                 tarix: (
                   <td key="tarix" className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {new Date(p.tarix).toLocaleDateString("az-AZ")}
+                    {formatDate(p.tarix)}
                   </td>
                 ),
                 yaradildi_col: (

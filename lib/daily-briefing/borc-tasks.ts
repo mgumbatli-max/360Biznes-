@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { formatDate } from "@/lib/utils";
 
 /**
  * Borc avto-tapşırıq generatoru.
@@ -105,7 +106,7 @@ export async function generateBorcTasks(): Promise<{ yaradilan: number; atlanıl
       }
 
       const borcFmt = d.borc.toFixed(2);
-      const sonTarixFmt = d.son_satis_tarix.toLocaleDateString("az-AZ");
+      const sonTarixFmt = formatDate(d.son_satis_tarix);
       const deadlineDate = new Date(today);
       deadlineDate.setDate(deadlineDate.getDate() + 3); // 3 günə cavab gözlənir
 

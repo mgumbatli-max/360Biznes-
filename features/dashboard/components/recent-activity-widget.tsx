@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 import type { ActivityItem, ActivityKind } from "@/features/dashboard/recent-activity-queries";
 
 const KIND_META: Record<
@@ -38,7 +38,7 @@ function timeAgo(iso: string): string {
   if (d < 7) return `${d} gün əvvəl`;
   const w = Math.floor(d / 7);
   if (w < 4) return `${w} həftə əvvəl`;
-  return new Date(iso).toLocaleDateString("az-AZ");
+  return formatDate(iso);
 }
 
 export function RecentActivityWidget({

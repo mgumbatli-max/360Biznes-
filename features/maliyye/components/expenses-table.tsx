@@ -198,7 +198,7 @@ export function ExpensesTable({ items, total, canDelete = false }: Props) {
               const cells: Record<string, React.ReactNode> = {
                 tarix: (
                   <td key="tarix" className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {new Date(e.tarix).toLocaleDateString("az-AZ")}
+                    {formatDate(e.tarix)}
                   </td>
                 ),
                 yaradildi_col: (

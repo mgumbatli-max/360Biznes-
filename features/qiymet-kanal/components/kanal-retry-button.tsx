@@ -13,11 +13,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/lib/toast";
+import { formatDate } from "@/lib/utils";
 import { processRetryQueue } from "../outbound-actions";
 import type { RetryQueue } from "../outbound-retry";
 
 function fmt(iso: string): string {
-  return new Date(iso).toLocaleString("az-AZ", {
+  return formatDate(iso, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",

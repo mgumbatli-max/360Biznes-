@@ -6,6 +6,7 @@ import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { parseLocalDate } from "@/lib/utils/date-parse";
+import { formatDate } from "@/lib/utils";
 import { safeAuditLog } from "@/lib/audit/safe-log";
 import {
   requireServisActionPerm,
@@ -291,7 +292,7 @@ export async function changeServisStatus(
       }
       if (status === "redd_edildi" && qeyd) {
         // Səbəbi daxili qeydə append et — audit izi üçün
-        const ts = new Date().toLocaleString("az-AZ");
+        const ts = formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
         const appendLine = `[${ts}] [Rədd] ${qeyd}`;
         const merged = [prev.daxili_qeyd, appendLine].filter(Boolean).join("\n");
         data.daxili_qeyd = merged;
@@ -392,7 +393,7 @@ export async function addDiagnostika(input: FormData): Promise<ActionResult> {
         select: { texniki_qeyd: true },
       });
       if (!prev) return { ok: false, error: "Servis tapılmadı" };
-      const merged = [prev?.texniki_qeyd, `[${new Date().toLocaleString("az-AZ")}] ${d.texniki_qeyd}`]
+      const merged = [prev?.texniki_qeyd, `[${formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}] ${d.texniki_qeyd}`]
         .filter(Boolean)
         .join("\n");
       await prisma.servis_qeydleri.updateMany({
@@ -962,7 +963,7 @@ export async function sendCustomerNotification(
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
-      const ts = new Date().toLocaleString("az-AZ");
+      const ts = formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
       // 🔒 Sahibkar yoxlaması
       const s = await prisma.servis_qeydleri.findFirst({
         where: { id, sahibkar_id: sahibkarId },
@@ -1019,7 +1020,7 @@ export async function submitCustomerReview(input: FormData): Promise<ActionResul
       return { ok: false, error: "Token yanlışdır və ya köhnəlib" };
     }
 
-    const ts = new Date().toLocaleString("az-AZ");
+    const ts = formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     const reyTag = `[Müştəri Rəyi] ${"★".repeat(d.ulduz)}${"☆".repeat(5 - d.ulduz)} ulduz:${d.ulduz} ${d.yazi ?? ""}`.trim();
     const logLine = `[${ts}] ${reyTag}`;
     const merged = [s.daxili_qeyd, logLine].filter(Boolean).join("\n");
@@ -1094,7 +1095,7 @@ export async function customerApproveQuote(input: FormData): Promise<ActionResul
       return { ok: false, error: "Bu mərhələdə cavab qəbul olunmur" };
     }
 
-    const ts = new Date().toLocaleString("az-AZ");
+    const ts = formatDate(new Date(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     const note = d.approved
       ? `[${ts}] [Müştəri TƏSDIQ] Təklif qəbul edildi. ${d.reason ?? ""}`.trim()
       : `[${ts}] [Müştəri RƏDD] Təklif rədd edildi. ${d.reason ?? ""}`.trim();

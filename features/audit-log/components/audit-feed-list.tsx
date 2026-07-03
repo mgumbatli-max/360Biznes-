@@ -14,7 +14,7 @@ import {
   FileEdit,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { OP_META, RESOURCE_LABEL } from "../labels";
 
 type FeedRow = {
@@ -56,11 +56,11 @@ function formatRelative(d: Date): string {
   if (h < 24) return `${h} saat`;
   const day = Math.floor(h / 24);
   if (day < 7) return `${day} gün`;
-  return d.toLocaleDateString("az-AZ", { day: "2-digit", month: "short" });
+  return formatDate(d, { day: "2-digit", month: "short" });
 }
 
 function formatAbs(d: Date): string {
-  return d.toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" });
+  return formatDate(d, { dateStyle: "short", timeStyle: "short" });
 }
 
 function countDiff(before: unknown, after: unknown): number {
@@ -142,11 +142,11 @@ export function AuditFeedList({ items }: { items: FeedRow[] }) {
                         <span title="Yeni cihazdan giriş" className="text-base leading-none">🆕</span>
                       )}
                       <div>
-                        <div className="text-xs font-medium text-foreground" title={r.yaradildi ? formatAbs(r.yaradildi) : ""}>
+                        <div className="text-xs font-medium text-foreground" title={r.yaradildi ? formatAbs(r.yaradildi) : ""} suppressHydrationWarning>
                           {r.yaradildi ? formatRelative(r.yaradildi) : "—"}
                         </div>
                         <div className="text-[10px] text-muted-foreground">
-                          {r.yaradildi ? r.yaradildi.toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit" }) : ""}
+                          {r.yaradildi ? formatDate(r.yaradildi, { hour: "2-digit", minute: "2-digit" }) : ""}
                         </div>
                       </div>
                     </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney, formatNumber } from "@/lib/utils";
 
 type Trend = { value: number; label?: string };
 
@@ -53,10 +53,10 @@ function useAnimatedNumber(target: number, enabled = true, durationMs = 600) {
 
 function format(value: number | string, fmt: Props["format"] = "number") {
   if (typeof value === "string") return value;
-  if (fmt === "money") return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 2 }).format(value) + " ₼";
+  if (fmt === "money") return formatMoney(value);
   if (fmt === "percent") return value.toFixed(1) + "%";
   if (fmt === "plain") return String(value);
-  return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 0 }).format(Math.round(value));
+  return formatNumber(Math.round(value), 0);
 }
 
 export function MetricCard({

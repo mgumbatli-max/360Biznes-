@@ -37,7 +37,7 @@ function whatsappLink(phone: string | null, ad: string, seviyye: string, son_tar
   const tpl = MESSAGES[seviyye] ?? MESSAGES.itirilmekde;
   const msg = tpl
     .replace(/\{\{ad\}\}/g, ad)
-    .replace(/\{\{son_tarix\}\}/g, son_tarix ? son_tarix.toLocaleDateString("az-AZ") : "");
+    .replace(/\{\{son_tarix\}\}/g, son_tarix ? formatDate(son_tarix) : "");
   return `https://wa.me/${p}?text=${encodeURIComponent(msg)}`;
 }
 

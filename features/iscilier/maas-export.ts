@@ -3,6 +3,7 @@
 import ExcelJS from "exceljs";
 import { getMaasTable } from "./maas-queries";
 import { requireHrActionPerm } from "./access-guard";
+import { formatDate } from "@/lib/utils";
 
 const MONTH_LABELS = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
 
@@ -69,7 +70,7 @@ export async function exportMaasExcel(monthArg?: string): Promise<{ ok: true; fi
         sosial:         r.sosial_sigorta,
         net:            r.net_meblegh,
         status:         r.status,
-        odenish_tarixi: r.odenish_tarixi ? new Date(r.odenish_tarixi).toLocaleDateString("az-AZ") : "—",
+        odenish_tarixi: r.odenish_tarixi ? formatDate(r.odenish_tarixi) : "—",
       });
     });
 

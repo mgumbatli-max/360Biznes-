@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { formatDate } from "@/lib/utils";
 import { addDisciplinaryAction } from "../hr-actions";
 import type { DisciplineEvent } from "../hr-types";
 
@@ -147,7 +148,13 @@ export function DisciplinaryForm({
                     <div className="font-medium">{lbl}</div>
                     <div className="text-muted-foreground">{h.sebeb}</div>
                     <div className="text-[10px] text-muted-foreground">
-                      {new Date(h.ts).toLocaleString("az-AZ")}
+                      {formatDate(h.ts, {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </div>
                   </div>
                   {h.meblegh && h.meblegh > 0 && (

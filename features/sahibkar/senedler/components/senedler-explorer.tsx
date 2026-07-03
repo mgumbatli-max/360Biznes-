@@ -21,6 +21,7 @@ import {
 import type { SenedTree, SenedFayl, QovluqColor } from "@/features/sahibkar/senedler/types";
 import { QOVLUQ_COLOR_CLASSES } from "@/features/sahibkar/senedler/types";
 import { EntityLinkPicker, LinkBadge } from "./entity-link-picker";
+import { formatDate } from "@/lib/utils";
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
@@ -273,7 +274,7 @@ export function SenedlerExplorer({
                     {f.tip === "file" ? formatBytes(f.olcu_byte) : "link"}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    {new Date(f.yaradildi).toLocaleDateString("az-AZ")}
+                    {formatDate(f.yaradildi)}
                   </div>
                   <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
                     <EntityLinkPicker target="file" itemId={f.id} currentLink={f.link ?? null} onDone={() => router.refresh()} />

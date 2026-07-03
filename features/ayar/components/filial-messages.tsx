@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDate as fmtDate } from "@/lib/utils";
 import { sendFilialMessage, markFilialMessagesRead, deleteFilialMessage } from "../messages-actions";
 
 type Partner = {
@@ -78,11 +78,11 @@ const PRIORITET_OPTIONS = [
 ];
 
 function formatTime(d: Date) {
-  return new Intl.DateTimeFormat("az-AZ", { hour: "2-digit", minute: "2-digit" }).format(d);
+  return fmtDate(d, { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatDate(d: Date) {
-  return new Intl.DateTimeFormat("az-AZ", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(d);
+  return fmtDate(d, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function isToday(d: Date) {
@@ -235,7 +235,7 @@ export function FilialMessages({
                     <div className="flex items-center justify-between gap-1">
                       <span className="truncate text-sm font-semibold">{partner.ad}</span>
                       {ts && (
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                        <span suppressHydrationWarning className="shrink-0 text-[10px] text-muted-foreground">
                           {isToday(ts) ? formatTime(ts) : formatDate(ts).split(" ")[0]}
                         </span>
                       )}

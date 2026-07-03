@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/features/dashboard/components/kpi-card";
 import { getWebhookOrders } from "@/features/qiymet-kanal/webhook-orders-queries";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Webhook sifarişləri" };
 
@@ -18,7 +18,7 @@ type SearchParams = {
 const PAGE_SIZE = 50;
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString("az-AZ", {
+  return formatDate(iso, {
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",

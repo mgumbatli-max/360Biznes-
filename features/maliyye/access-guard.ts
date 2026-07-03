@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { formatDecimal } from "@/lib/utils";
 
 /**
  * Maliyyə modulu üçün ortaq icazə yoxlaması.
@@ -82,6 +83,6 @@ export async function requireHighValueApproval(meblegAzn: number, threshold = 50
   if (isMaliyyePrivileged(rolAd)) return { ok: true };
   return {
     ok: false,
-    error: `${meblegAzn.toLocaleString("az-Latn-AZ")} AZN — bu məbləğ üçün təsdiq tələb olunur (limit: ${threshold} AZN)`,
+    error: `${formatDecimal(meblegAzn)} AZN — bu məbləğ üçün təsdiq tələb olunur (limit: ${threshold} AZN)`,
   };
 }

@@ -2,18 +2,28 @@
 
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatDate, formatMoney } from "@/lib/utils";
 import type { DailySalesPoint } from "../queries";
 
 type Props = {
   data: DailySalesPoint[];
 };
 
+// DETERMINISTIK Bakı (UTC+4) qısa gün adları — formatDate weekday dəstəkləmir,
+// Intl isə server/brauzer ICU-ya görə fərqli nəticə verib React #418-ə səbəb olurdu.
+const AZ_WEEKDAYS_SHORT = ["B.", "B.E.", "Ç.A.", "Ç.", "C.A.", "C.", "Ş."];
+function weekdayShortBaku(value: string): string {
+  const t = new Date(value).getTime();
+  if (Number.isNaN(t)) return "";
+  return AZ_WEEKDAYS_SHORT[new Date(t + 4 * 60 * 60 * 1000).getUTCDay()];
+}
+
 export default function SalesChartImpl({ data }: Props) {
   const display = useMemo(
     () =>
       data.map((d) => ({
         ...d,
-        label: new Date(d.date).toLocaleDateString("az-AZ", { weekday: "short", day: "numeric" }),
+        label: `${weekdayShortBaku(d.date)} ${formatDate(d.date, { day: "numeric" })}`,
       })),
     [data]
   );
@@ -64,7 +74,7 @@ export default function SalesChartImpl({ data }: Props) {
                 <div className="mt-1 text-muted-foreground">
                   Məbləğ:{" "}
                   <span className="font-medium text-foreground">
-                    {new Intl.NumberFormat("az-AZ", { style: "currency", currency: "AZN" }).format(item.amount)}
+                    {formatMoney(item.amount)}
                   </span>
                 </div>
                 <div className="text-muted-foreground">

@@ -10,6 +10,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getMarketplaceDefaults } from "@/features/ticaret/marketplace-defaults";
 import { MarketplaceDefaultsForm } from "@/features/ayarlar/components/marketplace-defaults-form";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Marketplace inteqrasiyalar" };
 export const dynamic = "force-dynamic";
@@ -135,7 +136,7 @@ export default async function Page() {
                     </div>
                     {a.son_sync && (
                       <div className="mt-0.5 text-[10.5px] text-muted-foreground">
-                        Son sync: {new Date(a.son_sync).toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })}
+                        Son sync: {formatDate(a.son_sync, { dateStyle: "short", timeStyle: "short" })}
                       </div>
                     )}
                   </div>
@@ -247,7 +248,7 @@ function Stat({
             "text-foreground"
           }`}
         >
-          {value.toLocaleString("az-AZ")}
+          {formatNumber(value)}
         </div>
       </CardContent>
     </Card>

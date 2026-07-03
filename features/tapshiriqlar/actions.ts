@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/db/tenant-context";
 import { auth } from "@/auth";
 import { getRequestPermissions } from "@/lib/auth/get-permissions";
 import { audit } from "@/lib/audit/log";
+import { formatDate } from "@/lib/utils";
 
 /** Sahibkar/admin avtomatik, digərləri üçün icazə yoxlanır. */
 export async function requireTapshiriqPerm(perm: string): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -408,7 +409,7 @@ async function sendTaskTelegram(
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3500";
   const priorityEmoji = task.prioritet === "tecili" ? "🔴" : task.prioritet === "yuksek" ? "🟠" : task.prioritet === "asagi" ? "🟢" : "🟡";
   const deadlineStr = task.deadline
-    ? `\n🕒 <b>Son tarix:</b> ${task.deadline.toLocaleString("az-AZ", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`
+    ? `\n🕒 <b>Son tarix:</b> ${formatDate(task.deadline, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}`
     : "";
   const assigneeStr = task.assigneeCount > 1 ? `\n👥 <b>İcraçı:</b> ${task.assigneeCount} nəfər` : "";
   const text = [

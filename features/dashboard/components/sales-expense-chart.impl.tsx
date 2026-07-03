@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
+import { formatDate, formatMoney } from "@/lib/utils";
 import type { SalesVsExpensePoint } from "../queries";
 
 type Props = { data: SalesVsExpensePoint[] };
@@ -11,7 +12,7 @@ export function SalesExpenseChart({ data }: Props) {
     () =>
       data.map((d) => ({
         ...d,
-        label: new Date(d.gun).toLocaleDateString("az-AZ", { day: "numeric", month: "short" }),
+        label: formatDate(d.gun, { day: "numeric", month: "short" }),
       })),
     [data]
   );
@@ -43,7 +44,7 @@ export function SalesExpenseChart({ data }: Props) {
                   <div key={p.dataKey as string} className="text-muted-foreground">
                     <span className="capitalize">{p.dataKey === "satis" ? "Satış" : "Xərc"}:</span>{" "}
                     <span className="font-medium text-foreground">
-                      {Number(p.value).toLocaleString("az-AZ")} ₼
+                      {formatMoney(Number(p.value))}
                     </span>
                   </div>
                 ))}

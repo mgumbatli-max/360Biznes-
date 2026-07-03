@@ -278,7 +278,7 @@ export function HereketTable({ items }: { items: HereketRow[] }) {
                 ),
                 saat_col: (
                   <td key="saat_col" className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
-                    {m.tarix ? new Date(m.tarix).toLocaleTimeString("az-AZ", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                    {m.tarix ? formatDate(m.tarix, { hour: "2-digit", minute: "2-digit" }) : "—"}
                   </td>
                 ),
                 nov: (

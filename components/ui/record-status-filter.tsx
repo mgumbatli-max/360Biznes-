@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useTransition } from "react";
 import { Check, Trash2, Eye, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 /**
  * Vahid soft-delete filter UI — bütün siyahılarda istifadə üçün.
@@ -95,10 +95,7 @@ export function DeletedBadge({
   className?: string;
 }) {
   if (!deletedAt) return null;
-  const dateStr =
-    typeof deletedAt === "string"
-      ? new Date(deletedAt).toLocaleDateString("az-AZ")
-      : deletedAt.toLocaleDateString("az-AZ");
+  const dateStr = formatDate(deletedAt);
   const title = [
     `Silinib: ${dateStr}`,
     deletedBy ? `Silən: ${deletedBy}` : null,

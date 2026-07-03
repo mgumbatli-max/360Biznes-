@@ -4,6 +4,7 @@ import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { getStealthState } from "@/lib/stealth/server";
+import { formatNumber } from "@/lib/utils";
 
 export type TradeKpis = {
   satish: {
@@ -378,7 +379,7 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
       insights.push({
         novu: "alarm",
         basliq: "Gecikən borclar",
-        tesvir: `${overdue} kreditli satış 30+ gündür ödənilmir. Cəm: ${new Intl.NumberFormat("az-AZ").format(Math.round(overdueAmount))} ₼`,
+        tesvir: `${overdue} kreditli satış 30+ gündür ödənilmir. Cəm: ${formatNumber(Math.round(overdueAmount))} ₼`,
         metric: `${overdue}`,
         href: "/maliyye/debitor",
       });
@@ -458,7 +459,7 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
       insights.push({
         novu: "tovsiye",
         basliq: "Anbarda dayanan mal",
-        tesvir: `${deadCount} məhsul 60+ gündür satılmır. Mayası ~${new Intl.NumberFormat("az-AZ").format(Math.round(deadValue))} ₼ dondurulub. Endirim və ya geri qaytarma planla.`,
+        tesvir: `${deadCount} məhsul 60+ gündür satılmır. Mayası ~${formatNumber(Math.round(deadValue))} ₼ dondurulub. Endirim və ya geri qaytarma planla.`,
         metric: `${deadCount}`,
         href: "/anbar/mehsullar?sort=son_satis&dir=asc",
       });

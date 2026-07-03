@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { formatDate } from "@/lib/utils";
 
 export type TaskScope = "menim" | "yaratdigim" | "hamisi";
 export type TaskStatus = "yeni" | "icrada" | "gozlemede" | "tamamlandi" | "legv";
@@ -399,7 +400,7 @@ async function fetchMyWorkSummary(
       id: t.id,
       basliq: t.basliq,
       meta: t.deadline
-        ? `Son tarix: ${t.deadline.toLocaleDateString("az-AZ")}`
+        ? `Son tarix: ${formatDate(t.deadline)}`
         : t.prioritet
           ? `Prioritet: ${t.prioritet}`
           : null,
@@ -409,7 +410,7 @@ async function fetchMyWorkSummary(
       id: t.id,
       basliq: t.basliq,
       meta: t.xatirlatma
-        ? t.xatirlatma.toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })
+        ? formatDate(t.xatirlatma, { dateStyle: "short", timeStyle: "short" })
         : null,
       href: `/tapshiriqlar/${t.id}`,
     })),

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { SettingsTopNav } from "@/features/ayar/components/settings-top-nav";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Müştəri seqmentasiyası" };
 export const dynamic = "force-dynamic";
@@ -180,7 +180,7 @@ function SegmentCard({ segment }: { segment: SegmentRow }) {
       </div>
       <div className="mt-3 flex items-center justify-between">
         <div className="text-xs">
-          <span className="font-bold tabular-nums">{segment.member_count.toLocaleString("az-AZ")}</span>
+          <span className="font-bold tabular-nums">{formatNumber(segment.member_count)}</span>
           <span className="ml-1 text-muted-foreground">müştəri</span>
         </div>
         {segment.aktiv ? (

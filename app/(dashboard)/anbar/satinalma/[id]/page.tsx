@@ -21,7 +21,7 @@ import {
 } from "@/features/satinalma/queries";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
-import { cn } from "@/lib/utils";
+import { cn, formatMoney, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Təklif detalı" };
 
@@ -34,12 +34,12 @@ const STATUS_INFO: Record<string, { label: string; cls: string }> = {
 };
 
 function fmtMoney(n: number) {
-  return new Intl.NumberFormat("az-AZ", { maximumFractionDigits: 2 }).format(n) + " ₼";
+  return formatMoney(n);
 }
 
 function fmtDate(d: Date | null) {
   if (!d) return "—";
-  return new Intl.DateTimeFormat("az-AZ", { dateStyle: "short", timeStyle: "short" }).format(d);
+  return formatDate(d, { dateStyle: "short", timeStyle: "short" });
 }
 
 function toNum(v: { toNumber?: () => number } | number | null | undefined): number {

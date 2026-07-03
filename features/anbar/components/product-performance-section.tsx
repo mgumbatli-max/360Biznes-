@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatMoney, formatNumber } from "@/lib/utils";
+import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { ProductPerformance } from "../performance-queries";
 
@@ -113,7 +113,7 @@ export function ProductPerformanceSection({ perf }: { perf: ProductPerformance }
                         {c.son_alis && (
                           <>
                             {" "}
-                            · son: {new Date(c.son_alis).toLocaleDateString("az-AZ", { day: "2-digit", month: "short" })}
+                            · son: {formatDate(c.son_alis, { day: "2-digit", month: "short" })}
                           </>
                         )}
                       </div>

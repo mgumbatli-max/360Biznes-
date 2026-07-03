@@ -1,5 +1,6 @@
 import "server-only";
 import { sendEmail } from "@/lib/email/adapter";
+import { formatDate } from "@/lib/utils";
 import { describeDevice, type DeviceInfo } from "./device-fingerprint";
 
 /**
@@ -26,9 +27,15 @@ export type NewDeviceEmailOpts = {
 
 export async function sendNewDeviceAlert(opts: NewDeviceEmailOpts): Promise<void> {
   const deviceText = describeDevice(opts.device);
-  const timeStr = opts.timestamp.toLocaleString("az-AZ", {
-    dateStyle: "full",
-    timeStyle: "short",
+  // Bakı vaxtı (deterministik) — server UTC olduğundan toLocaleString AZ istifadəçiyə
+  // 4 saat səhv göstərirdi. "3 iyul 2026, cümə 10:05" formatı.
+  const timeStr = formatDate(opts.timestamp, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
   const ipText = opts.ip ?? "naməlum";
   const tenantPrefix = opts.tenantName ? `[${opts.tenantName}] ` : "";

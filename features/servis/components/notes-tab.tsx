@@ -6,6 +6,7 @@ import { Loader2, Save, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { formatDate } from "@/lib/utils";
 import { addRepairNote } from "../actions";
 
 export type NoteEntry = {
@@ -98,7 +99,7 @@ export function NotesTab({
                 {n.deyisen_ad && <span className="font-medium">{n.deyisen_ad}</span>}
                 {n.yaradildi && (
                   <span className="ml-auto">
-                    {new Date(n.yaradildi).toLocaleString("az-AZ")}
+                    {formatDate(n.yaradildi, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                   </span>
                 )}
               </div>

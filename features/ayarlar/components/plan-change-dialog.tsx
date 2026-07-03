@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { changeSubscriptionPlan } from "@/features/ayarlar/abune-actions";
+import { formatNumber } from "@/lib/utils";
 
 type Plan = {
   id: number;
@@ -21,7 +22,7 @@ type Plan = {
 };
 
 function formatMoney(n: number) {
-  return new Intl.NumberFormat("az-AZ", { style: "currency", currency: "AZN", maximumFractionDigits: 0 }).format(n);
+  return formatNumber(Math.round(n), 0) + " ₼";
 }
 
 export function PlanChangeDialog({ plans, currentPlanId }: { plans: Plan[]; currentPlanId: number | null }) {

@@ -200,7 +200,7 @@ export function OperationsTable({ items, total, canApprove = false, canCancel = 
               const cells: Record<string, React.ReactNode> = {
                 tarix: (
                   <td key="tarix" className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {new Date(o.tarix).toLocaleDateString("az-AZ")}
+                    {formatDate(o.tarix)}
                   </td>
                 ),
                 saat: (

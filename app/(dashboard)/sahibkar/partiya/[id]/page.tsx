@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { requireSahibkarSession } from "@/lib/sahibkar/guard";
 import { getPartiyaDetail } from "@/features/sahibkar/partiya-detail-queries";
 import { SectionExplainer } from "@/features/sahibkar/components/section-explainer";
-import { formatMoney, formatNumber, formatDate } from "@/lib/utils";
+import { formatMoney, formatNumber, formatDecimal, formatDate } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Partiya detalı" };
 
@@ -50,7 +50,7 @@ export default async function PartiyaDetailPage({ params }: { params: Promise<{ 
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-        <Kpi label="Xarici val cəmi" value={`${Number(p.cemi_xarici_val ?? 0).toLocaleString("az-AZ")} ${p.valyuta ?? ""}`} />
+        <Kpi label="Xarici val cəmi" value={`${formatDecimal(Number(p.cemi_xarici_val ?? 0))} ${p.valyuta ?? ""}`} />
         <Kpi label="Xarici → AZN" value={formatMoney(Number(p.cemi_xarici_azn ?? 0))} />
         <Kpi label="Əlavə xərc" value={formatMoney(xercCemi)} />
         <Kpi label="Real maya AZN" value={formatMoney(Number(p.cemi_real_maya_azn ?? 0))} tone="emerald" />
@@ -164,7 +164,7 @@ export default async function PartiyaDetailPage({ params }: { params: Promise<{ 
                     <div className="font-semibold tabular-nums">{formatMoney(Number(x.mebleg_azn))}</div>
                     {x.mebleg_orig && x.valyuta && (
                       <div className="text-[10px] text-muted-foreground">
-                        {Number(x.mebleg_orig).toLocaleString("az-AZ")} {x.valyuta}
+                        {formatDecimal(Number(x.mebleg_orig))} {x.valyuta}
                       </div>
                     )}
                   </div>

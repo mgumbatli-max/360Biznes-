@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { formatNumber, formatDate } from "@/lib/utils";
 
 export type JourneyItemDetail = {
   ref_id: string;
@@ -21,14 +22,14 @@ export type JourneyItemDetail = {
   allocations?: Array<{ nomre: string; mebleg: number; href: string | null }>;
 };
 
-function fmt(n: number | null | undefined, opts?: Intl.NumberFormatOptions): string {
+function fmt(n: number | null | undefined): string {
   if (n == null) return "—";
-  return n.toLocaleString("az-AZ", { minimumFractionDigits: 2, maximumFractionDigits: 2, ...opts });
+  return formatNumber(n, 2);
 }
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("az-AZ");
+  return formatDate(d);
 }
 
 export async function getJourneyItemDetail(

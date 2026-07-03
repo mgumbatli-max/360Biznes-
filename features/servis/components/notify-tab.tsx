@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Send, MessageCircle, Mail, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -36,11 +36,15 @@ export function NotifyTab({
   const [channel, setChannel] = useState<"sms" | "email" | "whatsapp">("sms");
   const [template, setTemplate] = useState<keyof typeof NOTIFICATION_TEMPLATES>("qebul");
   const [pending, startTransition] = useTransition();
+  // 🔒 origin SSR-də və ilk client render-də boş → hər iki tərəf nisbi URL verir
+  // (hidratasiya uyğun). Mount-dan sonra mütləq origin qoyulur. `typeof window`-u
+  // birbaşa render-də oxumaq SSR(nisbi)≠client(mütləq) → React #418 yaradırdı.
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
 
   function buildMessage(): string {
     const tpl = NOTIFICATION_TEMPLATES[template].text;
-    const trackUrl =
-      typeof window !== "undefined" ? `${window.location.origin}/servis-track/${trackToken}` : `/servis-track/${trackToken}`;
+    const trackUrl = `${origin}/servis-track/${trackToken}`;
     return tpl
       .replaceAll("{ad}", musteriAd)
       .replaceAll("{nomre}", servisNomre)
@@ -131,7 +135,13 @@ export function NotifyTab({
             {loglar.map((l, i) => (
               <li key={i} className="px-3 py-2 text-xs">
                 <span className="font-mono text-muted-foreground">
-                  {l.yaradildi ? new Date(l.yaradildi).toLocaleString("az-AZ") : "—"}
+                  {formatDate(l.yaradildi, {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>{" "}
                 <span className="rounded bg-secondary/40 px-1 text-[10px] uppercase">{l.channel}</span>{" "}
                 <span className="text-muted-foreground">{l.message}</span>

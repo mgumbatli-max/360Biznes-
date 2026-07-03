@@ -35,7 +35,7 @@ import {
   SERVIS_PRIORITY_LABELS,
   type ServisRow,
 } from "../types";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 import { RejectReasonDialog } from "./reject-reason-dialog";
 import { ServisStatusBadge, ServisPriorityBadge } from "./servis-status-badge";
 import { RowIconButton, RowIconGroup } from "@/features/shared/row-icon-button";
@@ -78,7 +78,7 @@ const DEFAULT_ORDER = COLUMN_DEFS.map((c) => c.key);
 
 function fmt(d: Date | null) {
   if (!d) return "—";
-  return new Date(d).toLocaleDateString("az-AZ");
+  return formatDate(d);
 }
 
 type TableFilters = {
@@ -407,10 +407,15 @@ function ServisRow({
   searchParams: ReturnType<typeof useSearchParams>;
 }) {
   const [pending, startTransition] = useTransition();
+  // 🔒 "İndi" ilə müqayisə render-də: server (SSR) və client fərqli an → React #418.
+  // Mount-dan sonra hesablanır; ilk render həm serverdə, həm client-də overdue=false.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const status = SERVIS_STATUS_LABELS[row.status] ?? SERVIS_STATUS_LABELS.qebul_edildi;
   const prio = SERVIS_PRIORITY_LABELS[row.prioritet] ?? SERVIS_PRIORITY_LABELS.orta;
   const possibleNext = NEXT_STAGES[row.status] ?? [];
-  const overdue = row.texmini_tehvil && new Date(row.texmini_tehvil) < new Date() && !row.qapanma_tarixi;
+  const overdue =
+    mounted && row.texmini_tehvil && new Date(row.texmini_tehvil) < new Date() && !row.qapanma_tarixi;
   const paymentStatus = paymentStatusFor(row);
 
   function openDetail() {

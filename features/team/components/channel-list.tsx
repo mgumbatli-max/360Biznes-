@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Hash, MessageCircle, Building2, Search, Plus, BellOff, Pin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 type ChannelRow = {
   uzv: { rolu: string; bildiris: boolean; son_oxudu_de: Date | null };
@@ -39,7 +39,7 @@ function formatRelative(d: Date | null) {
   if (diffMin < 1440) return `${Math.floor(diffMin / 60)}s`;
   const days = Math.floor(diffMin / 1440);
   if (days < 7) return `${days}g`;
-  return new Intl.DateTimeFormat("az-AZ", { day: "2-digit", month: "short" }).format(date);
+  return formatDate(date, { day: "2-digit", month: "short" });
 }
 
 export function ChannelList({
@@ -214,7 +214,7 @@ function ChannelRowComp({
       <span className="min-w-0 flex-1 truncate text-sm">{name}</span>
       {!row.uzv.bildiris && <BellOff className="h-3 w-3 shrink-0 text-muted-foreground/60" />}
       {row.kanal.son_mesaj_de && (
-        <span className="shrink-0 text-[10px] text-muted-foreground/70">
+        <span className="shrink-0 text-[10px] text-muted-foreground/70" suppressHydrationWarning>
           {formatRelative(row.kanal.son_mesaj_de)}
         </span>
       )}

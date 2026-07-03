@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { formatDate, formatNumber } from "@/lib/utils";
 import { generateApiKey, revokeApiKey, deleteApiKey } from "../api-keys-actions";
 
 export type ApiKeyRow = {
@@ -122,7 +123,7 @@ export function ApiKeysPanel({ items }: { items: ApiKeyRow[] }) {
                         <div className="font-medium">{k.ad}</div>
                         {k.bitme && (
                           <div className="text-[10.5px] text-muted-foreground">
-                            Bitir: {new Date(k.bitme).toLocaleDateString("az-AZ")}
+                            Bitir: {formatDate(k.bitme)}
                           </div>
                         )}
                       </td>
@@ -146,10 +147,10 @@ export function ApiKeysPanel({ items }: { items: ApiKeyRow[] }) {
                         </div>
                       </td>
                       <td className="px-3 py-2 text-xs">
-                        <div className="font-mono tabular-nums">{k.istifade_sayi.toLocaleString("az-AZ")}</div>
+                        <div className="font-mono tabular-nums">{formatNumber(k.istifade_sayi)}</div>
                         {k.son_istifade && (
                           <div className="text-[10.5px] text-muted-foreground">
-                            {new Date(k.son_istifade).toLocaleString("az-AZ", { dateStyle: "short", timeStyle: "short" })}
+                            {formatDate(k.son_istifade, { dateStyle: "short", timeStyle: "short" })}
                           </div>
                         )}
                       </td>

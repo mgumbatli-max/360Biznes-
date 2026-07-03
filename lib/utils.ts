@@ -40,6 +40,25 @@ export function formatNumber(value: number | string | null | undefined, fraction
 }
 
 /**
+ * DETERMINISTIK dəyişkən-dəqiqlikli rəqəm — `Number.toLocaleString("az-AZ")`
+ * defolt davranışının EKVİVALENTİ: `maxFrac`-ə qədər onluq, sondakı sıfırlar
+ * kəsilir (100 → "100", 12,5 → "12,5", 12,345 → "12,345"). formatNumber(n, k)
+ * onluğu MƏCBURİ k-ya sabitləyir (100 → "100,00"), ona görə ixtiyari
+ * rəqəmlərdə (illər/ID-lər/miqdarlar) ",00" artığı yaradırdı. Bu isə orijinal
+ * `toLocaleString` çıxışını qoruyur (fərq yalnız minlik ayırıcı: ICU "." → app " ").
+ */
+export function formatDecimal(value: number | string | null | undefined, maxFrac = 3) {
+  if (value === null || value === undefined || value === "") return "—";
+  const num = typeof value === "string" ? Number(value) : value;
+  if (Number.isNaN(num)) return "—";
+  const neg = num < 0;
+  const fixed = Math.abs(num).toFixed(maxFrac);
+  let [intPart, dec] = fixed.split(".");
+  if (dec) dec = dec.replace(/0+$/, ""); // sondakı sıfırları kəs
+  return `${neg ? "-" : ""}${azGroup(intPart)}${dec ? "," + dec : ""}`;
+}
+
+/**
  * Compact rəqəm formatı: 1.000 → "1K", 1.000.000 → "1M", 1.500.000 → "1.5M".
  * 1000-dən aşağı sadə formatNumber qaytarır. Hər hesablama "az-AZ" lokal-i ilə
  * uyğun komma istifadə edir (1,5M kimi).
@@ -84,6 +103,9 @@ function trimZero(s: string): string {
 // az-AZ ay adları (Intl-siz — deterministik).
 const AZ_MONTHS_SHORT = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avq", "sen", "okt", "noy", "dek"];
 const AZ_MONTHS_LONG = ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avqust", "sentyabr", "oktyabr", "noyabr", "dekabr"];
+// az-AZ həftə günləri (getUTCDay indeksi: 0=bazar … 6=şənbə) — Intl-siz, deterministik.
+const AZ_WEEKDAYS_LONG = ["bazar", "bazar ertəsi", "çərşənbə axşamı", "çərşənbə", "cümə axşamı", "cümə", "şənbə"];
+const AZ_WEEKDAYS_SHORT = ["B.", "B.E.", "Ç.A.", "Ç.", "C.A.", "C.", "Ş."];
 
 /**
  * DETERMINISTIK tarix formatı — `Intl.DateTimeFormat` İSTİFADƏ ETMİR.
@@ -98,14 +120,19 @@ export function formatDate(value: Date | string | null | undefined, opts?: Intl.
   if (Number.isNaN(d.getTime())) return "—";
   const o = opts ?? { year: "numeric", month: "2-digit", day: "2-digit" };
   const p = (n: number) => String(n).padStart(2, "0");
-  const day = d.getDate(), mon = d.getMonth(), yr = d.getFullYear();
-  const hr = d.getHours(), min = d.getMinutes(), sec = d.getSeconds();
+  // 🔒 DETERMINISTIK Bakı vaxtı (UTC+4, DST yox). Əvvəl lokal getter-lər (getDate/
+  // getHours...) işlədilirdi → server (UTC) və brauzer (Baku) gecəyarısına yaxın
+  // tarixlər üçün FƏRQLİ gün verirdi → React #418 hidratasiya. Sabit +4h shift +
+  // UTC getter-lər hər runtime-da eyni nəticə verir (lokal display dəyişmir).
+  const bk = new Date(d.getTime() + 4 * 60 * 60 * 1000);
+  const day = bk.getUTCDate(), mon = bk.getUTCMonth(), yr = bk.getUTCFullYear();
+  const hr = bk.getUTCHours(), min = bk.getUTCMinutes(), sec = bk.getUTCSeconds();
   const parts: string[] = [];
 
   // ── Tarix hissəsi ──
   if (o.dateStyle === "short") {
     parts.push(`${p(day)}.${p(mon + 1)}.${yr}`);
-  } else if (o.day || o.month || o.year) {
+  } else if (o.day || o.month || o.year || o.weekday) {
     const dd = o.day === "2-digit" ? p(day) : o.day ? String(day) : "";
     const yy = o.year === "2-digit" ? p(yr % 100) : o.year ? String(yr) : "";
     let mm = "";
@@ -115,7 +142,13 @@ export function formatDate(value: Date | string | null | undefined, opts?: Intl.
     else if (o.month) mm = String(mon + 1);
     // Rəqəmli ay → nöqtə ilə (DD.MM.YYYY); ad-lı ay → boşluqla (DD mon YYYY)
     const numericMonth = o.month === "2-digit" || o.month === "numeric";
-    parts.push([dd, mm, yy].filter(Boolean).join(numericMonth ? "." : " "));
+    let datePart = [dd, mm, yy].filter(Boolean).join(numericMonth ? "." : " ");
+    // Həftə günü Intl az-AZ-də tarixdən SONRA, vergüllə gəlir ("1 iyul 2026, çərşənbə").
+    if (o.weekday) {
+      const wd = o.weekday === "short" ? AZ_WEEKDAYS_SHORT[bk.getUTCDay()] : AZ_WEEKDAYS_LONG[bk.getUTCDay()];
+      datePart = datePart ? `${datePart}, ${wd}` : wd;
+    }
+    if (datePart) parts.push(datePart);
   }
 
   // ── Vaxt hissəsi ──

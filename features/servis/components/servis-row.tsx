@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProductInline } from "@/features/anbar/components/product-inline";
 import { changeServisStatus } from "../actions";
 import { SERVIS_STATUS_LABELS, type ServisRow } from "../types";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, formatDate } from "@/lib/utils";
 
 const NEXT_STAGES: Record<string, string[]> = {
   qebul_edildi: ["diaqnostikada", "redd_edildi"],
@@ -55,7 +55,7 @@ export function ServisRowItem({ row }: { row: ServisRow }) {
           <div className="font-mono text-xs font-medium">{row.nomre}</div>
           {row.yaradildi && (
             <div className="text-xs text-muted-foreground">
-              {new Date(row.yaradildi).toLocaleDateString("az-AZ")}
+              {formatDate(row.yaradildi)}
             </div>
           )}
         </Link>

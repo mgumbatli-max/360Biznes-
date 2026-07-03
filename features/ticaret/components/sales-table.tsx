@@ -247,7 +247,7 @@ export function SalesTable({ items, total, canPay = false, canCancel = false }: 
                 ),
                 tarix: (
                   <td key="tarix" className="px-3 py-2.5 text-xs text-muted-foreground">
-                    {new Date(s.tarix).toLocaleDateString("az-AZ")}
+                    {formatDate(s.tarix)}
                   </td>
                 ),
                 yaradildi_col: (
