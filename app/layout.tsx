@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ToasterMount } from "@/components/providers/toaster-mount";
+import { ChunkErrorRecovery } from "@/components/chunk-error-recovery";
 import "./globals.css";
 
 const inter = Inter({
@@ -54,6 +55,7 @@ export default function RootLayout({
         <ThemeProvider>
           {children}
           <ToasterMount />
+          <ChunkErrorRecovery />
         </ThemeProvider>
       </body>
     </html>
