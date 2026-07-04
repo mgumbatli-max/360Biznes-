@@ -272,7 +272,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
       // Təsdiq tələbini yarat (sənəd artıq DB-də var, yalnız tesdiq_gozleyir
       // statusundadır). approveRequest sonra status-u aktivə çevirəcək.
       if (needsApproval) {
-        await createApprovalRequest({
+        const approval = await createApprovalRequest({
           emeliyyat_nov: "alis_qaime",
           resurs_nov: "alis_sifarisi",
           resurs_id: result.id,
@@ -287,6 +287,18 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
             line_count: d.lines.length,
           },
         });
+        // QA-audit-D: auto-təsdiq (kiçik məbləğ / qayda söndürülüb) halında sənəd əvvəl
+        // 'tesdiq_gozleyir'-də İLİŞİB QALIRDI (nəticə yoxlanmırdı, heç vaxt materiallaşmırdı).
+        // Auto-approve olarsa dərhal materiallaşdır: status→gozlemede, receive_now-dursa stoka qəbul.
+        if (approval.ok && approval.auto_approved) {
+          await prisma.alis_sifarisleri.updateMany({
+            where: { id: result.id, sahibkar_id: sahibkarId, status: "tesdiq_gozleyir" },
+            data: { status: "gozlemede" },
+          });
+          if (d.receive_now) {
+            try { await receivePurchase(result.id); } catch (e) { console.warn("[createPurchase] auto-approve receive skipped:", e); }
+          }
+        }
       }
 
       revalidatePath("/ticaret/alislar");
