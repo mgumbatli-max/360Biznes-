@@ -107,9 +107,12 @@ export async function calculateCommission(
     let updated = 0;
     let skipped = 0;
 
+    // QA-audit-E: çoxsətirli bordro yazıları TRANZAKSIYAsız idi → dövrənin ortasında DB xətası
+    // yarımçıq bordro commit-i buraxırdı (+ xam istisna). İndi bütün loop bir $transaction-da (atomik).
+    await prisma.$transaction(async (tx) => {
     for (const r of rows) {
       // Find or insert salary row
-      const existing = await prisma.maas_hesablamalar.findFirst({
+      const existing = await tx.maas_hesablamalar.findFirst({
         where: { istifadeci_id: r.istifadeci_id, il: year, ay: month },
         select: {
           id: true, status: true, kpi_bonus: true,
@@ -137,7 +140,7 @@ export async function calculateCommission(
         const vergi = gross * 0.14;
         const sosial = gross * 0.03;
         const son = gross - cerime - avans - vergi - sosial;
-        await prisma.maas_hesablamalar.update({
+        await tx.maas_hesablamalar.update({
           where: { id: existing.id },
           data: {
             kpi_bonus: totalBonus,
@@ -150,7 +153,7 @@ export async function calculateCommission(
         // QA-K28: əvvəl create-də esas_maas/prorata boş qalırdı — natamam
         // bordro (baz maaş 0, NET=vergi-siz yalnız komissiya). İşçinin aylıq
         // maaşı ilə tam doldur.
-        const isci = await prisma.istifadeciler.findFirst({
+        const isci = await tx.istifadeciler.findFirst({
           where: { id: r.istifadeci_id },
           select: { aylik_maas: true },
         });
@@ -159,7 +162,7 @@ export async function calculateCommission(
         const vergi = gross * 0.14;
         const sosial = gross * 0.03;
         const son = gross - vergi - sosial;
-        await prisma.maas_hesablamalar.create({
+        await tx.maas_hesablamalar.create({
           data: {
             sahibkar_id: sahibkarId,
             istifadeci_id: r.istifadeci_id,
@@ -176,6 +179,7 @@ export async function calculateCommission(
       }
       updated += 1;
     }
+    });
     revalidatePath("/iscilier");
     revalidatePath("/hesabatlar/emekdas");
     bustTicaretCache();
