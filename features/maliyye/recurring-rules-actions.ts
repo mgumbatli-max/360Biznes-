@@ -138,6 +138,11 @@ export async function deleteRecurringRule(id: string): Promise<Result> {
 
 /** Cron tərəfindən çağırılır — vaxtı çatmış qaydaları icra edir. */
 export async function runRecurringRules(): Promise<Result<{ executed: number }>> {
+  // QA-audit-E: bu action finance_operations yaradır + hesab qaliqını dəyişir, amma icazə
+  // yoxlaması YOX idi (fayldakı digər action-lardan fərqli) → istənilən istifadəçi çağıra bilirdi.
+  const { requireMaliyyeActionPerm } = await import("./access-guard");
+  const permCheck = await requireMaliyyeActionPerm(["maliyye.recurring", "maliyye.idare"]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     const today = new Date();

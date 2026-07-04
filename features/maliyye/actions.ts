@@ -124,6 +124,31 @@ export async function saveExpense(input: FormData): Promise<ActionResult> {
           });
           if (r.count === 0) throw new Error("Xərc tapılmadı");
           id = d.id;
+
+          // QA-audit-D: xərc REDAKTƏSİ bağlı finance_operation-u və hesab qaliqını da sinxronlaşdırmalıdır
+          // (əvvəl yalnız xercl_r yenilənirdi → məbləğ dəyişəndə hesab balansı köhnə məbləğdə drift edirdi).
+          const linkedOps = await tx.finance_operations.findMany({
+            where: { sahibkar_id: sahibkarId, qeyd: { contains: `[XERC:${d.id}]` }, status: "aktiv" },
+            select: { id: true, hesab_id: true },
+          });
+          for (const op of linkedOps) {
+            await tx.finance_operations.update({
+              where: { id: op.id },
+              data: {
+                meblegh: d.mebleg,
+                azn_meblegh: d.mebleg,
+                tarix: parseLocalDate(d.tarix),
+                qeyd: `[XERC:${d.id}] ${d.tesvir}`,
+                expense_kateq_id: d.kateqoriya_id ?? null,
+                sened_nomresi: d.qebz_nomresi || null,
+              },
+            });
+          }
+          const touchedAccs = new Set(linkedOps.map((o) => o.hesab_id).filter(Boolean) as string[]);
+          if (touchedAccs.size > 0) {
+            const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+            for (const acc of touchedAccs) await recalculateAccountBalance(acc, tx);
+          }
         } else {
           const created = await tx.xercl_r.create({ data: { sahibkar_id: sahibkarId, ...data } });
           id = created.id;

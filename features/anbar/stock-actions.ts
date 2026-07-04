@@ -127,6 +127,7 @@ export async function adjustStock(
         // mexaric → atomic decrement, yoxsa TOCTOU race ilə paralel mexariclər
         //   mənfi stok yarada bilər
         // inventar → mütləq dəyər təyin et (force-set)
+        let invDelta = 0; // QA-audit-D: inventar üçün signed delta (ledger reconciler drift önlənir)
         if (d.nov === "medaxil") {
           await stockIncrement(tx, {
             sahibkarId,
@@ -143,7 +144,14 @@ export async function adjustStock(
           });
           if (!dec.ok) throw new Error(dec.error);
         } else {
-          // inventar = mütləq dəyər (force-set)
+          // inventar = mütləq dəyər (force-set). QA-audit-D: köhnə stokla DELTA hesabla ki,
+          // ledger-ə signed 'inventar_artim'/'inventar_azalma' yazaq (reconciler 'inventar'+mütləq
+          // miqdarı tanımırdı → daimi cache↔ledger drift).
+          const cur = await tx.stok.findUnique({
+            where: { mehsul_id_anbar_id: { mehsul_id: d.mehsul_id, anbar_id: d.anbar_id } },
+            select: { miqdar: true },
+          });
+          invDelta = d.miqdar - Number(cur?.miqdar ?? 0);
           await tx.stok.upsert({
             where: { mehsul_id_anbar_id: { mehsul_id: d.mehsul_id, anbar_id: d.anbar_id } },
             update: { miqdar: d.miqdar },
@@ -157,19 +165,24 @@ export async function adjustStock(
           });
         }
 
-        await tx.anbar_hereketleri.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            anbar_id: d.anbar_id,
-            mehsul_id: d.mehsul_id,
-            nov: d.nov,
-            miqdar: d.miqdar,
-            qiymet: d.qiymet || null,
-            ref_nov: "manual_adjust",
-            edilen_id: istifadeciId,
-            qeyd: d.sebeb,
-          },
-        });
+        // QA-audit-D: inventar üçün SIGNED nov + delta miqdar (ledger reconciler drift önlənir).
+        const ledgerNov = d.nov === "inventar" ? (invDelta >= 0 ? "inventar_artim" : "inventar_azalma") : d.nov;
+        const ledgerMiqdar = d.nov === "inventar" ? Math.abs(invDelta) : d.miqdar;
+        if (!(d.nov === "inventar" && Math.abs(invDelta) < 0.0001)) {
+          await tx.anbar_hereketleri.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              anbar_id: d.anbar_id,
+              mehsul_id: d.mehsul_id,
+              nov: ledgerNov,
+              miqdar: ledgerMiqdar,
+              qiymet: d.qiymet || null,
+              ref_nov: "manual_adjust",
+              edilen_id: istifadeciId,
+              qeyd: d.sebeb,
+            },
+          });
+        }
       });
 
       revalidateTag(`stok:${sahibkarId}`, "max");

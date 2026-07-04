@@ -55,6 +55,13 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // QA-audit-D: cross-tenant guard — təchizatçı CARİ tenantə aid olmalıdır (createSale-dəki
+      // musteri/işçi guard-ının analoqu). Yoxsa başqa tenantın təchizatçısına qaimə/borc yaradıla bilər.
+      const techizatciOk = await prisma.kontragentler.findFirst({
+        where: { id: d.techizatci_id, sahibkar_id: sahibkarId },
+        select: { id: true },
+      });
+      if (!techizatciOk) return { ok: false, error: "Təchizatçı bu hesaba aid deyil" };
       const result = await prisma.$transaction(async (tx) => {
         const subtotal = d.lines.reduce((s, l) => s + l.miqdar * l.qiymet, 0);
         const elaveXerc = d.gomruk + d.catdirilma + d.diger_xerc;
@@ -131,9 +138,22 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
           // Təsdiq gözləyirsə, stoka heç bir hərəkət yoxdur — təsdiqdən sonra
           // approveRequest helper-i receivePurchase çağıracaq.
           if (d.receive_now && !needsApproval) {
-            // Race-safe upsert — paralel alış qəbulları unique constraint-ə düşmür
-            // QA-orta: receive_now yolunda da stoka REAL maya yazılır (proporsional
-            // gömrük/çatdırılma daxil) — receivePurchase ilə eyni davranış, COGS/inventar düz olsun
+            // QA-audit-D: MOVING-AVERAGE (AVCO) maya — receivePurchase-dəki K2 düzəlişi ilə PARİTET.
+            // Əvvəl receive_now yolu last-price yazırdı → maya/COGS drift. Köhnə stok+maya artımdan əvvəl.
+            const prodMaya = await tx.mehsullar.findFirst({
+              where: { id: line.mehsul_id, sahibkar_id: sahibkarId },
+              select: { alish_qiymeti: true },
+            });
+            const oldMaya = Number(prodMaya?.alish_qiymeti ?? 0) || realMayaEded;
+            const stokAgg = await tx.stok.aggregate({
+              where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id },
+              _sum: { miqdar: true },
+            });
+            const oldStok = Number(stokAgg._sum.miqdar ?? 0);
+            const yeniMaya = oldStok + line.miqdar > 0 ? (oldStok * oldMaya + line.miqdar * realMayaEded) / (oldStok + line.miqdar) : realMayaEded;
+
+            // Race-safe upsert — paralel alış qəbulları unique constraint-ə düşmür.
+            // Stoka REAL maya (proporsional gömrük/çatdırılma daxil) yazılır.
             await stockIncrement(tx, {
               sahibkarId,
               mehsulId: line.mehsul_id,
@@ -142,11 +162,11 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Create
               sonQiymet: realMayaEded,
             });
 
-            // QA-orta: məhsulun son alış qiyməti/tarixi yenilənir (receivePurchase ilə eyni)
+            // Məhsulun mayası MOVING-AVERAGE ilə + son alış tarixi (receivePurchase ilə paritet).
             await tx.mehsullar.updateMany({
               where: { id: line.mehsul_id, sahibkar_id: sahibkarId },
               data: {
-                alish_qiymeti: new Prisma.Decimal(realMayaEded.toFixed(4)),
+                alish_qiymeti: new Prisma.Decimal(yeniMaya.toFixed(4)),
                 son_alish_de: new Date(),
               },
             });
