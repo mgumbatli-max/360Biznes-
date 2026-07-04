@@ -313,9 +313,46 @@ export async function changeServisStatus(
         });
         // redd_edildi statusuna keçəndə servis borc balansa daxil olmamalıdır
         // → source-of-truth bunu nəzərə alır, sadəcə recalc çağırılır.
-        if (status === "redd_edildi" && prev.musteri_id) {
-          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
-          await recalculateCustomerBalance(prev.musteri_id, tx);
+        if (status === "redd_edildi") {
+          // QA: sərf olunmuş ehtiyat hissələrin stoku BƏRPA olunsun (əvvəl edilmirdi →
+          // servis rədd edilsə də mal stoka qayıtmırdı = daimi itki). İdempotent: yalnız
+          // NET (servis_mexaric − servis_iade) müsbət olan hissə/anbar üçün.
+          const toRestore = await tx.$queryRaw<Array<{ mehsul_id: string; anbar_id: number; net: number }>>`
+            SELECT mehsul_id::text AS mehsul_id, anbar_id::int AS anbar_id,
+              (SUM(CASE WHEN nov = 'servis_mexaric' THEN miqdar ELSE 0 END)
+               - SUM(CASE WHEN nov = 'servis_iade' THEN miqdar ELSE 0 END))::float AS net
+            FROM anbar_hereketleri
+            WHERE ref_nov = 'servis' AND ref_id = ${id}::uuid AND sahibkar_id = ${sahibkarId}::uuid
+              AND mehsul_id IS NOT NULL AND anbar_id IS NOT NULL
+              AND nov IN ('servis_mexaric', 'servis_iade')
+            GROUP BY mehsul_id, anbar_id
+            HAVING (SUM(CASE WHEN nov = 'servis_mexaric' THEN miqdar ELSE 0 END)
+               - SUM(CASE WHEN nov = 'servis_iade' THEN miqdar ELSE 0 END)) > 0.0001
+          `;
+          for (const r of toRestore) {
+            await tx.stok.updateMany({
+              where: { sahibkar_id: sahibkarId, mehsul_id: r.mehsul_id, anbar_id: r.anbar_id },
+              data: { miqdar: { increment: r.net } },
+            });
+            await tx.anbar_hereketleri.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                mehsul_id: r.mehsul_id,
+                anbar_id: r.anbar_id,
+                nov: "servis_iade",
+                miqdar: r.net,
+                qiymet: 0,
+                qeyd: `Servis rədd edildi — hissə stoku bərpa: ${id}`,
+                ref_nov: "servis",
+                ref_id: id,
+                edilen_id: istifadeciId,
+              },
+            });
+          }
+          if (prev.musteri_id) {
+            const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+            await recalculateCustomerBalance(prev.musteri_id, tx);
+          }
         }
       });
 
@@ -500,46 +537,54 @@ export async function addEhtiyatHisse(input: FormData): Promise<ActionResult> {
         // Əvvəlcə bu məhsulun stoku olan anbarı tapırıq (ən çox stok olan anbar
         // götürülür). Stok yoxdursa, ehtiyat hissə qeyd olunur amma stok
         // azaldılmır — `mənfi stok` riski qarşısı alınır.
-        const stokRow = await tx.stok.findFirst({
-          where: {
-            sahibkar_id: sahibkarId,
-            mehsul_id: d.mehsul_id,
-            miqdar: { gt: 0 },
-          },
+        // QA-M18: əvvəl YALNIZ ən çox stoklu TƏK anbar götürülürdü; bir anbarda
+        // kifayət yoxdursa amma ÜMUMİ stok (çox anbarda) kifayətdirsə "stoksuz yola"
+        // düşürdü → stok azalmır (oversell/inventar şişməsi). İndi ən çox stoklu
+        // anbardan başlayaraq bir neçə anbardan ARDICIL atomik decrement.
+        const stokRows = await tx.stok.findMany({
+          where: { sahibkar_id: sahibkarId, mehsul_id: d.mehsul_id, miqdar: { gt: 0 } },
           orderBy: { miqdar: "desc" },
           select: { anbar_id: true, miqdar: true },
         });
-        if (stokRow && Number(stokRow.miqdar) >= d.miqdar) {
-          // Atomik stok azaltma — race-safe decrement
-          const updated = await tx.stok.updateMany({
-            where: {
-              sahibkar_id: sahibkarId,
-              mehsul_id: d.mehsul_id,
-              anbar_id: stokRow.anbar_id,
-              miqdar: { gte: d.miqdar },
-            },
-            data: { miqdar: { decrement: d.miqdar } },
-          });
-          if (updated.count === 0) {
+        const totalAvail = stokRows.reduce((s, r) => s + Number(r.miqdar), 0);
+        if (totalAvail >= d.miqdar) {
+          let remaining = d.miqdar;
+          for (const row of stokRows) {
+            if (remaining <= 0.0001) break;
+            const take = Math.min(remaining, Number(row.miqdar));
+            // Atomik decrement — race-safe (paralel dəyişiklik olsa count=0 → növbəti anbar)
+            const updated = await tx.stok.updateMany({
+              where: {
+                sahibkar_id: sahibkarId,
+                mehsul_id: d.mehsul_id,
+                anbar_id: row.anbar_id,
+                miqdar: { gte: take },
+              },
+              data: { miqdar: { decrement: take } },
+            });
+            if (updated.count === 0) continue;
+            await tx.anbar_hereketleri.create({
+              data: {
+                sahibkar_id: sahibkarId,
+                mehsul_id: d.mehsul_id,
+                anbar_id: row.anbar_id,
+                nov: "servis_mexaric",
+                miqdar: take,
+                qiymet: d.qiymet,
+                qeyd: `Servis ehtiyat hissə: ${d.id}`,
+                ref_nov: "servis",
+                ref_id: d.id,
+                edilen_id: istifadeciId,
+              },
+            });
+            remaining -= take;
+          }
+          if (remaining > 0.0001) {
+            // Paralel əməliyyat stoku azaltdı — kifayət etmədi, tam tranzaksiya geri sarılır.
             throw new Error("Stok kifayət deyil — paralel əməliyyat ola bilər");
           }
-          // Anbar hereket jurnalı
-          await tx.anbar_hereketleri.create({
-            data: {
-              sahibkar_id: sahibkarId,
-              mehsul_id: d.mehsul_id,
-              anbar_id: stokRow.anbar_id,
-              nov: "servis_mexaric",
-              miqdar: d.miqdar,
-              qiymet: d.qiymet,
-              qeyd: `Servis ehtiyat hissə: ${d.id}`,
-              ref_nov: "servis",
-              ref_id: d.id,
-              edilen_id: istifadeciId,
-            },
-          });
         } else {
-          // Stok yoxdursa — yalnız jurnal yazılır, audit-də işarələnir
+          // Ümumi stok da kifayət deyil — yalnız jurnal yazılır, audit-də işarələnir
           // ki, anbarçı qəbul etsin və əlavə alış lazımdır.
           const firstAnbar = await tx.anbarlar.findFirst({
             where: { sahibkar_id: sahibkarId, aktiv: true },
@@ -720,25 +765,33 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      // 🛡️ İdempotensiya — son 5 dəqiqədə eyni key + servis + məbləğ varsa dublikat
       const idemKey = (d.idempotency_key || "").trim();
-      if (idemKey) {
-        const since = new Date(Date.now() - 5 * 60 * 1000);
-        const dup = await prisma.finance_operations.findFirst({
-          where: {
-            sahibkar_id: sahibkarId,
-            servis_id: d.id,
-            meblegh: d.meblegh,
-            yaradildi: { gte: since },
-            qeyd: { contains: `[IDEM:${idemKey}]` },
-          },
-          select: { id: true },
-        });
-        if (dup) return { ok: true, id: dup.id };
-      }
+      let dupId: string | null = null;
 
       // Atomic: kassa + satış + servis update bir transaction içində
       const result = await prisma.$transaction(async (tx) => {
+        // 🔒 QA-M12: servis sətrini LOCK et — paralel təkrar-göndəriş serializasiya olsun.
+        // İdempotensiya yoxlaması ƏVVƏL tranzaksiyadan KƏNARDA idi (TOCTOU race → eyni
+        // ödəniş ikiqat kassa+finance yazırdı). İndi lock-dan SONRA tranzaksiya daxilində.
+        await tx.$queryRaw`SELECT id FROM servis_qeydleri WHERE id = ${d.id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+        if (idemKey) {
+          const since = new Date(Date.now() - 5 * 60 * 1000);
+          const dup = await tx.finance_operations.findFirst({
+            where: {
+              sahibkar_id: sahibkarId,
+              servis_id: d.id,
+              meblegh: d.meblegh,
+              yaradildi: { gte: since },
+              qeyd: { contains: `[IDEM:${idemKey}]` },
+            },
+            select: { id: true },
+          });
+          if (dup) {
+            dupId = dup.id;
+            return { kassaOpId: null as string | null, satisId: null as string | null };
+          }
+        }
+
         // 1) Servisi oxu — 🔒 sahibkar_id açıq filtri
         const servis = await tx.servis_qeydleri.findFirst({
           where: { id: d.id, sahibkar_id: sahibkarId },
@@ -906,6 +959,9 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
 
         return { kassaOpId, satisId };
       });
+
+      // QA-M12: dublikat aşkarlandı (tranzaksiya heç nə yazmadı) → mövcud op-u qaytar.
+      if (dupId) return { ok: true, id: dupId };
 
       revalidatePath(`/servis/${d.id}`);
       revalidatePath("/servis");
