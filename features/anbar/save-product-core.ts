@@ -278,9 +278,11 @@ export async function saveProductCore(
         }
         const updated = await prisma.mehsullar.update({ where: { id: d.id }, data: updateData });
         id = updated.id;
+        // QA-audit-E: audit diff FAKTİKİ yazılan updateData-dan oxunmalıdır (data-dan yox) —
+        // əks halda maya (updateData-da qorunmuş) üçün saxta "50→null" audit yazılırdı.
         const diff = diffObjects(
           serializeForJson(beforeForAudit),
-          serializeForJson(data as unknown as Record<string, unknown>),
+          serializeForJson(updateData as unknown as Record<string, unknown>),
         );
         if (diff) {
           await audit("yenile", "mehsul", id, {
@@ -302,7 +304,7 @@ export async function saveProductCore(
         const istifadeci_id = requireTenant().istifadeciId;
         for (const pf of priceFields) {
           const evvelki = Number((beforeForAudit as Record<string, unknown>)?.[pf.key as string] ?? 0);
-          const yeni = Number((data as Record<string, unknown>)[pf.key as string] ?? 0);
+          const yeni = Number((updateData as Record<string, unknown>)[pf.key as string] ?? 0);
           if (Math.abs(yeni - evvelki) > 0.001) {
             try {
               await prisma.qiymet_tarixce.create({
