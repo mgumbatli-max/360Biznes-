@@ -190,7 +190,7 @@ export async function getProfitLoss(range?: DateRange) {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
 
-    const [salesAgg, cogsAgg, expensesAgg] = await Promise.all([
+    const [salesAgg, cogsAgg, expensesAgg, returnsAgg, returnsCogsAgg] = await Promise.all([
       prisma.satis_sifarisleri.aggregate({
         where: { tarix: { gte: r.from, lte: r.to }, status: { not: "legv" }, qaralama: { not: true } },
         _sum: { son_mebleg: true },
@@ -205,21 +205,45 @@ export async function getProfitLoss(range?: DateRange) {
            AND ss.tarix BETWEEN ${r.from} AND ${r.to}
            AND ss.status != 'legv'
       `,
-      // Operating expenses (xerclər table)
+      // Operating expenses (xerclər table) — QA: ləğv edilmiş xərc çıxılsın (getPlSummary ilə eyni)
       prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(SUM(mebleg), 0)::float AS total
+        SELECT COALESCE(SUM(mebleg_azn), 0)::float AS total
           FROM "xerclər"
          WHERE sahibkar_id = ${sahibkarId}::uuid
            AND tarix BETWEEN ${r.from} AND ${r.to}
-      `,
+           AND legv_de IS NULL
+      `.catch(() => [{ total: 0 }]),
+      // QA-M7: bu hesabat qaytarmanı HEÇ saymırdı (getPlSummary ilə uyğunsuz idi). Simmetrik:
+      // gəlirdən qaytarma dəyəri, COGS-dan qaytarılan malın mayası çıxılsın.
+      prisma.$queryRaw<{ total: number }[]>`
+        SELECT COALESCE(SUM(umumi_mebleg), 0)::float AS total
+          FROM qaytarma_sifarisleri
+         WHERE sahibkar_id = ${sahibkarId}::uuid
+           AND tarix BETWEEN ${r.from} AND ${r.to}
+           AND status NOT IN ('legv','tesdiqlenmemis')
+      `.catch(() => [{ total: 0 }]),
+      prisma.$queryRaw<{ total: number }[]>`
+        SELECT COALESCE(SUM(qs.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS total
+          FROM qaytarma_satirlari qs
+          JOIN qaytarma_sifarisleri qsf ON qsf.id = qs.qaytarma_id
+          JOIN mehsullar m ON m.id = qs.mehsul_id
+         WHERE qsf.sahibkar_id = ${sahibkarId}::uuid
+           AND qsf.tarix BETWEEN ${r.from} AND ${r.to}
+           AND qsf.status NOT IN ('legv','tesdiqlenmemis')
+      `.catch(() => [{ total: 0 }]),
     ]);
 
     const revenue = Number(salesAgg._sum.son_mebleg ?? 0);
-    const cogs = Number(cogsAgg[0]?.cogs ?? 0);
+    const returns = Number(returnsAgg[0]?.total ?? 0);
+    const cogs_gross = Number(cogsAgg[0]?.cogs ?? 0);
+    const returns_cogs = Number(returnsCogsAgg[0]?.total ?? 0);
+    // Net COGS = satılmış malın mayası − qaytarılan malın mayası (qaytarılan stoka qayıdır).
+    const cogs = Math.max(0, cogs_gross - returns_cogs);
     const opex = Number(expensesAgg[0]?.total ?? 0);
-    const gross = revenue - cogs;
+    const net_revenue = revenue - returns;
+    const gross = net_revenue - cogs;
     const net = gross - opex;
 
-    return { revenue, cogs, gross_profit: gross, opex, net_profit: net, range: r };
+    return { revenue, returns, cogs, gross_profit: gross, opex, net_profit: net, range: r };
   });
 }

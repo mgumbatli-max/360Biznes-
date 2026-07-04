@@ -19,7 +19,7 @@ export type PlSummary = {
 export async function getPlSummary(range: DateRange): Promise<PlSummary> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const [salesAgg, cogsAgg, expensesAgg, returnsAgg] = await Promise.all([
+    const [salesAgg, cogsAgg, expensesAgg, returnsAgg, returnsCogsAgg] = await Promise.all([
       // QA-orta: kredit satışda gəlir net (magaza_net) götürülsün — bank
       // komissiyası mənfəəti şişirtməsin (kassaya da yalnız magaza_net daxil olur)
       prisma.$queryRaw<{ revenue: number }[]>`
@@ -59,11 +59,26 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
            -- QA-K30: təsdiqlənməmiş/ləğv edilmiş qaytarmalar P&L-ə düşməsin
            AND status NOT IN ('legv','tesdiqlenmemis')
       `.catch(() => [{ total: 0 }]),
+      // QA-M4/M25: qaytarılan malların COGS-u da çıxılsın — əvvəl yalnız gəlirdən qaytarma
+      // çıxılırdı, COGS tam qalırdı → mənfəət qaytarılan malın mayası qədər AŞAĞI görünürdü
+      // (asimmetrik). Qaytarılan mal stoka qayıdır, ona görə onun mayası satılmış COGS-dan çıxır.
+      prisma.$queryRaw<{ total: number }[]>`
+        SELECT COALESCE(SUM(qs.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS total
+          FROM qaytarma_satirlari qs
+          JOIN qaytarma_sifarisleri qsf ON qsf.id = qs.qaytarma_id
+          JOIN mehsullar m ON m.id = qs.mehsul_id
+         WHERE qsf.sahibkar_id = ${sahibkarId}::uuid
+           AND qsf.tarix BETWEEN ${range.from} AND ${range.to}
+           AND qsf.status NOT IN ('legv','tesdiqlenmemis')
+      `.catch(() => [{ total: 0 }]),
     ]);
 
     const revenue = Number(salesAgg[0]?.revenue ?? 0); // QA-orta: raw query nəticəsi
     const returns = Number(returnsAgg[0]?.total ?? 0);
-    const cogs = Number(cogsAgg[0]?.cogs ?? 0);
+    const cogs_gross = Number(cogsAgg[0]?.cogs ?? 0);
+    const returns_cogs = Number(returnsCogsAgg[0]?.total ?? 0);
+    // Net COGS = satılmış malın mayası − qaytarılan malın mayası (qaytarılan stoka qayıdır).
+    const cogs = Math.max(0, cogs_gross - returns_cogs);
     const opex = Number(expensesAgg[0]?.total ?? 0);
     const net_revenue = revenue - returns;
     const gross = net_revenue - cogs;
