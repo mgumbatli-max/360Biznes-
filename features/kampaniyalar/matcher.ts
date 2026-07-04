@@ -398,6 +398,22 @@ export async function commitCampaignApplications(
           });
           if (existing) return 0;
 
+          // QA-K8: kupon sayğacı — atomik + limit guard (max_uses-ə çatıbsa artırma).
+          // Paralel satışda birdəfəlik kuponun ikiqat işləməsinin qarşısını alır.
+          // QA-M24: kuponun KODU-nu da götürürük ki, campaign_usage-ə yazaq → qaytarmada
+          // kupon sayğacını geri qaytarmaq üçün (kupon_kod mövcud sütundur, migrasiya lazımsız).
+          let kuponKod: string | null = null;
+          if (a.coupon_id) {
+            const cp = await tx.coupons.findFirst({ where: { id: a.coupon_id }, select: { max_uses: true, kod: true } });
+            if (cp) {
+              kuponKod = cp.kod ?? null;
+              await tx.coupons.updateMany({
+                where: { id: a.coupon_id, current_uses: { lt: cp.max_uses } },
+                data: { current_uses: { increment: 1 } },
+              });
+            }
+          }
+
           await tx.campaign_usage.create({
             data: {
               sahibkar_id: sahibkarId,
@@ -407,24 +423,13 @@ export async function commitCampaignApplications(
               endirim_mebleg: a.endirim_mebleg,
               bonus_qazanildi: a.bonus_qazanildi,
               bonus_serf: 0,
+              kupon_kod: kuponKod,
             },
           });
           await tx.campaigns.update({
             where: { id: a.campaign_id },
             data: { current_uses: { increment: 1 }, yenilendi: new Date() },
           });
-
-          // QA-K8: kupon sayğacı — atomik + limit guard (max_uses-ə çatıbsa artırma).
-          // Paralel satışda birdəfəlik kuponun ikiqat işləməsinin qarşısını alır.
-          if (a.coupon_id) {
-            const cp = await tx.coupons.findFirst({ where: { id: a.coupon_id }, select: { max_uses: true } });
-            if (cp) {
-              await tx.coupons.updateMany({
-                where: { id: a.coupon_id, current_uses: { lt: cp.max_uses } },
-                data: { current_uses: { increment: 1 } },
-              });
-            }
-          }
 
           // Loyalty bonus accrual — ATOMİK increment (əvvəl oxu-hesabla-yaz race idi).
           if (a.bonus_qazanildi > 0 && kontragentId) {
