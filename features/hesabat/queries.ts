@@ -216,11 +216,14 @@ export async function getProfitLoss(range?: DateRange) {
       // QA-M7: bu hesabat qaytarmanı HEÇ saymırdı (getPlSummary ilə uyğunsuz idi). Simmetrik:
       // gəlirdən qaytarma dəyəri, COGS-dan qaytarılan malın mayası çıxılsın.
       prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(SUM(umumi_mebleg), 0)::float AS total
-          FROM qaytarma_sifarisleri
-         WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND tarix BETWEEN ${r.from} AND ${r.to}
-           AND status NOT IN ('legv','tesdiqlenmemis')
+        SELECT COALESCE(SUM(q.umumi_mebleg), 0)::float AS total
+          FROM qaytarma_sifarisleri q
+          LEFT JOIN satis_sifarisleri s ON s.id = q.original_id
+         WHERE q.sahibkar_id = ${sahibkarId}::uuid
+           AND q.tarix BETWEEN ${r.from} AND ${r.to}
+           AND q.status NOT IN ('legv','tesdiqlenmemis')
+           -- QA-K6: nağd/kart qaytarmada son_mebleg onsuz da azalıb → yalnız nisyə/standalone çıxılır
+           AND (s.odenis_nov IN ('nisye','borc') OR s.id IS NULL)
       `.catch(() => [{ total: 0 }]),
       prisma.$queryRaw<{ total: number }[]>`
         SELECT COALESCE(SUM(qs.miqdar * COALESCE(m.alish_qiymeti, 0)), 0)::float AS total

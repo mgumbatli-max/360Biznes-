@@ -52,12 +52,17 @@ export async function getPlSummary(range: DateRange): Promise<PlSummary> {
            AND legv_de IS NULL
       `.catch(() => [{ total: 0 }]),
       prisma.$queryRaw<{ total: number }[]>`
-        SELECT COALESCE(SUM(umumi_mebleg), 0)::float AS total
-          FROM qaytarma_sifarisleri
-         WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND tarix BETWEEN ${range.from} AND ${range.to}
+        SELECT COALESCE(SUM(q.umumi_mebleg), 0)::float AS total
+          FROM qaytarma_sifarisleri q
+          LEFT JOIN satis_sifarisleri s ON s.id = q.original_id
+         WHERE q.sahibkar_id = ${sahibkarId}::uuid
+           AND q.tarix BETWEEN ${range.from} AND ${range.to}
            -- QA-K30: təsdiqlənməmiş/ləğv edilmiş qaytarmalar P&L-ə düşməsin
-           AND status NOT IN ('legv','tesdiqlenmemis')
+           AND q.status NOT IN ('legv','tesdiqlenmemis')
+           -- QA-K6: nağd/kart qaytarmada son_mebleg ONSUZ DA qaytarılan qədər azaldılıb
+           -- (revenue artıq net) → ikiqat çıxmamaq üçün returns yalnız nisyə (son_mebleg
+           -- azalmayan) və ya satış-linksiz standalone qaytarmaları çıxarır.
+           AND (s.odenis_nov IN ('nisye','borc') OR s.id IS NULL)
       `.catch(() => [{ total: 0 }]),
       // QA-M4/M25: qaytarılan malların COGS-u da çıxılsın — əvvəl yalnız gəlirdən qaytarma
       // çıxılırdı, COGS tam qalırdı → mənfəət qaytarılan malın mayası qədər AŞAĞI görünürdü
