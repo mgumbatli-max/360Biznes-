@@ -345,20 +345,36 @@ export async function receivePurchase(purchaseId: string): Promise<{ ok: true } 
           // ÖNƏMLİ: stoka real maya yazılır (vahid_qiymet + proporsional gömrük/çatdırılma/xərc),
           // xam vahid_qiymet yox. Bu COGS hesabının düzgün olmasını təmin edir.
           const realMaya = Number(line.real_maya_eded ?? line.vahid_qiymet);
+          const qtyIn = Number(line.miqdar);
+
+          // QA-K2: MOVING-AVERAGE (AVCO) maya — yeni alış CARİ stokla çəkilir (əvvəl last-price idi):
+          //   (köhnə_stok×köhnə_maya + yeni_miqdar×yeni_maya) / (köhnə_stok+yeni_miqdar).
+          // Köhnə stok+maya artımdan ƏVVƏL oxunur (tx daxilində eyni məhsulun çoxlu sətri düzgün kompaund olur).
+          const prodMaya = await tx.mehsullar.findFirst({
+            where: { id: line.mehsul_id, sahibkar_id: sahibkarId },
+            select: { alish_qiymeti: true },
+          });
+          const oldMaya = Number(prodMaya?.alish_qiymeti ?? 0) || realMaya;
+          const stokAgg = await tx.stok.aggregate({
+            where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id },
+            _sum: { miqdar: true },
+          });
+          const oldStok = Number(stokAgg._sum.miqdar ?? 0);
+          const yeniMaya = oldStok + qtyIn > 0 ? (oldStok * oldMaya + qtyIn * realMaya) / (oldStok + qtyIn) : realMaya;
+
           await stockIncrement(tx, {
             sahibkarId,
             mehsulId: line.mehsul_id,
             anbarId: purchase.anbar_id,
-            miqdar: Number(line.miqdar),
+            miqdar: qtyIn,
             sonQiymet: realMaya,
           });
 
-          // Məhsulun "son alış qiyməti" və "son alış tarixi" sahələrini yenilə.
-          // Bu, məhsul kartında və hesabatda göstərilən mayanı sinxronlaşdırır.
+          // Məhsulun mayasını MOVING-AVERAGE ilə yenilə + son alış tarixi.
           await tx.mehsullar.updateMany({
             where: { id: line.mehsul_id, sahibkar_id: sahibkarId },
             data: {
-              alish_qiymeti: new Prisma.Decimal(realMaya.toFixed(4)),
+              alish_qiymeti: new Prisma.Decimal(yeniMaya.toFixed(4)),
               son_alish_de: new Date(),
             },
           });
