@@ -190,6 +190,18 @@ export async function resolveDefekt(input: z.input<typeof ResolveSchema>): Promi
       const defektAnbarId = before.anbar_id;
 
       await prisma.$transaction(async (tx) => {
+        // 🔒 QA-audit-B: atomik compare-and-swap — qeydi 'aktiv'→qərar CLAIM et. Status yoxlaması
+        // əvvəl tx-dən KƏNARDA idi + updateMany guard-sız → paralel/təkrar resolve stoku ikiqat
+        // hərəkət etdirirdi. İndi yalnız biri claim-i keçir (idempotent).
+        const claim = await tx.defekt_qeydleri.updateMany({
+          where: { id: d.id, sahibkar_id: sahibkarId, status: "aktiv" },
+          data: {
+            status: d.qerar,
+            sebeb: d.qeyd?.trim() ? `${before.sebeb}\n— Qərar: ${d.qeyd.trim()}` : before.sebeb,
+            yenilendi: new Date(),
+          },
+        });
+        if (claim.count === 0) throw new Error("Bu qeyd artıq həll olunub (paralel əməliyyat)");
         // QƏRARA görə stok hərəkəti
         // ─ silindi: defekt anbardan fiziki olaraq çıxır (zərər)
         // ─ qaytarildi: defekt anbardan çıxır → hədəf anbara medaxil
@@ -267,14 +279,7 @@ export async function resolveDefekt(input: z.input<typeof ResolveSchema>): Promi
           }
         }
 
-        await tx.defekt_qeydleri.updateMany({
-          where: { id: d.id, sahibkar_id: sahibkarId },
-          data: {
-            status: d.qerar,
-            sebeb: d.qeyd?.trim() ? `${before.sebeb}\n— Qərar: ${d.qeyd.trim()}` : before.sebeb,
-            yenilendi: new Date(),
-          },
-        });
+        // (status/sebeb artıq yuxarıdakı atomik claim-də təyin olundu — təkrar update lazım deyil)
       });
 
       try {

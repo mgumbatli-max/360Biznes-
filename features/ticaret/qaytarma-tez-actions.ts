@@ -135,12 +135,21 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
   if (!input.mehsul_id) return { ok: false, error: "Məhsul seçilməyib" };
   if (!Number.isFinite(input.miqdar) || input.miqdar <= 0) return { ok: false, error: "Miqdar düzgün deyil" };
   if (!input.sebeb?.trim()) return { ok: false, error: "Səbəb göstərilməlidir" };
+  // QA-audit-A: qiymət client-controlled-dir → mənfi/etibarsız qiymət refund/borc/kassanı korlaya bilər.
+  if (!Number.isFinite(input.vahid_qiymet) || input.vahid_qiymet < 0) return { ok: false, error: "Qiymət düzgün deyil" };
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       let loyaltyRatio = 0; // QA-M2: post-commit loyalty reversal nisbəti (tx daxilində təyin olunur)
       const result = await prisma.$transaction(async (tx) => {
+        // 🔒 QA-audit-B: orijinal satışı LOCK et — paralel tez-qaytarma serializasiya olsun
+        // (kilidsiz ikiqat-qaytarma guard-ı bypass olunub stok+refund ikiqat idi).
+        if (input.original_sale_id) {
+          await tx.$queryRaw`SELECT id FROM satis_sifarisleri WHERE id = ${input.original_sale_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+        }
+        // QA-audit-A: server-avtoritativ qiymət — orijinal satış sətrindən yenilənir (aşağıda).
+        let refPrice = input.vahid_qiymet;
         // Resolve anbar
         let anbarId = input.anbar_id ?? null;
         if (!anbarId) {
@@ -177,6 +186,13 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           // satılan sətir tapılırsa (sold > 0) məhdudiyyət tətbiq olunur;
           // tapılmazsa (manual/uyğunsuz) köhnə davranış pozulmasın deyə bloklamırıq.
           if (sold > 0) {
+            // QA-audit-A: qiyməti ORİJİNAL satış sətrindən götür (client input-a etibar etmə → şişirdilmiş/mənfi qiymət önlənir).
+            const origLine = await tx.satis_sifaris_satirlari.findFirst({
+              where: { sahibkar_id: sahibkarId, sifaris_id: input.original_sale_id, mehsul_id: input.mehsul_id },
+              select: { vahid_qiymet: true },
+              orderBy: { id: "desc" },
+            });
+            if (origLine) refPrice = Number(origLine.vahid_qiymet);
             const returnedAgg = await tx.qaytarma_satirlari.aggregate({
               where: {
                 sahibkar_id: sahibkarId,
@@ -202,7 +218,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
         // ardıcıl, təkrarsız QAYTARMA-YYYY-NNNNNN formatı.
         const nomre = await nextDocNumber(tx, sahibkarId, "qaytarma");
 
-        const total = input.miqdar * input.vahid_qiymet;
+        const total = input.miqdar * refPrice;
 
         const ret = await tx.qaytarma_sifarisleri.create({
           data: {
@@ -230,7 +246,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
             qaytarma_id: ret.id,
             mehsul_id: input.mehsul_id,
             miqdar: input.miqdar,
-            vahid_qiymet: input.vahid_qiymet,
+            vahid_qiymet: refPrice,
           },
         });
 
@@ -241,7 +257,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           mehsulId: input.mehsul_id,
           anbarId,
           miqdar: input.miqdar,
-          sonQiymet: input.vahid_qiymet,
+          sonQiymet: refPrice,
         });
 
         await tx.anbar_hereketleri.create({
@@ -251,7 +267,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
             mehsul_id: input.mehsul_id,
             nov: "medaxil",
             miqdar: input.miqdar,
-            qiymet: input.vahid_qiymet,
+            qiymet: refPrice,
             ref_nov: "qaytarma_tez",
             ref_id: ret.id,
             edilen_id: istifadeciId,
@@ -302,6 +318,9 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
               const kassaOdenisNov = ["negd", "kart", "kecirme"].includes(origSale.odenis_nov ?? "")
                 ? origSale.odenis_nov!
                 : "negd";
+              // QA-audit-A: geri ödəniş faktiki ALINANDAN (odenilmis) ÇOX olmamalıdır — returnFullSale
+              // kimi cap. Əvvəl fastReturn cap etmirdi → total > alınan halda hesab mənfiyə çəkilirdi.
+              const refundCap = Math.min(total, Math.max(0, odenilmis));
               // Nəğd/kart: kassaya mənfi əməliyyat (refund)
               await tx.kassa_emeliyyatlari.create({
                 data: {
@@ -309,7 +328,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
                   kassa_id: origSale.kassa_id,
                   emeliyyat_nov: "qaytarma",
                   odenis_nov: kassaOdenisNov,
-                  mebleg: new Prisma.Decimal(-total),
+                  mebleg: new Prisma.Decimal(-refundCap),
                   ref_nov: "qaytarma_tez",
                   ref_id: ret.id,
                   istifadeci_id: istifadeciId,
@@ -320,7 +339,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
               const { recordRefundFinanceOp } = await import("./refund-finance");
               await recordRefundFinanceOp(tx, {
                 sahibkarId, saleId: origSale.id, musteriId: origSale.musteri_id,
-                kassaId: origSale.kassa_id, odenisNov: kassaOdenisNov, refund: total,
+                kassaId: origSale.kassa_id, odenisNov: kassaOdenisNov, refund: refundCap,
                 istifadeciId, qeyd: `Tez qaytarma refund: ${input.sebeb}`,
               });
               // QA-M8/M15: nağd/kart satışda son_mebleg-i qaytarılan qədər azalt
@@ -448,6 +467,9 @@ export async function returnFullSale(
     const reversalRef: { current: { satisId: string; ratio: number } | null } = { current: null };
     try {
       const result = await prisma.$transaction(async (tx) => {
+        // 🔒 QA-audit-B: satışı LOCK et — paralel "Tam qaytar" serializasiya olsun (kilidsiz
+        // ikiqat-qaytarma guard-ı bypass olunub stok+pul iki dəfə geri qayıdırdı).
+        await tx.$queryRaw`SELECT id FROM satis_sifarisleri WHERE id = ${input.satis_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
         const sale = await tx.satis_sifarisleri.findFirst({
           where: { id: input.satis_id, sahibkar_id: sahibkarId },
           include: {

@@ -53,6 +53,8 @@ export async function recordSalePayment(
         `;
         if (lockedRows.length === 0) throw new Error("Satış tapılmadı");
         if (lockedRows[0].status === "legv") throw new Error("Ləğv edilmiş satışa ödəniş əlavə oluna bilməz");
+        // QA-audit-A: tam qaytarılmış satışa ödəniş fantom maliyyə mədaxili yaradır — blokla.
+        if (lockedRows[0].status === "qaytarilib") throw new Error("Qaytarılmış satışa ödəniş əlavə oluna bilməz");
 
         const sale = await tx.satis_sifarisleri.findUnique({
           where: { id: saleId },
@@ -294,6 +296,9 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
     const restoredMehsulIds: string[] = [];
     try {
       await prisma.$transaction(async (tx) => {
+        // 🔒 QA-audit-B: satışı LOCK et — paralel/təkrar ləğv serializasiya olsun (kilidsiz iki
+        // ləğv stoku və kassanı iki dəfə geri qaytarırdı; status yoxlaması kilid altında etibarlı).
+        await tx.$queryRaw`SELECT id FROM satis_sifarisleri WHERE id = ${saleId}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
         const sale = await tx.satis_sifarisleri.findUnique({
           where: { id: saleId },
           include: { satis_sifaris_satirlari: true },

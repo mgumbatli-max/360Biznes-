@@ -113,6 +113,15 @@ export async function createMarketSatis(
 
       const result = await prisma.$transaction(
         async (tx) => {
+          // 🔒 QA-audit-B: paralel double-submit eyni marketplace sifarişini iki satış kimi
+          // yaradırdı (dup check tx-dən kənar + DB unikal konstraint yox → stok ikiqat azalırdı).
+          // Advisory xact-lock (sahibkar+sifariş açarı üzrə) + tx-daxili re-check ilə serializasiya.
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${sahibkarId + "|" + dupTag}))`;
+          const dupInTx = await tx.satis_sifarisleri.findFirst({
+            where: { sahibkar_id: sahibkarId, marketplace_platform: data.platform, qeyd: { contains: dupTag }, status: { not: "legv" } },
+            select: { nomre: true },
+          });
+          if (dupInTx) throw new Error(`Bu sifariş kodu artıq qeydiyyatdadır: ${dupInTx.nomre}`);
           // 1. Compute totals
           let umumi = 0;
           for (const line of data.lines) {
