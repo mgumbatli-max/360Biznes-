@@ -25,11 +25,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatMoney } from "@/lib/utils";
 import { OperationQuickView } from "@/features/ticaret/components/operation-quick-view";
-import {
-  getLinkedOperationsAction,
-  type LinkedOp,
-  type LinkedOpType,
-} from "../linked-operations-action";
+import { getLinkedOperationsAction } from "../linked-operations-action";
+// QA: tiplər birbaşa mənbədən import olunur. "use server" faylından (linked-operations-action)
+// tip re-export etmək Turbopack-da runtime `ReferenceError: LinkedOp is not defined` yaradırdı
+// (server-action transform hər export-u dəyər referansına çevirir) → 500 → modallar açılmırdı.
+import type { LinkedOp, LinkedOpType } from "../linked-operations";
 import { cancelLinkedOperation } from "../cancel-linked";
 
 const TYPE_ICON: Record<LinkedOpType, React.ReactNode> = {
