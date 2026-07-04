@@ -1211,90 +1211,96 @@ export async function receivePartialPayment(input: FormData): Promise<ActionResu
       });
       if (!k) return { ok: false, error: "Müştəri tapılmadı" };
 
-      // 🛡️ İdempotensiya — son 5 dəqiqədə eyni key + müştəri + məbləğ varsa duplicate
       const idemKey = (d.idempotency_key || "").trim();
-      if (idemKey) {
-        const since = new Date(Date.now() - 5 * 60 * 1000);
-        const dup = await prisma.finance_operations.findFirst({
-          where: {
-            sahibkar_id: sahibkarId,
-            kontragent_id: d.musteri_id,
-            meblegh: d.mebleg,
-            yaradildi: { gte: since },
-            qeyd: { contains: `[IDEM:${idemKey}]` },
-          },
-          select: { id: true },
-        });
-        if (dup) return { ok: true, id: dup.id };
-      }
-
       const qaime_id = d.qaime_id || null;
       const typeKod = "qaime";
-
-      // 🔁 BORC PAYLAMA ALQORİTMİ (overflow cascade):
-      // 1. Seçilmiş qaimə (varsa) əvvələ gedir
-      // 2. Qalan açıq qaimələr tarix sırası ilə (FIFO)
-      // 3. Hər qaiməyə qalıq qədər ödəniş yazılır, artıq məbləğ növbətiyə keçir
-      // 4. Yalnız BÜTÜN qaimələr bağlandıqdan sonra qalan məbləğ avansa düşür
-      //
-      // Bu istifadəçinin "10 AZN ödədim, 2 AZN qaimə bağlandı, 8 AZN avans
-      // oldu" səhv davranışını həll edir. Düzgün: 8 AZN növbəti açıq qaiməyə.
-      const openSales = await prisma.satis_sifarisleri.findMany({
-        where: {
-          sahibkar_id: sahibkarId,
-          musteri_id: d.musteri_id,
-          status: { not: "legv" },
-          qaralama: { not: true },
-          odenis_nov: { in: ["nisye", "borc"] },
-        },
-        select: { id: true, son_mebleg: true, odenilmis: true, nomre: true, tarix: true, status: true },
-        // QA-orta: tarix @db.Date (gün dəqiqliyi) — eyni günün qaimələrində FIFO
-        // sırası deterministik olsun deyə yaradildi+nomre tiebreaker əlavə edildi.
-        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
-      });
-      const openWithQalig = openSales
-        .map((s) => ({
-          id: s.id,
-          nomre: s.nomre,
-          tarix: s.tarix,
-          son_mebleg: Number(s.son_mebleg ?? 0),
-          odenilmis: Number(s.odenilmis ?? 0),
-          qalig: +(Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0)).toFixed(2),
-          status: s.status,
-        }))
-        .filter((s) => s.qalig > 0.01);
-
-      // Seçilmiş qaiməni əvvələ qoy (varsa)
-      let processOrder = openWithQalig;
-      if (qaime_id) {
-        const selected = openWithQalig.find((s) => s.id === qaime_id);
-        const others = openWithQalig.filter((s) => s.id !== qaime_id);
-        processOrder = selected ? [selected, ...others] : openWithQalig;
-      }
-
-      // Paylama hesabı
-      let remain = d.mebleg;
-      const distribution: Array<{
+      let dupId: string | null = null;
+      // tx-dən sonra da lazımdır (revalidate + mesaj) → outer scope-da elan, içəridə mənimsət.
+      let distribution: Array<{
         sale_id: string; nomre: string; old_qalig: number; applied: number; new_qalig: number; closed: boolean;
       }> = [];
-      for (const inv of processOrder) {
-        if (remain <= 0.01) break;
-        const apply = Math.min(remain, inv.qalig);
-        distribution.push({
-          sale_id: inv.id,
-          nomre: inv.nomre,
-          old_qalig: inv.qalig,
-          applied: +apply.toFixed(2),
-          new_qalig: +(inv.qalig - apply).toFixed(2),
-          closed: apply >= inv.qalig - 0.01,
-        });
-        remain -= apply;
-      }
-      const totalApplied = +distribution.reduce((s, x) => s + x.applied, 0).toFixed(2);
-      const toAdvance = +Math.max(0, remain).toFixed(2);
+      let toAdvance = 0;
 
-      // Atomic transaction
+      // QA-M19: idempotensiya + açıq-qaimə oxu + paylama hesabı ƏVVƏL tranzaksiyadan
+      // KƏNARDA idi (TOCTOU race → paralel submit ikiqat ödəniş, və ya odenilmis>son_mebleg
+      // fantom avans). İndi müştəri FOR UPDATE lock + HƏR ŞEY tranzaksiya daxilində: paralel
+      // submit serializasiya olunur, ikinci lock-dan sonra yenilənmiş qaimə qalıqlarını
+      // (və commit olunmuş idempotensiya op-unu) görür.
       await prisma.$transaction(async (tx) => {
+        // 🔒 Müştəri sətrini lock et — paralel ödənişlər serializasiya olsun
+        await tx.$queryRaw`SELECT id FROM kontragentler WHERE id = ${d.musteri_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+
+        // İdempotensiya (lock-dan sonra — commit olunmuş dublikatı görür)
+        if (idemKey) {
+          const since = new Date(Date.now() - 5 * 60 * 1000);
+          const dup = await tx.finance_operations.findFirst({
+            where: {
+              sahibkar_id: sahibkarId,
+              kontragent_id: d.musteri_id,
+              meblegh: d.mebleg,
+              yaradildi: { gte: since },
+              qeyd: { contains: `[IDEM:${idemKey}]` },
+            },
+            select: { id: true },
+          });
+          if (dup) {
+            dupId = dup.id;
+            return;
+          }
+        }
+
+        // 🔁 BORC PAYLAMA ALQORİTMİ (overflow cascade): seçilmiş qaimə → FIFO açıq
+        // qaimələr → hər birinə qalıq qədər, artıq növbətiyə; hamısı bağlananda avansa.
+        const openSales = await tx.satis_sifarisleri.findMany({
+          where: {
+            sahibkar_id: sahibkarId,
+            musteri_id: d.musteri_id,
+            status: { not: "legv" },
+            qaralama: { not: true },
+            odenis_nov: { in: ["nisye", "borc"] },
+          },
+          select: { id: true, son_mebleg: true, odenilmis: true, nomre: true, tarix: true, status: true },
+          orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
+        });
+        const openWithQalig = openSales
+          .map((s) => ({
+            id: s.id,
+            nomre: s.nomre,
+            tarix: s.tarix,
+            son_mebleg: Number(s.son_mebleg ?? 0),
+            odenilmis: Number(s.odenilmis ?? 0),
+            qalig: +(Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0)).toFixed(2),
+            status: s.status,
+          }))
+          .filter((s) => s.qalig > 0.01);
+
+        // Seçilmiş qaiməni əvvələ qoy (varsa)
+        let processOrder = openWithQalig;
+        if (qaime_id) {
+          const selected = openWithQalig.find((s) => s.id === qaime_id);
+          const others = openWithQalig.filter((s) => s.id !== qaime_id);
+          processOrder = selected ? [selected, ...others] : openWithQalig;
+        }
+
+        // Paylama hesabı
+        let remain = d.mebleg;
+        distribution = [];
+        for (const inv of processOrder) {
+          if (remain <= 0.01) break;
+          const apply = Math.min(remain, inv.qalig);
+          distribution.push({
+            sale_id: inv.id,
+            nomre: inv.nomre,
+            old_qalig: inv.qalig,
+            applied: +apply.toFixed(2),
+            new_qalig: +(inv.qalig - apply).toFixed(2),
+            closed: apply >= inv.qalig - 0.01,
+          });
+          remain -= apply;
+        }
+        const totalApplied = +distribution.reduce((s, x) => s + x.applied, 0).toFixed(2);
+        toAdvance = +Math.max(0, remain).toFixed(2);
+
         // 1) Find or create operation type
         let type = await tx.finance_operation_types
           .findUnique({ where: { kod: typeKod } })
@@ -1421,6 +1427,9 @@ export async function receivePartialPayment(input: FormData): Promise<ActionResu
           },
         });
       });
+
+      // QA-M19: idempotensiya dublikatı aşkarlandı (tranzaksiya heç nə yazmadı) → mövcud op.
+      if (dupId) return { ok: true, id: dupId };
 
       revalidatePath("/elaqe");
       revalidatePath("/elaqe/borclar");
