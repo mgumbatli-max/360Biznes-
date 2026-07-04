@@ -1629,53 +1629,41 @@ export async function payAllOpenInvoices(
       });
       if (!k) return { ok: false, error: "Müştəri tapılmadı" };
 
-      // Açıq nisyə sənədləri — köhnədən yeniyə (FIFO)
-      const openSales = await prisma.satis_sifarisleri.findMany({
-        where: {
-          sahibkar_id: sahibkarId,
-          musteri_id: d.musteri_id,
-          status: { not: "legv" },
-          qaralama: { not: true },
-          odenis_nov: { in: ["nisye", "borc"] },
-        },
-        // QA-orta: eyni günün qaimələrində FIFO sırası deterministik olsun
-        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
-        select: { id: true, son_mebleg: true, odenilmis: true, nomre: true },
-      });
+      // tx-dən sonra da lazımdır (return + qeyd)
+      let closed = 0, partial = 0, toAdvance = 0, empty = false;
+      let distribution: Array<{ sale_id: string; nomre: string; applied: number; closed: boolean }> = [];
 
-      // Yalnız açıq qalıqı olanları filtrlə
-      const openWithQaliq = openSales
-        .map((s) => ({
-          id: s.id,
-          nomre: s.nomre,
-          qaliq: Math.max(0, Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0)),
-        }))
-        .filter((s) => s.qaliq > 0);
-
-      if (openWithQaliq.length === 0) return { ok: false, error: "Açıq sənəd yoxdur" };
-
-      let remain = d.mebleg;
-      let closed = 0;
-      let partial = 0;
-      const distribution: Array<{ sale_id: string; nomre: string; applied: number; closed: boolean }> = [];
-
-      for (const s of openWithQaliq) {
-        if (remain <= 0.01) break;
-        const apply = Math.min(remain, s.qaliq);
-        distribution.push({
-          sale_id: s.id,
-          nomre: s.nomre,
-          applied: +apply.toFixed(2),
-          closed: apply >= s.qaliq - 0.01,
-        });
-        if (apply >= s.qaliq - 0.01) closed++;
-        else partial++;
-        remain -= apply;
-      }
-      const toAdvance = +Math.max(0, remain).toFixed(2);
-
-      // Atomic transaction — bütün sənədlər və balanslar
+      // QA-audit-C: açıq-sənəd oxu + FIFO paylama ƏVVƏL tx-dən KƏNARDA idi (TOCTOU race — M19
+      // receivePartialPayment-də bağlanan eyni boşluq bu sibling-də açıq qalmışdı). İndi müştəri
+      // FOR UPDATE lock + oxu + paylama + yazılar HAMISI tranzaksiya daxilində serializasiya olunur.
       await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM kontragentler WHERE id = ${d.musteri_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+        const openSales = await tx.satis_sifarisleri.findMany({
+          where: {
+            sahibkar_id: sahibkarId,
+            musteri_id: d.musteri_id,
+            status: { not: "legv" },
+            qaralama: { not: true },
+            odenis_nov: { in: ["nisye", "borc"] },
+          },
+          orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
+          select: { id: true, son_mebleg: true, odenilmis: true, nomre: true },
+        });
+        const openWithQaliq = openSales
+          .map((s) => ({ id: s.id, nomre: s.nomre, qaliq: Math.max(0, Number(s.son_mebleg ?? 0) - Number(s.odenilmis ?? 0)) }))
+          .filter((s) => s.qaliq > 0);
+        if (openWithQaliq.length === 0) { empty = true; return; }
+
+        let remain = d.mebleg;
+        for (const s of openWithQaliq) {
+          if (remain <= 0.01) break;
+          const apply = Math.min(remain, s.qaliq);
+          distribution.push({ sale_id: s.id, nomre: s.nomre, applied: +apply.toFixed(2), closed: apply >= s.qaliq - 0.01 });
+          if (apply >= s.qaliq - 0.01) closed++; else partial++;
+          remain -= apply;
+        }
+        toAdvance = +Math.max(0, remain).toFixed(2);
+
         for (const dist of distribution) {
           await tx.satis_sifarisleri.update({
             where: { id: dist.sale_id },
@@ -1757,6 +1745,8 @@ export async function payAllOpenInvoices(
         });
       });
 
+      if (empty) return { ok: false, error: "Açıq sənəd yoxdur" };
+
       revalidatePath("/elaqe");
       revalidatePath(`/elaqe/musteriler/${d.musteri_id}`);
       revalidatePath("/maliyye");
@@ -1803,47 +1793,32 @@ export async function paySupplierAllOpen(
       });
       if (!k) return { ok: false, error: "Təchizatçı tapılmadı" };
 
-      const openPurchases = await prisma.alis_sifarisleri.findMany({
-        where: {
-          sahibkar_id: sahibkarId,
-          techiazatci_id: d.techizatci_id,
-          status: { not: "legv" },
-        },
-        // QA-orta: eyni günün alışlarında FIFO sırası deterministik olsun
-        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
-        select: { id: true, umumi_mebleg: true, odenilmis: true, nomre: true },
-      });
-
-      const openWithQalig = openPurchases
-        .map((s) => ({
-          id: s.id,
-          nomre: s.nomre,
-          qalig: Math.max(0, Number(s.umumi_mebleg ?? 0) - Number(s.odenilmis ?? 0)),
-        }))
-        .filter((s) => s.qalig > 0);
-
-      if (openWithQalig.length === 0) return { ok: false, error: "Açıq alış sənədi yoxdur" };
-
+      let closed = 0, partial = 0, empty = false;
       let remain = d.mebleg;
-      let closed = 0;
-      let partial = 0;
-      const distribution: Array<{ purchase_id: string; nomre: string; applied: number; closed: boolean }> = [];
+      let distribution: Array<{ purchase_id: string; nomre: string; applied: number; closed: boolean }> = [];
 
-      for (const p of openWithQalig) {
-        if (remain <= 0.01) break;
-        const apply = Math.min(remain, p.qalig);
-        distribution.push({
-          purchase_id: p.id,
-          nomre: p.nomre,
-          applied: +apply.toFixed(2),
-          closed: apply >= p.qalig - 0.01,
-        });
-        if (apply >= p.qalig - 0.01) closed++;
-        else partial++;
-        remain -= apply;
-      }
-
+      // QA-audit-C: açıq-alış oxu + FIFO paylama tx-dən KƏNARDA idi (TOCTOU + overpay guard köhnə
+      // snapshot-da). Təchizatçı FOR UPDATE lock + oxu/paylama/yazılar hamısı tx daxilində (M19 pattern).
       await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM kontragentler WHERE id = ${d.techizatci_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+        const openPurchases = await tx.alis_sifarisleri.findMany({
+          where: { sahibkar_id: sahibkarId, techiazatci_id: d.techizatci_id, status: { not: "legv" } },
+          orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
+          select: { id: true, umumi_mebleg: true, odenilmis: true, nomre: true },
+        });
+        const openWithQalig = openPurchases
+          .map((s) => ({ id: s.id, nomre: s.nomre, qalig: Math.max(0, Number(s.umumi_mebleg ?? 0) - Number(s.odenilmis ?? 0)) }))
+          .filter((s) => s.qalig > 0);
+        if (openWithQalig.length === 0) { empty = true; return; }
+
+        for (const p of openWithQalig) {
+          if (remain <= 0.01) break;
+          const apply = Math.min(remain, p.qalig);
+          distribution.push({ purchase_id: p.id, nomre: p.nomre, applied: +apply.toFixed(2), closed: apply >= p.qalig - 0.01 });
+          if (apply >= p.qalig - 0.01) closed++; else partial++;
+          remain -= apply;
+        }
+
         for (const dist of distribution) {
           await tx.alis_sifarisleri.update({
             where: { id: dist.purchase_id },
@@ -1943,6 +1918,8 @@ export async function paySupplierAllOpen(
         });
       });
 
+      if (empty) return { ok: false, error: "Açıq alış sənədi yoxdur" };
+
       revalidatePath("/elaqe");
       revalidatePath(`/elaqe/techizatcilar/${d.techizatci_id}`);
       revalidatePath("/maliyye");
@@ -1988,57 +1965,41 @@ export async function paySupplierInvoice(
 
       // 🔁 CASCADE ALQORİTMİ — eyni müştəri tərəfindəki kimi
       // Seçilmiş alış sənədi əvvələ, qalan açıq alışlar FIFO ilə.
-      const openPurchases = await prisma.alis_sifarisleri.findMany({
-        where: {
-          sahibkar_id: sahibkarId,
-          techiazatci_id: d.techizatci_id,
-          status: { not: "legv" },
-        },
-        select: { id: true, nomre: true, umumi_mebleg: true, odenilmis: true, tarix: true },
-        // QA-orta: eyni günün alışlarında FIFO sırası deterministik olsun
-        orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
-      });
-      const openWithQalig = openPurchases
-        .map((p) => ({
-          id: p.id, nomre: p.nomre,
-          qalig: +(Number(p.umumi_mebleg ?? 0) - Number(p.odenilmis ?? 0)).toFixed(2),
-        }))
-        .filter((p) => p.qalig > 0.01);
+      let notFound = false;
+      let overpay = 0; // overpay guard blokladığı üçün həmişə 0 (return mesajı/finance qeydi üçün saxlanılır)
+      let distribution: Array<{ purchase_id: string; nomre: string; old: number; applied: number; new: number; closed: boolean }> = [];
 
-      // Seçilmiş alış sənədini yoxla
-      const selected = openWithQalig.find((p) => p.id === d.alish_id);
-      if (!selected) {
-        return { ok: false, error: "Alış sənədi tapılmadı və ya artıq tam bağlıdır" };
-      }
-      const order = [selected, ...openWithQalig.filter((p) => p.id !== d.alish_id)];
-
-      let remain = d.mebleg;
-      const distribution: Array<{ purchase_id: string; nomre: string; old: number; applied: number; new: number; closed: boolean }> = [];
-      for (const inv of order) {
-        if (remain <= 0.01) break;
-        const apply = Math.min(remain, inv.qalig);
-        distribution.push({
-          purchase_id: inv.id,
-          nomre: inv.nomre,
-          old: inv.qalig,
-          applied: +apply.toFixed(2),
-          new: +(inv.qalig - apply).toFixed(2),
-          closed: apply >= inv.qalig - 0.01,
-        });
-        remain -= apply;
-      }
-      const totalApplied = +distribution.reduce((s, x) => s + x.applied, 0).toFixed(2);
-      const overpay = +Math.max(0, remain).toFixed(2);
-      // QA-M12: artıq ödəniş (overpay) SƏSSİZ İTİRDİ — pul hesabdan tam çıxırdı, təchizatçı
-      // borcu yalnız totalApplied qədər azalırdı, fərq nə borc nə avans kimi izlənmirdi.
-      // paySupplierAllOpen:1852 ilə simmetrik guard — artıq ödənişi blokla.
-      if (d.mebleg > totalApplied + 0.01) {
-        throw new Error(
-          `Məbləğ açıq borcdan çoxdur: açıq borc ${totalApplied.toFixed(2)} ₼, daxil etdiyiniz ${d.mebleg.toFixed(2)} ₼. Artıq ödəniş izlənmir — məbləği ${totalApplied.toFixed(2)} ₼-ə düzəldin.`,
-        );
-      }
-
+      // QA-audit-C: açıq-alış oxu + paylama + overpay guard (M12) ƏVVƏL tx-dən KƏNARDA (köhnə
+      // snapshot) idi → paralel ödəniş ikiqatlanırdı. Təchizatçı FOR UPDATE lock + hər şey tx daxilində.
       await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM kontragentler WHERE id = ${d.techizatci_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+        const openPurchases = await tx.alis_sifarisleri.findMany({
+          where: { sahibkar_id: sahibkarId, techiazatci_id: d.techizatci_id, status: { not: "legv" } },
+          select: { id: true, nomre: true, umumi_mebleg: true, odenilmis: true, tarix: true },
+          orderBy: [{ tarix: "asc" }, { yaradildi: "asc" }, { nomre: "asc" }],
+        });
+        const openWithQalig = openPurchases
+          .map((p) => ({ id: p.id, nomre: p.nomre, qalig: +(Number(p.umumi_mebleg ?? 0) - Number(p.odenilmis ?? 0)).toFixed(2) }))
+          .filter((p) => p.qalig > 0.01);
+        const selected = openWithQalig.find((p) => p.id === d.alish_id);
+        if (!selected) { notFound = true; return; }
+        const order = [selected, ...openWithQalig.filter((p) => p.id !== d.alish_id)];
+
+        let remain = d.mebleg;
+        for (const inv of order) {
+          if (remain <= 0.01) break;
+          const apply = Math.min(remain, inv.qalig);
+          distribution.push({ purchase_id: inv.id, nomre: inv.nomre, old: inv.qalig, applied: +apply.toFixed(2), new: +(inv.qalig - apply).toFixed(2), closed: apply >= inv.qalig - 0.01 });
+          remain -= apply;
+        }
+        const totalApplied = +distribution.reduce((s, x) => s + x.applied, 0).toFixed(2);
+        // QA-M12: overpay guard (indi kilid altında, cari qalıqla).
+        if (d.mebleg > totalApplied + 0.01) {
+          throw new Error(
+            `Məbləğ açıq borcdan çoxdur: açıq borc ${totalApplied.toFixed(2)} ₼, daxil etdiyiniz ${d.mebleg.toFixed(2)} ₼. Artıq ödəniş izlənmir — məbləği ${totalApplied.toFixed(2)} ₼-ə düzəldin.`,
+          );
+        }
+
         for (const dist of distribution) {
           await tx.alis_sifarisleri.update({
             where: { id: dist.purchase_id },
@@ -2136,6 +2097,8 @@ export async function paySupplierInvoice(
         });
       });
 
+      if (notFound) return { ok: false, error: "Alış sənədi tapılmadı və ya artıq tam bağlıdır" };
+
       revalidatePath("/elaqe");
       revalidatePath(`/elaqe/techizatcilar/${d.techizatci_id}`);
       revalidatePath("/maliyye");
@@ -2216,6 +2179,11 @@ export async function applyAdvanceToInvoice(input: FormData): Promise<ActionResu
       const apply = Math.min(d.mebleg, qaliq);
 
       await prisma.$transaction(async (tx) => {
+        // 🔒 QA-audit-C: müştərini LOCK et + avansı KİLİD ALTINDA yenidən yoxla — avans oxu/yoxlama
+        // əvvəl tx-dən KƏNARDA idi (TOCTOU) → paralel apply avansı ikiqat sərf edir/mənfiyə çəkirdi.
+        const lockRows = await tx.$queryRaw<Array<{ avans: number }>>`SELECT COALESCE(avans,0)::float AS avans FROM kontragentler WHERE id = ${d.musteri_id}::uuid AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+        const lockedAvans = Number(lockRows[0]?.avans ?? 0);
+        if (d.mebleg > lockedAvans + 0.01) throw new Error(`Avans (${lockedAvans.toFixed(2)} ₼) məbləğdən azdır`);
         // 1) Sənədə yönəlmiş hissə qədər odenilmis artır + status auto-update
         const isFullPaid = apply >= qaliq - 0.01;
         await tx.satis_sifarisleri.update({
