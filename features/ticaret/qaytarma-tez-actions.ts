@@ -800,6 +800,11 @@ export async function returnFullSale(
         const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
         // QA-M3/M23: returnRef = qaytarma sənədi → çoxlu hissəvi qaytarmada hər biri reverse olsun.
         await reverseLoyaltyForSale(reversalRef.current.satisId, reversalRef.current.ratio, result.id);
+        // 🔄 QA-M24: yalnız TAM qaytarmada kampaniya+kupon istifadə sayğacları geri (hissəvidə yox).
+        if (reversalRef.current.ratio >= 0.999) {
+          const { reverseCampaignUsageForSale } = await import("@/features/kampaniyalar/campaign-reversal");
+          await reverseCampaignUsageForSale(reversalRef.current.satisId);
+        }
       }
 
       revalidatePath("/ticaret/qaytarma");

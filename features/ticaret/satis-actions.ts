@@ -441,6 +441,11 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
       const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
       await reverseLoyaltyForSale(saleId, 1);
 
+      // 🔄 QA-M24: satış ləğvində kampaniya + kupon istifadə sayğaclarını geri qaytar
+      // (birdəfəlik kupon ləğvdən sonra yenidən işlək olsun; limitli kampaniya yeri boşalsın).
+      const { reverseCampaignUsageForSale } = await import("@/features/kampaniyalar/campaign-reversal");
+      await reverseCampaignUsageForSale(saleId);
+
       // Auto-clear stock alerts if stock back to safe levels
       if (restoredMehsulIds.length > 0) {
         await checkAndCreateStockAlertBatch(restoredMehsulIds);

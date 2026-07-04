@@ -319,6 +319,11 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
       if (reversalRef.current) {
         const { reverseLoyaltyForSale } = await import("@/features/kampaniyalar/loyalty-reversal");
         await reverseLoyaltyForSale(reversalRef.current.satisId, reversalRef.current.ratio);
+        // 🔄 QA-M24: yalnız TAM qaytarmada kampaniya+kupon istifadə sayğacları geri.
+        if (reversalRef.current.ratio >= 0.999) {
+          const { reverseCampaignUsageForSale } = await import("@/features/kampaniyalar/campaign-reversal");
+          await reverseCampaignUsageForSale(reversalRef.current.satisId);
+        }
       }
 
       revalidatePath("/ticaret/qaytarma");
