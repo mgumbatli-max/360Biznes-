@@ -68,17 +68,19 @@ export type LeadSourceSlice = { menbe: string; count: number };
 
 export async function getLeadSourceBreakdown(): Promise<LeadSourceSlice[]> {
   return withTenant(async () => {
-    const rows = await prisma.leads.groupBy({
-      by: ["menbe"],
-      _count: { _all: true },
-      orderBy: { _count: { menbe: "desc" } },
-    });
-    return rows
-      .map((r) => ({
-        menbe: r.menbe ?? "naməlum",
-        count: r._count._all,
-      }))
-      .slice(0, 8);
+    const { sahibkarId } = requireTenant();
+    // QA-perf: dashboard lead-mənbə bölgüsü → tenant-safe cache 5dəq (prismaUnscoped + açıq sahibkar_id).
+    return unstable_cache(async () => {
+      const rows = await prismaUnscoped.leads.groupBy({
+        by: ["menbe"],
+        where: { sahibkar_id: sahibkarId },
+        _count: { _all: true },
+        orderBy: { _count: { menbe: "desc" } },
+      });
+      return rows
+        .map((r) => ({ menbe: r.menbe ?? "naməlum", count: r._count._all }))
+        .slice(0, 8);
+    }, ["crm-lead-source", sahibkarId], { revalidate: 300, tags: [`crm:${sahibkarId}`] })();
   });
 }
 

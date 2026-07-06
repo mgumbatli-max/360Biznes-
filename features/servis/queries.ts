@@ -1318,33 +1318,36 @@ export async function getHourlyHeatmap() {
 export async function getDailyServisCounts() {
   return withTenant(async () => {
     const tenantId = requireTenant().sahibkarId;
-    const back = new Date();
-    back.setDate(back.getDate() - 30);
-    const inflow = await prisma.$queryRaw<{ gun: string; say: bigint }[]>`
-      SELECT TO_CHAR(yaradildi, 'YYYY-MM-DD') AS gun, COUNT(*) AS say
-        FROM servis_qeydleri
-       WHERE sahibkar_id = ${tenantId}::uuid
-         AND yaradildi >= ${back}
-       GROUP BY 1
-       ORDER BY 1 ASC
-    `;
-    const outflow = await prisma.$queryRaw<{ gun: string; say: bigint }[]>`
-      SELECT TO_CHAR(qapanma_tarixi, 'YYYY-MM-DD') AS gun, COUNT(*) AS say
-        FROM servis_qeydleri
-       WHERE sahibkar_id = ${tenantId}::uuid
-         AND qapanma_tarixi >= ${back}
-         AND status = 'musteriye_tehvil'
-       GROUP BY 1
-       ORDER BY 1 ASC
-    `;
-    const map = new Map<string, { gun: string; qebul: number; tehvil: number }>();
-    for (const r of inflow) map.set(r.gun, { gun: r.gun, qebul: Number(r.say), tehvil: 0 });
-    for (const r of outflow) {
-      const e = map.get(r.gun) ?? { gun: r.gun, qebul: 0, tehvil: 0 };
-      e.tehvil = Number(r.say);
-      map.set(r.gun, e);
-    }
-    return Array.from(map.values()).sort((a, b) => a.gun.localeCompare(b.gun));
+    // QA-perf: inflow/outflow müstəqil idi (serial) → Promise.all + 30g chart cache 5dəq (staleness-tolerant).
+    return unstable_cache(async () => {
+      const back = new Date();
+      back.setDate(back.getDate() - 30);
+      const [inflow, outflow] = await Promise.all([
+        prismaUnscoped.$queryRaw<{ gun: string; say: bigint }[]>`
+          SELECT TO_CHAR(yaradildi, 'YYYY-MM-DD') AS gun, COUNT(*) AS say
+            FROM servis_qeydleri
+           WHERE sahibkar_id = ${tenantId}::uuid
+             AND yaradildi >= ${back}
+           GROUP BY 1 ORDER BY 1 ASC
+        `,
+        prismaUnscoped.$queryRaw<{ gun: string; say: bigint }[]>`
+          SELECT TO_CHAR(qapanma_tarixi, 'YYYY-MM-DD') AS gun, COUNT(*) AS say
+            FROM servis_qeydleri
+           WHERE sahibkar_id = ${tenantId}::uuid
+             AND qapanma_tarixi >= ${back}
+             AND status = 'musteriye_tehvil'
+           GROUP BY 1 ORDER BY 1 ASC
+        `,
+      ]);
+      const map = new Map<string, { gun: string; qebul: number; tehvil: number }>();
+      for (const r of inflow) map.set(r.gun, { gun: r.gun, qebul: Number(r.say), tehvil: 0 });
+      for (const r of outflow) {
+        const e = map.get(r.gun) ?? { gun: r.gun, qebul: 0, tehvil: 0 };
+        e.tehvil = Number(r.say);
+        map.set(r.gun, e);
+      }
+      return Array.from(map.values()).sort((a, b) => a.gun.localeCompare(b.gun));
+    }, ["servis-daily-counts", tenantId], { revalidate: 300, tags: [`servis:${tenantId}`] })();
   });
 }
 
