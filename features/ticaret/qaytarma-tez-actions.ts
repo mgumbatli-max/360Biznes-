@@ -285,6 +285,7 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
             select: {
               id: true,
               son_mebleg: true,
+              umumi_mebleg: true,
               odenilmis: true,
               musteri_id: true,
               odenis_nov: true,
@@ -294,8 +295,11 @@ export async function fastReturn(input: FastReturnInput): Promise<ActionResult> 
           });
           if (origSale) {
             const son = Number(origSale.son_mebleg ?? 0);
-            // QA-M2/M16/M22: qaytarılan/satış nisbəti — post-commit loyalty reversal üçün.
-            loyaltyRatio = son > 0 ? Math.min(1, total / son) : 1;
+            // QA-audit: loyalty nisbəti məxrəci STABİL orijinal satış cəmi (umumi_mebleg) olmalıdır —
+            // əvvəl azaldılmış son_mebleg işlədilirdi → çoxlu hissəvi qaytarmada nisbət şişir. umumi_mebleg
+            // qaytarmalardan təsirlənmir və return `total` ilə eyni bazisdədir (line vahid_qiymet cəmi).
+            const loyaltyDenom = Number(origSale.umumi_mebleg ?? 0) || son;
+            loyaltyRatio = loyaltyDenom > 0 ? Math.min(1, total / loyaltyDenom) : 1;
             const odenilmis = Number(origSale.odenilmis ?? 0);
             const qalig = son - odenilmis;
             const isNisye = origSale.odenis_nov === "nisye" || origSale.odenis_nov === "borc";

@@ -133,7 +133,8 @@ export async function quickMarkAttendance(input: FormData): Promise<Result> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     // Self-service: yalnız özünü işarələyə bilər. Başqası üçün davamiyyet.idare lazımdır.
-    if (d.istifadeci_id !== istifadeciId) {
+    const isSelf = d.istifadeci_id === istifadeciId;
+    if (!isSelf) {
       const permCheck = await requireHrActionPerm("davamiyyet.idare");
       if (!permCheck.ok) return { ok: false, error: permCheck.error };
     }
@@ -141,6 +142,23 @@ export async function quickMarkAttendance(input: FormData): Promise<Result> {
       const tarix = parseLocalDate(d.tarix);
       if (!tarix) return { ok: false, error: "Tarix yanlışdır" };
       tarix.setHours(0, 0, 0, 0);
+
+      // QA-audit: self-service SUİİSTİFADƏSİ — istifadəçi istənilən keçmiş tarix üçün özünü
+      // 'qaydasinda' işarələyə və menecerin qoyduğu 'qaib'-i öz xeyrinə üstələyə bilirdi. Self üçün:
+      // (a) yalnız bugün, (b) menecer 'qaib' qeyd edibsə self dəyişə bilməz.
+      if (isSelf) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        if (tarix.getTime() !== today.getTime()) {
+          return { ok: false, error: "Yalnız bugünkü davamiyyəti özünüz işarələyə bilərsiniz" };
+        }
+        const existing = await prisma.davamiyyet.findUnique({
+          where: { istifadeci_id_tarix: { istifadeci_id: d.istifadeci_id, tarix } },
+          select: { status: true },
+        });
+        if (existing?.status === "qaib" && d.status !== "qaib") {
+          return { ok: false, error: "Menecer 'qaib' qeyd edib — dəyişiklik üçün rəhbərə müraciət edin" };
+        }
+      }
       const expected = new Date(tarix);
       expected.setHours(9, 0, 0, 0);
 

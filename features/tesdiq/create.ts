@@ -66,8 +66,12 @@ export async function createApprovalRequest(input: CreateApprovalInput): Promise
       return { ok: true, id: 0, auto_approved: true };
     }
 
-    // Auto-approve small amounts
-    const autoApprove = cfg.auto_approve_mebleg > 0 && (input.mebleg ?? 0) <= cfg.auto_approve_mebleg;
+    // Auto-approve small amounts.
+    // QA-audit: yalnız REAL məbləği olan (monetar) sorğular avto-təsdiq oluna bilər. Əvvəl məbləği
+    // olmayan sənəd növləri (mehsul_yaratma, ticaret_emeliyyat) mebleg=0 kimi HƏMİŞƏ avto-təsdiqlənirdi
+    // (materiallaşma da baş vermir). İndi məbləğ yoxdursa avto-təsdiq yoxdur → normal təsdiq axını.
+    const hasAmount = typeof input.mebleg === "number" && Number.isFinite(input.mebleg) && input.mebleg > 0;
+    const autoApprove = hasAmount && cfg.auto_approve_mebleg > 0 && (input.mebleg as number) <= cfg.auto_approve_mebleg;
 
     // Dublikat qarşısı: eyni resurs üçün gözləyən sorğu varsa, onu yenilə
     // (məhsul update halında əməkdaş bir neçə dəfə save basa bilər).

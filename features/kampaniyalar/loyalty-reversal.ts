@@ -74,18 +74,29 @@ export async function reverseLoyaltyForSale(satisId: string, ratio: number, retu
             }
           }
           if (refundPoints > 0) {
-            await tx.loyalty_cards.update({
-              where: { id: kartId },
-              data: { balans: { increment: refundPoints }, total_serf: { decrement: refundPoints }, yenilendi: new Date() },
-            });
-            const after = await tx.loyalty_cards.findUnique({ where: { id: kartId }, select: { balans: true } });
-            await tx.loyalty_tx.create({
-              data: {
-                sahibkar_id: sahibkarId, kart_id: kartId, satis_id: satisId,
-                nov: "qaytarma_serf_geri", mebleg: refundPoints, qaliq: Number(after?.balans ?? 0),
-                qeyd: `Satış qaytarıldı — sərf olunan bal qaytarıldı #${satisId.slice(0, 8)}${refTag}`,
-              },
-            });
+            // QA-audit: KUMULYATİV cap — çoxlu hissəvi qaytarmada orijinal sərf olunandan çox bal geri
+            // qaytarıla bilirdi (bal şişməsi). Cap = orijinal sərf − artıq geri-qaytarılmış.
+            const [spentAgg, refundedAgg] = await Promise.all([
+              tx.loyalty_tx.aggregate({ where: { kart_id: kartId, satis_id: satisId, nov: "serf" }, _sum: { mebleg: true } }),
+              tx.loyalty_tx.aggregate({ where: { kart_id: kartId, satis_id: satisId, nov: "qaytarma_serf_geri" }, _sum: { mebleg: true } }),
+            ]);
+            const originalSpent = Number(spentAgg._sum.mebleg ?? 0);       // serf müsbətdir
+            const alreadyRefunded = Number(refundedAgg._sum.mebleg ?? 0);
+            const cappedRefund = Math.max(0, Math.min(refundPoints, originalSpent - alreadyRefunded));
+            if (cappedRefund > 0) {
+              await tx.loyalty_cards.update({
+                where: { id: kartId },
+                data: { balans: { increment: cappedRefund }, total_serf: { decrement: cappedRefund }, yenilendi: new Date() },
+              });
+              const after = await tx.loyalty_cards.findUnique({ where: { id: kartId }, select: { balans: true } });
+              await tx.loyalty_tx.create({
+                data: {
+                  sahibkar_id: sahibkarId, kart_id: kartId, satis_id: satisId,
+                  nov: "qaytarma_serf_geri", mebleg: cappedRefund, qaliq: Number(after?.balans ?? 0),
+                  qeyd: `Satış qaytarıldı — sərf olunan bal qaytarıldı #${satisId.slice(0, 8)}${refTag}`,
+                },
+              });
+            }
           }
         });
       }
