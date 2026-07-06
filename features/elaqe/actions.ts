@@ -919,8 +919,16 @@ export async function bulkAddTag(
         update: {},
         create: { sahibkar_id: sahibkarId, ad: name },
       });
+      // QA-audit: yalnız CARİ tenant-a aid kontragent-lərə tag (junction cədvəl tenant-filtrsizdir →
+      // başqa tenantın kontaktını taglamaq mümkün idi).
+      const ownedIds = (
+        await prisma.kontragentler.findMany({
+          where: { id: { in: ids }, sahibkar_id: sahibkarId },
+          select: { id: true },
+        })
+      ).map((k) => k.id);
       let count = 0;
-      for (const id of ids) {
+      for (const id of ownedIds) {
         try {
           await prisma.contact_tag_links.upsert({
             where: { kontragent_id_tag_id: { kontragent_id: id, tag_id: tag.id } },
@@ -1247,6 +1255,13 @@ export async function addContactTag(
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
+      // QA-audit: contact_tag_links junction cədvəli tenant filtrindən kənardır — kontragentId-nin
+      // CARİ tenant-a aid olduğunu yoxlamadan yazmaq başqa tenantın kontaktını taglaya bilərdi.
+      const owns = await prisma.kontragentler.findFirst({
+        where: { id: kontragentId, sahibkar_id: sahibkarId },
+        select: { id: true },
+      });
+      if (!owns) return { ok: false, error: "Kontragent tapılmadı" };
       const tag = await prisma.contact_tags.upsert({
         where: { sahibkar_id_ad: { sahibkar_id: sahibkarId, ad: name } },
         update: {},

@@ -43,6 +43,13 @@ export async function matchBankItem(input: FormData): Promise<Result> {
       if (!item) return { ok: false, error: "Bank sətri tapılmadı" };
       if (!op) return { ok: false, error: "Maliyyə əməliyyatı tapılmadı" };
       if (item.status === "eslesdi") return { ok: false, error: "Artıq match olunub" };
+      // QA-audit: op_id-nin BAŞQA bank sətrinə artıq bağlı olub-olmadığı yoxlanmırdı → bir maliyyə
+      // əməliyyatı çoxlu bank sətrinə əl ilə match edilə, hesabatı təhrif edə bilirdi.
+      const opAlreadyMatched = await prisma.finance_bank_statement_items.findFirst({
+        where: { sahibkar_id: sahibkarId, matched_op_id: d.op_id, status: "eslesdi", NOT: { id: d.item_id } },
+        select: { id: true },
+      });
+      if (opAlreadyMatched) return { ok: false, error: "Bu maliyyə əməliyyatı artıq başqa bank sətri ilə uyğunlaşdırılıb" };
 
       const meblegFerq = Math.abs(Number(item.meblegh) - Number(op.meblegh));
       const yonUyumlu = item.y_n === op.y_n;

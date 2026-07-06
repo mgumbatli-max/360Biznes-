@@ -291,6 +291,9 @@ export async function convertLeadToSale(id: string): Promise<{ ok: true; saleId:
     try {
       const lead = await prisma.leads.findFirst({ where: { id } });
       if (!lead) return { ok: false, error: "Lead tapılmadı" };
+      // QA-audit: soft-delete olunmuş lead (status='silinib') konversiyada bloklanmırdı → silinmiş
+      // lead-dən real satış+müştəri yaranırdı.
+      if (lead.status === "silinib") return { ok: false, error: "Silinmiş lead satışa çevrilə bilməz" };
       if (lead.satish_id) {
         return { ok: true, saleId: lead.satish_id, musteriId: lead.kontragent_id ?? "" };
       }

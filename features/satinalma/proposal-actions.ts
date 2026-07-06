@@ -383,7 +383,16 @@ export async function convertProposalToPurchaseOrder(
         include: { satirlar: true },
       });
       if (!teklif) return { ok: false, error: "Tapılmadı" };
-      if (teklif.status !== "tesdiq") return { ok: false, error: "Yalnız təsdiqlənmiş təkliflər çevrilə bilər" };
+      // QA-audit: əvvəl status yoxlanır, amma çevrildikdən sonra DƏYİŞMİRDİ → eyni təklif təkrar-təkrar
+      // çevrilib N dublikat alış sifarişi yaradırdı. İndi ATOMİK claim (tesdiq→sifarise_cevrildi):
+      // count===0 → artıq çevrilib və ya təsdiqlənməyib.
+      const claim = await prisma.satinalma_teklif.updateMany({
+        where: { id, sahibkar_id: sahibkarId, status: "tesdiq" },
+        data: { status: "sifarise_cevrildi" },
+      });
+      if (claim.count === 0) {
+        return { ok: false, error: "Yalnız təsdiqlənmiş və hələ çevrilməmiş təkliflər çevrilə bilər" };
+      }
 
       // Use first supplier from lines (assume single supplier per proposal)
       const supplierId = teklif.satirlar.find((s) => s.techizatci_id)?.techizatci_id ?? null;

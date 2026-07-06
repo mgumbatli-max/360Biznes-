@@ -624,7 +624,13 @@ export async function adjustBordro(input: FormData): Promise<Result> {
       data.son_meblegh = son;
       data.detal = { ...detal, vergi, sosial_sigorta: sosial, gross };
 
-      await prisma.maas_hesablamalar.update({ where: { id }, data });
+      // QA-audit: TOCTOU — status oxundu (607) sonra guard-sız update; paralel payBordro ödəniş
+      // etdikdən sonra edit ödənilmiş bordronun son_meblegh-ini dəyişirdi. İndi atomik status şərti.
+      const upd = await prisma.maas_hesablamalar.updateMany({
+        where: { id, status: { not: "odenilib" } },
+        data,
+      });
+      if (upd.count === 0) return { ok: false, error: "Bordro ödənilib və ya dəyişdirilə bilməz" };
       await audit("yenile", "maas_hesablama", id, {
         evvelki_data: { [field]: Number((b as unknown as Record<string, unknown>)[field] ?? 0), son_meblegh: Number(b.son_meblegh ?? 0) },
         yeni_data: { [field]: value, son_meblegh: son },

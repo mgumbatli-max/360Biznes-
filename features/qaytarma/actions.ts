@@ -53,6 +53,23 @@ export async function createReturn(
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // QA-audit: original_id heç yoxlanmırdı — mövcudluq, tenant-a aidlik və növ uyğunluğu (satis
+      // vs alis) təsdiqlənməlidir (başqa tenantın / yanlış növ sənədinə qaytarma bağlanmasın).
+      if (data.original_id) {
+        if (data.nov === "musteri") {
+          const orig = await prisma.satis_sifarisleri.findFirst({
+            where: { id: data.original_id, sahibkar_id: sahibkarId },
+            select: { id: true },
+          });
+          if (!orig) return { ok: false, error: "İstinad edilən satış tapılmadı" };
+        } else {
+          const orig = await prisma.alis_sifarisleri.findFirst({
+            where: { id: data.original_id, sahibkar_id: sahibkarId },
+            select: { id: true },
+          });
+          if (!orig) return { ok: false, error: "İstinad edilən alış tapılmadı" };
+        }
+      }
       const umumi = data.lines.reduce((s, l) => s + l.miqdar * l.vahid_qiymet, 0);
 
       // QA-K (race): nomre atomik counter ilə yaradılır — paralel/double-submit

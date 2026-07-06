@@ -44,6 +44,15 @@ export async function createDebtReminderTask(input: {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
+      // QA-audit: kontragentId + borc client-dən gəlirdi, DB-dən doğrulanmırdı. Kontragentin
+      // cari tenant-a aid olduğunu təsdiqlə + real borcu DB-dən götür (client dəyərinə etibar etmə).
+      const k = await prisma.kontragentler.findFirst({
+        where: { id: input.kontragentId, sahibkar_id: sahibkarId },
+        select: { ad: true, borc: true, alacaq: true },
+      });
+      if (!k) return { ok: false, error: "Kontragent tapılmadı" };
+      const realBorc = Math.max(Number(k.borc ?? 0), Number(k.alacaq ?? 0));
+      input = { ...input, borc: realBorc, kontragentAd: k.ad ?? input.kontragentAd };
       const basliq = `🔔 Borc xatırlatması: ${input.kontragentAd}`;
       const tesvir =
         `Cari borc: ${input.borc.toFixed(2)} ₼\n\n` +
