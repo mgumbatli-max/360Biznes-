@@ -21,6 +21,7 @@ import {
   Database,
   Workflow,
   Printer,
+  Factory,
   type LucideIcon,
 } from "lucide-react";
 
@@ -87,6 +88,7 @@ const ANBAR_GROUPS: AnbarGroup[] = [
       { href: "/anbar/transfer",     label: "Transfer",     Icon: Truck },
       { href: "/anbar/bron",         label: "Bron",         Icon: Bookmark },
       { href: "/anbar/konsiqnasiya", label: "Konsiqnasiya", Icon: Handshake },
+      { href: "/anbar/istehsal",     label: "İstehsal",     Icon: Factory },
       { href: "/anbar/satinalma",    label: "Satınalma",    Icon: ClipboardList, alsoActiveFor: ["/satinalma"] },
       { href: "/anbar/etiket-cap",   label: "Etiket çapı",  Icon: Printer },
     ],
