@@ -11,9 +11,9 @@
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_satis_sah_status_qaralama_tarix
   ON satis_sifarisleri (sahibkar_id, status, qaralama, tarix DESC);
 
--- Maliyyə əməliyyatları (gəlir/xərc + tarix aqreqatları)
+-- Maliyyə əməliyyatları (gəlir/xərc + tarix aqreqatları). QEYD: Prisma sahəsi y_n → DB sütunu "yön".
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_finance_sah_yn_tarix
-  ON finance_operations (sahibkar_id, y_n, tarix DESC);
+  ON finance_operations (sahibkar_id, "yön", tarix DESC);
 
 -- Stok axtarışı (anbar üzrə — hər POS/satış/anbar səhifəsində)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_stok_sah_anbar
