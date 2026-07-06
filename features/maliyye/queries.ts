@@ -234,33 +234,42 @@ export async function getDailyFlow(days = 30): Promise<DailyFlowRow[]> {
 
 export type TopRow = { ad: string; mebleg: number };
 
+// QA-perf: dashboard aqreqatları hər yükdə sorğu edilirdi → tenant-safe cache (prismaUnscoped + açıq
+// sahibkar_id filtri + cache açarında sahibkarId; revalidate 60s — aylıq aqreqatlar dəqiqədə dəyişmir).
 export async function getTopExpenseCategories(limit = 5): Promise<TopRow[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    return prisma.$queryRaw<TopRow[]>`
-      SELECT COALESCE(xk.ad, 'Digər') AS ad,
-             COALESCE(SUM(x.mebleg), 0)::float AS mebleg
-        FROM "xerclər" x
-   LEFT JOIN xerc_kateqoriyalari xk ON xk.id = x.kateqoriya_id
-       WHERE x.sahibkar_id = ${sahibkarId}::uuid
-         AND x.tarix >= date_trunc('month', CURRENT_DATE)
-         AND x.legv_de IS NULL -- QA-orta: ləğv edilmiş xərc top-kateqoriyaya düşməsin
-    GROUP BY xk.ad
-    ORDER BY mebleg DESC
-       LIMIT ${limit}
-    `;
+    return unstable_cache(
+      () => prismaUnscoped.$queryRaw<TopRow[]>`
+        SELECT COALESCE(xk.ad, 'Digər') AS ad,
+               COALESCE(SUM(x.mebleg), 0)::float AS mebleg
+          FROM "xerclər" x
+     LEFT JOIN xerc_kateqoriyalari xk ON xk.id = x.kateqoriya_id
+         WHERE x.sahibkar_id = ${sahibkarId}::uuid
+           AND x.tarix >= date_trunc('month', CURRENT_DATE)
+           AND x.legv_de IS NULL
+      GROUP BY xk.ad
+      ORDER BY mebleg DESC
+         LIMIT ${limit}
+      `,
+      ["maliyye-top-xerc", sahibkarId, String(limit)],
+      { revalidate: 60, tags: [`fin:${sahibkarId}:agg`] },
+    )();
   });
 }
 
 export async function getTopDebtors(limit = 5): Promise<TopRow[]> {
-  return withTenant(async () =>
-    (await prisma.kontragentler.findMany({
-      where: { aktiv: true, nov: { in: ["musteri", "her_ikisi"] }, alacaq: { gt: 0 } },
-      orderBy: { alacaq: "desc" },
-      take: limit,
-      select: { ad: true, alacaq: true },
-    })).map((r) => ({ ad: r.ad, mebleg: Number(r.alacaq ?? 0) }))
-  );
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return unstable_cache(
+      async () => (await prismaUnscoped.kontragentler.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: ["musteri", "her_ikisi"] }, alacaq: { gt: 0 } },
+        orderBy: { alacaq: "desc" }, take: limit, select: { ad: true, alacaq: true },
+      })).map((r) => ({ ad: r.ad, mebleg: Number(r.alacaq ?? 0) })),
+      ["maliyye-top-debitor", sahibkarId, String(limit)],
+      { revalidate: 60, tags: [`fin:${sahibkarId}:agg`] },
+    )();
+  });
 }
 
 export async function getQuickRefs() {
@@ -299,14 +308,17 @@ export async function getQuickRefs() {
 }
 
 export async function getTopCreditors(limit = 5): Promise<TopRow[]> {
-  return withTenant(async () =>
-    (await prisma.kontragentler.findMany({
-      where: { aktiv: true, nov: { in: ["techizatci", "her_ikisi"] }, borc: { gt: 0 } },
-      orderBy: { borc: "desc" },
-      take: limit,
-      select: { ad: true, borc: true },
-    })).map((r) => ({ ad: r.ad, mebleg: Math.abs(Number(r.borc ?? 0)) }))
-  );
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return unstable_cache(
+      async () => (await prismaUnscoped.kontragentler.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true, nov: { in: ["techizatci", "her_ikisi"] }, borc: { gt: 0 } },
+        orderBy: { borc: "desc" }, take: limit, select: { ad: true, borc: true },
+      })).map((r) => ({ ad: r.ad, mebleg: Math.abs(Number(r.borc ?? 0)) })),
+      ["maliyye-top-kreditor", sahibkarId, String(limit)],
+      { revalidate: 60, tags: [`fin:${sahibkarId}:agg`] },
+    )();
+  });
 }
 
 export type MonthlyFlow = { month: string; daxil: number; xaric: number };
