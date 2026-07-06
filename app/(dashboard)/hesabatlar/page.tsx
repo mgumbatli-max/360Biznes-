@@ -24,6 +24,7 @@ import {
   ShoppingCart,
   Award,
   Flame,
+  Target,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CollapsibleSection } from "@/components/ui/collapsible-section";
@@ -55,6 +56,7 @@ const CARDS: {
   { href: "/hesabatlar/marja", icon: Percent, title: "Marja", desc: "Kateqoriya & məhsul marja, loss leaders, cash cows, müştəri marjı", gradient: "from-emerald-500 to-teal-500", badge: "Yeni" },
   { href: "/hesabatlar/mehsul", icon: Package, title: "Məhsul", desc: "ABC analizi, ölü stok, top movers, marjin", gradient: "from-emerald-500 to-cyan-500" },
   { href: "/hesabatlar/musteri", icon: Users, title: "Müştəri", desc: "LTV, cohort, geo, borc bucket, segmentation", gradient: "from-amber-500 to-orange-500" },
+  { href: "/hesabatlar/rfm", icon: Target, title: "RFM seqmentasiya", desc: "Müştəri dəyər/risk seqmentləri, churn (itki) riski, yenidən cəlb siyahısı", gradient: "from-rose-500 to-red-500", badge: "Yeni" },
   { href: "/hesabatlar/stok", icon: Boxes, title: "Stok", desc: "Anbar/kateqoriya dəyər, hərəkət, reorder", gradient: "from-cyan-500 to-blue-500" },
   { href: "/hesabatlar/pul", icon: Coins, title: "Pul axını", desc: "Daily kassa, mədaxil/məxaric, runway, hesab balans", gradient: "from-pink-500 to-rose-500" },
   { href: "/hesabatlar/maliyye", icon: Wallet, title: "Maliyyə (P&L)", desc: "Waterfall, YoY, sabit/dəyişkən xərc, 12 aylıq trend", gradient: "from-violet-500 to-fuchsia-500" },

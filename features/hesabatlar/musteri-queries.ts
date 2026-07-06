@@ -295,3 +295,137 @@ export async function getSimpleCohort(monthsBack = 6): Promise<CohortCell[]> {
     }));
   });
 }
+
+// ============================================================
+// RFM SEQMENTASİYA + CHURN RİSKİ (yeni — BI qatı #9)
+// ============================================================
+// Recency (son alışdan keçən gün) · Frequency (sifariş sayı) · Monetary (ümumi gəlir).
+// Hər ölçü tenant müştəri bazasına görə KVİNTİL (1-5) skoru alır; sonra standart RFM
+// seqmentlərinə bölünür + churn (müştəri itkisi) riski işarələnir.
+
+export type RfmSegment =
+  | "champions"       // ən dəyərli: yeni + tez-tez + çox xərcləyən
+  | "loyal"           // sadiq: tez-tez alan
+  | "potential"       // potensial sadiq: yaxınlarda, orta tezlik
+  | "new"             // yeni müştəri
+  | "at_risk"         // risk altında: əvvəl tez-tez, indi yatıb (CHURN)
+  | "cant_lose"       // itirmək olmaz: yüksək dəyər, amma yatıb (CHURN)
+  | "hibernating"     // yatmış: aşağı R + aşağı F
+  | "lost";           // itirilmiş
+
+export type RfmCustomer = {
+  id: string;
+  ad: string;
+  telefon: string | null;
+  recency_gun: number;      // son alışdan keçən gün
+  frequency: number;        // sifariş sayı
+  monetary: number;         // ümumi gəlir
+  r: number; f: number; m: number; // 1-5 skorlar
+  rfm: number;              // r*100+f*10+m (sıralama üçün)
+  segment: RfmSegment;
+  churn_riski: boolean;     // at_risk və ya cant_lose
+};
+
+export type RfmSummary = {
+  segment: RfmSegment;
+  ad_az: string;            // Azərbaycanca etiket
+  say: number;              // müştəri sayı
+  gelir: number;            // seqmentin ümumi gəliri
+  churn: boolean;
+};
+
+const RFM_LABELS: Record<RfmSegment, string> = {
+  champions: "Çempionlar",
+  loyal: "Sadiq müştərilər",
+  potential: "Potensial sadiq",
+  new: "Yeni müştərilər",
+  at_risk: "Risk altında",
+  cant_lose: "İtirmək olmaz",
+  hibernating: "Yatmış",
+  lost: "İtirilmiş",
+};
+
+/** Kvintil skor (1-5): dəyər massivində sıra mövqeyinə görə. reverse=true → kiçik dəyər yüksək skor (recency). */
+function quintileScore(value: number, sorted: number[], reverse = false): number {
+  if (sorted.length === 0) return 3;
+  // sorted artan sırada; value-nun sıra faizi
+  let rank = sorted.findIndex((v) => v >= value);
+  if (rank < 0) rank = sorted.length - 1;
+  const pct = sorted.length > 1 ? rank / (sorted.length - 1) : 0.5;
+  let score = Math.min(5, Math.max(1, Math.ceil(pct * 5)));
+  return reverse ? 6 - score : score;
+}
+
+function classifyRfm(r: number, f: number): { segment: RfmSegment; churn: boolean } {
+  if (r >= 4 && f >= 4) return { segment: "champions", churn: false };
+  if (f >= 4 && r >= 3) return { segment: "loyal", churn: false };
+  if (r >= 4 && f === 1) return { segment: "new", churn: false };
+  if (r >= 3 && f >= 2) return { segment: "potential", churn: false };
+  if (r <= 2 && f >= 4) return { segment: "cant_lose", churn: true };   // yüksək dəyər, yatıb
+  if (r <= 2 && f >= 3) return { segment: "at_risk", churn: true };     // əvvəl tez-tez, indi yatıb
+  if (r === 1 && f === 1) return { segment: "lost", churn: false };
+  return { segment: "hibernating", churn: false };
+}
+
+/**
+ * Bütün müştərilər üçün RFM seqmentasiyası + churn riski.
+ * @returns { customers, summary } — per-müştəri skorlar + seqment üzrə xülasə (dashboard).
+ */
+export async function getCustomerRfmSegments(limit = 500): Promise<{ customers: RfmCustomer[]; summary: RfmSummary[] }> {
+  return withTenant(async () => {
+    const { sahibkarId, rolAd, icazeler } = requireTenant();
+    const canSeePII = canSeeContactPII(rolAd, icazeler);
+    const rows = await prisma.$queryRaw<Array<{ id: string; ad: string; telefon: string | null; recency_gun: number | null; frequency: number; monetary: number }>>`
+      SELECT k.id::text AS id, k.ad, k.telefon,
+             (CURRENT_DATE - MAX(ss.tarix)::date)::int AS recency_gun,
+             COUNT(ss.id)::int AS frequency,
+             COALESCE(SUM(ss.son_mebleg), 0)::float AS monetary
+        FROM kontragentler k
+        JOIN satis_sifarisleri ss ON ss.musteri_id = k.id
+             AND ss.status NOT IN ('legv','qaytarilib')
+             AND COALESCE(ss.qaralama, false) = false
+       WHERE k.sahibkar_id = ${sahibkarId}::uuid
+         AND k.nov IN ('musteri','her_ikisi')
+       GROUP BY k.id, k.ad, k.telefon
+       HAVING COUNT(ss.id) > 0
+    `;
+    if (rows.length === 0) return { customers: [], summary: [] };
+
+    // Kvintil bazaları (artan sırada)
+    const recArr = rows.map((r) => Number(r.recency_gun ?? 9999)).sort((a, b) => a - b);
+    const freqArr = rows.map((r) => Number(r.frequency)).sort((a, b) => a - b);
+    const monArr = rows.map((r) => Number(r.monetary)).sort((a, b) => a - b);
+
+    const customers: RfmCustomer[] = rows.map((row) => {
+      const recency = Number(row.recency_gun ?? 9999);
+      const frequency = Number(row.frequency);
+      const monetary = Number(row.monetary);
+      const r = quintileScore(recency, recArr, true);  // kiçik gün = yüksək R
+      const f = quintileScore(frequency, freqArr);
+      const m = quintileScore(monetary, monArr);
+      const { segment, churn } = classifyRfm(r, f);
+      const masked = maskContactPII({ id: row.id, ad: row.ad, telefon: row.telefon }, canSeePII) as { id: string; ad: string; telefon: string | null };
+      return {
+        id: masked.id, ad: masked.ad, telefon: masked.telefon,
+        recency_gun: recency, frequency, monetary,
+        r, f, m, rfm: r * 100 + f * 10 + m,
+        segment, churn_riski: churn,
+      };
+    });
+    customers.sort((a, b) => b.monetary - a.monetary);
+
+    // Seqment xülasəsi (dashboard)
+    const bySeg = new Map<RfmSegment, { say: number; gelir: number; churn: boolean }>();
+    for (const c of customers) {
+      const cur = bySeg.get(c.segment) ?? { say: 0, gelir: 0, churn: c.churn_riski };
+      cur.say += 1; cur.gelir += c.monetary; cur.churn = c.churn_riski;
+      bySeg.set(c.segment, cur);
+    }
+    const order: RfmSegment[] = ["champions", "loyal", "potential", "new", "at_risk", "cant_lose", "hibernating", "lost"];
+    const summary: RfmSummary[] = order
+      .filter((s) => bySeg.has(s))
+      .map((s) => ({ segment: s, ad_az: RFM_LABELS[s], say: bySeg.get(s)!.say, gelir: Math.round(bySeg.get(s)!.gelir * 100) / 100, churn: bySeg.get(s)!.churn }));
+
+    return { customers: customers.slice(0, limit), summary };
+  });
+}
