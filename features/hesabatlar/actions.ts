@@ -558,6 +558,7 @@ const BUILT_IN_TEMPLATES: CompanyReportTemplate[] = [
   { key: "cash_flow", ad: "Cash flow", tesvir: "30 gün pul axını", href: "/hesabatlar/pul", icon: "Banknote" },
   { key: "top_customers", ad: "Top müştərilər", tesvir: "LTV-ə görə top 50", href: "/hesabatlar/musteri", icon: "Users" },
   { key: "rfm_segments", ad: "RFM seqmentasiya", tesvir: "Müştəri dəyər/risk seqmentləri + churn", href: "/hesabatlar/rfm", icon: "Target" },
+  { key: "supplier_scorecard", ad: "Təchizatçı scorecard", tesvir: "Təchizatçı qiymətləndirmə A–F + seqment", href: "/hesabatlar/techizatci", icon: "Award" },
   { key: "abc_analysis", ad: "ABC analiz", tesvir: "Məhsul kateqoriyası 80/20", href: "/hesabatlar/mehsul", icon: "BarChart3" },
   { key: "marja_summary", ad: "Marja", tesvir: "Maya vs satış marjası", href: "/hesabatlar/marja", icon: "Percent" },
 ];

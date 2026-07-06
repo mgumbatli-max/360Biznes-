@@ -64,6 +64,7 @@ const CARDS: {
   { href: "/hesabatlar/marketplace", icon: Store, title: "Marketplace", desc: "Platforma, komissiya, net", gradient: "from-lime-500 to-emerald-500" },
   { href: "/hesabatlar/emekdas", icon: Briefcase, title: "Əməkdaş", desc: "Satıcı performans, davamiyyət", gradient: "from-blue-500 to-indigo-500" },
   { href: "/hesabatlar/idxal", icon: Truck, title: "İdxal / Alış", desc: "Təchizatçı, vergi, gömrük, borc", gradient: "from-yellow-500 to-amber-500" },
+  { href: "/hesabatlar/techizatci", icon: Award, title: "Təchizatçı scorecard", desc: "Təchizatçı qiymətləndirmə (A–F): qaytarma, qiymət-trendi, etibarlılıq, seqment", gradient: "from-amber-500 to-yellow-500", badge: "Yeni" },
   { href: "/servis/hesabat", icon: Receipt, title: "Servis (geniş)", desc: "Texniki performans, defekt analizi", gradient: "from-slate-500 to-zinc-500" },
   { href: "/hesabatlar/ai", icon: Sparkles, title: "AI Insights", desc: "AI tövsiyə, kritik alarm, fürsət aşkarlanması", gradient: "from-purple-500 to-pink-500", badge: "AI" },
 ];
