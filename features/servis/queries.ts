@@ -503,14 +503,21 @@ export async function getServisTrackByToken(token: string) {
   };
 }
 
+// QA-perf: servis dialoqunda hər açılışda çağırılan reference siyahıları — nadir dəyişir, cache-lənir.
+// TENANT-TƏHLÜKƏSİZ: unstable_cache daxilində tenant konteksti YOXDUR → prismaUnscoped + açıq sahibkar_id
+// filtri + cache açarında sahibkarId (cross-tenant sızma önlənir). Mutasiyalarda `ref:${sahibkarId}:*` tag-i.
 export async function getFiliallar() {
-  return withTenant(() =>
-    prisma.filiallar.findMany({
-      where: { aktiv: true },
-      orderBy: { ad: "asc" },
-      select: { id: true, ad: true },
-    })
-  );
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return unstable_cache(
+      () => prismaUnscoped.filiallar.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        orderBy: { ad: "asc" }, select: { id: true, ad: true },
+      }),
+      ["servis-filiallar", sahibkarId],
+      { revalidate: 300, tags: [`ref:${sahibkarId}:filiallar`] },
+    )();
+  });
 }
 
 /**
@@ -518,42 +525,51 @@ export async function getFiliallar() {
  * Limited to 500 to keep dropdown responsive.
  */
 export async function getMehsulOptionsForServis() {
-  return withTenant(() =>
-    prisma.mehsullar.findMany({
-      where: { aktiv: true },
-      orderBy: { ad: "asc" },
-      select: { id: true, ad: true, kod: true, barkod: true },
-      take: 500,
-    })
-  );
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return unstable_cache(
+      () => prismaUnscoped.mehsullar.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        orderBy: { ad: "asc" }, select: { id: true, ad: true, kod: true, barkod: true }, take: 500,
+      }),
+      ["servis-mehsul-opt", sahibkarId],
+      { revalidate: 60, tags: [`ref:${sahibkarId}:mehsul`] },
+    )();
+  });
 }
 
 /**
  * Customer list for ServisDialog musteri-picker.
  */
 export async function getMusteriOptionsForServis() {
-  return withTenant(() =>
-    prisma.kontragentler.findMany({
-      where: { nov: "musteri" },
-      orderBy: { ad: "asc" },
-      select: { id: true, ad: true, telefon: true },
-      take: 500,
-    })
-  );
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return unstable_cache(
+      () => prismaUnscoped.kontragentler.findMany({
+        where: { sahibkar_id: sahibkarId, nov: "musteri" },
+        orderBy: { ad: "asc" }, select: { id: true, ad: true, telefon: true }, take: 500,
+      }),
+      ["servis-musteri-opt", sahibkarId],
+      { revalidate: 60, tags: [`ref:${sahibkarId}:musteri`] },
+    )();
+  });
 }
 
 /**
  * Active financial accounts (cash + bank) for payment-form kassa picker.
  */
 export async function getMaliyeAccountsForServis() {
-  return withTenant(() =>
-    prisma.maliye_hesablari.findMany({
-      where: { aktiv: true },
-      orderBy: [{ nov: "asc" }, { ad: "asc" }],
-      select: { id: true, ad: true, nov: true, valyuta: true },
-      take: 100,
-    })
-  );
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    return unstable_cache(
+      () => prismaUnscoped.maliye_hesablari.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        orderBy: [{ nov: "asc" }, { ad: "asc" }], select: { id: true, ad: true, nov: true, valyuta: true }, take: 100,
+      }),
+      ["servis-maliye-hesab", sahibkarId],
+      { revalidate: 120, tags: [`ref:${sahibkarId}:hesab`] },
+    )();
+  });
 }
 
 /**

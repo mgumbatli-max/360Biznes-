@@ -1042,6 +1042,53 @@ export async function getOpenSalesForCustomer(musteri_id: string, limit = 50): P
   });
 }
 
+/**
+ * BATCH: bir neçə müştəri üçün açıq satışları TƏK sorğu ilə çək (N+1 önləmə — debitor səhifəsi əvvəl
+ * top-25 müştəri üçün 25 ayrı sorğu atırdı). Nəticə: Map<musteri_id, OpenSaleOpt[]>. Məntiq
+ * getOpenSalesForCustomer ilə eynidir.
+ */
+export async function getOpenSalesForCustomers(musteri_ids: string[], perCustomerLimit = 100): Promise<Map<string, OpenSaleOpt[]>> {
+  return withTenant(async () => {
+    const out = new Map<string, OpenSaleOpt[]>();
+    if (!musteri_ids.length) return out;
+    const rows = await prisma.satis_sifarisleri.findMany({
+      where: {
+        musteri_id: { in: musteri_ids },
+        status: { notIn: ["legv", "qaytarilib"] },
+        qaralama: { not: true },
+        deleted_at: null,
+        odenis_nov: { in: ["nisye", "borc"] },
+      },
+      orderBy: { tarix: "asc" },
+      select: {
+        id: true, nomre: true, tarix: true, son_mebleg: true, odenilmis: true,
+        odenis_nov: true, status: true, musteri_id: true,
+        _count: { select: { satis_sifaris_satirlari: true } },
+      },
+    });
+    const today = new Date();
+    for (const r of rows) {
+      const son = Number(r.son_mebleg ?? 0);
+      const od = Number(r.odenilmis ?? 0);
+      const qalig = Math.round((son - od) * 100) / 100;
+      if (qalig <= 0.001) continue;
+      const key = r.musteri_id as string;
+      if (!key) continue;
+      const arr = out.get(key) ?? [];
+      if (arr.length >= perCustomerLimit) continue;
+      const days = Math.floor((today.getTime() - new Date(r.tarix).getTime()) / 86400000);
+      arr.push({
+        id: r.id, nomre: r.nomre, tarix: r.tarix, qalig,
+        son_mebleg: Math.round(son * 100) / 100, odenilmis: Math.round(od * 100) / 100,
+        gun_kecdi: Math.max(0, days), odenis_nov: r.odenis_nov, status: r.status,
+        satir_sayi: r._count?.satis_sifaris_satirlari ?? 0,
+      });
+      out.set(key, arr);
+    }
+    return out;
+  });
+}
+
 // ─── Təchizatçı açıq alışlar (kreditor üçün analoq) ─────────
 export type OpenPurchaseOpt = {
   id: string;

@@ -15,7 +15,7 @@ import { DebtorRowExpanded } from "@/features/maliyye/components/debtor-row-expa
 import {
   getDebtors,
   getQuickRefs,
-  getOpenSalesForCustomer,
+  getOpenSalesForCustomers,
 } from "@/features/maliyye/queries";
 import { formatMoney } from "@/lib/utils";
 
@@ -63,14 +63,9 @@ export default async function DebitorPage({
     getQuickRefs(),
   ]);
 
-  // Pre-fetch open invoices for top-N debtors
+  // Pre-fetch open invoices for top-N debtors — TƏK batch sorğu (əvvəl 25 ayrı sorğu = N+1).
   const TOP = 25;
-  const openSalesMap = new Map<string, Awaited<ReturnType<typeof getOpenSalesForCustomer>>>();
-  await Promise.all(
-    allRows.slice(0, TOP).map(async (r) => {
-      openSalesMap.set(r.id, await getOpenSalesForCustomer(r.id, 100));
-    }),
-  );
+  const openSalesMap = await getOpenSalesForCustomers(allRows.slice(0, TOP).map((r) => r.id), 100);
 
   let rows = allRows;
   if (q) {
