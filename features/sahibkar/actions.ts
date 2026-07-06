@@ -80,24 +80,24 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
   const pin = String(input.get("pin") ?? "");
   if (!PIN_RULE.safeParse(pin).success) return { ok: false, error: "PIN düzgün deyil" };
 
-  // Rate limit check BEFORE bcrypt — cheap shield
-  const status = await getAttemptStatus();
-  if (status.locked) {
-    const min = Math.floor((status.remainingSec ?? 0) / 60);
-    const sec = (status.remainingSec ?? 0) % 60;
-    return { ok: false, error: `Çox sayda yanlış cəhd. ${min}:${String(sec).padStart(2, "0")} sonra yenidən cəhd edin.` };
-  }
-
   return withTenant(async () => {
     const { sahibkarId, istifadeciId, rolAd } = requireTenant();
     if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar girə bilər" };
+
+    // QA-audit: rate limit SERVER-avtoritativ (sahibkar_id ilə), bcrypt-dən əvvəl — ucuz qalxan.
+    const status = await getAttemptStatus(sahibkarId);
+    if (status.locked) {
+      const min = Math.floor((status.remainingSec ?? 0) / 60);
+      const sec = (status.remainingSec ?? 0) % 60;
+      return { ok: false, error: `Çox sayda yanlış cəhd. ${min}:${String(sec).padStart(2, "0")} sonra yenidən cəhd edin.` };
+    }
 
     const cfg = await prisma.sahibkar_ayar.findFirst();
     if (!cfg?.sifre_hash) return { ok: false, error: "PIN qurulmayıb" };
 
     const ok = await bcrypt.compare(pin, cfg.sifre_hash);
     if (!ok) {
-      const failed = await recordFailure(cfg.yanlis_limit ?? 5);
+      const failed = await recordFailure(sahibkarId, cfg.yanlis_limit ?? 5);
       // Audit failed attempts (limited — only when locking out).
       // safeAuditLog → outbox fallback, console.warn-də itmir.
       if (failed.locked && cfg.audit_log !== false) {
@@ -121,7 +121,7 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
 
     const ttl = cfg.sessiya_muddet && cfg.sessiya_muddet >= 1 ? cfg.sessiya_muddet : 15;
     await setPinSession(sahibkarId, istifadeciId, ttl);
-    await resetAttempts();
+    await resetAttempts(sahibkarId);
     // Audit: uğurlu sahibkar PIN girişi
     if (cfg.audit_log !== false) {
       await safeAuditLog({

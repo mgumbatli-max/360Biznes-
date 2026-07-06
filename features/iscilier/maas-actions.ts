@@ -551,7 +551,13 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
               meblegh: Number(b.son_meblegh ?? 0),
               qeyd: `${il}-${String(ay).padStart(2, "0")} ayı üçün maaş (toplu)`,
             });
-            if (!res.ok) financeFailCount++;
+            // QA-audit KRİTİK: balans çatmayanda (insufficient/no_type) THROW → bütün tx rollback.
+            // Əvvəl yalnız financeFailCount++ idi → maaş 'odenilib' işarələnir, pul çıxmır (fantom ödəniş).
+            // no_account (default hesab yox) YUMŞAQ qalır (payBordro ilə eyni) — yalnız xəbərdarlıq.
+            if (!res.ok) {
+              if (res.reason === "no_account") { financeFailCount++; }
+              else { throw new Error(res.error || "Maaş ödənişi hesaba bağlana bilmədi"); }
+            }
             count++;
           }
         }

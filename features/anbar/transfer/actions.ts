@@ -248,22 +248,30 @@ export async function partialAcceptTransfer(input: {
         let allFullyReceived = true;
         for (const line of t.transfer_satirlari) {
           const received = receivedByLine.get(line.id);
-          // Əgər input-da göstərilməyibsə, sıfır qəbul olunmuş hesab et
-          const qebulMiqdar = received ? Number(received.qebul_edilen) : 0;
           const planedMiqdar = Number(line.miqdar);
+          // QA-audit KRİTİK: qebul_edilen KUMULYATİVdir. Əvvəl mütləq dəyərlə işlənirdi → təkrar
+          // partialAcceptTransfer (qebul_qismi statusda) stoku İKİQAT hərəkət etdirirdi. İndi yalnız
+          // YENİ DELTA (yeni_kumulyativ − artıq_qəbul) emal olunur.
+          const previouslyReceived = Number(line.qebul_edilen ?? 0);
+          // input verilməyibsə əvvəlki kumulyativ dəyər saxlanılır (dəyişmir)
+          const qebulMiqdar = received ? Number(received.qebul_edilen) : previouslyReceived;
 
           if (qebulMiqdar < 0) throw new Error("Mənfi miqdar olmaz");
           if (qebulMiqdar > planedMiqdar) {
             throw new Error(`Qəbul (${qebulMiqdar}) sifariş miqdarından (${planedMiqdar}) çox ola bilməz`);
           }
+          if (qebulMiqdar < previouslyReceived) {
+            throw new Error(`Qəbul azaldıla bilməz (əvvəl ${previouslyReceived} qəbul edilib)`);
+          }
           if (qebulMiqdar < planedMiqdar) allFullyReceived = false;
+          const delta = qebulMiqdar - previouslyReceived; // yalnız bu qədər yeni mal hərəkət edir
 
-          if (qebulMiqdar > 0) {
-            // Mənbə anbar — yalnız qəbul ediləcək hissə qədər çıx
+          if (delta > 0) {
+            // Mənbə anbar — yalnız YENİ delta qədər çıx
             const dec = await safeStockDecrement(tx, {
               mehsulId: line.mehsul_id,
               anbarId: t.kaynak_anbar_id,
-              miqdar: qebulMiqdar,
+              miqdar: delta,
             });
             if (!dec.ok) throw new Error(dec.error);
 
@@ -280,14 +288,14 @@ export async function partialAcceptTransfer(input: {
                 },
               },
               update: {
-                miqdar: { increment: qebulMiqdar },
+                miqdar: { increment: delta },
                 son_qiymet: src?.son_qiymet ?? undefined,
               },
               create: {
                 sahibkar_id: sahibkarId,
                 mehsul_id: line.mehsul_id,
                 anbar_id: t.hedef_anbar_id,
-                miqdar: qebulMiqdar,
+                miqdar: delta,
                 son_qiymet: src?.son_qiymet,
               },
             });
@@ -299,7 +307,7 @@ export async function partialAcceptTransfer(input: {
                   anbar_id: t.kaynak_anbar_id,
                   mehsul_id: line.mehsul_id,
                   nov: "transfer_cixis",
-                  miqdar: qebulMiqdar,
+                  miqdar: delta,
                   qiymet: src?.son_qiymet ?? null,
                   ref_nov: "transfer_qismi",
                   ref_id: t.id,
@@ -310,7 +318,7 @@ export async function partialAcceptTransfer(input: {
                   anbar_id: t.hedef_anbar_id,
                   mehsul_id: line.mehsul_id,
                   nov: "transfer_giris",
-                  miqdar: qebulMiqdar,
+                  miqdar: delta,
                   qiymet: src?.son_qiymet ?? null,
                   ref_nov: "transfer_qismi",
                   ref_id: t.id,

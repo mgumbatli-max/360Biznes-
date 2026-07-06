@@ -628,6 +628,16 @@ export async function createOrUpdateSatisYeni(
             result.id,
             approvalResult.error,
           );
+        } else if (approvalResult.auto_approved) {
+          // QA-audit KRİTİK: auto-təsdiq (kiçik məbləğ/qayda söndürülüb) halında satış 'tesdiq_gozleyir'-də
+          // İLİŞİB QALIRDI — stok azalmır, kassa/finance yazılmır (materializeApprovedSale çağırılmırdı).
+          // alis-actions.ts:293 auto-approve materiallaşdırma pattern-inin satış qarşılığı.
+          try {
+            const { materializeApprovedSale } = await import("@/features/ticaret/satis-materialize");
+            await materializeApprovedSale(result.id);
+          } catch (e) {
+            console.warn("[createOrUpdateSatisYeni] auto-approve materialize skipped:", e);
+          }
         }
       }
 

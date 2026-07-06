@@ -19,17 +19,17 @@ export async function verifyPinOrCode(input: FormData): Promise<Result> {
   const value = String(input.get("kod") ?? "").trim();
   if (!/^\d{3,12}$/.test(value)) return { ok: false, error: "3-12 rəqəm daxil edin" };
 
-  // Rate-limit shield — applies to PIN attempts
-  const status = await getAttemptStatus();
-  if (status.locked) {
-    const min = Math.floor((status.remainingSec ?? 0) / 60);
-    const sec = (status.remainingSec ?? 0) % 60;
-    return { ok: false, error: `Çox sayda yanlış cəhd. ${min}:${String(sec).padStart(2, "0")} sonra yenidən` };
-  }
-
   return withTenant(async () => {
     const { sahibkarId, istifadeciId, rolAd } = requireTenant();
     if (rolAd !== "sahibkar") return { ok: false, error: "İcazə yoxdur" };
+
+    // QA-audit: rate-limit SERVER-avtoritativ (sahibkar_id ilə).
+    const status = await getAttemptStatus(sahibkarId);
+    if (status.locked) {
+      const min = Math.floor((status.remainingSec ?? 0) / 60);
+      const sec = (status.remainingSec ?? 0) % 60;
+      return { ok: false, error: `Çox sayda yanlış cəhd. ${min}:${String(sec).padStart(2, "0")} sonra yenidən` };
+    }
 
     const cfg = await prisma.sahibkar_ayar.findFirst();
     if (!cfg) return { ok: false, error: "Sahibkar bölməsi qurulmayıb. /sahibkar/setup-a keçin." };
@@ -39,7 +39,7 @@ export async function verifyPinOrCode(input: FormData): Promise<Result> {
       const ok = await bcrypt.compare(value, cfg.sifre_hash);
       if (ok) {
         await setPinSession(sahibkarId, istifadeciId);
-        await resetAttempts();
+        await resetAttempts(sahibkarId);
         return { ok: true };
       }
     }
@@ -54,7 +54,7 @@ export async function verifyPinOrCode(input: FormData): Promise<Result> {
 
     if (codeMatch) {
       await setPinSession(sahibkarId, istifadeciId);
-      await resetAttempts();
+      await resetAttempts(sahibkarId);
       // Audit successful secret-code entry — outbox fallback varsa itmir
       if (cfg.audit_log !== false) {
         await safeAuditLog({
@@ -71,7 +71,7 @@ export async function verifyPinOrCode(input: FormData): Promise<Result> {
     }
 
     // Neither — record failure
-    const failed = await recordFailure(cfg.yanlis_limit ?? 5);
+    const failed = await recordFailure(sahibkarId, cfg.yanlis_limit ?? 5);
     if (failed.locked) {
       const min = Math.floor((failed.remainingSec ?? 0) / 60);
       return { ok: false, error: `Çox sayda yanlış cəhd. ${min} dəqiqəlik lockout aktivləşdi.` };

@@ -305,6 +305,10 @@ export async function cancelSale(saleId: string, reason: string): Promise<Action
         });
         if (!sale) throw new Error("Satış tapılmadı");
         if (sale.status === "legv") throw new Error("Bu satış artıq ləğv edilib");
+        // QA-audit KRİTİK: tam-qaytarılmış satışı ləğv → stok İKİQAT bərpa (fantom inventar), loyalty/
+        // kampaniya ikinci dəfə reverse. Full-cash-return odenilmis=0 etdiyi üçün blocker də işə düşmür.
+        // recordSalePayment:57 ilə simmetrik guard.
+        if (sale.status === "qaytarilib") throw new Error("Qaytarılmış satış ləğv edilə bilməz");
 
         const odenilmis = Number(sale.odenilmis ?? 0);
 

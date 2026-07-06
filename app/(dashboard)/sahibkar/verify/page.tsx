@@ -21,6 +21,6 @@ export default async function PinVerifyPage() {
   const active = await touchPinSession();
   if (active) redirect("/sahibkar");
 
-  const status = await getAttemptStatus();
+  const status = await getAttemptStatus(session.user.sahibkar_id);
   return <UnifiedVerifyForm initialAttempts={status.count} limit={cfg.yanlis_limit ?? 5} />;
 }
