@@ -427,19 +427,17 @@ export async function convertProposalToPurchaseOrder(
         },
       });
 
-      // Create line items
-      for (const line of teklif.satirlar) {
-        if (!line.mehsul_id) continue; // skip new products without catalog id
-        await prisma.alis_sifaris_satirlari.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            sifaris_id: order.id,
-            mehsul_id: line.mehsul_id,
-            miqdar: line.miqdar,
-            vahid_qiymet: Number(line.teklif_qiymeti ?? line.son_alish_qiymeti ?? 0),
-          },
-        });
-      }
+      // Create line items — QA-perf: sətir başına INSERT (N+1) → tək createMany.
+      const lineData = teklif.satirlar
+        .filter((line) => line.mehsul_id) // skip new products without catalog id
+        .map((line) => ({
+          sahibkar_id: sahibkarId,
+          sifaris_id: order.id,
+          mehsul_id: line.mehsul_id as string,
+          miqdar: line.miqdar,
+          vahid_qiymet: Number(line.teklif_qiymeti ?? line.son_alish_qiymeti ?? 0),
+        }));
+      if (lineData.length) await prisma.alis_sifaris_satirlari.createMany({ data: lineData });
 
       revalidatePath("/anbar/satinalma");
       revalidatePath("/ticaret/alis");
@@ -535,27 +533,26 @@ export async function bulkCreateProposal(
           },
         });
 
-        for (const it of groupItems) {
-          const p = byId.get(it.mehsul_id);
-          if (!p) continue;
-          await prisma.satinalma_teklif_satir.create({
-            data: {
-              teklif_id: teklif.id,
-              mehsul_id: p.id,
-              mehsul_adi: p.ad,
-              mehsul_kod: p.kod,
-              marka: p.marka,
-              kateqoriya: p.kateqoriyalar?.ad ?? null,
-              miqdar: it.miqdar,
-              son_alish_qiymeti: p.alish_qiymeti,
-              teklif_qiymeti: p.alish_qiymeti,
-              satis_qiymeti: p.satis_qiymeti,
-              techizatci_id: supplierKey === "__no_supplier__" || supplierKey === "__all__" ? null : supplierKey,
-              ai_analiz: "Planlama cədvəlindən seçilib",
-              ai_skor: 80,
-            },
-          });
-        }
+        // QA-perf: item başına INSERT (N+1) → tək createMany.
+        const satirData = groupItems
+          .map((it) => ({ it, p: byId.get(it.mehsul_id) }))
+          .filter((x): x is { it: typeof x.it; p: NonNullable<typeof x.p> } => Boolean(x.p))
+          .map(({ it, p }) => ({
+            teklif_id: teklif.id,
+            mehsul_id: p.id,
+            mehsul_adi: p.ad,
+            mehsul_kod: p.kod,
+            marka: p.marka,
+            kateqoriya: p.kateqoriyalar?.ad ?? null,
+            miqdar: it.miqdar,
+            son_alish_qiymeti: p.alish_qiymeti,
+            teklif_qiymeti: p.alish_qiymeti,
+            satis_qiymeti: p.satis_qiymeti,
+            techizatci_id: supplierKey === "__no_supplier__" || supplierKey === "__all__" ? null : supplierKey,
+            ai_analiz: "Planlama cədvəlindən seçilib",
+            ai_skor: 80,
+          }));
+        if (satirData.length) await prisma.satinalma_teklif_satir.createMany({ data: satirData });
 
         await recalcTotals(teklif.id);
         createdIds.push(teklif.id);

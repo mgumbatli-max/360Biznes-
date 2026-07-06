@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 
@@ -26,7 +27,8 @@ export type ProductProblemStats = {
 export async function getProductProblemStats(): Promise<ProductProblemStats> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const rows = await prisma.$queryRaw<
+    // QA-perf: 12-metrik məhsul-problem aqreqatı (CTE-lər) hər səhifə yükündə işləyirdi → cache 60s.
+    const rows = await unstable_cache(() => prismaUnscoped.$queryRaw<
       Array<{
         stokda_var: bigint;
         stoksuz: bigint;
@@ -97,7 +99,10 @@ export async function getProductProblemStats(): Promise<ProductProblemStats> {
       WHERE m.sahibkar_id = ${sahibkarId}::uuid
         AND m.aktiv = TRUE
         AND m.deleted_at IS NULL
-    `;
+    `,
+      ["product-problem-stats", sahibkarId],
+      { revalidate: 60, tags: [`stok:${sahibkarId}`] },
+    )();
     const r = rows[0];
     if (!r) {
       return {
