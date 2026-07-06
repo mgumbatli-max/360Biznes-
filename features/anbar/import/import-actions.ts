@@ -5,6 +5,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { permGate } from "@/lib/auth/role-check";
 import { PRODUCT_TEMPLATE_COLUMNS } from "./template";
 import { audit } from "@/lib/audit/log";
 
@@ -169,6 +170,7 @@ export async function analyzeImport(formData: FormData): Promise<ActionResult<Im
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+{ const _pg = permGate("mehsul.idare","anbar.idare","mehsul.yarat"); if (!_pg.ok) return _pg; } // QA-audit: guard yox idi
 
     // Resolve existing products by kod or barkod (lower-cased)
     const codes = rows.map((r) => r.kod).filter(Boolean) as string[];
@@ -298,6 +300,7 @@ type ExecuteResult = {
 export async function executeImport(partiyaId: string): Promise<ActionResult<ExecuteResult>> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+{ const _pg = permGate("mehsul.idare","anbar.idare","mehsul.yarat"); if (!_pg.ok) return _pg; } // QA-audit: guard yox idi
 
     const partiya = await prisma.import_partiyalari.findFirst({
       where: { id: partiyaId, sahibkar_id: sahibkarId },
@@ -545,6 +548,7 @@ export async function executeImport(partiyaId: string): Promise<ActionResult<Exe
 export async function cancelImport(partiyaId: string): Promise<ActionResult<undefined>> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    { const _pg = permGate("mehsul.idare","anbar.idare","mehsul.yarat"); if (!_pg.ok) return _pg; } // QA-audit: guard yox idi
     const found = await prisma.import_partiyalari.findFirst({
       where: { id: partiyaId, sahibkar_id: sahibkarId },
     });

@@ -1178,7 +1178,8 @@ export async function sendBulkContactSms(
     // edir, bu isə etmirdi) + tenant filtri açıq. Bu filtrə düşməyənlər "skipped" sayılır.
     const contacts = await prisma.kontragentler.findMany({
       where: { id: { in: kontragentIds }, sahibkar_id: sahibkarId, qara_siyahi: false, aktiv: true },
-      select: { id: true, ad: true, telefon: true, borc: true },
+      // QA-audit: müştəri borcu `alacaq` sütunundadır (borc deyil — o, təchizatçıya olan borcdur).
+      select: { id: true, ad: true, telefon: true, borc: true, alacaq: true },
     });
     const contactMap = new Map(contacts.map((c) => [c.id, c]));
 
@@ -1197,7 +1198,7 @@ export async function sendBulkContactSms(
       // Template-də placeholder-ləri əvəz et
       const text = template
         .replace(/\{\{\s*ad\s*\}\}/g, k.ad ?? "")
-        .replace(/\{\{\s*borc\s*\}\}/g, String(k.borc ?? 0))
+        .replace(/\{\{\s*borc\s*\}\}/g, String(Math.max(Number(k.alacaq ?? 0), Number(k.borc ?? 0))))
         .slice(0, 1600);
 
       try {

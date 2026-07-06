@@ -352,6 +352,10 @@ export async function saveBrand(input: FormData): Promise<ActionResult<{ id: num
 }
 
 export async function deleteBrand(id: number, force?: boolean): Promise<ActionResult> {
+  // QA-audit: icazə guard yox idi (deleteProduct və digər mutasiyalardan fərqli) — istənilən istifadəçi
+  // marka silə bilirdi.
+  const permCheck = await requireAnbarActionPerm("mehsul.duzelt");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {

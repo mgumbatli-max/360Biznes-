@@ -181,6 +181,11 @@ export async function deleteLead(id: string): Promise<ActionResult> {
         select: { ad: true, status: true, telefon: true, email: true, menecer_id: true },
       });
       if (!before) return { ok: false, error: "Lead tapılmadı" };
+      // QA-audit: menecer-sahiblik scope — başqa menecerin lead-i silinə bilməz.
+      const scope = await getCrmScopeFilter();
+      if (!scope.privileged && before.menecer_id && before.menecer_id !== scope.istifadeciId) {
+        return { ok: false, error: "Bu lead başqa menecerə aiddir" };
+      }
       // Soft delete: status="silinib" + arxivlendi
       await prisma.leads.update({
         where: { id },
@@ -212,8 +217,13 @@ export async function loseLead(id: string, sebeb: string): Promise<ActionResult>
   }
   return withTenant(async () => {
     try {
-      const before = await prisma.leads.findFirst({ where: { id }, select: { status: true, ad: true } });
+      const before = await prisma.leads.findFirst({ where: { id }, select: { status: true, ad: true, menecer_id: true } });
       if (!before) return { ok: false, error: "Lead tapılmadı" };
+      // QA-audit: menecer-sahiblik scope (changeLeadStage ilə eyni) — başqa menecerin lead-i itirilə bilməz.
+      const scope = await getCrmScopeFilter();
+      if (!scope.privileged && before.menecer_id && before.menecer_id !== scope.istifadeciId) {
+        return { ok: false, error: "Bu lead başqa menecerə aiddir" };
+      }
       await prisma.leads.update({
         where: { id },
         data: { status: "itirdi", imtina_sebeb: sebeb || null, yenilendi: new Date() },
@@ -243,6 +253,8 @@ export async function convertLeadToMusteri(id: string): Promise<ActionResult> {
     try {
       const lead = await prisma.leads.findFirst({ where: { id } });
       if (!lead) return { ok: false, error: "Lead tapılmadı" };
+      // QA-audit: silinmiş lead-dən canlı müştəri yaradıla bilməz (convertLeadToSale ilə eyni).
+      if (lead.status === "silinib") return { ok: false, error: "Silinmiş lead müştəriyə çevrilə bilməz" };
       if (lead.kontragent_id) {
         return { ok: true, id: lead.kontragent_id };
       }
@@ -501,6 +513,8 @@ export async function bulkExportLeads(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const where: any = {};
       if (status) where.status = status;
+      // QA-audit: soft-delete olunmuş lead-lərin PII-si ixrac olunmamalıdır (status verilməyibsə).
+      else where.status = { not: "silinib" };
       if (!scope.privileged && scope.istifadeciId) {
         where.menecer_id = scope.istifadeciId;
       }

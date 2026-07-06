@@ -169,6 +169,14 @@ export async function runRecurringRules(): Promise<Result<{ executed: number }>>
           });
           if (!type) return;
 
+          // QA-audit: xaric (mexaric) recurring qaydalar üçün balans yetərliliyi yoxlanmırdı (digər
+          // maliyyə action-larından fərqli) → hesab mənfiyə düşə bilirdi.
+          if (rule.y_n === "mexaric" && rule.hesab_id) {
+            const { checkAccountSufficient } = await import("@/lib/balance/account-balance");
+            const suf = await checkAccountSufficient(rule.hesab_id, Number(rule.mebleg), tx);
+            if (!suf.ok) return; // bu qaydanı skip et (növbəti icra vaxtı yenidən cəhd olunar)
+          }
+
           // finance_operations qeyd yarat
           await tx.finance_operations.create({
             data: {

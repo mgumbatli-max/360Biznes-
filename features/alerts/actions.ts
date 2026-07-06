@@ -134,6 +134,10 @@ export async function addAlertComment(alertId: string, metn: string) {
   if (!metn.trim()) return { ok: false as const, error: "Qeyd boş ola bilməz" };
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
+    // QA-audit: permGate yox idi + alert_comments tenant-scoped deyil → cross-tenant şərh mümkün idi.
+    { const _pg = permGate("nezaret.ayarlar", "nezaret.dashboard", "nezaret.oxu", "nezaret.loglar"); if (!_pg.ok) return _pg; }
+    const owns = await prisma.alerts.findUnique({ where: { id: alertId }, select: { id: true } });
+    if (!owns) return { ok: false as const, error: "Xəbərdarlıq tapılmadı" };
     await prisma.alert_comments.create({
       data: { alert_id: alertId, istifadeci_id: istifadeciId, metn: metn.trim() },
     });

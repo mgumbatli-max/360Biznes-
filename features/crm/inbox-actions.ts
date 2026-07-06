@@ -122,7 +122,8 @@ export async function convertChatToMusteri(input: FormData): Promise<ActionResul
       let kontragent: { id: string } | null = null;
       if (c.telefon) {
         const existing = await prisma.kontragentler.findFirst({
-          where: { telefon: c.telefon, aktiv: true },
+          // QA-audit: nov filtri — söhbət təchizatçı qeydinə təsadüfən bağlanmasın (yalnız müştəri).
+          where: { telefon: c.telefon, aktiv: true, nov: { in: ["musteri", "her_ikisi"] } },
           select: { id: true },
         });
         if (existing) kontragent = existing;

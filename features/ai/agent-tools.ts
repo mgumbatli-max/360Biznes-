@@ -913,19 +913,24 @@ export async function executeAgentTool(
             data: { sahibkar_id: sahibkarId, mehsul_id: m.id, anbar_id: anbar.id, miqdar: yeniMiqdar },
           });
         }
-        await tx.anbar_hereketleri.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            anbar_id: anbar.id,
-            mehsul_id: m.id,
-            nov: "inventar",
-            miqdar: Math.abs(yeniMiqdar - kohneMiqdar),
-            qiymet: 0,
-            ref_nov: "ai_duzelis",
-            edilen_id: istifadeciId,
-            qeyd: `AI stok düzəlişi: ${kohneMiqdar}→${yeniMiqdar}. Səbəb: ${sebeb}`,
-          },
-        });
+        // QA-audit: signed nov (adjustStock ilə eyni) — reconciler bare "inventar"+mütləq miqdarı
+        // tanımırdı → hər AI düzəlişi daimi cache↔ledger drift. İndi inventar_artim/inventar_azalma + delta.
+        const aiDelta = yeniMiqdar - kohneMiqdar;
+        if (Math.abs(aiDelta) >= 0.0001) {
+          await tx.anbar_hereketleri.create({
+            data: {
+              sahibkar_id: sahibkarId,
+              anbar_id: anbar.id,
+              mehsul_id: m.id,
+              nov: aiDelta >= 0 ? "inventar_artim" : "inventar_azalma",
+              miqdar: Math.abs(aiDelta),
+              qiymet: 0,
+              ref_nov: "ai_duzelis",
+              edilen_id: istifadeciId,
+              qeyd: `AI stok düzəlişi: ${kohneMiqdar}→${yeniMiqdar}. Səbəb: ${sebeb}`,
+            },
+          });
+        }
       });
       await safeAuditLog({
         sahibkar_id: sahibkarId, istifadeci_id: istifadeciId,

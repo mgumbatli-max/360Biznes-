@@ -365,7 +365,9 @@ export async function runRuleNow(id: number): Promise<{ ok: true; matched: numbe
       const wantsAlert = actionList.some((a) => a.kod === "xeberdarliq" || a.kod === "bildiris");
       let alertsCreated = 0;
       if (wantsAlert && matchResult.matched > 0) {
-        const seviyye = rule.prioritet === "kritik" ? "kritik" : rule.prioritet === "yuxsek" ? "yuxsek" : "orta";
+        // QA-audit: alerts modulunun ciddiyyət domeni "yuksek"-dir ("yuxsek" YOX) → belə alertlər
+        // ən aşağı prioritet kimi sıralanırdı. Düzgün domen dəyəri.
+        const seviyye = rule.prioritet === "kritik" ? "kritik" : rule.prioritet === "yuxsek" ? "yuksek" : "risk";
         // Trigger_kod-dan alert kateqoriyasına map
         const TRIGGER_TO_CAT: Record<string, string> = {
           stok_az: "stok", stok_bit: "stok",

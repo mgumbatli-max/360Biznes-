@@ -855,7 +855,10 @@ export async function _executeOverdueCheckForTenant(): Promise<{ ok: true; creat
           tapshiriq_id: t.id,
           kateqoriya_kod: "tapshiriq",
           rule_kod: "task_overdue_auto",
-          status: { notIn: ["resolved", "dismissed"] },
+          // QA-audit: kanonik alert statusları (yeni|baxilir|snoozed|hell_olundu|legv).
+          // "resolved"/"dismissed" bu kod bazasında yoxdur → həqiqi həll/legv alertlər dedup-a
+          // düşmür, hər icrada dublikat overdue-alert yaranırdı.
+          status: { notIn: ["hell_olundu", "legv"] },
         },
         select: { id: true },
       });
