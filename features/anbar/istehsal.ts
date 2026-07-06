@@ -75,3 +75,72 @@ export async function getProductsWithRecipe(): Promise<string[]> {
     return rows.map((r) => r.acar.slice(RESEPT_ACAR_PREFIX.length));
   });
 }
+
+// ============================================================
+// İSTEHSAL TARİXÇƏSİ + XÜLASƏ (ledger: nov="medaxil" ref_nov="istehsal")
+// ============================================================
+
+export type IstehsalTarixce = {
+  id: string;
+  tarix: Date | null;
+  mehsul_ad: string;
+  anbar_ad: string | null;
+  miqdar: number;
+  vahid_maya: number;
+  toplam_maya: number;
+  edilen_ad: string | null;
+};
+
+export type IstehsalXulase = {
+  bu_ay_say: number;      // istehsal əməliyyatı sayı
+  bu_ay_miqdar: number;   // istehsal edilmiş ümumi ədəd
+  bu_ay_maya: number;     // ümumi istehsal-maya (₼)
+  tarixce: IstehsalTarixce[];
+};
+
+/** Son N istehsal əməliyyatı + bu ay xülasəsi. */
+export async function getProductionHistory(limit = 50): Promise<IstehsalXulase> {
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+    const rows = await prisma.anbar_hereketleri.findMany({
+      where: { sahibkar_id: sahibkarId, ref_nov: "istehsal", nov: "medaxil" },
+      orderBy: { yaradildi: "desc" },
+      take: limit,
+      select: {
+        id: true, miqdar: true, qiymet: true, yaradildi: true,
+        mehsullar: { select: { ad: true } },
+        anbarlar: { select: { ad: true } },
+        istifadeciler: { select: { ad_soyad: true } },
+      },
+    });
+    const tarixce: IstehsalTarixce[] = rows.map((r) => {
+      const miqdar = Number(r.miqdar);
+      const vahidMaya = Number(r.qiymet ?? 0);
+      return {
+        id: r.id, tarix: r.yaradildi,
+        mehsul_ad: r.mehsullar?.ad ?? "—",
+        anbar_ad: r.anbarlar?.ad ?? null,
+        miqdar, vahid_maya: vahidMaya,
+        toplam_maya: Math.round(miqdar * vahidMaya * 100) / 100,
+        edilen_ad: r.istifadeciler?.ad_soyad ?? null,
+      };
+    });
+
+    // Bu ay xülasəsi (bütün ay, limitdən asılı olmayaraq ayrıca aqreqasiya)
+    const ayRows = await prisma.anbar_hereketleri.findMany({
+      where: { sahibkar_id: sahibkarId, ref_nov: "istehsal", nov: "medaxil", yaradildi: { gte: monthStart } },
+      select: { miqdar: true, qiymet: true },
+    });
+    let ayMiqdar = 0, ayMaya = 0;
+    for (const r of ayRows) { const m = Number(r.miqdar); ayMiqdar += m; ayMaya += m * Number(r.qiymet ?? 0); }
+
+    return {
+      bu_ay_say: ayRows.length,
+      bu_ay_miqdar: Math.round(ayMiqdar * 100) / 100,
+      bu_ay_maya: Math.round(ayMaya * 100) / 100,
+      tarixce,
+    };
+  });
+}
