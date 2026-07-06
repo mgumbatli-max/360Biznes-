@@ -274,6 +274,19 @@ export type TradeInsight = {
 export async function getTradeInsights(): Promise<TradeInsight[]> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    // QA-perf: trade dashboard insights (8+ ardıcıl sorğu, əvvəl cache-siz) → tam-funksiya cache 120s.
+    return unstable_cache(
+      () => computeTradeInsights(sahibkarId),
+      ["trade-insights", sahibkarId],
+      { revalidate: 120, tags: [`trade:${sahibkarId}:insights`] },
+    )();
+  });
+}
+
+// TENANT-SAFE: bütün sorğularda ARTIQ açıq sahibkar_id var; unstable_cache-də tenant konteksti olmadığı üçün
+// lokal `prisma = prismaUnscoped` (extension-suz) işlədilir — nəticə eyni (hər where sahibkar_id ilə scope-lu).
+async function computeTradeInsights(sahibkarId: string): Promise<TradeInsight[]> {
+  const prisma = prismaUnscoped;
     const insights: TradeInsight[] = [];
 
     const today = new Date();
@@ -524,7 +537,6 @@ export async function getTradeInsights(): Promise<TradeInsight[]> {
     }
 
     return insights.slice(0, 8);
-  });
 }
 
 /** Sales funnel: leads → quotes → sales (current month) */
