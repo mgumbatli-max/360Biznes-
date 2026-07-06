@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { ensurePermission } from "@/lib/auth/role-check";
 const ShertItemSchema = z.object({
   field: z.string().min(1),
   operator: z.enum(["=", ">", ">=", "<", "<=", "!="]),
@@ -58,6 +59,7 @@ export async function createRule(definition: z.input<typeof CreateRuleSchema>): 
 
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    ensurePermission("ayar.idare","ayarlar.idare");
     try {
       const r = await prisma.avto_qayda.create({
         data: {
@@ -163,6 +165,10 @@ export async function cloneRule(id: number): Promise<ActionResult> {
   return withTenant(async () => {
     try {
       const { sahibkarId, istifadeciId } = requireTenant();
+      ensurePermission("ayar.idare","ayarlar.idare");
+      ensurePermission("ayar.idare","ayarlar.idare");
+      ensurePermission("ayar.idare","ayarlar.idare");
+      ensurePermission("ayar.idare","ayarlar.idare");
       const src = await prisma.avto_qayda.findFirst({ where: { id, sahibkar_id: sahibkarId } });
       if (!src) return { ok: false, error: "Qayda tapılmadı" };
 
@@ -207,6 +213,7 @@ export async function bulkToggleRules(ids: number[], aktiv: boolean): Promise<{ 
   return withTenant(async () => {
     try {
       const { sahibkarId } = requireTenant();
+      ensurePermission("ayar.idare","ayarlar.idare");
       const result = await prisma.avto_qayda.updateMany({
         where: { id: { in: ids }, sahibkar_id: sahibkarId, sistem_qayda: false },
         data: { aktiv, yenilendi: new Date() },
@@ -228,6 +235,7 @@ export async function bulkDeleteRules(ids: number[]): Promise<{ ok: true; count:
   return withTenant(async () => {
     try {
       const { sahibkarId } = requireTenant();
+      ensurePermission("ayar.idare","ayarlar.idare");
       const result = await prisma.avto_qayda.deleteMany({
         where: { id: { in: ids }, sahibkar_id: sahibkarId, sistem_qayda: false },
       });
@@ -343,6 +351,7 @@ export async function runRuleNow(id: number): Promise<{ ok: true; matched: numbe
   return withTenant(async () => {
     try {
       const { sahibkarId, istifadeciId } = requireTenant();
+      ensurePermission("ayar.idare","ayarlar.idare");
       const rule = await prisma.avto_qayda.findFirst({ where: { id } });
       if (!rule) return { ok: false, error: "Qayda tapılmadı" };
       if (!rule.aktiv) return { ok: false, error: "Qayda passivdir — əvvəlcə aktivləşdirin" };

@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { ensurePermission } from "@/lib/auth/role-check";
 
 function bustAlertCache() {
   try {
@@ -30,6 +31,8 @@ export async function acknowledgeAlert(alertId: string) {
 export async function resolveAlert(alertId: string, note?: string) {
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
+    ensurePermission("nezaret.ayarlar","nezaret.dashboard","nezaret.oxu","nezaret.loglar");
+    ensurePermission("nezaret.ayarlar","nezaret.dashboard","nezaret.oxu","nezaret.loglar");
     await prisma.alerts.update({
       where: { id: alertId },
       data: {
@@ -82,6 +85,9 @@ export async function assignAlert(alertId: string, istifadeciId: string | null) 
 export async function assignAlertToMe(alertId: string) {
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
+    ensurePermission("nezaret.ayarlar","nezaret.dashboard","nezaret.oxu","nezaret.loglar");
+    ensurePermission("nezaret.ayarlar","nezaret.dashboard","nezaret.oxu","nezaret.loglar");
+    ensurePermission("nezaret.ayarlar","nezaret.dashboard","nezaret.oxu","nezaret.loglar");
     await prisma.alerts.update({
       where: { id: alertId },
       data: { assigned_to: istifadeciId, assigned_at: new Date(), yenilendi: new Date() },
@@ -96,6 +102,7 @@ export async function assignAlertToMe(alertId: string) {
 export async function escalateAlert(alertId: string, sebeb?: string) {
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
+    ensurePermission("nezaret.ayarlar","nezaret.dashboard","nezaret.oxu","nezaret.loglar");
     const a = await prisma.alerts.findUnique({ where: { id: alertId }, select: { seviyye: true, assigned_to: true } });
     if (!a) return { ok: false as const, error: "Tapılmadı" };
     const SEV_NEXT: Record<string, string> = { info: "risk", risk: "yuksek", yuksek: "kritik", kritik: "kritik" };
@@ -243,6 +250,7 @@ export async function sendAlertToApproval(alertId: string) {
  */
 export async function markAllRead() {
   return withTenant(async () => {
+    ensurePermission("nezaret.ayarlar", "nezaret.dashboard", "nezaret.oxu", "nezaret.loglar");
     const r = await prisma.alerts.updateMany({
       where: { status: "yeni" },
       data: { status: "baxilir", yenilendi: new Date() },

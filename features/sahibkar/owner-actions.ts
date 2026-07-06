@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { ensureOwner } from "@/lib/auth/role-check";
 import { formatDate } from "@/lib/utils";
 
 type ActionResult = { ok: true; id?: string | number } | { ok: false; error: string };
@@ -25,6 +26,7 @@ export async function saveNot(input: FormData): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: "Forma yanlışdır" };
   const d = parsed.data;
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     const { sahibkarId, istifadeciId } = requireTenant();
     // Boş link sahələri → null (xanaları açıb sonra "Sil" basıb saxlayanda təmizlənsin)
     const linkActive = !!(d.link_nov?.trim() && d.link_id?.trim());
@@ -57,6 +59,7 @@ export async function deleteNot(formData: FormData): Promise<ActionResult> {
   const id = Number(formData.get("id"));
   if (!id) return { ok: false, error: "Id yanlışdır" };
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     await prisma.sahibkar_qeyd.delete({ where: { id } });
     revalidatePath("/sahibkar/not");
     revalidatePath("/sahibkar/qeyd");
@@ -85,6 +88,7 @@ export async function saveTapshiriq(input: FormData): Promise<ActionResult> {
   }
   const d = parsed.data;
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     const { sahibkarId } = requireTenant();
     const linkActive = !!(d.link_nov?.trim() && d.link_id?.trim());
     const data = {
@@ -116,6 +120,7 @@ export async function updateTaskStatus(formData: FormData): Promise<ActionResult
   const status = String(formData.get("status") ?? "");
   if (!id || !status) return { ok: false, error: "Forma yanlışdır" };
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     await prisma.sahibkar_tapshiriq.update({ where: { id }, data: { status, yenilendi: new Date() } });
     revalidatePath("/sahibkar/tapshiriq");
     return { ok: true };
@@ -138,6 +143,7 @@ export async function saveFilial(input: FormData): Promise<ActionResult> {
   }
   const d = parsed.data;
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     const { sahibkarId } = requireTenant();
     const data = {
       ad: d.ad.trim(),
@@ -161,6 +167,7 @@ export async function saveFilial(input: FormData): Promise<ActionResult> {
 
 export async function takeSnapshot(): Promise<ActionResult> {
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     const { sahibkarId, istifadeciId } = requireTenant();
     const now = new Date();
     const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -210,6 +217,7 @@ export async function savePartiya(input: FormData): Promise<ActionResult> {
   }
   const d = parsed.data;
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     const { sahibkarId, istifadeciId } = requireTenant();
     const data = {
       ad: d.ad.trim(),
@@ -233,6 +241,7 @@ export async function savePartiya(input: FormData): Promise<ActionResult> {
 
 export async function runDataHealth(): Promise<ActionResult> {
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     revalidatePath("/sahibkar/data-saglamligi");
     return { ok: true };
   });
@@ -241,6 +250,7 @@ export async function runDataHealth(): Promise<ActionResult> {
 /** Toggle daily auto-snapshot via ayarlar (qrup=snapshot_cron, acar=aktiv). */
 export async function setSnapshotCron(aktiv: boolean): Promise<ActionResult> {
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     const { sahibkarId } = requireTenant();
     await prisma.ayarlar.upsert({
       where: { sahibkar_id_qrup_acar: { sahibkar_id: sahibkarId, qrup: "snapshot_cron", acar: "aktiv" } },
@@ -262,6 +272,7 @@ export async function addTaskComment(input: FormData): Promise<ActionResult> {
   if (!parsed.success) return { ok: false, error: "Şərh yanlışdır" };
   const { id, text } = parsed.data;
   return withTenant(async () => {
+    ensureOwner(); // QA-audit: owner-only guard yox idi
     const { istifadeciId } = requireTenant();
     const row = await prisma.sahibkar_tapshiriq.findUnique({ where: { id }, include: { istifadeciler: { select: { ad_soyad: true } } } });
     if (!row) return { ok: false, error: "Tapşırıq tapılmadı" };

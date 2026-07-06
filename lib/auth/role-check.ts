@@ -41,3 +41,25 @@ export function hasRole(...names: string[]): boolean {
 export function maybeRoleName(): string | undefined {
   return getTenant()?.rolAd;
 }
+
+/**
+ * QA-audit: withTenant() DAXİLİNDƏ çağırılan sərt icazə guard-ı. Privileged (admin/sahibkar)
+ * bypass edir; digərləri verilmiş icazələrdən ən azı birinə malik olmalıdır, yoxsa THROW.
+ * Guard-sız qalmış action-lara (qiymet-kanal, avtomatlasdirma, alerts, satinalma və s.) sürətli
+ * fail-closed qorumadır — icazə kataloqundakı real kodlarla çağırılmalıdır.
+ */
+export function ensurePermission(...perms: string[]): void {
+  const ctx = requireTenant();
+  if (ctx.rolAd === "admin" || ctx.rolAd === "sahibkar") return;
+  if (perms.length === 0) return;
+  if (perms.some((p) => ctx.icazeler.includes(p))) return;
+  throw new Error(`Bu əməliyyat üçün icazə yoxdur (${perms.join(" / ")})`);
+}
+
+/** QA-audit: yalnız sahibkar (owner) icra edə bilər — owner-private action-lar üçün. THROW-lu. */
+export function ensureOwner(): void {
+  const ctx = requireTenant();
+  if (ctx.rolAd !== "sahibkar") {
+    throw new Error("Bu əməliyyat yalnız biznes sahibinə (owner) icazəlidir");
+  }
+}

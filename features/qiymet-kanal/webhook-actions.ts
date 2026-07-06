@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { ensurePermission } from "@/lib/auth/role-check";
 import { generateWebhookSecret } from "@/lib/webhook-verify";
 
 const QRUP = "kanal_webhook_secret";
@@ -21,6 +22,7 @@ export async function generateWebhookSecretForKanal(
   const { kanal } = parsed.data;
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    ensurePermission("ayar.api_key","ayar.kanal");
     const exists = await prisma.qiymet_kanal_komissiya.findUnique({
       where: { sahibkar_id_kanal: { sahibkar_id: sahibkarId, kanal } },
       select: { id: true },
@@ -51,6 +53,7 @@ export async function revokeWebhookSecret(input: z.input<typeof KanalSchema>): P
   const { kanal } = parsed.data;
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    ensurePermission("ayar.api_key","ayar.kanal");
     await prisma.ayarlar.deleteMany({
       where: { sahibkar_id: sahibkarId, qrup: QRUP, acar: kanal },
     });

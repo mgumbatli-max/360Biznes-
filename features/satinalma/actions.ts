@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { ensurePermission } from "@/lib/auth/role-check";
 
 type ActionResult = { ok: true; nomre?: string; sifaris_id?: string } | { ok: false; error: string };
 
@@ -14,6 +15,7 @@ type ActionResult = { ok: true; nomre?: string; sifaris_id?: string } | { ok: fa
 export async function autoCreatePurchaseOrders(): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
+    ensurePermission("alis.yarat", "alis.idare", "anbar.idare"); // QA-audit: real alış sifarişi yaradır
     try {
       const recs = await prisma.satinalma_tovsiye.findMany({
         where: { alis_yaradildi: false, tovsiye_say: { gt: 0 } },
@@ -77,10 +79,15 @@ export async function autoCreatePurchaseOrders(): Promise<{ ok: true; count: num
 
 export async function setReorderPoint(mehsulId: string, minStok: number): Promise<ActionResult> {
   return withTenant(async () => {
+    ensurePermission("anbar.idare", "alis.idare"); // QA-audit: guard yox idi
+    // QA-audit: client-dən gələn minStok validasiya olunmurdu (mənfi/overflow/NaN birbaşa DB-yə).
+    if (!Number.isFinite(minStok) || minStok < 0 || minStok > 1_000_000) {
+      return { ok: false, error: "Minimum stok 0–1.000.000 aralığında olmalıdır" };
+    }
     try {
       await prisma.mehsullar.update({
         where: { id: mehsulId },
-        data: { min_stok: minStok },
+        data: { min_stok: Math.round(minStok) },
       });
       revalidatePath("/anbar/satinalma");
       revalidatePath(`/anbar/inventar`);

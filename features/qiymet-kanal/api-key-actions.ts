@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { ensurePermission } from "@/lib/auth/role-check";
 import { generateApiKey } from "@/lib/api-key";
 
 const AYARLAR_QRUP = "kanal_api_key";
@@ -25,6 +26,7 @@ export async function generateKanalApiKey(input: z.input<typeof KanalSchema>): P
   const { kanal } = parsed.data;
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    ensurePermission("ayar.api_key","ayar.kanal");
     try {
       // Bu kanal həqiqətən mövcuddurmu?
       const exists = await prisma.qiymet_kanal_komissiya.findUnique({
@@ -76,6 +78,7 @@ export async function revokeKanalApiKey(input: z.input<typeof KanalSchema>): Pro
   const { kanal } = parsed.data;
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    ensurePermission("ayar.api_key","ayar.kanal");
     try {
       await prisma.ayarlar.deleteMany({
         where: { sahibkar_id: sahibkarId, qrup: AYARLAR_QRUP, acar: kanal },
