@@ -1096,8 +1096,10 @@ export async function sendContactSms(
       const rate = await checkSmsRateLimit(1);
       if (!rate.ok) return { ok: false, error: rate.error };
 
-      const k = await prisma.kontragentler.findUnique({ where: { id: kontragentId } });
+      const k = await prisma.kontragentler.findFirst({ where: { id: kontragentId, sahibkar_id: sahibkarId } });
       if (!k) return { ok: false, error: "Kontragent tapılmadı" };
+      // QA-audit: qara siyahı (DNC) kontaktına SMS göndərilməməlidir.
+      if (k.qara_siyahi) return { ok: false, error: "Bu kontakt qara siyahıdadır — SMS göndərilə bilməz" };
       if (!k.telefon) return { ok: false, error: "Telefon nömrəsi yoxdur" };
 
       const { sendSms } = await import("@/lib/sms/adapter");
@@ -1172,8 +1174,10 @@ export async function sendBulkContactSms(
     const details: { id: string; ok: boolean; error?: string }[] = [];
 
     const { sendSms } = await import("@/lib/sms/adapter");
+    // QA-audit: qara siyahı (DNC) və aktiv=false kontaktlar İSTİSNA edilməlidir (broadcast axını
+    // edir, bu isə etmirdi) + tenant filtri açıq. Bu filtrə düşməyənlər "skipped" sayılır.
     const contacts = await prisma.kontragentler.findMany({
-      where: { id: { in: kontragentIds } },
+      where: { id: { in: kontragentIds }, sahibkar_id: sahibkarId, qara_siyahi: false, aktiv: true },
       select: { id: true, ad: true, telefon: true, borc: true },
     });
     const contactMap = new Map(contacts.map((c) => [c.id, c]));
