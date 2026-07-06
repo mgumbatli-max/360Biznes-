@@ -302,6 +302,9 @@ export async function saveBonusOrPenalty(input: FormData): Promise<Result> {
         const emp = await prisma.istifadeciler.findUnique({ where: { id: d.istifadeci_id } });
         if (!emp) return { ok: false, error: "İşçi tapılmadı" };
         const esas = Number(emp.aylik_maas ?? 0);
+        // QA-audit: ad-hoc bordro prorata_maas=esas (TAM maaş) qoyurdu → davamiyyət prorata olmadan
+        // işçiyə tam maaş verilirdi (əgər calculateBordro-dan əvvəl ödənilsə). prorata_maas=0 —
+        // baz maaş prorata-sı calculateBordro-ya təxir edilir; bu sətir yalnız bonus/cəriməni daşıyır.
         b = await prisma.maas_hesablamalar.create({
           data: {
             sahibkar_id: sahibkarId,
@@ -309,12 +312,12 @@ export async function saveBonusOrPenalty(input: FormData): Promise<Result> {
             il,
             ay,
             esas_maas: esas,
-            prorata_maas: esas,
+            prorata_maas: 0,
             kpi_bonus: 0,
             manual_bonus: 0,
             cerime: 0,
             avans: 0,
-            son_meblegh: esas,
+            son_meblegh: 0,
             status: "cernovik",
             yaradan_id: istifadeciId,
           },

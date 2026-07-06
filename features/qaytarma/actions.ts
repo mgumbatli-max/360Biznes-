@@ -258,16 +258,30 @@ export async function acceptReturn(returnId: string): Promise<ActionResult> {
             reversalRef.current = { satisId: original.id, ratio: sonMeblegPre > 0.01 ? Math.min(1, refundTotal / sonMeblegPre) : 1 };
             // Status: tam qaytarmadasa "qaytarilib", qismən qaytarmada əvvəlki status qalır
             const tamGeri = yeniSonMebleg < 0.01;
-            await tx.satis_sifarisleri.update({
-              where: { id: original.id },
-              data: {
-                son_mebleg: yeniSonMebleg,
-                // Əgər müştəri artıq qaytarılan məbləğdən çoxunu ödəyibsə —
-                // odenilmis-i kəs (geri qayıdır kassaya, ayrıca kassa əməliyyatı).
-                odenilmis: Math.min(odenilmis, yeniSonMebleg),
-                ...(tamGeri ? { status: "qaytarilib" } : {}),
-              },
-            });
+            const isNisyeSale = original.odenis_nov === "nisye" || original.odenis_nov === "borc";
+            // QA-audit: NİSYƏ/BORC-da son_mebleg AZALDILMIR — P&L returns aqreqatı (yalnız nisyə çıxır)
+            // ilə ikiqat çıxma önlənir + fastReturn/returnFullSale ilə paritet. Borc əvəzinə odenilmis
+            // virtual ödənişlə azaldılır. Nağd/kart-da isə son_mebleg azaldılır (revenue net = K6).
+            if (isNisyeSale) {
+              const qalig = sonMeblegPre - odenilmis;
+              const apply = Math.min(refundTotal, Math.max(0, qalig));
+              await tx.satis_sifarisleri.update({
+                where: { id: original.id },
+                data: {
+                  ...(apply > 0 ? { odenilmis: { increment: apply } } : {}),
+                  ...(tamGeri ? { status: "qaytarilib" } : {}),
+                },
+              });
+            } else {
+              await tx.satis_sifarisleri.update({
+                where: { id: original.id },
+                data: {
+                  son_mebleg: yeniSonMebleg,
+                  odenilmis: Math.min(odenilmis, yeniSonMebleg),
+                  ...(tamGeri ? { status: "qaytarilib" } : {}),
+                },
+              });
+            }
 
             // QA-K (kassa refund): nəğd/kart satışın qaytarılmasında kassadan pul
             // çıxışı — fastReturn/returnFullSale-da var idi, acceptReturn-da YOX idi.

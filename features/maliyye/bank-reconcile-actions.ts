@@ -158,8 +158,16 @@ export async function autoMatchStatement(statementId: number): Promise<Result<{ 
         });
 
         if (candidates.length === 1) {
-          await prisma.finance_bank_statement_items.update({
-            where: { id: item.id },
+          // QA-audit: candidate seçimi ilə update arası paralel çağırış eyni op-u iki sətrə match edə
+          // bilir (tx yox). Update-dən əvvəl op-un artıq başqa sətrə bağlı olmadığını RE-CHECK et +
+          // update-i yalnız sətir hələ match olunmamışkən (status guard).
+          const opAlreadyMatched = await prisma.finance_bank_statement_items.findFirst({
+            where: { sahibkar_id: sahibkarId, matched_op_id: candidates[0].id, status: "eslesdi" },
+            select: { id: true },
+          });
+          if (opAlreadyMatched) { ambiguous++; continue; }
+          const upd = await prisma.finance_bank_statement_items.updateMany({
+            where: { id: item.id, status: { not: "eslesdi" } },
             data: {
               matched_op_id: candidates[0].id,
               match_confidence: 95,
@@ -169,7 +177,7 @@ export async function autoMatchStatement(statementId: number): Promise<Result<{ 
               status: "eslesdi",
             },
           });
-          matched++;
+          if (upd.count > 0) matched++;
         } else if (candidates.length > 1) {
           ambiguous++;
         }

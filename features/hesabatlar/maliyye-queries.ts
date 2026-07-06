@@ -217,24 +217,39 @@ export async function getMonthlyPl12(): Promise<MonthlyPl[]> {
            AND legv_de IS NULL -- (audit #9) ləğv xərc daxil olmasın
          GROUP BY 1
       ),
-      -- QA-orta: P&L kartı (getPlSummary) net-of-returns-dur — trend qrafiki eyni tərifi işlətsin
+      -- QA-audit: getPlSummary ilə EYNİ returns tərifi — yalnız nisyə/borc (son_mebleg azalmayan) və ya
+      -- satış-linksiz standalone qaytarmalar çıxılır (nağd/kart-da son_mebleg onsuz da azalıb → ikiqat yox).
       ret AS (
-        SELECT to_char(tarix, 'YYYY-MM') AS ay, SUM(umumi_mebleg)::float AS returns
-          FROM qaytarma_sifarisleri
-         WHERE sahibkar_id = ${sahibkarId}::uuid
-           AND status NOT IN ('legv','tesdiqlenmemis')
-           AND tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
+        SELECT to_char(q.tarix, 'YYYY-MM') AS ay, SUM(q.umumi_mebleg)::float AS returns
+          FROM qaytarma_sifarisleri q
+          LEFT JOIN satis_sifarisleri s ON s.id = q.original_id
+         WHERE q.sahibkar_id = ${sahibkarId}::uuid
+           AND q.status NOT IN ('legv','tesdiqlenmemis')
+           AND q.tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
+           AND (s.odenis_nov IN ('nisye','borc') OR s.id IS NULL)
+         GROUP BY 1
+      ),
+      -- Qaytarılan malın mayası da COGS-dan çıxılsın (getPlSummary ilə simmetrik).
+      retcogs AS (
+        SELECT to_char(qsf.tarix, 'YYYY-MM') AS ay, SUM(qs.miqdar * COALESCE(m.alish_qiymeti, 0))::float AS rcogs
+          FROM qaytarma_satirlari qs
+          JOIN qaytarma_sifarisleri qsf ON qsf.id = qs.qaytarma_id
+          JOIN mehsullar m ON m.id = qs.mehsul_id
+         WHERE qsf.sahibkar_id = ${sahibkarId}::uuid
+           AND qsf.status NOT IN ('legv','tesdiqlenmemis')
+           AND qsf.tarix >= date_trunc('month', CURRENT_DATE) - INTERVAL '11 months'
          GROUP BY 1
       )
       SELECT m.ay,
              (COALESCE(r.revenue, 0) - COALESCE(q.returns, 0))::float AS revenue,
-             COALESCE(c.cogs, 0)::float AS cogs,
+             GREATEST(0, COALESCE(c.cogs, 0) - COALESCE(rc.rcogs, 0))::float AS cogs,
              COALESCE(o.opex, 0)::float AS opex
         FROM months m
         LEFT JOIN rev r USING (ay)
         LEFT JOIN cogs c USING (ay)
         LEFT JOIN opex o USING (ay)
         LEFT JOIN ret q USING (ay)
+        LEFT JOIN retcogs rc USING (ay)
        ORDER BY m.ay ASC
     `.catch(() => [] as { ay: string; revenue: number; cogs: number; opex: number }[]);
     return rows.map((r) => {
