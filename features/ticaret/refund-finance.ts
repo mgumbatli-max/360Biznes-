@@ -65,19 +65,52 @@ export async function recordRefundFinanceOp(tx: Tx, args: CommonArgs & { refund:
   if (!(args.refund > 0.001)) return;
   const opType = await getOrCreateOpType(tx, "qaytarma_xaric", "Qaytarma (geri ödəniş)", "xaric");
   if (!opType) return;
-  const hesabId = await resolveAccountId(tx, args.sahibkarId, args.kassaId, args.odenisNov);
-  if (!hesabId) return;
-  await tx.finance_operations.create({
-    data: {
-      sahibkar_id: args.sahibkarId, type_id: opType.id, type_kod: opType.kod,
-      y_n: "xaric", tarix: new Date(),
-      meblegh: new Prisma.Decimal(args.refund), valyuta: "AZN", mezenne: 1,
-      azn_meblegh: new Prisma.Decimal(args.refund),
-      hesab_id: hesabId, kontragent_id: args.musteriId ?? null, satis_id: args.saleId,
-      qeyd: args.qeyd, yaradan_id: args.istifadeciId ?? null,
-    },
+
+  // QA-audit-D (split refund): qarışıq ödənişli satış (M14: POS split → hər metod öz hesabına daxil)
+  // qaytarılanda refund BÜTÜN vahid hesaba düşürdü → hesablar-arası per-account drift. İndi refund
+  // orijinal satışın DAXİL (inflow) hesablarına PROPORSİONAL bölünür.
+  const inflows = await tx.finance_operations.groupBy({
+    by: ["hesab_id"],
+    where: { sahibkar_id: args.sahibkarId, satis_id: args.saleId, y_n: "daxil", status: { not: "legv" }, hesab_id: { not: null } },
+    _sum: { azn_meblegh: true },
   });
-  await recalc(tx, hesabId);
+  const buckets = inflows
+    .map((r) => ({ hesabId: r.hesab_id as string, sum: Number(r._sum.azn_meblegh ?? 0) }))
+    .filter((b) => b.hesabId && b.sum > 0.001);
+  const inflowTotal = buckets.reduce((s, b) => s + b.sum, 0);
+
+  // Refund-un hesablara paylanması: inflow tapılıbsa proporsional, yoxsa tək hesaba fallback.
+  let parts: Array<{ hesabId: string; amount: number }>;
+  if (buckets.length > 0 && inflowTotal > 0.001) {
+    let allocated = 0;
+    parts = buckets.map((b, i) => {
+      const amt = i === buckets.length - 1
+        ? +(args.refund - allocated).toFixed(2) // son bucket qalığı alır (yuvarlaqlaşma dəqiqliyi)
+        : +((args.refund * b.sum) / inflowTotal).toFixed(2);
+      allocated += amt;
+      return { hesabId: b.hesabId, amount: amt };
+    }).filter((p) => p.amount > 0.001);
+  } else {
+    const hesabId = await resolveAccountId(tx, args.sahibkarId, args.kassaId, args.odenisNov);
+    if (!hesabId) return;
+    parts = [{ hesabId, amount: +args.refund.toFixed(2) }];
+  }
+
+  const touched = new Set<string>();
+  for (const p of parts) {
+    await tx.finance_operations.create({
+      data: {
+        sahibkar_id: args.sahibkarId, type_id: opType.id, type_kod: opType.kod,
+        y_n: "xaric", tarix: new Date(),
+        meblegh: new Prisma.Decimal(p.amount), valyuta: "AZN", mezenne: 1,
+        azn_meblegh: new Prisma.Decimal(p.amount),
+        hesab_id: p.hesabId, kontragent_id: args.musteriId ?? null, satis_id: args.saleId,
+        qeyd: args.qeyd, yaradan_id: args.istifadeciId ?? null,
+      },
+    });
+    touched.add(p.hesabId);
+  }
+  for (const hesabId of touched) await recalc(tx, hesabId);
 }
 
 /**

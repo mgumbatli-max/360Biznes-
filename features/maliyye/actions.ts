@@ -261,9 +261,14 @@ export async function deleteExpense(id: string, sebeb?: string): Promise<ActionR
       // 🔒 Açıq sahibkar_id qoruması + aktiv (legv_de IS NULL) yoxlaması
       const before = await prisma.xercl_r.findFirst({
         where: { id, sahibkar_id: sahibkarId, legv_de: null },
-        select: { mebleg: true, tesvir: true, tarix: true },
+        select: { mebleg: true, tesvir: true, tarix: true, qeyd: true },
       });
       if (!before) return { ok: false, error: "Xərc tapılmadı və ya artıq ləğv edilib" };
+
+      // QA-audit-D: qaiməyə bağlı xərcdirsə (qeyd-də [INVOICE:<id>]) — silinəndə kapitalizə maya
+      // geri qaytarılmalıdır (aşağıda tx-dən sonra reverseExpenseFromInvoice ilə).
+      const invMatch = (before.qeyd ?? "").match(/\[INVOICE:([0-9a-fA-F-]+)\]/);
+      const linkedAlisId = invMatch ? invMatch[1] : null;
 
       // ⚛️ Atomik: xərci soft-delete et + saveExpense-in yaratdığı bağlı
       // [XERC:id] finance_operation-u da ləğv et, sonra hesab qaliqını geri qaytar.
@@ -315,6 +320,17 @@ export async function deleteExpense(id: string, sebeb?: string): Promise<ActionR
           }
         }
       });
+
+      // QA-audit-D: qaiməyə bağlı xərc idisə, kapitalizə mayanı geri qaytar (post-commit,
+      // applyExpenseToInvoice ilə simmetrik). Best-effort — əsas silmə commit olunub.
+      if (linkedAlisId) {
+        try {
+          await reverseExpenseFromInvoice(linkedAlisId, Number(before.mebleg ?? 0), sahibkarId, istifadeciId);
+        } catch (e) {
+          console.warn("[deleteExpense] invoice maya reverse skipped:", e);
+        }
+      }
+
       revalidatePath("/maliyye/emeliyyat");
       revalidatePath("/maliyye/xercler");
       bustMaliyyeCache();
@@ -630,28 +646,41 @@ export async function saveQuickOperation(input: FormData): Promise<ActionResult>
         if (!sufficient.ok) return { ok: false, error: sufficient.error };
       }
 
-      const created = await prisma.finance_operations.create({
-        data: {
-          sahibkar_id: sahibkarId,
-          type_id: type.id,
-          type_kod: type.kod,
-          y_n: type.y_n,
-          tarix: d.tarix ? parseLocalDate(d.tarix) : new Date(),
-          meblegh: d.mebleg,
-          valyuta: d.valyuta,
-          mezenne: d.mezenne,
-          azn_meblegh: aznMebleg,
-          hesab_id: d.hesab_id || null,
-          hesab_id2: d.hesab_id2 || null,
-          meblegh2: d.meblegh2 ?? null,
-          isci_id: d.isci_id || null,
-          kontragent_id: d.kontragent_id || null,
-          sened_nomresi: d.sened_nomresi || null,
-          status: opStatus,
-          rehber_tesdiq_lazim: needsApproval,
-          qeyd: [tagPrefix, d.qeyd].filter(Boolean).join(" ") || null,
-          yaradan_id: userId ?? null,
-        },
+      // QA-audit-E: finance_op create (SoT ledger yazısı) + hesab qaliqı recalc-ı ATOMİK olmalıdır.
+      // Əvvəl create tx-siz idi + recalc try/catch-də udulurdu → recalc uğursuz olsa op ledger-də
+      // qalır, maliye_hesablari.qaliq köhnə (SoT↔cache divergensiyası). İndi hər ikisi bir tx-də:
+      // recalc throw etsə op da geri sarılır.
+      const created = await prisma.$transaction(async (tx) => {
+        const op = await tx.finance_operations.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            type_id: type.id,
+            type_kod: type.kod,
+            y_n: type.y_n,
+            tarix: d.tarix ? parseLocalDate(d.tarix) : new Date(),
+            meblegh: d.mebleg,
+            valyuta: d.valyuta,
+            mezenne: d.mezenne,
+            azn_meblegh: aznMebleg,
+            hesab_id: d.hesab_id || null,
+            hesab_id2: d.hesab_id2 || null,
+            meblegh2: d.meblegh2 ?? null,
+            isci_id: d.isci_id || null,
+            kontragent_id: d.kontragent_id || null,
+            sened_nomresi: d.sened_nomresi || null,
+            status: opStatus,
+            rehber_tesdiq_lazim: needsApproval,
+            qeyd: [tagPrefix, d.qeyd].filter(Boolean).join(" ") || null,
+            yaradan_id: userId ?? null,
+          },
+        });
+        // Yalnız dərhal aktivləşən əməliyyat balansa təsir edir (təsdiq gözləyən yox).
+        if (!needsApproval) {
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          if (d.hesab_id) await recalculateAccountBalance(d.hesab_id, tx);
+          if (d.hesab_id2) await recalculateAccountBalance(d.hesab_id2, tx);
+        }
+        return op;
       });
 
       // Create approval request + alert when threshold exceeded
@@ -721,16 +750,7 @@ export async function saveQuickOperation(input: FormData): Promise<ActionResult>
       // SOURCE-OF-TRUTH RECALC — bütün təsirlənmiş subyektlər:
       // 1) Hesab/kassa qaliqı (yeni — bu vacibdir, əvvəl qaliq update olunmurdu)
       // 2) Müştəri/təchizatçı balansı (mövcud)
-      try {
-        if (!needsApproval) {
-          // Yalnız təsdiq lazım deyilsə qaliq dəyişib
-          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
-          if (d.hesab_id) await recalculateAccountBalance(d.hesab_id);
-          if (d.hesab_id2) await recalculateAccountBalance(d.hesab_id2);
-        }
-      } catch (e) {
-        console.warn("[saveQuickOperation] account recalc skipped:", e);
-      }
+      // (hesab qaliqı recalc-ı artıq yuxarıdakı atomik tx daxilindədir — QA-audit-E)
 
       if (d.kontragent_id) {
         try {
@@ -2474,6 +2494,62 @@ async function applyExpenseToInvoice(
     resurs_nov: "alis_sifarisi",
     resurs_id: alis_id,
     yeni_data: { elave_xerc: mebleg, tesvir, sira_sayi: lines.length },
+  });
+}
+
+// QA-audit-D: applyExpenseToInvoice-in TƏRSİ — qaiməyə bağlı xərc SİLİNƏNDƏ kapitalizə olunmuş
+// mayanı geri qaytarır (əvvəl deleteExpense yalnız finance_op-u ləğv edirdi, elave_xerc/paylanan_xerc/
+// real_maya_eded/məhsul mayası olduğu kimi qalırdı → COGS DAİMİ ŞİŞİK). applyExpenseToInvoice ilə
+// eyni proporsional paylanma, yalnız ÇIXMA. Post-commit çağırılır (applyExpenseToInvoice kimi).
+async function reverseExpenseFromInvoice(
+  alis_id: string,
+  mebleg: number,
+  sahibkarId: string,
+  userId: string | null,
+) {
+  const lines = await prisma.alis_sifaris_satirlari.findMany({
+    where: { sifaris_id: alis_id, sahibkar_id: sahibkarId },
+    select: { id: true, mehsul_id: true, miqdar: true, vahid_qiymet: true, cemi: true, paylanan_xerc: true },
+  });
+  if (lines.length === 0) return;
+  const total = lines.reduce((s, l) => s + Number(l.cemi ?? Number(l.miqdar) * Number(l.vahid_qiymet)), 0);
+  if (total <= 0) return;
+
+  // elave_xerc-i geri azalt (0-dan aşağı düşməsin)
+  try {
+    const cur = await prisma.alis_sifarisleri.findFirst({ where: { id: alis_id, sahibkar_id: sahibkarId }, select: { elave_xerc: true } });
+    const yeniElave = Math.max(0, Number(cur?.elave_xerc ?? 0) - mebleg);
+    await prisma.alis_sifarisleri.update({ where: { id: alis_id }, data: { elave_xerc: yeniElave, yenilendi: new Date() } });
+  } catch (e) {
+    console.warn("[reverseExpenseFromInvoice] elave_xerc reverse skipped:", e);
+  }
+
+  for (const line of lines) {
+    const lineCemi = Number(line.cemi ?? Number(line.miqdar) * Number(line.vahid_qiymet));
+    const miqdar = Number(line.miqdar);
+    if (miqdar <= 0) continue;
+    const share = (lineCemi / total) * mebleg;
+    const perUnit = share / miqdar;
+    const newPaylanan = Math.max(0, Number(line.paylanan_xerc ?? 0) - perUnit);
+    const realMaya = Number(line.vahid_qiymet) + newPaylanan;
+    try {
+      await prisma.alis_sifaris_satirlari.update({
+        where: { id: line.id },
+        data: { paylanan_xerc: newPaylanan, real_maya_eded: realMaya },
+      });
+    } catch (e) {
+      console.warn("[reverseExpenseFromInvoice] line reverse skipped:", e);
+    }
+    if (line.mehsul_id) await recalculateProductCostInternal(line.mehsul_id, sahibkarId);
+  }
+
+  await safeAuditLog({
+    sahibkar_id: sahibkarId,
+    istifadeci_id: userId,
+    emeliyyat: "xerc_qaimeden_ayrildi",
+    resurs_nov: "alis_sifarisi",
+    resurs_id: alis_id,
+    yeni_data: { geri_qaytarilan_xerc: mebleg, sira_sayi: lines.length },
   });
 }
 
