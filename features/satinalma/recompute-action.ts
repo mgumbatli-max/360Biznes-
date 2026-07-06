@@ -164,5 +164,9 @@ async function computeForCurrentTenant(sahibkarId: string): Promise<{ created: n
     created = createResult.count;
   }
 
+  // QA-roadmap #5: kritik reorder məhsulları üçün proaktiv xülasə alert (cron ilə eyni məntiq).
+  const { upsertReorderAlert } = await import("./reorder-alert");
+  await upsertReorderAlert(sahibkarId, recommendations.filter((r) => r.prioritet === "kritik").map((r) => r.mehsul_id));
+
   return { created, removed: removeResult.count };
 }

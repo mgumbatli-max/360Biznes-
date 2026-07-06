@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prismaUnscoped } from "@/lib/db/prisma";
 import { runWithTenant } from "@/lib/db/tenant-context";
+import { upsertReorderAlert } from "@/features/satinalma/reorder-alert";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 dəq — bütün tenant + məhsullar üçün
@@ -244,6 +245,12 @@ async function computeForTenant(sahibkarId: string): Promise<{ created: number; 
     });
     created = createResult.count;
   }
+
+  // QA-roadmap #5 (proaktivlik): sürət-əsaslı KRİTİK reorder məhsulları üçün xülasə alert.
+  // checkAndCreateStockAlert yalnız min-stok altını tutur; bu isə tez bitəcək (min üstündə olsa da)
+  // məhsulları da bildiriş mərkəzinə çıxarır. İdempotent: mövcud açıq alert yenilənir, kritik yoxdursa həll.
+  const kritikItems = recommendations.filter((r) => r.prioritet === "kritik");
+  await upsertReorderAlert(sahibkarId, kritikItems.map((r) => r.mehsul_id));
 
   return { created, updated, removed: removeResult.count };
 }
