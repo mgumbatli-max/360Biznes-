@@ -255,10 +255,15 @@ export async function validateAppliedCampaigns(
 
     const out: AppliedCampaign[] = [];
     const seenCoupons = new Set<string>();
-    const seenCampaigns = new Set<string>();
+    // QA-audit KRİTİK: ORTAQ campaign_id dedup dəsti — eyni kampaniya həm kupon, həm avto-yol
+    // ilə ikiqat tətbiq oluna bilirdi (əvvəl seenCoupons/seenCampaigns ayrı idi). Bundan başqa
+    // `stackable` heç yoxlanmırdı → non-stackable kampaniyalar üst-üstə gəlib satışı ~0-a endirirdi.
+    const seenCampaignIds = new Set<string>();
     let cartBase = cart.cemi;
+    let stopStacking = false; // non-stackable kampaniya tətbiq olunanda sonrakılar dayanır
 
     for (const entry of clientApplied) {
+      if (stopStacking) break;
       // ── KUPON YOLU ──
       if (entry.coupon_id) {
         if (seenCoupons.has(entry.coupon_id)) continue;
@@ -276,11 +281,13 @@ export async function validateAppliedCampaigns(
         if (coupon.kontragent_id && coupon.kontragent_id !== cart.kontragent_id) continue;
         const c = coupon.campaigns as unknown as CampaignRow | null;
         if (!c || c.status !== "active") continue;
+        if (seenCampaignIds.has(c.id)) continue; // eyni kampaniya avto-yolla artıq tətbiq olunub
         if (!passesCampaignConditions(c, cart, cartBase)) continue;
         const amt = computeCampaignAmounts(c, cart, cartBase, loyaltyTier);
         // Kupon yolu bonus qazandırmır (yalnız endirim) — mövcud davranışa sadiq.
         if (amt.endirimMebleg <= 0) continue;
         seenCoupons.add(entry.coupon_id);
+        seenCampaignIds.add(c.id);
         out.push({
           campaign_id: c.id,
           ad: c.ad,
@@ -293,11 +300,12 @@ export async function validateAppliedCampaigns(
           coupon_id: coupon.id,
         });
         cartBase = Math.max(0, cartBase - amt.endirimMebleg);
+        if (!c.stackable) stopStacking = true; // non-stackable → sonrakı endirimlər dayanır
         continue;
       }
 
       // ── AVTO-KAMPANIYA YOLU ──
-      if (!entry.campaign_id || seenCampaigns.has(entry.campaign_id)) continue;
+      if (!entry.campaign_id || seenCampaignIds.has(entry.campaign_id)) continue;
       const c = (await prisma.campaigns.findFirst({ where: { id: entry.campaign_id } })) as unknown as CampaignRow | null;
       if (!c || c.status !== "active") continue;
       if (c.max_uses && c.current_uses >= c.max_uses) continue;
@@ -305,7 +313,7 @@ export async function validateAppliedCampaigns(
       if (!passesCampaignConditions(c, cart, cartBase)) continue;
       const amt = computeCampaignAmounts(c, cart, cartBase, loyaltyTier);
       if (amt.endirimMebleg <= 0 && amt.bonusQazanildi <= 0 && !amt.freeShipping) continue;
-      seenCampaigns.add(entry.campaign_id);
+      seenCampaignIds.add(entry.campaign_id);
       out.push({
         campaign_id: c.id,
         ad: c.ad,
@@ -317,6 +325,7 @@ export async function validateAppliedCampaigns(
         qeyd: amt.qeyd,
       });
       cartBase = Math.max(0, cartBase - amt.endirimMebleg);
+      if (!c.stackable) stopStacking = true; // non-stackable → sonrakı endirimlər dayanır
     }
 
     return out;

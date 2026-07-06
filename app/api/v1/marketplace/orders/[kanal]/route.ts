@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { runWithTenant } from "@/lib/db/tenant-context";
-import { findWebhookSecretsForKanal } from "@/features/qiymet-kanal/webhook-actions";
+import { findWebhookSecretsForKanal } from "@/lib/qiymet-kanal/webhook-secrets";
 import { verifyWebhookSignature } from "@/lib/webhook-verify";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
 import { rateAllow, rateRetryAfterSec } from "@/lib/rate-limiter";

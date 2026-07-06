@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { runWithTenant } from "@/lib/db/tenant-context";
-import { verifyApiKey } from "@/features/qiymet-kanal/api-key-actions";
+import { verifyApiKey } from "@/lib/qiymet-kanal/webhook-secrets";
 import { recordKanalApiCall } from "@/features/qiymet-kanal/api-stats";
 import { getKanalExtraServer } from "@/features/qiymet-kanal/kanal-extra";
 import { computeChannelPrice, type KanalQiymetFormula } from "@/features/qiymet-kanal/types";

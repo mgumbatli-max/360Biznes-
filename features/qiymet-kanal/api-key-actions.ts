@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma, prismaUnscoped } from "@/lib/db/prisma";
+import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
-import { generateApiKey, hashApiKey } from "@/lib/api-key";
+import { generateApiKey } from "@/lib/api-key";
 
 const AYARLAR_QRUP = "kanal_api_key";
 
@@ -113,29 +113,6 @@ export async function listKanalApiKeyStatus(): Promise<Record<string, { created:
   });
 }
 
-/**
- * SERVER-ONLY: API endpoint daxili — verilmiş plaintext key-i kanal üçün yoxlayır.
- * Match olarsa sahibkar_id qaytarır.
- */
-export async function verifyApiKey(plaintext: string, kanal: string): Promise<string | null> {
-  if (!plaintext || !kanal) return null;
-  const hash = hashApiKey(plaintext);
-  // Bütün sahibkarlarda axtar (key özündə sahibkarın prefix-ini saxlayır
-  // amma çoxlu sahibkar üçün eyni prefix ola bilər, ona görə hash ilə dəqiqləşdiririk)
-  // QA-K3: public API axınında tenant kontekst YOXDUR — scoped client
-  // tenant-guard ilə çökürdü (hər sorğu 500). Bu funksiya tenanti TƏYİN
-  // etmək üçündür, ona görə unscoped + hash ilə dəqiqləşdirmə düzgündür.
-  const rows = await prismaUnscoped.ayarlar.findMany({
-    where: { qrup: AYARLAR_QRUP, acar: kanal },
-    select: { sahibkar_id: true, deyer: true },
-  });
-  for (const r of rows) {
-    try {
-      const p = JSON.parse(r.deyer ?? "{}") as { hash?: string };
-      if (p.hash === hash) return r.sahibkar_id;
-    } catch {
-      /* */
-    }
-  }
-  return null;
-}
+// QA-audit KRİTİK: verifyApiKey buradan (bir "use server" faylı) SİLİNDİ — export olunduğu
+// üçün açıq server-action kimi expose olunurdu (cross-tenant açar-probe). İndi
+// lib/qiymet-kanal/webhook-secrets.ts ("server-only") daxilindədir; route handler oradan import edir.
