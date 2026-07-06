@@ -12,6 +12,7 @@ import {
   ReceiptText,
   Truck,
   Receipt,
+  PiggyBank,
   BarChart3,
   Repeat2,
   Calculator,
@@ -126,6 +127,7 @@ const MALIYYE_GROUPS: Group[] = [
       { href: "/maliyye/edv",         label: "ƏDV",            Icon: ReceiptText },
       { href: "/maliyye/yol-vergisi", label: "Yol vergisi",    Icon: Truck },
       { href: "/maliyye/xercler",     label: "Xərc maddələri", Icon: Receipt },
+      { href: "/maliyye/budce",       label: "Xərc büdcəsi",   Icon: PiggyBank },
     ],
   },
 ];
