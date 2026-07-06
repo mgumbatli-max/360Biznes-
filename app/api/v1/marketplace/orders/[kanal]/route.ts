@@ -105,6 +105,54 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ kanal: str
       icazeler: [],
     },
     async () => {
+      // QA-audit: LƏĞV (legv) bildirişi — əvvəl dedup ilə susdurulurdu (stok bərpa olunmurdu,
+      // payout geri qaytarılmırdı, satış legv edilmirdi). İndi ləğv bildirişi qəbul olunmuş
+      // sifarişi geri sarır: satışı legv → stok bərpa + marketplace payout reverse.
+      if (body.status === "legv") {
+        const saleNomre = `WH-${kanal.toUpperCase()}-${body.external_id}`.slice(0, 50);
+        const sale = await prisma.satis_sifarisleri.findFirst({
+          where: { sahibkar_id: sahibkarId, nomre: saleNomre, status: { not: "legv" } },
+          include: { satis_sifaris_satirlari: true },
+        });
+        if (!sale) {
+          return NextResponse.json({ ok: true, message: "Ləğv: uyğun aktiv sifariş tapılmadı" }, { status: 200 });
+        }
+        await prisma.$transaction(async (tx) => {
+          // stok bərpa (anbar üzrə) + ledger reversal
+          if (sale.anbar_id) {
+            for (const line of sale.satis_sifaris_satirlari) {
+              if (!line.mehsul_id) continue;
+              await tx.stok.updateMany({
+                where: { sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: sale.anbar_id },
+                data: { miqdar: { increment: Number(line.miqdar) } },
+              });
+              await tx.anbar_hereketleri.create({
+                data: {
+                  sahibkar_id: sahibkarId, mehsul_id: line.mehsul_id, anbar_id: sale.anbar_id,
+                  nov: "qaytarma_giris", miqdar: Number(line.miqdar), qiymet: Number(line.vahid_qiymet ?? 0),
+                  ref_nov: "webhook_legv", ref_id: sale.id, qeyd: `Marketplace ləğv: ${kanal}:${body.external_id}`,
+                },
+              });
+            }
+          }
+          // marketplace payout satışın finance_operations-ında qeyd olunub (per-order) — onları legv et
+          // (finance_marketplace_payments dövr-əsaslı reconciliation cədvəlidir, per-sifariş deyil).
+          const ops = await tx.finance_operations.findMany({
+            where: { sahibkar_id: sahibkarId, satis_id: sale.id, status: { not: "legv" } },
+            select: { id: true, hesab_id: true },
+          });
+          const touched = new Set<string>();
+          for (const op of ops) {
+            await tx.finance_operations.update({ where: { id: op.id }, data: { status: "legv" } });
+            if (op.hesab_id) touched.add(op.hesab_id);
+          }
+          await tx.satis_sifarisleri.update({ where: { id: sale.id }, data: { status: "legv" } });
+          const { recalculateAccountBalance } = await import("@/lib/balance/account-balance");
+          for (const h of touched) await recalculateAccountBalance(h, tx);
+        });
+        return NextResponse.json({ ok: true, cancelled: true, message: "Sifariş ləğv edildi" }, { status: 200 });
+      }
+
       // 3. Duplicate yoxla — audit_log-da bu external_id ilə qeyd var?
       const dup = await prisma.audit_log.findFirst({
         where: {

@@ -116,36 +116,44 @@ export async function closeKassa(
 
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
-    const kassa = await prisma.kassalar.findFirst({
-      where: { id: kassaId, status: "acig" },
-    });
-    if (!kassa) return { ok: false as const, error: "Açıq kassa tapılmadı" };
-    if (kassa.acan_id !== istifadeciId) {
-      return { ok: false as const, error: "Bu kassanı başqa istifadəçi açıb" };
-    }
+    // QA-audit: bağlanış oxu/aqreqasiya/update TX-siz + lock-suz idi → eyni anda commit olan nağd
+    // satış gün-sonu gözlənilən balansdan İSTİSNA olub fantom fərq (fark) yaradırdı. İndi kassa
+    // sətri FOR UPDATE ilə kilidlənir + hər şey tx daxilində → paralel satış serializasiya olunur.
+    const result = await prisma.$transaction(async (tx) => {
+      const lockRows = await tx.$queryRaw<Array<{ id: string; acan_id: string | null; acilis_qaligi: unknown }>>`
+        SELECT id, acan_id, acilis_qaligi FROM kassalar WHERE id = ${kassaId}::uuid AND status = 'acig' FOR UPDATE`;
+      const kassa = lockRows[0];
+      if (!kassa) return { ok: false as const, error: "Açıq kassa tapılmadı" };
+      if (kassa.acan_id !== istifadeciId) {
+        return { ok: false as const, error: "Bu kassanı başqa istifadəçi açıb" };
+      }
 
-    // Compute expected balance: opening + sum of cash inflow - sum of cash outflow
-    const cashAgg = await prisma.kassa_emeliyyatlari.aggregate({
-      where: { kassa_id: kassa.id, odenis_nov: "negd" },
-      _sum: { mebleg: true },
-    });
-    const negdNet = Number(cashAgg._sum.mebleg ?? 0);
-    const expected = Number(kassa.acilis_qaligi ?? 0) + negdNet;
+      // Compute expected balance: opening + sum of cash inflow - sum of cash outflow
+      const cashAgg = await tx.kassa_emeliyyatlari.aggregate({
+        where: { kassa_id: kassa.id, odenis_nov: "negd" },
+        _sum: { mebleg: true },
+      });
+      const negdNet = Number(cashAgg._sum.mebleg ?? 0);
+      const expected = Number(kassa.acilis_qaligi ?? 0) + negdNet;
 
-    await prisma.kassalar.update({
-      where: { id: kassa.id },
-      data: {
-        status: "bagli",
-        baglayan_id: istifadeciId,
-        baglanis_tarixi: new Date(),
-        hesablanan_qaliq: expected,
-        baglanis_qaligi: parsed.data.hesablanan_qaliq,
-        fark: parsed.data.hesablanan_qaliq - expected,
-        qeyd: parsed.data.qeyd ?? null,
-      },
+      await tx.kassalar.update({
+        where: { id: kassa.id },
+        data: {
+          status: "bagli",
+          baglayan_id: istifadeciId,
+          baglanis_tarixi: new Date(),
+          hesablanan_qaliq: expected,
+          baglanis_qaligi: parsed.data.hesablanan_qaliq,
+          fark: parsed.data.hesablanan_qaliq - expected,
+          qeyd: parsed.data.qeyd ?? null,
+        },
+      });
+      return { ok: true as const, kassaId: kassa.id, expected, acilis: Number(kassa.acilis_qaligi ?? 0) };
     });
-    await audit("yenile", "kassa", kassa.id, {
-      evvelki_data: { acilis_qaligi: Number(kassa.acilis_qaligi ?? 0), status: "acig" },
+    if (!result.ok) return result;
+    const { expected } = result;
+    await audit("yenile", "kassa", result.kassaId, {
+      evvelki_data: { acilis_qaligi: result.acilis, status: "acig" },
       yeni_data: {
         status: "bagli",
         hesablanan_qaliq: expected,

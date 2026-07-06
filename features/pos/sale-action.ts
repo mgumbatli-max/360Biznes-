@@ -164,7 +164,11 @@ async function runCreateSale(data: z.infer<typeof CreateSaleSchema>): Promise<Cr
       const serverCampaignEndirim = validatedCampaigns.reduce((s, c) => s + Math.max(0, c.endirim_mebleg), 0);
       let serverBonus: { mebleg: number; kartId: string } | null = null;
       if (data.bonus_mebleg > 0 && data.musteri_id) {
-        serverBonus = await validateBonusSpend(data.musteri_id, data.bonus_mebleg, cartForCampaigns.cemi);
+        // QA-audit: bonus limiti kampaniya endirimindən ƏVVƏLki cart üzərində hesablanırdı →
+        // endirim+bonus səbəti aşdıqda bonus tam sərf olunub sonMebleg 0-a düşürdü (bal dəyər vermir).
+        // İndi kampaniya endirimindən SONRAKI qalıq üzərində cap olunur.
+        const remainingAfterCampaign = Math.max(0, Math.round((cartForCampaigns.cemi - serverCampaignEndirim) * 100) / 100);
+        serverBonus = await validateBonusSpend(data.musteri_id, data.bonus_mebleg, remainingAfterCampaign);
       }
       const serverBonusSpend = serverBonus?.mebleg ?? 0;
       // Client-in bildirdiyi kampaniya endirimi — kassirin öz əl-endirimini ayırmaq üçün.

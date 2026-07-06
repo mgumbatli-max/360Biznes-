@@ -571,6 +571,7 @@ export async function getTaskPerformanceAnalytics(): Promise<UserTaskPerformance
 
 export async function getTasksForObject(obyektNov: string, obyektId: string): Promise<TaskListItem[]> {
   return withTenant(async () => {
+    const { istifadeciId, rolAd, icazeler } = requireTenant();
     const links = await prisma.tapshiriq_obyektleri.findMany({
       where: { obyekt_nov: obyektNov, obyekt_id: obyektId },
       select: { tapshiriq_id: true },
@@ -578,8 +579,22 @@ export async function getTasksForObject(obyektNov: string, obyektId: string): Pr
     });
     if (!links.length) return [];
     const ids = links.map((l) => l.tapshiriq_id);
+    // QA-audit: görünürlük filtri YOX idi → non-imtiyazlı istifadəçi üzvü olmadığı (o cümlədən
+    // şəxsi) tapşırıqları görürdü. İmtiyazlı deyilsə: yalnız yaradan/mesul/üzv olduğu tapşırıqlar.
+    const r = (rolAd ?? "").toLowerCase();
+    const canSeeAll =
+      r.includes("sahibkar") || r.includes("owner") || r.includes("admin") || (icazeler ?? []).includes("tapshiriq.idare");
+    const visibilityWhere = canSeeAll
+      ? {}
+      : {
+          OR: [
+            { yaradan_id: istifadeciId },
+            { mesul_id: istifadeciId },
+            { tapshiriq_iscilier: { some: { istifadeci_id: istifadeciId } } },
+          ],
+        };
     const rows = await prisma.tapshiriqlar.findMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, ...visibilityWhere },
       orderBy: { yaradildi: "desc" },
       include: {
         istifadeciler_tapshiriqlar_mesul_idToistifadeciler: { select: { id: true, ad_soyad: true } },

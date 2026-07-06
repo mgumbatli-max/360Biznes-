@@ -44,7 +44,7 @@ export async function PATCH(
 
     const task = await prisma.tapshiriqlar.findFirst({
       where: { id, sahibkar_id: sahibkarId },
-      select: { id: true, yaradan_id: true, mesul_id: true, tapshiriq_iscilier: { select: { istifadeci_id: true } } },
+      select: { id: true, yaradan_id: true, mesul_id: true, requires_approval: true, approved_by: true, tapshiriq_iscilier: { select: { istifadeci_id: true } } },
     });
     if (!task) return { error: "Tapşırıq tapılmadı" };
 
@@ -58,11 +58,23 @@ export async function PATCH(
       mobilePerm(ctx, "tapshiriq.idare");
     if (!allowed) return { error: "Bu tapşırığı dəyişmək üçün icazə yoxdur" };
 
+    // QA-audit: mobil PATCH web changeTaskStatus-dakı requires_approval qapısını bypass edirdi →
+    // icraçı öz təsdiq-tələb edən tapşırığını birbaşa 'tamamlandi' edə bilirdi. Eyni gate tətbiq olunur.
+    if (parsed.data.status === "tamamlandi" && task.requires_approval && !task.approved_by) {
+      const canApprove = privileged || task.yaradan_id === istifadeciId;
+      if (!canApprove) {
+        return { error: "Bu tapşırıq rəhbər təsdiqi tələb edir — birbaşa tamamlana bilməz. Status «Yoxlanılır»a keçirilməlidir." };
+      }
+    }
+
     await prisma.tapshiriqlar.update({
       where: { id },
       data: {
         status: parsed.data.status,
         tamamlandi_de: parsed.data.status === "tamamlandi" ? new Date() : null,
+        ...(parsed.data.status === "tamamlandi" && task.requires_approval && !task.approved_by
+          ? { approved_by: istifadeciId }
+          : {}),
       },
     });
     return { ok: true };
