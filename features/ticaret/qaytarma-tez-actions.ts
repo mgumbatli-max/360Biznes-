@@ -483,6 +483,11 @@ export async function returnFullSale(
         if (sale.status === "legv") {
           throw new Error("Ləğv edilmiş satışı qaytarmaq olmaz");
         }
+        // QA-audit: stok hərəkəti HEÇ yaranmamış satışlar (təsdiq gözləyən/qaralama) qaytarıla bilməz —
+        // əks halda fantom stok mədaxili + nisyədə fantom kredit yaranır. Yalnız materiallaşmış satış.
+        if (sale.status === "tesdiq_gozleyir" || sale.qaralama === true) {
+          throw new Error("Təsdiq gözləyən / qaralama satış qaytarıla bilməz");
+        }
         if (!sale.anbar_id) throw new Error("Satışda anbar göstərilməyib");
 
         const wantedIds = (input.satir_ids ?? []).filter(Boolean).map(String);

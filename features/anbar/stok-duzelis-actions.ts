@@ -66,7 +66,10 @@ export async function applyStokDuzelis(
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const result = await prisma.$transaction(async (tx) => {
-        // Mövcud stok-u oxu
+        // QA-audit: FOR UPDATE lock — əvvəl oxu FOR UPDATE-siz idi + miqdar MÜTLƏQ force-set olunurdu →
+        // paralel satış force-set ilə clobber olunur, ledger stale ferq yazır (kütləvi drift). İndi
+        // stok sətri kilidlənir, sonra oxu+delta hesabı+increment atomikdir.
+        await tx.$queryRaw`SELECT id FROM stok WHERE mehsul_id = ${d.mehsul_id}::uuid AND anbar_id = ${d.anbar_id} AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
         const existing = await tx.stok.findFirst({
           where: { mehsul_id: d.mehsul_id, anbar_id: d.anbar_id, sahibkar_id: sahibkarId },
           select: { id: true, miqdar: true, son_qiymet: true },
@@ -78,12 +81,12 @@ export async function applyStokDuzelis(
           throw new Error("Yeni miqdar köhnə miqdarla eynidir — düzəlişə ehtiyac yoxdur");
         }
 
-        // Atomic upsert
+        // Kilid altında delta ilə (mütləq force-set əvəzinə) — paralel dəyişikliklə uyğun.
         await tx.stok.upsert({
           where: {
             mehsul_id_anbar_id: { mehsul_id: d.mehsul_id, anbar_id: d.anbar_id },
           },
-          update: { miqdar: d.yeni_miqdar },
+          update: { miqdar: { increment: ferq } },
           create: {
             sahibkar_id: sahibkarId,
             mehsul_id: d.mehsul_id,

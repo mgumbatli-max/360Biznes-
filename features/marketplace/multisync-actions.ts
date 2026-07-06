@@ -248,6 +248,10 @@ export async function bulkSyncMarketplaces(
 
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    // QA-audit: toplu sync də rate-limit yoxlamalıdır (syncAllMarketplaces edir, bu etmirdi →
+    // 'saatlıq 1 toplu sync' limiti bypass olunurdu).
+    const rate = await checkSyncRateLimit();
+    if (!rate.ok) return { ok: false, error: rate.error };
     let synced = 0;
     let failed = 0;
     const details: { id: string; ok: boolean; error?: string }[] = [];

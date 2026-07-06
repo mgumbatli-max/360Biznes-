@@ -1197,6 +1197,44 @@ export async function customerApproveQuote(input: FormData): Promise<ActionResul
           qeyd: note,
         },
       });
+
+      // QA-audit: müştəri təklifi RƏDD edəndə sərf olunmuş ehtiyat hissələrin stoku BƏRPA + müştəri
+      // balansı recalc (changeServisStatus:316 redd_edildi məntiqinin public-endpoint qarşılığı;
+      // əvvəl edilmirdi → hissə stoka qayıtmır + borc stale qalırdı).
+      if (newStatus === "redd_edildi") {
+        const toRestore = await tx.$queryRaw<Array<{ mehsul_id: string; anbar_id: number; net: number }>>`
+          SELECT mehsul_id::text AS mehsul_id, anbar_id::int AS anbar_id,
+            (SUM(CASE WHEN nov = 'servis_mexaric' THEN miqdar ELSE 0 END)
+             - SUM(CASE WHEN nov = 'servis_iade' THEN miqdar ELSE 0 END))::float AS net
+          FROM anbar_hereketleri
+          WHERE ref_nov = 'servis' AND ref_id = ${d.servis_id}::uuid AND sahibkar_id = ${s.sahibkar_id}::uuid
+            AND mehsul_id IS NOT NULL AND anbar_id IS NOT NULL AND nov IN ('servis_mexaric', 'servis_iade')
+          GROUP BY mehsul_id, anbar_id
+          HAVING (SUM(CASE WHEN nov = 'servis_mexaric' THEN miqdar ELSE 0 END)
+             - SUM(CASE WHEN nov = 'servis_iade' THEN miqdar ELSE 0 END)) > 0.0001
+        `;
+        for (const r of toRestore) {
+          await tx.stok.updateMany({
+            where: { sahibkar_id: s.sahibkar_id, mehsul_id: r.mehsul_id, anbar_id: r.anbar_id },
+            data: { miqdar: { increment: r.net } },
+          });
+          await tx.anbar_hereketleri.create({
+            data: {
+              sahibkar_id: s.sahibkar_id, mehsul_id: r.mehsul_id, anbar_id: r.anbar_id,
+              nov: "servis_iade", miqdar: r.net, qiymet: 0,
+              qeyd: `Müştəri təklifi rədd etdi — hissə stoku bərpa: ${d.servis_id}`,
+              ref_nov: "servis", ref_id: d.servis_id, edilen_id: null,
+            },
+          });
+        }
+        const svc = await tx.servis_qeydleri.findFirst({ where: { id: d.servis_id }, select: { musteri_id: true } });
+        if (svc?.musteri_id) {
+          const { recalculateCustomerBalance } = await import("@/lib/balance/customer-balance");
+          // tx prismaUnscoped tranzaksiya client-idir (public endpoint) — runtime uyğun, tip cast.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await recalculateCustomerBalance(svc.musteri_id, tx as any);
+        }
+      }
     });
     try {
       await safeAuditLog({

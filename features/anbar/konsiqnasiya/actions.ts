@@ -125,6 +125,9 @@ export async function acceptKonsReturn(formData: FormData): Promise<ActionResult
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       await prisma.$transaction(async (tx) => {
+        // QA-audit: FOR UPDATE lock — oxu+qaliq validasiya+force-set atomik deyildi → paralel geri-qəbul
+        // eyni qalıqdan iki dəfə çıxıb stoku ikiqat artırırdı. İndi sətir kilidlənir.
+        await tx.$queryRaw`SELECT id FROM konsiqnasiya WHERE id = ${d.id} AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
         const k = await tx.konsiqnasiya.findFirst({
           where: { id: d.id, sahibkar_id: sahibkarId },
           select: { id: true, mehsul_id: true, anbar_id: true, istiqamet: true, sayi: true, satilan_say: true, qaliq_say: true, hesablashma_status: true },

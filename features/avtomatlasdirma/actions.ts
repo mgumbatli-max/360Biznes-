@@ -393,7 +393,10 @@ export async function runRuleNow(id: number): Promise<{ ok: true; matched: numbe
                   sahibkar_id: sahibkarId,
                   kateqoriya_id: cat.id,
                   kateqoriya_kod: cat.kod,
-                  rule_id: rule.id,
+                  // QA-audit: alerts.rule_id FK alert_rules-ə işarə edir; burada avto_qayda.id yazılırdı
+                  // → FK pozğunluğu ilə create sükutla uğursuz olurdu (alert heç yaranmır). rule_id=null,
+                  // qaynaq rule_kod-da saxlanılır.
+                  rule_id: null,
                   rule_kod: rule.trigger_kod,
                   basliq: `${rule.ad}: ${ex.label}`.slice(0, 255),
                   tesvir: rule.tesvir ?? "Manual icra nəticəsində yaradıldı",

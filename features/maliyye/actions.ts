@@ -440,6 +440,28 @@ export async function createAccount(input: FormData): Promise<ActionResult> {
           aktiv: true,
         },
       });
+      // QA-audit: açılış qalığı YALNIZ cache sahəsinə yazılırdı — SoT recalc (calculateAccountBalance)
+      // qaliqı yalnız finance_operations-dan hesabladığı üçün açılış balansı recalc-də İTİRİRDİ.
+      // İndi ilkin qaliq>0 olduqda 'acilis' daxil finance_operations qeydi yaradılır.
+      if (d.qaliq && d.qaliq > 0) {
+        try {
+          let acilisType = await prisma.finance_operation_types.findUnique({ where: { kod: "acilis" }, select: { id: true } }).catch(() => null);
+          if (!acilisType) {
+            acilisType = await prisma.finance_operation_types.create({
+              data: { kod: "acilis", ad: "Açılış qalığı", qrup: "acilis", y_n: "daxil" },
+              select: { id: true },
+            });
+          }
+          await prisma.finance_operations.create({
+            data: {
+              sahibkar_id: sahibkarId, type_id: acilisType.id, type_kod: "acilis", y_n: "daxil",
+              tarix: new Date(), meblegh: d.qaliq, azn_meblegh: d.qaliq,
+              hesab_id: created.id, status: "aktiv", qeyd: `[ACILIS] ${d.ad} açılış qalığı`,
+              yaradan_id: istifadeciId,
+            },
+          });
+        } catch (e) { console.warn("[createAccount] açılış op skipped:", e); }
+      }
       revalidatePath("/maliyye/hesab");
       revalidatePath("/maliyye");
       bustMaliyyeCache();
