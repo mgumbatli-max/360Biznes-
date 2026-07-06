@@ -144,7 +144,9 @@ export async function calculateBordro(input: FormData): Promise<Result> {
           by: ["satis_meneceri_id"],
           where: {
             sahibkar_id: sahibkarId,
-            status: { not: "legv" },
+            // QA-audit: komissiya bazası qaytarılmış satışları saymamalıdır (əvvəl yalnız 'legv'
+            // çıxarılırdı → 'qaytarilib' satışlar hələ komissiyaya girirdi).
+            status: { notIn: ["legv", "qaytarilib"] },
             tarix: { gte: start, lt: end },
             satis_meneceri_id: { not: null },
           },

@@ -359,8 +359,17 @@ export async function changeServisStatus(
       // Zəmanət uzadılması — yalnız "musteriye_tehvil" və options.extendWarranty
       if (status === "musteriye_tehvil" && options?.extendWarranty && prev.mehsul_id) {
         try {
+          // QA-audit: əvvəl YALNIZ mehsul_id üzrə axtarırdı (kataloq) → BAŞQA müştərinin
+          // zəmanətini hədəf ala bilirdi. İndi bu servisin MÜŞTƏRİSİNƏ scope + `qeyd`-də bu
+          // servisin tag-ı yoxdursa (limitsiz təkrar-uzatma önlənir).
           const active = await prisma.zemanetler.findFirst({
-            where: { mehsul_id: prev.mehsul_id, status: "aktiv", bitme_tarixi: { gte: new Date() } },
+            where: {
+              mehsul_id: prev.mehsul_id,
+              ...(prev.musteri_id ? { musteri_id: prev.musteri_id } : {}),
+              status: "aktiv",
+              bitme_tarixi: { gte: new Date() },
+              NOT: { qeyd: { contains: `[Servis ${id}]` } },
+            },
             orderBy: { bitme_tarixi: "desc" },
           });
           if (active) {
@@ -790,6 +799,20 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
             dupId = dup.id;
             return { kassaOpId: null as string | null, satisId: null as string | null };
           }
+          // QA-audit: finance_op yaranmayan yolda (kassaya_elave_et=false, satis_kimi_qeyd_et=true)
+          // dedup boşa çıxırdı → dublikat satış + ikiqat musteriden_alinan. İndi satışda da yoxla.
+          const dupSale = await tx.satis_sifarisleri.findFirst({
+            where: {
+              sahibkar_id: sahibkarId,
+              yaradildi: { gte: since },
+              qeyd: { contains: `[IDEM:${idemKey}]` },
+            },
+            select: { id: true },
+          });
+          if (dupSale) {
+            dupId = dupSale.id;
+            return { kassaOpId: null as string | null, satisId: dupSale.id };
+          }
         }
 
         // 1) Servisi oxu — 🔒 sahibkar_id açıq filtri
@@ -910,7 +933,9 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
               odenilmis: d.meblegh,
               kassa_id: null,
               filial_id: servis.filial_id ?? null,
-              qeyd: `[XIDMET] Servis: ${servis.nomre} — ${servis.problem_tesviri.slice(0, 80)}`,
+              // QA-audit: idemKey satışın qeydinə də yazılır ki, kassaya_elave_et=false yolunda
+              // (finance_op yaranmayan) dublikat aşkarlana bilsin.
+              qeyd: `[XIDMET] Servis: ${servis.nomre} — ${servis.problem_tesviri.slice(0, 80)}${idemKey ? ` [IDEM:${idemKey}]` : ""}`,
               yaradan_id: istifadeciId,
               satis_meneceri_id: istifadeciId,
               qaralama: false,
@@ -1225,6 +1250,15 @@ export async function deleteEhtiyatHisse(input: FormData): Promise<ActionResult>
           select: { temir_xerci: true, musteri_id: true },
         });
         if (!evvel) throw new Error("Servis tapılmadı");
+
+        // QA-audit: təkrar-reversal guard — orijinal ledger sətri silinmir (soft-reversal),
+        // 'artıq qaytarılıb' yoxlaması yox idi → təkrar çağırış stoku İKİQAT geri qaytarırdı.
+        // Bu hereket üçün reversal sətri (qeyd-də tag) artıq varsa, dayan.
+        const alreadyReversed = await tx.anbar_hereketleri.findFirst({
+          where: { sahibkar_id: sahibkarId, nov: "servis_iade", qeyd: { contains: `ref hereket: ${d.hereket_id}` } },
+          select: { id: true },
+        });
+        if (alreadyReversed) throw new Error("Bu ehtiyat hissə artıq qaytarılıb");
 
         // Reversal row — orijinal mənfi miqdar üçün müsbət reverse yaz
         if (h.mehsul_id && h.anbar_id) {

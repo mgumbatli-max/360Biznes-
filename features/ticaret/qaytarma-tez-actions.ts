@@ -767,9 +767,21 @@ export async function returnFullSale(
         }
 
         if (fullReturn) {
+          // QA-audit: tam qaytarmada yalnız status yazılırdı, son_mebleg qalırdı → nağd/kart satışda
+          // revenue şişirdi (K6 P&L nağd qaytarmanı son_mebleg-in azaldığını fərz edir). Nisyə-də
+          // son_mebleg qalır (P&L returns aqreqatı onu çıxır); nağd/kart-da 0-a endirilir.
+          const isNisyeFull = sale.odenis_nov === "nisye" || sale.odenis_nov === "borc";
+          const sonFull = Number(sale.son_mebleg ?? 0);
+          const odFull = Number(sale.odenilmis ?? 0);
+          const yeniSonFull = Math.max(0, sonFull - total);
           await tx.satis_sifarisleri.update({
             where: { id: sale.id },
-            data: { status: "qaytarilib" },
+            data: {
+              status: "qaytarilib",
+              ...(!isNisyeFull
+                ? { son_mebleg: yeniSonFull, odenilmis: Math.min(odFull, yeniSonFull) }
+                : {}),
+            },
           });
         } else {
           // Hissəvi qaytarma — nisyə satış olubsa odenilmis-ə virtual payment əlavə et
