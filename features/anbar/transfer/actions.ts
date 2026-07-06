@@ -233,7 +233,16 @@ export async function partialAcceptTransfer(input: {
     const permCheck = await requireAnbarActionPerm(["stok.transfer", "anbar.idare"]);
     if (!permCheck.ok) return { ok: false, error: permCheck.error };
     try {
+      // QA-fix (natamam-fix): DELTA hesabı düzgün idi, amma paralel çağırış üçün LOCK yox idi →
+      // iki eyni-vaxtlı qəbul köhnə qebul_edilen oxuyub eyni delta-nı iki dəfə tətbiq edirdi. Transfer
+      // sətirlərini FOR UPDATE ilə kilidləyirik → previouslyReceived cari DB dəyərini oxuyur.
+      // QA-fix (edge): input-da dublikat satir_id → Map son dəyəri götürür (səssiz). Rədd et.
+      const inputIds = input.lines.map((l) => l.satir_id);
+      if (new Set(inputIds).size !== inputIds.length) {
+        return { ok: false, error: "Eyni sətir bir neçə dəfə göndərilib" };
+      }
       await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM transfer_satirlari WHERE transfer_id = ${input.id}::uuid FOR UPDATE`;
         const t = await tx.anbar_transferleri.findUnique({
           where: { id: input.id },
           include: { transfer_satirlari: true },

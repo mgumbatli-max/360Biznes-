@@ -286,7 +286,9 @@ export async function bulkSyncMarketplaces(
       }
       revalidatePath("/marketplace");
       bustMarketplaceCache();
-      await audit("bulk_sync", "marketplace_hesab", null, {
+      // QA-fix: rate-limit sayğacı ilə EYNİ audit (resurs_nov="marketplace_bulk") — əks halda bulkSync
+      // checkSyncRateLimit-i oxuyur amma sayğaca əlavə OLUNMUR → öz saatlıq limitini keçirdi.
+      await audit("sync", "marketplace_bulk", null, {
         yeni_data: { synced, failed, isteklen: ids.length },
         sebeb: `Bulk marketplace sync: ${synced}/${ids.length}`,
       });

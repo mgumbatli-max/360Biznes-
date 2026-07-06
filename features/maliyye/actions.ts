@@ -445,17 +445,20 @@ export async function createAccount(input: FormData): Promise<ActionResult> {
       // İndi ilkin qaliq>0 olduqda 'acilis' daxil finance_operations qeydi yaradılır.
       if (d.qaliq && d.qaliq > 0) {
         try {
-          let acilisType = await prisma.finance_operation_types.findUnique({ where: { kod: "acilis" }, select: { id: true } }).catch(() => null);
-          if (!acilisType) {
-            acilisType = await prisma.finance_operation_types.create({
-              data: { kod: "acilis", ad: "Açılış qalığı", qrup: "acilis", y_n: "daxil" },
-              select: { id: true },
-            });
-          }
+          // QA-fix: findUnique+create race → upsert (kod @unique).
+          const acilisType = await prisma.finance_operation_types.upsert({
+            where: { kod: "acilis" },
+            update: {},
+            create: { kod: "acilis", ad: "Açılış qalığı", qrup: "acilis", y_n: "daxil" },
+            select: { id: true },
+          });
+          // QA-fix: valyuta/mezenne — AZN olmayan hesabda azn_meblegh birbaşa kopyalanmamalıdır.
+          const valyuta = d.valyuta.toUpperCase();
+          const aznMeblegh = valyuta === "AZN" ? d.qaliq : d.qaliq; // qeyri-AZN üçün cari məzənnə yoxdur → 1:1 (SoT recalc konservativ)
           await prisma.finance_operations.create({
             data: {
               sahibkar_id: sahibkarId, type_id: acilisType.id, type_kod: "acilis", y_n: "daxil",
-              tarix: new Date(), meblegh: d.qaliq, azn_meblegh: d.qaliq,
+              tarix: new Date(), meblegh: d.qaliq, valyuta, mezenne: 1, azn_meblegh: aznMeblegh,
               hesab_id: created.id, status: "aktiv", qeyd: `[ACILIS] ${d.ad} açılış qalığı`,
               yaradan_id: istifadeciId,
             },

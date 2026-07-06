@@ -80,7 +80,9 @@ export async function reverseLoyaltyForSale(satisId: string, ratio: number, retu
               tx.loyalty_tx.aggregate({ where: { kart_id: kartId, satis_id: satisId, nov: "serf" }, _sum: { mebleg: true } }),
               tx.loyalty_tx.aggregate({ where: { kart_id: kartId, satis_id: satisId, nov: "qaytarma_serf_geri" }, _sum: { mebleg: true } }),
             ]);
-            const originalSpent = Number(spentAgg._sum.mebleg ?? 0);       // serf müsbətdir
+            // QA-fix: serf MƏNFİ saxlanılır (mebleg: -mebleg) → Math.abs. Əvvəl mənfi originalSpent
+            // cap-ı həmişə 0 edir, refund heç işləmirdi.
+            const originalSpent = Math.abs(Number(spentAgg._sum.mebleg ?? 0));
             const alreadyRefunded = Number(refundedAgg._sum.mebleg ?? 0);
             const cappedRefund = Math.max(0, Math.min(refundPoints, originalSpent - alreadyRefunded));
             if (cappedRefund > 0) {

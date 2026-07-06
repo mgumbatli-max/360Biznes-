@@ -45,17 +45,24 @@ export async function getAttemptStatus(sahibkarId: string): Promise<{ count: num
   return { count: s.count, locked: false, remainingSec: null };
 }
 
-/** Uğursuz cəhdi qeyd et. */
+/** Uğursuz cəhdi qeyd et. QA-fix: read-modify-write ATOMİK deyildi (paralel cəhd lockout-u itirirdi) →
+ *  advisory xact-lock (sahibkar açarı) ilə serializasiya. */
 export async function recordFailure(sahibkarId: string, limit = 5): Promise<{ count: number; locked: boolean; remainingSec: number | null }> {
-  const s = await read(sahibkarId);
-  const newCount = s.count + 1;
-  if (newCount >= limit) {
-    const lockedUntil = Date.now() + LOCKOUT_MIN * 60 * 1000;
-    await write(sahibkarId, { count: newCount, lockedUntil });
-    return { count: newCount, locked: true, remainingSec: LOCKOUT_MIN * 60 };
-  }
-  await write(sahibkarId, { count: newCount, lockedUntil: null });
-  return { count: newCount, locked: false, remainingSec: null };
+  return prismaUnscoped.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sahibkarId + ":pinlock"}))`;
+    const row = await tx.ayarlar.findFirst({ where: { sahibkar_id: sahibkarId, qrup: QRUP, acar: ACAR }, select: { deyer: true } });
+    let cur = { count: 0, lockedUntil: null as number | null };
+    if (row?.deyer) { try { const p = JSON.parse(row.deyer); if (typeof p.count === "number") cur = { count: p.count, lockedUntil: p.lockedUntil ?? null }; } catch { /* */ } }
+    const newCount = cur.count + 1;
+    const lockedUntil = newCount >= limit ? Date.now() + LOCKOUT_MIN * 60 * 1000 : null;
+    const state = { count: newCount, lockedUntil };
+    await tx.ayarlar.upsert({
+      where: { sahibkar_id_qrup_acar: { sahibkar_id: sahibkarId, qrup: QRUP, acar: ACAR } },
+      update: { deyer: JSON.stringify(state), yenilendi: new Date() },
+      create: { sahibkar_id: sahibkarId, qrup: QRUP, acar: ACAR, deyer: JSON.stringify(state), nov: "json", tesvir: "Sahibkar PIN cəhd sayğacı" },
+    });
+    return { count: newCount, locked: lockedUntil !== null, remainingSec: lockedUntil !== null ? LOCKOUT_MIN * 60 : null };
+  });
 }
 
 /** Uğurlu girişdə sıfırla. */

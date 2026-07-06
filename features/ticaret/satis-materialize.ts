@@ -137,7 +137,9 @@ export async function materializeApprovedSale(
                 type_id: type.id,
                 type_kod: type.kod,
                 y_n: "daxil",
-                tarix: new Date(),
+                // QA-fix: maliyyə qeydi satışın öz tarixini almalıdır (bugün yox) — auto-approve/gec-təsdiq
+                // halında sənəd yanlış dövrə düşürdü.
+                tarix: sale.tarix ?? new Date(),
                 meblegh: new Prisma.Decimal(odenilen.toFixed(2)),
                 valyuta: "AZN",
                 mezenne: 1,
