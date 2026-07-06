@@ -38,45 +38,51 @@ export async function openKassa(input: FormData | z.infer<typeof OpenSchema>): P
     return await withTenant(async () => {
       const { istifadeciId, sahibkarId } = requireTenant();
 
-      const existing = await prisma.kassalar.findFirst({
-        where: { status: "acig", acan_id: istifadeciId },
-      });
-      if (existing) {
-        return { ok: false as const, error: "Sizdə artıq açıq kassa var. Əvvəl bağlayın." };
-      }
-
-      // Default maliye hesabı — istifadəçi seçməyibsə ilk aktiv nağd hesab
-      let maliyeHesabId = parsed.data.maliye_hesab_id ?? null;
-      if (!maliyeHesabId) {
-        const defHesab = await prisma.maliye_hesablari.findFirst({
-          where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
-          orderBy: { yaradildi: "asc" },
-          select: { id: true },
+      // QA-audit: "artıq açıq kassa var" yoxlaması atomik deyildi (nə tx, nə lock) → eyni kassirin
+      // paralel/double-click açılışı İKİ eyni vaxtlı açıq sessiya yaradırdı. İndi advisory xact-lock
+      // (kassir açarı üzrə) + yoxlama+create tx daxilində → serializasiya olunur.
+      return await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${istifadeciId + ":openkassa"}))`;
+        const existing = await tx.kassalar.findFirst({
+          where: { status: "acig", acan_id: istifadeciId },
         });
-        maliyeHesabId = defHesab?.id ?? null;
-      }
+        if (existing) {
+          return { ok: false as const, error: "Sizdə artıq açıq kassa var. Əvvəl bağlayın." };
+        }
 
-      const created = await prisma.kassalar.create({
-        data: {
-          sahibkar_id: sahibkarId,
-          ad: parsed.data.ad,
-          filial_id: parsed.data.filial_id ?? null,
-          acan_id: istifadeciId,
-          acilis_qaligi: parsed.data.acilis_qaligi,
-          status: "acig",
-          maliye_hesab_id: maliyeHesabId,
-        },
+        // Default maliye hesabı — istifadəçi seçməyibsə ilk aktiv nağd hesab
+        let maliyeHesabId = parsed.data.maliye_hesab_id ?? null;
+        if (!maliyeHesabId) {
+          const defHesab = await tx.maliye_hesablari.findFirst({
+            where: { sahibkar_id: sahibkarId, aktiv: true, nov: "negd" },
+            orderBy: { yaradildi: "asc" },
+            select: { id: true },
+          });
+          maliyeHesabId = defHesab?.id ?? null;
+        }
+
+        const created = await tx.kassalar.create({
+          data: {
+            sahibkar_id: sahibkarId,
+            ad: parsed.data.ad,
+            filial_id: parsed.data.filial_id ?? null,
+            acan_id: istifadeciId,
+            acilis_qaligi: parsed.data.acilis_qaligi,
+            status: "acig",
+            maliye_hesab_id: maliyeHesabId,
+          },
+        });
+        await audit("yarat", "kassa", created.id, {
+          yeni_data: {
+            ad: parsed.data.ad,
+            acilis_qaligi: parsed.data.acilis_qaligi,
+            filial_id: parsed.data.filial_id ?? null,
+          },
+          sebeb: "Kassa açıldı",
+        });
+        revalidatePath("/pos");
+        return { ok: true as const, data: { id: created.id } };
       });
-      await audit("yarat", "kassa", created.id, {
-        yeni_data: {
-          ad: parsed.data.ad,
-          acilis_qaligi: parsed.data.acilis_qaligi,
-          filial_id: parsed.data.filial_id ?? null,
-        },
-        sebeb: "Kassa açıldı",
-      });
-      revalidatePath("/pos");
-      return { ok: true as const, data: { id: created.id } };
     });
   } catch (e) {
     const err = e as Error & { code?: string; meta?: unknown };

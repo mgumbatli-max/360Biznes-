@@ -435,10 +435,22 @@ export async function commitCampaignApplications(
               kupon_kod: kuponKod,
             },
           });
-          await tx.campaigns.update({
-            where: { id: a.campaign_id },
-            data: { current_uses: { increment: 1 }, yenilendi: new Date() },
-          });
+          // QA-audit: kampaniya current_uses-u ƏVVƏL guard-sız artırılırdı (kupon yolundan fərqli) —
+          // paralel satışlar max_uses-i AŞA bilirdi. İndi max_uses təyin olunubsa atomik şərtli artım.
+          const camp = await tx.campaigns.findFirst({ where: { id: a.campaign_id }, select: { max_uses: true } });
+          if (camp) {
+            if (!camp.max_uses || camp.max_uses <= 0) {
+              await tx.campaigns.update({
+                where: { id: a.campaign_id },
+                data: { current_uses: { increment: 1 }, yenilendi: new Date() },
+              });
+            } else {
+              await tx.campaigns.updateMany({
+                where: { id: a.campaign_id, current_uses: { lt: camp.max_uses } },
+                data: { current_uses: { increment: 1 }, yenilendi: new Date() },
+              });
+            }
+          }
 
           // Loyalty bonus accrual — ATOMİK increment (əvvəl oxu-hesabla-yaz race idi).
           if (a.bonus_qazanildi > 0 && kontragentId) {

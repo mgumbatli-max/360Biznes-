@@ -61,8 +61,11 @@ export async function approveRequest(id: number, note?: string): Promise<ActionR
           error: "Öz yaratdığınız sorğunu təsdiq edə bilməzsiniz (4-eyes qaydası). Başqa təsdiq edən şəxsə müraciət edin.",
         };
       }
-      await prisma.tesdiq_telep.update({
-        where: { id },
+      // QA-audit: ATOMİK claim — status='gozleyir' şərti ilə (əvvəl update({where:{id}}) idi,
+      // status yoxlaması yox idi → paralel/təkrar təsdiq ikiqat materiallaşma yaradırdı; müq.
+      // bulkApprove:414 status guard işlədir). count===0 → artıq emal olunub, materiallaşma çağırılmır.
+      const claim = await prisma.tesdiq_telep.updateMany({
+        where: { id, status: "gozleyir" },
         data: {
           status: "tesdiq",
           baxan_id: istifadeciId,
@@ -70,6 +73,9 @@ export async function approveRequest(id: number, note?: string): Promise<ActionR
           netice_tarix: new Date(),
         },
       });
+      if (claim.count === 0) {
+        return { ok: false, error: "Bu sorğu artıq təsdiqlənib və ya emal olunub" };
+      }
       await logTransition(id, istifadeciId, cur?.status ?? null, "tesdiq", "tesdiqlendi", note);
       await audit("tesdiq", "tesdiq_telep", id, {
         evvelki_data: { status: cur?.status ?? null },

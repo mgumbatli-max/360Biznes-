@@ -510,21 +510,23 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const list = await prisma.maas_hesablamalar.findMany({
-        where: { il, ay, sahibkar_id: sahibkarId, status: { not: "odenilib" } },
-      });
       const now = new Date();
       let count = 0;
       let financeFailCount = 0;
-      // Perf (#2): əvvəl hər bordro üçün ayrıca $transaction idi (N round-trip).
-      // İndi TƏK transaction: status update-ləri updateMany ilə, ödəniş qeydləri
-      // createMany ilə toplu yazılır; finance-leg-lər balans yoxlaması olduğu üçün
-      // həmin tx içində SEQUENTIAL qalır (atomarlıq + balans nəzarəti qorunur).
-      if (list.length > 0) {
-        await prisma.$transaction(async (tx) => {
+      // QA-audit: bordro oxu ƏVVƏL tx-dən KƏNARDA idi + updateMany status-guard-sız ({id:{in:ids}})
+      // → paralel payBordro/bulkPayBordro eyni bordronu İKİQAT ödəyirdi. İndi oxu tx daxilində +
+      // hədəf sətirlər FOR UPDATE ilə kilidlənir → paralel çağırış serializasiya olunur (ikinci
+      // çağırış boş siyahı oxuyur, ikiqat ödəniş olmur).
+      let list: Awaited<ReturnType<typeof prisma.maas_hesablamalar.findMany>> = [];
+      await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM maas_hesablamalar WHERE il = ${il} AND ay = ${ay} AND sahibkar_id = ${sahibkarId}::uuid AND status <> 'odenilib' FOR UPDATE`;
+        list = await tx.maas_hesablamalar.findMany({
+          where: { il, ay, sahibkar_id: sahibkarId, status: { not: "odenilib" } },
+        });
+        if (list.length > 0) {
           const ids = list.map((b) => b.id);
           await tx.maas_hesablamalar.updateMany({
-            where: { id: { in: ids } },
+            where: { id: { in: ids }, status: { not: "odenilib" } },
             data: { status: "odenilib", odenish_tarixi: now },
           });
           await tx.isci_odenisleri.createMany({
@@ -550,8 +552,8 @@ export async function bulkPayBordro(input: FormData): Promise<Result> {
             if (!res.ok) financeFailCount++;
             count++;
           }
-        });
-      }
+        }
+      });
       if (financeFailCount > 0) {
         console.warn(`[bulkPayBordro] ${financeFailCount}/${count} ödəniş hesab-a bağlanmadı (default kassa/bank yox)`);
       }
