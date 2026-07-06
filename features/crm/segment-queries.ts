@@ -91,6 +91,8 @@ export async function getSegmentCustomers(kod: string): Promise<SegmentCustomer[
       where,
       orderBy: { yaradildi: "desc" },
       take: 200,
+      // QA-perf: yalnız map-də işlənən sahələr (əvvəl bütün sütunlar çəkilirdi — over-fetch).
+      select: { id: true, ad: true, telefon: true, email: true, alacaq: true, son_temas: true },
     });
     return rows.map((r) => ({
       id: r.id,
@@ -105,7 +107,11 @@ export async function getSegmentCustomers(kod: string): Promise<SegmentCustomer[
 
 export async function getCustomSegments() {
   return withTenant(async () => {
-    const rows = await prisma.musteri_seqment.findMany({ orderBy: { ad: "asc" } });
+    const rows = await prisma.musteri_seqment.findMany({
+      orderBy: { ad: "asc" },
+      // QA-perf: yalnız map-də işlənən sahələr.
+      select: { id: true, kod: true, ad: true, tesvir: true, reng: true, sistem: true },
+    });
     return rows.map((r) => ({
       id: r.id,
       kod: r.kod,

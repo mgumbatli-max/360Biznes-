@@ -121,9 +121,10 @@ export async function getUnifiedLog(f: LogFilter = {}): Promise<UnifiedLogEntry[
           where: { status: "hell_olundu", resolved_at: { not: null } },
           orderBy: { resolved_at: "desc" },
           take: Math.floor(limit / 3),
-          include: {
+          // QA-perf: include → select (yalnız loop-da işlənən sahələr; alert_categories join lazımsız idi).
+          select: {
+            id: true, resolved_at: true, basliq: true, resolution_note: true,
             istifadeciler_alerts_resolved_byToistifadeciler: { select: { ad_soyad: true } },
-            alert_categories: { select: { ad: true, emoji: true } },
           },
         }),
         prisma.alert_escalations.findMany({
