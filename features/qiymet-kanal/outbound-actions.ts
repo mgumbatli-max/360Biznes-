@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
-import { ensurePermission } from "@/lib/auth/role-check";
+import { permGate } from "@/lib/auth/role-check";
 import { computeChannelPrice, type KanalQiymetFormula } from "./types";
 import { getKanalExtraServer } from "./kanal-extra";
 import { recordOutboundPush } from "./outbound-stats";
@@ -41,7 +41,7 @@ export async function pushStockToChannel(input: z.input<typeof KanalSchema>): Pr
 
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-ensurePermission("ayar.kanal");
+{ const _pg = permGate("ayar.kanal"); if (!_pg.ok) return _pg; }
 
     const extra = await getKanalExtraServer(sahibkarId, kanal);
     if (!extra.outbound_url) {
@@ -179,7 +179,7 @@ export async function pushSpecificProductsToChannel(
 ): Promise<{ ok: true; sent: number } | { ok: false; error: string }> {
   if (productIds.length === 0) return { ok: true, sent: 0 };
   const { sahibkarId } = requireTenant();
-  ensurePermission("ayar.kanal");
+  { const _pg = permGate("ayar.kanal"); if (!_pg.ok) return _pg; }
   const extra = await getKanalExtraServer(sahibkarId, kanal);
   if (!extra.outbound_url) return { ok: false, error: "outbound_url yoxdur" };
 
@@ -314,7 +314,7 @@ export async function processRetryQueue(input: z.input<typeof KanalSchema>): Pro
 
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    ensurePermission("ayar.kanal");
+    { const _pg = permGate("ayar.kanal"); if (!_pg.ok) return _pg; }
     const extra = await getKanalExtraServer(sahibkarId, kanal);
 
     const queue = await getRetryQueue(sahibkarId, kanal);

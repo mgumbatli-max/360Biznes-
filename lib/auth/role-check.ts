@@ -63,3 +63,25 @@ export function ensureOwner(): void {
     throw new Error("Bu əməliyyat yalnız biznes sahibinə (owner) icazəlidir");
   }
 }
+
+/**
+ * QA-audit (professional): ensurePermission-un RETURN variantı — throw əvəzinə {ok,error} qaytarır ki,
+ * bloklanmış istifadəçi generic 500 yox, təmiz "icazə yoxdur" mesajı görsün. İstifadə:
+ *   const g = permGate("qiymet.idare"); if (!g.ok) return g;
+ */
+export function permGate(...perms: string[]): { ok: true } | { ok: false; error: string } {
+  const ctx = requireTenant();
+  if (ctx.rolAd === "admin" || ctx.rolAd === "sahibkar") return { ok: true };
+  if (perms.length === 0) return { ok: true };
+  if (perms.some((p) => ctx.icazeler.includes(p))) return { ok: true };
+  return { ok: false, error: `Bu əməliyyat üçün icazə yoxdur (${perms.join(" / ")})` };
+}
+
+/** QA-audit: ensureOwner-in RETURN variantı — təmiz mesajla. */
+export function ownerGate(): { ok: true } | { ok: false; error: string } {
+  const ctx = requireTenant();
+  if (ctx.rolAd !== "sahibkar") {
+    return { ok: false, error: "Bu əməliyyat yalnız biznes sahibinə (owner) icazəlidir" };
+  }
+  return { ok: true };
+}

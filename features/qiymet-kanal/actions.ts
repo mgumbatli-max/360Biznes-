@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
-import { ensurePermission } from "@/lib/auth/role-check";
+import { permGate } from "@/lib/auth/role-check";
 import type { KanalQiymetFormula } from "./types";
 
 // QA-audit: kanal qiymət/komissiya mutasiyaları marja/qiymət mənbəyini dəyişir → icazə guard-ı.
@@ -40,7 +40,7 @@ export async function saveKanalKomissiya(input: z.input<typeof KomissiyaSchema>)
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    ensurePermission(...KANAL_PERM);
+    { const _pg = permGate(...KANAL_PERM); if (!_pg.ok) return _pg; }
     try {
       const data = {
         komissiya_faiz: d.komissiya_faiz,
@@ -96,7 +96,7 @@ export async function saveKanalKomissiya(input: z.input<typeof KomissiyaSchema>)
 export async function deleteKanalKomissiya(id: number): Promise<Result> {
   return withTenant(async () => {
     try {
-      ensurePermission(...KANAL_PERM);
+      { const _pg = permGate(...KANAL_PERM); if (!_pg.ok) return _pg; }
       const row = await prisma.qiymet_kanal_komissiya.findUnique({ where: { id } });
       if (!row) return { ok: false, error: "Tapılmadı" };
       // Bu kanala bağlı bütün mehsul override-larını da sil
@@ -132,7 +132,7 @@ export async function saveMehsulKanalQiymet(input: z.input<typeof QiymetSchema>)
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
-    ensurePermission(...KANAL_PERM);
+    { const _pg = permGate(...KANAL_PERM); if (!_pg.ok) return _pg; }
     try {
       // formula="baza" → DB-də row yoxdur (varsa sil)
       if (d.formula === "baza") {
@@ -203,7 +203,7 @@ export async function bulkApplyMethodToAllProducts(
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
-    ensurePermission(...KANAL_PERM);
+    { const _pg = permGate(...KANAL_PERM); if (!_pg.ok) return _pg; }
     try {
       const [kanal, products] = await Promise.all([
         prisma.qiymet_kanal_komissiya.findUnique({
@@ -309,7 +309,7 @@ export async function bulkApplyMethodToAllChannels(input: z.input<typeof BulkSch
   const d = parsed.data;
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
-    ensurePermission(...KANAL_PERM);
+    { const _pg = permGate(...KANAL_PERM); if (!_pg.ok) return _pg; }
     try {
       const [mehsul, kanallar] = await Promise.all([
         prisma.mehsullar.findFirst({
