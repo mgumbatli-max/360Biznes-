@@ -239,6 +239,13 @@ export async function saveExpense(input: FormData): Promise<ActionResult> {
           status: "ugur",
         });
       } catch { /* non-fatal */ }
+
+      // Roadmap (proaktivlik): bu kateqoriya büdcəni aşıbsa bildiriş mərkəzinə alert (best-effort).
+      try {
+        const { checkExpenseBudgetAlert } = await import("./budget-alert");
+        await checkExpenseBudgetAlert(sahibkarId, d.kateqoriya_id ?? null);
+      } catch { /* non-fatal */ }
+
       return { ok: true, id: id! };
     } catch (e) {
       console.error("[saveExpense]", e);
@@ -2414,6 +2421,12 @@ export async function saveExpenseWithInvoiceLink(input: FormData): Promise<Actio
       if (alis_id) {
         await applyExpenseToInvoice(alis_id, d.mebleg, d.tesvir.trim(), sahibkarId, userId ?? null);
       }
+
+      // Roadmap: büdcə-aşım alert (best-effort).
+      try {
+        const { checkExpenseBudgetAlert } = await import("./budget-alert");
+        await checkExpenseBudgetAlert(sahibkarId, d.kateqoriya_id ?? null);
+      } catch { /* non-fatal */ }
 
       revalidatePath("/maliyye");
       revalidatePath("/maliyye/xercler");
