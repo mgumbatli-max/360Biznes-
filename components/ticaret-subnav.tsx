@@ -18,6 +18,7 @@ import {
   Truck,
   CreditCard,
   Undo2,
+  Target,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,6 +42,7 @@ const TABS: Tab[] = [
   { href: "/ticaret/alislar", label: "Alış", Icon: Truck },
   { href: "/ticaret/kredit", label: "Kreditlə", Icon: CreditCard, alsoActiveFor: ["/ticaret/kredit-yeni"] },
   { href: "/ticaret/qaytarma", label: "Qaytarma", Icon: Undo2 },
+  { href: "/ticaret/hedef", label: "Hədəf", Icon: Target },
 ];
 
 function isTabActive(tab: Tab, active: string): boolean {
