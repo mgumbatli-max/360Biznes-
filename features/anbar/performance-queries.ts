@@ -53,12 +53,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   online: "Sayt",
 };
 
-function detectChannel(ss: { kassa_id: string | null; marketplace_platform: string | null; odenis_nov: string | null }): string {
-  if (ss.marketplace_platform) return "marketplace";
-  if (ss.kassa_id) return "pos";
-  if (ss.odenis_nov === "nisye" || ss.odenis_nov === "borc") return "borc";
-  return "manual";
-}
+// (detectChannel silindi — kanal təsnifatı artıq SQL CASE ilə edilir, getProductPerformance-a bax.)
 
 export async function getProductPerformance(mehsul_id: string): Promise<ProductPerformance> {
   return withTenant(async () => {
@@ -164,33 +159,32 @@ export async function getProductPerformance(mehsul_id: string): Promise<ProductP
 
     // 8) Kanal bölgü (90 gün)
     const day90 = new Date(Date.now() - 90 * 86400 * 1000);
-    const channelRows = await prisma.satis_sifaris_satirlari.findMany({
-      where: {
-        mehsul_id,
-        satis_sifarisleri: {
-          tarix: { gte: day90 },
-          status: { not: "legv" },
-        },
-      },
-      include: {
-        satis_sifarisleri: {
-          select: { kassa_id: true, marketplace_platform: true, odenis_nov: true },
-        },
-      },
-      take: 5000,
-    });
-
+    // QA-perf: əvvəl 5000 satır+relation çəkib JS-də detectChannel ilə qruplaşdırırdı (over-fetch).
+    // İndi kanal SQL CASE ilə (detectChannel məntiqinin eyni) hesablanıb GROUP BY olunur → ≤4 sətir.
+    // status IS DISTINCT FROM 'legv' — Prisma `not:"legv"` semantikası (NULL daxil).
+    const channelAgg = await prisma.$queryRaw<Array<{ kanal: string; qty: number; mebleg: number }>>`
+      SELECT
+        CASE
+          WHEN ss.marketplace_platform IS NOT NULL THEN 'marketplace'
+          WHEN ss.kassa_id IS NOT NULL THEN 'pos'
+          WHEN ss.odenis_nov IN ('nisye','borc') THEN 'borc'
+          ELSE 'manual'
+        END AS kanal,
+        COALESCE(SUM(sls.miqdar), 0)::float AS qty,
+        COALESCE(SUM(sls.cemi), 0)::float AS mebleg
+      FROM satis_sifaris_satirlari sls
+      JOIN satis_sifarisleri ss ON ss.id = sls.sifaris_id
+      WHERE sls.mehsul_id = ${mehsul_id}::uuid
+        AND sls.sahibkar_id = ${sahibkarId}::uuid
+        AND ss.tarix >= ${day90}
+        AND ss.status IS DISTINCT FROM 'legv'
+      GROUP BY 1
+    `;
     const channelMap = new Map<string, { qty: number; mebleg: number }>();
     let totalChannelQty = 0;
-    for (const sls of channelRows) {
-      if (!sls.satis_sifarisleri) continue;
-      const ch = detectChannel(sls.satis_sifarisleri);
-      const qty = Number(sls.miqdar ?? 0);
-      const cemi = Number(sls.cemi ?? 0);
-      const b = channelMap.get(ch) ?? { qty: 0, mebleg: 0 };
-      b.qty += qty;
-      b.mebleg += cemi;
-      channelMap.set(ch, b);
+    for (const r of channelAgg) {
+      const qty = Number(r.qty ?? 0);
+      channelMap.set(r.kanal, { qty, mebleg: Number(r.mebleg ?? 0) });
       totalChannelQty += qty;
     }
     const channels: ChannelBreakdown[] = Array.from(channelMap.entries())
