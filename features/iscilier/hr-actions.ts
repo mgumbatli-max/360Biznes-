@@ -179,24 +179,22 @@ export async function completeOnboarding(input: FormData): Promise<Result> {
       ];
       const deadline = new Date();
       deadline.setDate(deadline.getDate() + 7);
-      for (const t of checklistTitles) {
-        await prisma.tapshiriqlar
-          .create({
-            data: {
-              sahibkar_id: sahibkarId,
-              basliq: t,
-              tesvir: `Yeni işçi onboarding: ${d.ad_soyad}`,
-              prioritet: "normal",
-              status: "yeni",
-              deadline,
-              yaradan_id: istifadeciId,
-              mesul_id: created.id,
-              tip: "onboarding",
-              gorunurluk: "komanda",
-            },
-          })
-          .catch(() => null);
-      }
+      // QA-perf: N+1 (title başına bir INSERT) → tək createMany. Onboarding tapşırıqları eyni formadadır;
+      // .catch non-fatal qalır (əvvəlki davranışla uyğun).
+      await prisma.tapshiriqlar.createMany({
+        data: checklistTitles.map((t) => ({
+          sahibkar_id: sahibkarId,
+          basliq: t,
+          tesvir: `Yeni işçi onboarding: ${d.ad_soyad}`,
+          prioritet: "normal",
+          status: "yeni",
+          deadline,
+          yaradan_id: istifadeciId,
+          mesul_id: created.id,
+          tip: "onboarding",
+          gorunurluk: "komanda",
+        })),
+      }).catch(() => null);
 
       revalidatePath("/iscilier");
       bustHrCache();

@@ -70,9 +70,10 @@ export async function getCostAnalysis() {
     const { sahibkarId } = requireTenant();
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
-    const [salesRev, cogsRow, opexRow, payrollAgg] = await Promise.all([
+    // QA-perf: getStealthState müstəqil → Promise.all-a daxil (əvvəl aqreqatlardan sonra serial idi).
+    const [salesRev, cogsRow, opexRow, payrollAgg, stealth] = await Promise.all([
       prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, status: { not: "legv" } },
+        where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, status: { not: "legv" } },
         _sum: { son_mebleg: true, endirim_mebleg: true },
       }),
       prisma.$queryRaw<{ cogs: number }[]>`
@@ -87,7 +88,8 @@ export async function getCostAnalysis() {
         SELECT COALESCE(SUM(mebleg), 0)::float AS total FROM "xerclər"
          WHERE sahibkar_id = ${sahibkarId}::uuid AND tarix >= ${monthStart}
       `,
-      prisma.istifadeciler.aggregate({ where: { aktiv: true }, _sum: { aylik_maas: true } }),
+      prisma.istifadeciler.aggregate({ where: { sahibkar_id: sahibkarId, aktiv: true }, _sum: { aylik_maas: true } }),
+      getStealthState(),
     ]);
 
     const revenue = Number(salesRev._sum.son_mebleg ?? 0);
@@ -96,7 +98,6 @@ export async function getCostAnalysis() {
     const opex = Number(opexRow[0]?.total ?? 0);
     const payroll = Number(payrollAgg._sum.aylik_maas ?? 0);
 
-    const stealth = await getStealthState();
     const s = stealth.aktiv ? stealth.scale : 1;
 
     return {

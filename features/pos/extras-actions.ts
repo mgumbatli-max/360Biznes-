@@ -167,40 +167,23 @@ export async function ensureWarrantyForSale(
       const endsAt = new Date(startedAt);
       endsAt.setMonth(endsAt.getMonth() + defaultMonths);
 
-      const tokens: string[] = [];
-      for (const sat of sale.satis_sifaris_satirlari) {
-        const code = `Z-${new Date().getFullYear()}-${Math.random()
-          .toString(36)
-          .slice(2, 8)
-          .toUpperCase()}`;
-        const token = `${Math.random().toString(36).slice(2)}${Math.random()
-          .toString(36)
-          .slice(2)}${Date.now().toString(36)}`.slice(0, 60);
-        const z = await prisma.zemanetler.create({
-          data: {
-            sahibkar_id: sahibkarId,
-            unikal_kod: code,
-            qr_token: token,
-            satis_id: sale.id,
-            satis_satir_id: sat.id,
-            filial_id: sale.filial_id,
-            musteri_id: sale.musteri_id,
-            musteri_ad: sale.kontragentler?.ad ?? null,
-            musteri_telefon: sale.kontragentler?.telefon ?? null,
-            mehsul_id: sat.mehsul_id,
-            mehsul_ad: sat.mehsullar?.ad ?? null,
-            miqdar: sat.miqdar,
-            satis_qiymeti: sat.vahid_qiymet,
-            baslama_tarixi: startedAt,
-            bitme_tarixi: endsAt,
-            ay_sayi: defaultMonths,
-            status: "aktiv",
-            yaradan_id: istifadeciId,
-          },
-          select: { qr_token: true },
-        });
-        tokens.push(z.qr_token);
-      }
+      // QA-perf: N+1 (sətir başına bir INSERT) → tək createMany. Kod/token JS-də yaradıldığı üçün
+      // əvvəlcədən hazırlanır, sonra tokens qaytarılır. Davranış-identik.
+      const yil = new Date().getFullYear();
+      const zemanetRows = sale.satis_sifaris_satirlari.map((sat) => {
+        const code = `Z-${yil}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+        const token = `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`.slice(0, 60);
+        return {
+          sahibkar_id: sahibkarId, unikal_kod: code, qr_token: token, satis_id: sale.id,
+          satis_satir_id: sat.id, filial_id: sale.filial_id, musteri_id: sale.musteri_id,
+          musteri_ad: sale.kontragentler?.ad ?? null, musteri_telefon: sale.kontragentler?.telefon ?? null,
+          mehsul_id: sat.mehsul_id, mehsul_ad: sat.mehsullar?.ad ?? null, miqdar: sat.miqdar,
+          satis_qiymeti: sat.vahid_qiymet, baslama_tarixi: startedAt, bitme_tarixi: endsAt,
+          ay_sayi: defaultMonths, status: "aktiv", yaradan_id: istifadeciId,
+        };
+      });
+      await prisma.zemanetler.createMany({ data: zemanetRows, skipDuplicates: true });
+      const tokens = zemanetRows.map((r) => r.qr_token);
       return { ok: true, tokens, count: tokens.length };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Bilinməyən xəta";
