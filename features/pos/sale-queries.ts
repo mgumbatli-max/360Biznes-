@@ -1,5 +1,6 @@
 import "server-only";
-import { Prisma, prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { Prisma, prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { searchProductIdsSpaceInsensitive } from "@/lib/db/space-insensitive-search";
@@ -245,12 +246,17 @@ export type SalespersonOption = { id: string; ad_soyad: string };
 
 export async function getSalespersonOptions(): Promise<SalespersonOption[]> {
   return withTenant(async () => {
-    const rows = await prisma.istifadeciler.findMany({
-      where: { aktiv: true },
-      orderBy: { ad_soyad: "asc" },
-      select: { id: true, ad_soyad: true },
-    });
-    return rows;
+    const { sahibkarId } = requireTenant();
+    // QA-perf: POS satıcı dropdown-u reference-data (nadir dəyişir) → tenant-safe cache 120s.
+    return unstable_cache(
+      () => prismaUnscoped.istifadeciler.findMany({
+        where: { sahibkar_id: sahibkarId, aktiv: true },
+        orderBy: { ad_soyad: "asc" },
+        select: { id: true, ad_soyad: true },
+      }),
+      ["pos-salesperson-opt", sahibkarId],
+      { revalidate: 120, tags: [`ref:${sahibkarId}:istifadeci`] },
+    )();
   });
 }
 

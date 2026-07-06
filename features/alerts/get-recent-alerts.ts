@@ -32,7 +32,11 @@ async function fetchAlerts(sahibkarId: string, limit: number): Promise<RecentAle
       where: { sahibkar_id: sahibkarId, status: { in: OPEN_STATUSES } },
       orderBy: [{ seviyye: "desc" }, { first_seen_at: "desc" }],
       take: limit,
-      include: { alert_categories: { select: { ad: true, emoji: true } } },
+      // QA-perf: include → select (map yalnız bu sahələri işlədir; alert bütün sütunları çəkilmirdi).
+      select: {
+        id: true, basliq: true, seviyye: true, status: true, first_seen_at: true,
+        alert_categories: { select: { ad: true, emoji: true } },
+      },
     }),
     prismaUnscoped.alerts.count({ where: { sahibkar_id: sahibkarId, status: "yeni" } }),
   ]);

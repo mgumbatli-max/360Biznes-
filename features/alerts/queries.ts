@@ -85,13 +85,17 @@ export async function getAlertStats(): Promise<AlertStats> {
   });
 }
 
-export async function getAlertCategories() {
-  // Global table, not tenant-scoped — use a separate unscoped read.
-  const rows = await prisma.alert_categories.findMany({
+// QA-perf: alert_categories QLOBAL reference (nadir dəyişir) → qlobal cache 10dəq (tenant açarı lazım deyil).
+const fetchAlertCategoriesRaw = unstable_cache(
+  () => prismaUnscoped.alert_categories.findMany({
     where: { aktiv: true },
     orderBy: [{ siralama: "asc" }, { ad: "asc" }],
-  });
-  return rows;
+  }),
+  ["alert-categories-active"],
+  { revalidate: 600, tags: ["ref:alert-categories"] },
+);
+export async function getAlertCategories() {
+  return fetchAlertCategoriesRaw();
 }
 
 /** Severity priority for sorting — kritik (highest) → info (lowest). */

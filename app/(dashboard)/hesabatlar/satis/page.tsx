@@ -76,7 +76,8 @@ export default async function SatisReportPage({ searchParams }: { searchParams: 
   const groupKey: GroupKey = (sp.group as GroupKey) || "gun";
   const validGroup = GROUP_OPTIONS.some((g) => g.value === groupKey) ? groupKey : "gun";
 
-  const [kpi, daily, heat, byPay, byAnbar, byUser, topProducts, topCustomers, cmp, pivot, yoy, topMargins, hourly] = await Promise.all([
+  // QA-perf: getStealthState müstəqildir (sorğulardan asılı deyil) → Promise.all-a daxil (paralel).
+  const [kpi, daily, heat, byPay, byAnbar, byUser, topProducts, topCustomers, cmp, pivot, yoy, topMargins, hourly, stealth] = await Promise.all([
     getSalesKpi(filter),
     getDailySales(filter),
     getSalesHeatmap(filter),
@@ -90,11 +91,11 @@ export default async function SatisReportPage({ searchParams }: { searchParams: 
     getYoyComparison(range),
     getMarginByProduct(filter, 10, "best"),
     getHourlyPerf(filter),
+    getStealthState(),
   ]);
 
   // QA-orta: kpi.total_amount gizli rejimdə scale olunur, cədvəl sətirləri isə raw —
   // pay (share) raw cəmlə hesablanır ki, 100%-dən böyük absurd faizlər çıxmasın.
-  const stealth = await getStealthState();
   const rawTotal = stealth.aktiv && stealth.scale > 0 ? kpi.total_amount / stealth.scale : kpi.total_amount;
 
   const bestHour = hourly.length > 0 ? hourly.reduce((a, b) => (b.mebleg > a.mebleg ? b : a)) : null;

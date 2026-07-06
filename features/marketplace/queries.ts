@@ -30,6 +30,11 @@ export async function getMarketplaceAccounts(): Promise<MarketplaceListItem[]> {
   return withTenant(async () => {
     const accounts = await prisma.marketplace_hesablari.findMany({
       orderBy: { yaradildi: "desc" },
+      // QA-perf: map yalnız bu sahələri işlədir → select (əvvəl bütün sütunlar, o cümlədən API açar/token çəkilirdi).
+      select: {
+        id: true, platform: true, ad: true, store_id: true, store_url: true, status: true,
+        aktiv: true, komisyon_faiz: true, son_sync: true, son_xeta: true, yaradildi: true,
+      },
     });
     return accounts.map((a) => ({
       id: a.id,

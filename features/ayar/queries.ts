@@ -23,14 +23,20 @@ export async function getCavabdehOptions() {
 }
 
 export async function getFiliallar() {
-  return withTenant(async () =>
-    prisma.filiallar.findMany({
-      orderBy: { ad: "asc" },
-      include: {
-        _count: { select: { anbarlar: true, istifadeci_filial: true, kassalar: true } },
-      },
-    })
-  );
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    // QA-perf: filial siyahısı reference-data (nadir dəyişir) → tenant-safe cache 120s. prismaUnscoped +
+    // açıq sahibkar_id + cache açarında sahibkarId. _count staleness (anbar/kassa sayı) 2dəq tolerantdır.
+    return unstable_cache(
+      () => prismaUnscoped.filiallar.findMany({
+        where: { sahibkar_id: sahibkarId },
+        orderBy: { ad: "asc" },
+        include: { _count: { select: { anbarlar: true, istifadeci_filial: true, kassalar: true } } },
+      }),
+      ["ayar-filiallar", sahibkarId],
+      { revalidate: 120, tags: [`ref:${sahibkarId}:filiallar`] },
+    )();
+  });
 }
 
 export async function getFilialStats() {
@@ -450,10 +456,18 @@ export async function getCompanyProfileCompleteness() {
   };
 }
 
-export async function getAllPermissionsGrouped() {
-  const rows = await prisma.icazeler.findMany({
+// QA-perf: icazeler QLOBAL kataloqdur (tenant-scoped deyil) → qlobal cache 1h + select (map yalnız
+// id/kod/ad/aciqlamaq/qrup işlədir). Hər səhifədə icazə yoxlaması üçün çağırıldığından leverage yüksəkdir.
+const fetchAllPermissionsRaw = unstable_cache(
+  () => prismaUnscoped.icazeler.findMany({
     orderBy: [{ qrup: "asc" }, { ad: "asc" }],
-  });
+    select: { id: true, kod: true, ad: true, aciqlamaq: true, qrup: true },
+  }),
+  ["all-permissions-grouped"],
+  { revalidate: 3600, tags: ["ref:permissions"] },
+);
+export async function getAllPermissionsGrouped() {
+  const rows = await fetchAllPermissionsRaw();
   const groups = new Map<string, typeof rows>();
   for (const r of rows) {
     const key = r.qrup ?? "Digər";
