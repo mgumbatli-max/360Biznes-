@@ -144,24 +144,83 @@ export async function convertOrderToErp(id: string): Promise<ActionResult> {
   const permCheck = await requireMarketplaceActionPerm(["marketplace.idare", "marketplace.sync"]);
   if (!permCheck.ok) return { ok: false, error: permCheck.error };
   return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
     try {
-      const order = await prisma.marketplace_sifarisleri.findUnique({
-        where: { id },
-        select: { erp_satis_id: true, status: true, xarici_nomre: true, meblegh: true },
+      const order = await prisma.marketplace_sifarisleri.findFirst({
+        where: { id, sahibkar_id: sahibkarId },
+        select: {
+          erp_satis_id: true, status: true, xarici_nomre: true, meblegh: true,
+          erp_mehsul_id: true, mehsul_kod: true, mehsul_ad: true, sayi: true,
+          marketplace_magaza_hesablari: { select: { platform: true, anbar_id: true } },
+        },
       });
       if (!order) return { ok: false, error: "Sifariş tapılmadı" };
       if (order.erp_satis_id) return { ok: false, error: "Artıq çevrilib" };
 
+      // QA-audit: əvvəl YALNIZ status yazılırdı — erp_satis_id/stok/finance yaranmırdı (dead
+      // idempotency). İndi real ERP marketplace satışı yaradılır (stok mexaric + komissiya + finance).
+
+      // 1) Məhsulu resolve et: erp_mehsul_id → yoxsa mehsul_kod (SKU/barkod).
+      let mehsulId = order.erp_mehsul_id ?? null;
+      if (!mehsulId && order.mehsul_kod) {
+        const prod = await prisma.mehsullar.findFirst({
+          where: {
+            sahibkar_id: sahibkarId,
+            OR: [{ kod: order.mehsul_kod }, { barkod: order.mehsul_kod }],
+          },
+          select: { id: true },
+        });
+        mehsulId = prod?.id ?? null;
+      }
+      if (!mehsulId) {
+        return { ok: false, error: `Məhsul ERP-də tapılmadı (kod: ${order.mehsul_kod ?? order.mehsul_ad ?? "—"}). Əvvəl məhsulu bağlayın.` };
+      }
+
+      // 2) Anbar: magaza anbarı → yoxsa ilk aktiv anbar.
+      let anbarId = order.marketplace_magaza_hesablari?.anbar_id ?? null;
+      if (!anbarId) {
+        const anbar = await prisma.anbarlar.findFirst({
+          where: { sahibkar_id: sahibkarId, aktiv: true },
+          orderBy: { id: "asc" },
+          select: { id: true },
+        });
+        anbarId = anbar?.id ?? null;
+      }
+      if (!anbarId) return { ok: false, error: "Aktiv anbar tapılmadı" };
+
+      // 3) Platform map — magaza.platform PLATFORM_VALUES-a uyğun deyilsə "diger".
+      const PLATFORM_VALUES = ["bolt_food", "wolt", "yango_deli", "tap_az", "progo", "diger"] as const;
+      const rawPlat = (order.marketplace_magaza_hesablari?.platform ?? "").toLowerCase();
+      const platform = (PLATFORM_VALUES as readonly string[]).includes(rawPlat)
+        ? (rawPlat as (typeof PLATFORM_VALUES)[number])
+        : "diger";
+
+      const sayi = Math.max(1, Number(order.sayi ?? 1));
+      const umumi = Number(order.meblegh ?? 0);
+      const vahidQiymet = sayi > 0 ? Math.round((umumi / sayi) * 100) / 100 : umumi;
+
+      // 4) Real marketplace satışı yarat (stok/komissiya/finance createMarketSatis daxilində).
+      const { createMarketSatis } = await import("@/features/ticaret/market-satis-action");
+      const res = await createMarketSatis({
+        platform,
+        sifaris_nomresi: order.xarici_nomre,
+        anbar_id: anbarId,
+        lines: [{ mehsul_id: mehsulId, miqdar: sayi, qiymet: vahidQiymet, endirim_faiz: 0 }],
+        qeyd: `Marketplace sifariş çevrildi: ${order.xarici_nomre}`,
+      });
+      if (!res.ok) return { ok: false, error: res.error };
+
+      // 5) erp_satis_id + erp_mehsul_id + status yaz (idempotency artıq işlək).
       await prisma.marketplace_sifarisleri.update({
         where: { id },
-        data: { status: "qebul_edildi" },
+        data: { status: "qebul_edildi", erp_satis_id: res.satis_id, erp_mehsul_id: mehsulId },
       });
       revalidatePath("/marketplace/multi-sync");
       bustMarketplaceCache();
       await audit("konvert", "marketplace_sifaris", id, {
         evvelki_data: { status: order.status },
-        yeni_data: { status: "qebul_edildi", nomre: order.xarici_nomre, mebleg: Number(order.meblegh ?? 0) },
-        sebeb: `Marketplace sifariş qəbul edildi: ${order.xarici_nomre ?? id}`,
+        yeni_data: { status: "qebul_edildi", nomre: order.xarici_nomre, mebleg: umumi, erp_satis_id: res.satis_id },
+        sebeb: `Marketplace sifariş ERP satışına çevrildi: ${order.xarici_nomre ?? id}`,
       });
       return { ok: true };
     } catch (e) {

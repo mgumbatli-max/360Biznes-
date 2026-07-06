@@ -42,7 +42,7 @@ export async function openKassa(input: FormData | z.infer<typeof OpenSchema>): P
       // paralel/double-click açılışı İKİ eyni vaxtlı açıq sessiya yaradırdı. İndi advisory xact-lock
       // (kassir açarı üzrə) + yoxlama+create tx daxilində → serializasiya olunur.
       return await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${istifadeciId + ":openkassa"}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${istifadeciId + ":openkassa"}))`;
         const existing = await tx.kassalar.findFirst({
           where: { status: "acig", acan_id: istifadeciId },
         });
