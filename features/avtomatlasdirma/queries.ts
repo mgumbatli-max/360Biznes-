@@ -56,23 +56,25 @@ export async function getRuleInsights() {
   return withTenant(async () => {
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
 
-    // Son 7 gündə ən çox icra olunan qaydalar (top 3)
-    const topActive = await prisma.avto_log.groupBy({
-      by: ["qayda_id"],
-      where: { yaradildi: { gte: since }, qayda_id: { not: null } },
-      _count: true,
-      orderBy: { _count: { qayda_id: "desc" } },
-      take: 3,
-    });
-
-    // Son 7 gündə ən çox xəta verən qayda
-    const topErrors = await prisma.avto_log.groupBy({
-      by: ["qayda_id"],
-      where: { yaradildi: { gte: since }, qayda_id: { not: null }, status: { not: "ok" } },
-      _count: true,
-      orderBy: { _count: { qayda_id: "desc" } },
-      take: 1,
-    });
+    // QA-perf: topActive/topErrors müstəqil idi (serial) → Promise.all (paralel).
+    const [topActive, topErrors] = await Promise.all([
+      // Son 7 gündə ən çox icra olunan qaydalar (top 3)
+      prisma.avto_log.groupBy({
+        by: ["qayda_id"],
+        where: { yaradildi: { gte: since }, qayda_id: { not: null } },
+        _count: true,
+        orderBy: { _count: { qayda_id: "desc" } },
+        take: 3,
+      }),
+      // Son 7 gündə ən çox xəta verən qayda
+      prisma.avto_log.groupBy({
+        by: ["qayda_id"],
+        where: { yaradildi: { gte: since }, qayda_id: { not: null }, status: { not: "ok" } },
+        _count: true,
+        orderBy: { _count: { qayda_id: "desc" } },
+        take: 1,
+      }),
+    ]);
 
     // Detalları çək
     const allIds = [...topActive.map((x) => x.qayda_id), ...topErrors.map((x) => x.qayda_id)].filter(

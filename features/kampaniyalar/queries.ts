@@ -35,19 +35,19 @@ export async function getCampaignStats() {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     const now = new Date();
-    const [total, aktiv, paused, expired] = await Promise.all([
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // QA-perf: usageThisMonth müstəqil idi (serial) → Promise.all-a daxil (paralel).
+    const [total, aktiv, paused, expired, usageThisMonth] = await Promise.all([
       prisma.campaigns.count({}),
       prisma.campaigns.count({ where: { status: "active", OR: [{ bitme: null }, { bitme: { gt: now } }] } }),
       prisma.campaigns.count({ where: { status: "paused" } }),
       prisma.campaigns.count({ where: { OR: [{ status: "expired" }, { bitme: { lt: now } }] } }),
+      prisma.campaign_usage.aggregate({
+        where: { istifade_de: { gte: monthStart } },
+        _sum: { endirim_mebleg: true, bonus_qazanildi: true },
+        _count: true,
+      }),
     ]);
-    // Bu ay verilən endirim cəmi
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const usageThisMonth = await prisma.campaign_usage.aggregate({
-      where: { istifade_de: { gte: monthStart } },
-      _sum: { endirim_mebleg: true, bonus_qazanildi: true },
-      _count: true,
-    });
     return {
       total, aktiv, paused, expired,
       endirimCemi: Number(usageThisMonth._sum.endirim_mebleg ?? 0),
