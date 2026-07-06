@@ -345,23 +345,29 @@ const RFM_LABELS: Record<RfmSegment, string> = {
   lost: "İtirilmiş",
 };
 
-/** Kvintil skor (1-5): dəyər massivində sıra mövqeyinə görə. reverse=true → kiçik dəyər yüksək skor (recency). */
+/**
+ * Kvintil skor (1-5): dəyərin bazadakı faiz-mövqeyinə görə. reverse=true → kiçik dəyər yüksək skor (recency).
+ * QA-audit: (a) BÜTÜN dəyərlər bərabər olduqda simmetrik neytral 3 qaytarır (əvvəl F/M üçün 1, R üçün 5
+ * verirdi — sadiq bazanı "yeni" kimi etiketləyirdi); (b) "ciddi kiçik olanların sayı" (below/n) ilə
+ * bucket hesablayır ki, minimum dəyər həmişə 1-ə yıxılmasın və bərabər-dəyər halı düzgün işləsin.
+ */
 function quintileScore(value: number, sorted: number[], reverse = false): number {
-  if (sorted.length === 0) return 3;
-  // sorted artan sırada; value-nun sıra faizi
-  let rank = sorted.findIndex((v) => v >= value);
-  if (rank < 0) rank = sorted.length - 1;
-  const pct = sorted.length > 1 ? rank / (sorted.length - 1) : 0.5;
-  let score = Math.min(5, Math.max(1, Math.ceil(pct * 5)));
-  return reverse ? 6 - score : score;
+  const n = sorted.length;
+  if (n === 0) return 3;
+  if (sorted[0] === sorted[n - 1]) return 3; // bütün dəyərlər eyni → neytral (hər iki istiqamətdə)
+  let below = 0;
+  for (const v of sorted) if (v < value) below++;
+  const bucket = Math.min(5, Math.max(1, Math.floor((below / n) * 5) + 1));
+  return reverse ? 6 - bucket : bucket;
 }
 
-function classifyRfm(r: number, f: number): { segment: RfmSegment; churn: boolean } {
-  if (r >= 4 && f >= 4) return { segment: "champions", churn: false };
+/** QA-audit: M (monetary) skoru da nəzərə alınır — "yüksək dəyər" seqmentləri (champions/cant_lose) m>=4 tələb edir. */
+function classifyRfm(r: number, f: number, m: number): { segment: RfmSegment; churn: boolean } {
+  if (r >= 4 && f >= 4 && m >= 4) return { segment: "champions", churn: false };
   if (f >= 4 && r >= 3) return { segment: "loyal", churn: false };
-  if (r >= 4 && f === 1) return { segment: "new", churn: false };
+  if (r >= 3 && f === 1) return { segment: "new", churn: false };       // yaxınlarda tək alış
   if (r >= 3 && f >= 2) return { segment: "potential", churn: false };
-  if (r <= 2 && f >= 4) return { segment: "cant_lose", churn: true };   // yüksək dəyər, yatıb
+  if (r <= 2 && f >= 4 && m >= 4) return { segment: "cant_lose", churn: true };  // yüksək dəyər, yatıb
   if (r <= 2 && f >= 3) return { segment: "at_risk", churn: true };     // əvvəl tez-tez, indi yatıb
   if (r === 1 && f === 1) return { segment: "lost", churn: false };
   return { segment: "hibernating", churn: false };
@@ -382,6 +388,7 @@ export async function getCustomerRfmSegments(limit = 500): Promise<{ customers: 
              COALESCE(SUM(ss.son_mebleg), 0)::float AS monetary
         FROM kontragentler k
         JOIN satis_sifarisleri ss ON ss.musteri_id = k.id
+             AND ss.sahibkar_id = ${sahibkarId}::uuid
              AND ss.status NOT IN ('legv','qaytarilib')
              AND COALESCE(ss.qaralama, false) = false
        WHERE k.sahibkar_id = ${sahibkarId}::uuid
@@ -403,7 +410,7 @@ export async function getCustomerRfmSegments(limit = 500): Promise<{ customers: 
       const r = quintileScore(recency, recArr, true);  // kiçik gün = yüksək R
       const f = quintileScore(frequency, freqArr);
       const m = quintileScore(monetary, monArr);
-      const { segment, churn } = classifyRfm(r, f);
+      const { segment, churn } = classifyRfm(r, f, m);
       const masked = maskContactPII({ id: row.id, ad: row.ad, telefon: row.telefon }, canSeePII) as { id: string; ad: string; telefon: string | null };
       return {
         id: masked.id, ad: masked.ad, telefon: masked.telefon,

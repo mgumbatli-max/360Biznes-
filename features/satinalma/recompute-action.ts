@@ -136,37 +136,41 @@ async function computeForCurrentTenant(sahibkarId: string): Promise<{ created: n
     });
   }
 
-  const removeResult = await prismaUnscoped.satinalma_tovsiye.deleteMany({
-    where: { sahibkar_id: sahibkarId, alis_yaradildi: false },
-  });
-
+  // QA-audit: cron ilə eyni — advisory xact-lock + delete+create ATOMİK (skipDuplicates unique-constraint
+  // olmadan effektsizdir; paralel recompute ikili tövsiyə yaradırdı).
   let created = 0;
-  if (recommendations.length > 0) {
-    const createResult = await prismaUnscoped.satinalma_tovsiye.createMany({
-      data: recommendations.map((r) => ({
-        sahibkar_id: sahibkarId,
-        mehsul_id: r.mehsul_id,
-        cari_stok: r.cari_stok,
-        son_7_satish: r.son_7,
-        son_30_satish: r.son_30,
-        orta_gunluk: r.orta_gunluk,
-        bitme_gun: r.bitme_gun,
-        tovsiye_say: r.tovsiye_say,
-        son_alish_qiy: r.son_alish_qiy,
-        techizatci_id: r.techizatci_id,
-        prioritet: r.prioritet,
-        durum: "yeni",
-        alis_yaradildi: false,
-        hesablandi: new Date(),
-      })),
-      skipDuplicates: true,
-    });
-    created = createResult.count;
-  }
+  let removed = 0;
+  await prismaUnscoped.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sahibkarId + ":reorder"}))`;
+    const removeResult = await tx.satinalma_tovsiye.deleteMany({ where: { sahibkar_id: sahibkarId, alis_yaradildi: false } });
+    removed = removeResult.count;
+    if (recommendations.length > 0) {
+      const createResult = await tx.satinalma_tovsiye.createMany({
+        data: recommendations.map((r) => ({
+          sahibkar_id: sahibkarId,
+          mehsul_id: r.mehsul_id,
+          cari_stok: r.cari_stok,
+          son_7_satish: r.son_7,
+          son_30_satish: r.son_30,
+          orta_gunluk: r.orta_gunluk,
+          bitme_gun: r.bitme_gun,
+          tovsiye_say: r.tovsiye_say,
+          son_alish_qiy: r.son_alish_qiy,
+          techizatci_id: r.techizatci_id,
+          prioritet: r.prioritet,
+          durum: "yeni",
+          alis_yaradildi: false,
+          hesablandi: new Date(),
+        })),
+        skipDuplicates: true,
+      });
+      created = createResult.count;
+    }
+  });
 
   // QA-roadmap #5: kritik reorder məhsulları üçün proaktiv xülasə alert (cron ilə eyni məntiq).
   const { upsertReorderAlert } = await import("./reorder-alert");
   await upsertReorderAlert(sahibkarId, recommendations.filter((r) => r.prioritet === "kritik").map((r) => r.mehsul_id));
 
-  return { created, removed: removeResult.count };
+  return { created, removed };
 }

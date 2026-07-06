@@ -95,9 +95,12 @@ export async function produceProduct(hazirMehsulId: string, qty: number, anbarId
 
         // Hazır məhsul mayası — MOVING-AVERAGE (cari stok+maya ilə)
         const hazirProd = await tx.mehsullar.findFirst({ where: { id: hazirMehsulId, sahibkar_id: sahibkarId }, select: { alish_qiymeti: true } });
-        const oldMaya = Number(hazirProd?.alish_qiymeti ?? 0) || vahidMaya;
         const stokAgg = await tx.stok.aggregate({ where: { sahibkar_id: sahibkarId, mehsul_id: hazirMehsulId }, _sum: { miqdar: true } });
         const oldStok = Number(stokAgg._sum.miqdar ?? 0);
+        // QA-audit: köhnə stok yoxdursa (oldStok<=0) köhnə maya əhəmiyyətsizdir → vahidMaya götür.
+        // Əvvəl `Number(...)|| vahidMaya` köhnə stok VAR ikən qanuni 0 mayanı vahidMaya ilə əvəz edib
+        // çəkili-orta mayanı korlayırdı. İndi yalnız stok olduqda köhnə maya işlədilir.
+        const oldMaya = oldStok > 0 ? Number(hazirProd?.alish_qiymeti ?? 0) : vahidMaya;
         const yeniMaya = oldStok + qty > 0 ? (oldStok * oldMaya + qty * vahidMaya) / (oldStok + qty) : vahidMaya;
 
         // Hazır məhsulu stoka əlavə et

@@ -22,7 +22,8 @@ export async function checkExpenseBudgetAlert(sahibkarId: string, kateqoriyaId: 
     // reorder-kritik ilə eyni obyekt-açar sxemi: obyekt_nov="budce_asim", obyekt_id=kateqoriya_id
     const obyektId = String(kateqoriyaId);
     const existing = await prismaUnscoped.alerts.findFirst({
-      where: { sahibkar_id: sahibkarId, kateqoriya_kod: "budce_asim", obyekt_nov: "budce_asim", obyekt_id: obyektId, status: { in: ["yeni", "baxilir"] } },
+      // QA-audit: 'snoozed' də daxil — əks halda təxirə salınmış alert dedup-dan kənarda qalıb dublikat yaranırdı.
+      where: { sahibkar_id: sahibkarId, kateqoriya_kod: "budce_asim", obyekt_nov: "budce_asim", obyekt_id: obyektId, status: { in: ["yeni", "baxilir", "snoozed"] } },
       select: { id: true },
     });
 
@@ -35,10 +36,11 @@ export async function checkExpenseBudgetAlert(sahibkarId: string, kateqoriyaId: 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const agg = await prismaUnscoped.xercl_r.aggregate({
+      // QA-audit: büdcə AZN-dədir → faktiki də AZN-normalizasiya (mebleg_azn), xam mebleg (valyuta) yox.
       where: { sahibkar_id: sahibkarId, kateqoriya_id: kateqoriyaId, tarix: { gte: monthStart }, legv_de: null },
-      _sum: { mebleg: true },
+      _sum: { mebleg_azn: true },
     });
-    const faktiki = Number(agg._sum.mebleg ?? 0);
+    const faktiki = Number(agg._sum.mebleg_azn ?? 0);
 
     if (faktiki <= budce) { // büdcə altında → varsa alert-i həll et
       if (existing) await prismaUnscoped.alerts.update({ where: { id: existing.id }, data: { status: "hell_olundu", resolved_at: new Date(), yenilendi: new Date() } });
@@ -46,13 +48,13 @@ export async function checkExpenseBudgetAlert(sahibkarId: string, kateqoriyaId: 
     }
 
     // Aşıb → alert yarat/yenilə
-    let cat = await prismaUnscoped.alert_categories.findUnique({ where: { kod: "budce_asim" }, select: { id: true, kod: true } });
-    if (!cat) {
-      cat = await prismaUnscoped.alert_categories.create({
-        data: { kod: "budce_asim", ad: "Büdcə aşımı", emoji: "💸", qrup: "maliyye" },
-        select: { id: true, kod: true },
-      });
-    }
+    // QA-audit: findUnique+create paralel ilk yaratmada P2002 → upsert (kod @unique) ilə race-safe.
+    const cat = await prismaUnscoped.alert_categories.upsert({
+      where: { kod: "budce_asim" },
+      update: {},
+      create: { kod: "budce_asim", ad: "Büdcə aşımı", emoji: "💸", qrup: "maliyye" },
+      select: { id: true, kod: true },
+    });
     const katName = (await prismaUnscoped.xerc_kateqoriyalari.findUnique({ where: { id: kateqoriyaId }, select: { ad: true } }))?.ad ?? "Xərc kateqoriyası";
     const asim = Math.round((faktiki - budce) * 100) / 100;
     const basliq = `Büdcə aşıldı: ${katName}`;

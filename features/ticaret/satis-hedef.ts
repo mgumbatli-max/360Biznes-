@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { permGate } from "@/lib/auth/role-check";
 
 const QRUP = "ticaret";
 const ACAR_AYLIK = "satis_aylik_hedef";
@@ -40,6 +41,11 @@ export async function getMonthlyTarget(): Promise<number> {
 export async function setMonthlyTarget(value: number): Promise<void> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
+    // QA-audit: icazə guard yox idi (setSalespersonTarget-dən fərqli) → istənilən istifadəçi hədəfi
+    // dəyişib bütün dashboard %/proyeksiyanı korlaya bilirdi.
+    const g = permGate("satis.idare", "ayarlar.idare", "komissiya.idare");
+    if (!g.ok) throw new Error(g.error);
+    if (!Number.isFinite(value) || value < 0 || value > 1_000_000_000) throw new Error("Hədəf 0–1 mlrd aralığında olmalıdır");
     await prisma.ayarlar.upsert({
       where: { sahibkar_id_qrup_acar: { sahibkar_id: sahibkarId, qrup: QRUP, acar: ACAR_AYLIK } },
       update: { deyer: String(value), yenilendi: new Date() },
@@ -76,6 +82,7 @@ export async function getTargetProgress(): Promise<SalesTargetProgress> {
           qaralama: { not: true },
           // QA: qaytarılmış satışlar hədəf-icrasına daxil olmamalıdır (yalnız 'legv' çıxılırdı).
           status: { notIn: ["legv", "qaytarilib"] },
+          deleted_at: null,
         },
         _sum: { son_mebleg: true },
       }),
@@ -84,6 +91,7 @@ export async function getTargetProgress(): Promise<SalesTargetProgress> {
           tarix: { gte: today },
           qaralama: { not: true },
           status: { notIn: ["legv", "qaytarilib"] },
+          deleted_at: null,
         },
         _sum: { son_mebleg: true },
       }),
@@ -157,9 +165,9 @@ async function getSalespersonTargetsMap(sahibkarId: string): Promise<Map<string,
 export async function setSalespersonTarget(isciId: string, value: number): Promise<void> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
-    const { ensurePermission } = await import("@/lib/auth/role-check").then((m) => ({ ensurePermission: m.permGate }));
-    const g = ensurePermission("satis.idare", "komissiya.idare", "ayarlar.idare");
+    const g = permGate("satis.idare", "komissiya.idare", "ayarlar.idare");
     if (!g.ok) throw new Error(g.error);
+    if (!Number.isFinite(value) || value < 0 || value > 1_000_000_000) throw new Error("Hədəf 0–1 mlrd aralığında olmalıdır");
     const acar = ACAR_ISCI_PREFIX + isciId;
     if (!(value > 0)) {
       await prisma.ayarlar.deleteMany({ where: { sahibkar_id: sahibkarId, qrup: QRUP, acar } });
@@ -188,7 +196,8 @@ export async function getSalesTargetDashboard(): Promise<SalesTargetDashboard> {
     const [hedefAy, ayAgg, perSaticiRows, targetsMap] = await Promise.all([
       getMonthlyTarget(),
       prisma.satis_sifarisleri.aggregate({
-        where: { tarix: { gte: monthStart }, qaralama: { not: true }, status: { notIn: ["legv", "qaytarilib"] } },
+        // QA-audit: silinmiş satış istisna (deleted_at) — digər satış-cəmi sorğuları ilə uyğunluq.
+        where: { tarix: { gte: monthStart }, qaralama: { not: true }, status: { notIn: ["legv", "qaytarilib"] }, deleted_at: null },
         _sum: { son_mebleg: true },
       }),
       prisma.$queryRaw<Array<{ isci_id: string; ad: string; faktiki: number; sifaris: number }>>`
@@ -196,11 +205,14 @@ export async function getSalesTargetDashboard(): Promise<SalesTargetDashboard> {
                COALESCE(SUM(ss.son_mebleg), 0)::float AS faktiki,
                COUNT(ss.id)::int AS sifaris
           FROM satis_sifarisleri ss
-          JOIN istifadeciler u ON u.id = ss.satis_meneceri_id
+          -- QA-audit: satis_meneceri_id null olan satışlar da atribut olunsun (yaradana) ki, pay %
+          -- ümumi ilə uyğunlaşsın (INNER JOIN əvvəl null-meneceri satışları buraxırdı).
+          JOIN istifadeciler u ON u.id = COALESCE(ss.satis_meneceri_id, ss.yaradan_id)
          WHERE ss.sahibkar_id = ${sahibkarId}::uuid
            AND ss.tarix >= ${monthStart}
            AND ss.status NOT IN ('legv','qaytarilib')
            AND COALESCE(ss.qaralama, false) = false
+           AND ss.deleted_at IS NULL
          GROUP BY u.id, u.ad_soyad
          ORDER BY faktiki DESC
       `,

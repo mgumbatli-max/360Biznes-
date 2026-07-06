@@ -50,8 +50,9 @@ export async function getExpenseBudgetReport(): Promise<ExpenseBudgetReport> {
       prisma.ayarlar.findMany({ where: { sahibkar_id: sahibkarId, qrup: QRUP, acar: { startsWith: ACAR_PREFIX } }, select: { acar: true, deyer: true } }),
       prisma.xercl_r.groupBy({
         by: ["kateqoriya_id"],
+        // QA-audit: büdcə AZN-dədir → faktiki də mebleg_azn (valyuta-normalizasiya), xam mebleg yox.
         where: { sahibkar_id: sahibkarId, tarix: { gte: monthStart }, legv_de: null },
-        _sum: { mebleg: true },
+        _sum: { mebleg_azn: true },
       }),
     ]);
 
@@ -63,7 +64,7 @@ export async function getExpenseBudgetReport(): Promise<ExpenseBudgetReport> {
     }
     const faktikiMap = new Map<number, number>();
     for (const f of faktikiRows) {
-      if (f.kateqoriya_id != null) faktikiMap.set(f.kateqoriya_id, Number(f._sum.mebleg ?? 0));
+      if (f.kateqoriya_id != null) faktikiMap.set(f.kateqoriya_id, Number(f._sum.mebleg_azn ?? 0));
     }
 
     const catName = new Map(cats.map((c) => [c.id, c]));

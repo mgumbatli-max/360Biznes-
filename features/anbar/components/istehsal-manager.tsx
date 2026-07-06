@@ -162,7 +162,7 @@ export function IstehsalManager({ recipes, anbarlar }: { recipes: Recept[]; anba
             <div className="rounded-md border">
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
-                  <tr><th className="p-2 text-left font-medium">Komponent</th><th className="p-2 text-right font-medium">1 vahid üçün</th><th className="p-2 text-right font-medium">Sətir maya</th><th className="p-2 text-right font-medium">Cari stok</th></tr>
+                  <tr><th className="p-2 text-left font-medium">Komponent</th><th className="p-2 text-right font-medium">1 vahid üçün</th><th className="p-2 text-right font-medium">Sətir maya</th><th className="p-2 text-right font-medium" title="Bütün anbarlar üzrə ümumi qalıq — istehsal seçilmiş anbardan çıxır">Cari stok (ümumi)</th></tr>
                 </thead>
                 <tbody>
                   {r.komponentler.map((k) => (

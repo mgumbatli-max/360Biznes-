@@ -10,15 +10,16 @@ import { prismaUnscoped } from "@/lib/db/prisma";
  */
 export async function upsertReorderAlert(sahibkarId: string, kritikMehsulIds: string[]): Promise<void> {
   try {
-    let cat = await prismaUnscoped.alert_categories.findUnique({ where: { kod: "reorder_kritik" }, select: { id: true, kod: true } });
-    if (!cat) {
-      cat = await prismaUnscoped.alert_categories.create({
-        data: { kod: "reorder_kritik", ad: "Sifariş kritik", emoji: "🛒", qrup: "anbar" },
-        select: { id: true, kod: true },
-      });
-    }
+    // QA-audit: findUnique+create paralel ilk yaratmada P2002 verirdi → upsert (kod @unique) ilə race-safe.
+    const cat = await prismaUnscoped.alert_categories.upsert({
+      where: { kod: "reorder_kritik" },
+      update: {},
+      create: { kod: "reorder_kritik", ad: "Sifariş kritik", emoji: "🛒", qrup: "anbar" },
+      select: { id: true, kod: true },
+    });
     const existing = await prismaUnscoped.alerts.findFirst({
-      where: { sahibkar_id: sahibkarId, kateqoriya_kod: "reorder_kritik", status: { in: ["yeni", "baxilir"] } },
+      // QA-audit: 'snoozed' də daxil — təxirə salınmış alert dedup-dan kənarda qalıb dublikat yaratmasın.
+      where: { sahibkar_id: sahibkarId, kateqoriya_kod: "reorder_kritik", status: { in: ["yeni", "baxilir", "snoozed"] } },
       select: { id: true },
     });
 
