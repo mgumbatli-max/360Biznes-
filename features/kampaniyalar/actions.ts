@@ -1048,6 +1048,124 @@ export async function checkGiftCardBalance(kartKod: string): Promise<GiftBalance
 }
 
 // ============================================================
+// YENİ — Hədiyyə kartı / mağaza krediti İSTİFADƏSİ (redeem) + qaytarmadan kredit
+// (əvvəl kart yaradıla/listələnə bilirdi, amma XƏRCLƏNƏ bilmirdi — ölü funksionallıq idi)
+// ============================================================
+
+export type GiftRedeemResult =
+  | { ok: true; applied: number; qaliq_yeni: number; kart_kod: string }
+  | { ok: false; error: string };
+
+/**
+ * Hədiyyə kartını / mağaza kreditini ödəniş kimi istifadə et — qalıqdan atomik çıxılır.
+ * `mebleg` istənilən məbləğdir; kartda qalıq azdırsa yalnız qalıq qədəri tətbiq olunur (`applied`).
+ * Çağıran (POS/satış) `applied` məbləği ödəniş kimi işlədir.
+ */
+export async function redeemGiftCard(input: { kart_kod: string; mebleg: number; satis_id?: string }): Promise<GiftRedeemResult> {
+  const permCheck = await requireKampaniyaActionPerm("gift.idare");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  const kod = String(input.kart_kod ?? "").trim().toUpperCase();
+  const mebleg = Number(input.mebleg);
+  if (!/^GC[A-Z0-9]{10,14}$/.test(kod)) return { ok: false, error: "Kart kodu səhv formatdadır" };
+  if (!(mebleg > 0)) return { ok: false, error: "Məbləğ müsbət olmalıdır" };
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        // FOR UPDATE lock — paralel redeem eyni qalığı iki dəfə xərcləyə bilməsin (ikiqat-xərcləmə guard).
+        await tx.$queryRaw`SELECT id FROM gift_cards WHERE kart_kod = ${kod} AND sahibkar_id = ${sahibkarId}::uuid FOR UPDATE`;
+        const card = await tx.gift_cards.findFirst({
+          where: { kart_kod: kod, sahibkar_id: sahibkarId },
+          select: { id: true, qaliq: true, aktiv: true, bitme_tarixi: true },
+        });
+        if (!card) throw new Error("Hədiyyə kartı tapılmadı");
+        if (!card.aktiv) throw new Error("Kart deaktivdir");
+        if (card.bitme_tarixi && new Date(card.bitme_tarixi) < new Date()) throw new Error("Kartın vaxtı bitib");
+        const qaliq = Number(card.qaliq);
+        if (qaliq <= 0) throw new Error("Kartın qalığı yoxdur");
+        if (input.satis_id) {
+          const sale = await tx.satis_sifarisleri.findFirst({ where: { id: input.satis_id, sahibkar_id: sahibkarId }, select: { id: true } });
+          if (!sale) throw new Error("Satış tapılmadı");
+        }
+        const applied = Math.min(mebleg, qaliq);
+        const yeniQaliq = Math.round((qaliq - applied) * 100) / 100;
+        await tx.gift_cards.update({
+          where: { id: card.id },
+          // qalıq 0-a düşəndə kartı deaktiv et (təkrar istifadə cəhdini bloklamaq üçün)
+          data: { qaliq: yeniQaliq, yenilendi: new Date(), ...(yeniQaliq <= 0 ? { aktiv: false } : {}) },
+        });
+        return { applied, yeniQaliq };
+      });
+      revalidatePath("/kampaniyalar/giftcards");
+      bustKampaniyaCache();
+      await audit("istifade", "gift_kart", kod, {
+        yeni_data: { istifade_mebleg: result.applied, qaliq: result.yeniQaliq, satis_id: input.satis_id ?? null },
+        sebeb: `Hədiyyə kartı istifadə edildi (${result.applied} ₼)`,
+      });
+      return { ok: true, applied: result.applied, qaliq_yeni: result.yeniQaliq, kart_kod: kod };
+    } catch (e) {
+      console.error("[redeemGiftCard]", e);
+      return { ok: false, error: e instanceof Error ? e.message : "İstifadə alınmadı" };
+    }
+  });
+}
+
+export type StoreCreditResult = { ok: true; kod: string; mebleg: number } | { ok: false; error: string };
+
+/**
+ * Qaytarmadan MAĞAZA KREDİTİ ver (nağd refund əvəzinə) — pul çıxışını azaldır, müştəri sonra xərcləyir.
+ * `qaytaran_satis_id` sahəsi doldurulur ki, kredit hansı qaytarmadan gəldiyi izlənsin.
+ */
+export async function issueStoreCredit(input: { satis_id: string; mebleg: number; kontragent_id?: string; bitme_gun?: number }): Promise<StoreCreditResult> {
+  const permCheck = await requireKampaniyaActionPerm("gift.yarat");
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+  const mebleg = Math.round(Number(input.mebleg) * 100) / 100;
+  if (!(mebleg > 0)) return { ok: false, error: "Məbləğ müsbət olmalıdır" };
+  if (!input.satis_id) return { ok: false, error: "Satış göstərilməlidir" };
+  return withTenant(async () => {
+    const { sahibkarId } = requireTenant();
+    try {
+      const sale = await prisma.satis_sifarisleri.findFirst({ where: { id: input.satis_id, sahibkar_id: sahibkarId }, select: { id: true, musteri_id: true } });
+      if (!sale) return { ok: false, error: "Satış tapılmadı" };
+      let kontragentId: string | null = input.kontragent_id || sale.musteri_id || null;
+      if (kontragentId) {
+        const k = await prisma.kontragentler.findFirst({ where: { id: kontragentId, sahibkar_id: sahibkarId }, select: { id: true } });
+        if (!k) kontragentId = null;
+      }
+      const bitme = input.bitme_gun && input.bitme_gun > 0 ? new Date(Date.now() + input.bitme_gun * 86400000) : null;
+      let lastErr: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const kod = generateGiftCode();
+        try {
+          const card = await prisma.gift_cards.create({
+            data: {
+              sahibkar_id: sahibkarId, kart_kod: kod, nominal: mebleg, qaliq: mebleg,
+              alici_kontragent_id: kontragentId, qaytaran_satis_id: input.satis_id, bitme_tarixi: bitme,
+            },
+            select: { id: true, kart_kod: true },
+          });
+          revalidatePath("/kampaniyalar/giftcards");
+          bustKampaniyaCache();
+          await audit("yarat", "gift_kart", card.id, {
+            yeni_data: { kart_kod: card.kart_kod, nominal: mebleg, magaza_krediti: true, qaytaran_satis_id: input.satis_id },
+            sebeb: `Mağaza krediti verildi (${mebleg} ₼) — satış #${input.satis_id.slice(0, 8)}`,
+          });
+          return { ok: true, kod: card.kart_kod, mebleg };
+        } catch (e) {
+          lastErr = e;
+          if (e instanceof Error && e.message.includes("Unique")) continue;
+          throw e;
+        }
+      }
+      return { ok: false, error: `Yaradılmadı: ${lastErr instanceof Error ? lastErr.message : "kod kolliziyası"}` };
+    } catch (e) {
+      console.error("[issueStoreCredit]", e);
+      return { ok: false, error: e instanceof Error ? e.message : "Mağaza krediti verilmədi" };
+    }
+  });
+}
+
+// ============================================================
 // YENİ FUNKSIONALLIQ — Bulk loyalty tier recalc
 // ============================================================
 

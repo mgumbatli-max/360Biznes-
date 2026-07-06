@@ -7,6 +7,7 @@ import { getGiftCards } from "@/features/kampaniyalar/queries";
 import { cn, formatMoney, formatDate } from "@/lib/utils";
 import { GiftCardCreateButton } from "@/features/kampaniyalar/components/gift-card-create-button";
 import { GiftCardAssignButton } from "@/features/kampaniyalar/components/gift-card-assign-button";
+import { GiftCardRedeemButton } from "@/features/kampaniyalar/components/gift-card-redeem-button";
 
 export const metadata: Metadata = { title: "Hədiyyə kartları" };
 
@@ -29,11 +30,14 @@ export default async function GiftCardsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Hədiyyə kartları</h1>
             <p className="text-sm text-muted-foreground">
-              Müştəriyə hədiyyə kartı sat — qabaqcadan ödənilmiş məbləğ, POS-da istifadə oluna bilər
+              Hədiyyə kartı sat və ya qaytarmada mağaza krediti ver — sonra ödəniş kimi istifadə et
             </p>
           </div>
         </div>
-        <GiftCardCreateButton />
+        <div className="flex items-center gap-2">
+          <GiftCardRedeemButton />
+          <GiftCardCreateButton />
+        </div>
       </header>
 
       <section className="space-y-2">
@@ -59,7 +63,12 @@ export default async function GiftCardsPage() {
                         <div className="mt-1 text-xs text-muted-foreground">→ {c.kontragentler.ad}</div>
                       )}
                     </div>
-                    <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-500 text-[10px]">Aktiv</Badge>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-500 text-[10px]">Aktiv</Badge>
+                      {c.qaytaran_satis_id && (
+                        <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-600 text-[10px]">Mağaza krediti</Badge>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-baseline justify-between border-t border-border/40 pt-2">
                     <div>
