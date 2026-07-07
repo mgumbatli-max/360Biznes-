@@ -33,43 +33,40 @@ export async function getMyChannels() {
       orderBy: { kanal: { son_mesaj_de: { sort: "desc", nulls: "last" } } },
     });
 
-    // unread count = messages after son_oxudu_de
+    // QA-perf: unread/lastMessages/dmOther membership-dən asılıdır, amma bir-birindən müstəqil → Promise.all.
     const channelIds = memberships.map((m) => m.kanal_id);
-    const unreadCounts = await prisma.team_mesaj.groupBy({
-      by: ["kanal_id"],
-      where: {
-        kanal_id: { in: channelIds },
-        silindi: false,
-        gonderici_id: { not: istifadeciId },
-        OR: memberships.map((m) => ({
-          kanal_id: m.kanal_id,
-          yaradildi: m.son_oxudu_de ? { gt: m.son_oxudu_de } : undefined,
-        })),
-      },
-      _count: { _all: true },
-    });
+    const dmChannelIds = memberships.filter((m) => m.kanal.novu === "direct").map((m) => m.kanal_id);
+    const [unreadCounts, lastMessages, dmOtherMembers] = await Promise.all([
+      prisma.team_mesaj.groupBy({
+        by: ["kanal_id"],
+        where: {
+          kanal_id: { in: channelIds },
+          silindi: false,
+          gonderici_id: { not: istifadeciId },
+          OR: memberships.map((m) => ({
+            kanal_id: m.kanal_id,
+            yaradildi: m.son_oxudu_de ? { gt: m.son_oxudu_de } : undefined,
+          })),
+        },
+        _count: { _all: true },
+      }),
+      prisma.team_mesaj.findMany({
+        where: { kanal_id: { in: channelIds }, silindi: false },
+        orderBy: { yaradildi: "desc" },
+        distinct: ["kanal_id"],
+        include: { gonderici: { select: { ad_soyad: true } } },
+      }),
+      // in:[] boş nəticə qaytarır → həmişə işlədilir (tip vahid qalsın, Promise.all-da paraleldir).
+      prisma.team_uzv.findMany({
+        where: { kanal_id: { in: dmChannelIds }, istifadeci_id: { not: istifadeciId } },
+        include: { istifadeci: { select: { id: true, ad_soyad: true, email: true } } },
+      }),
+    ]);
 
     const unreadMap = new Map<number, number>();
     for (const u of unreadCounts) unreadMap.set(u.kanal_id, u._count._all);
-
-    // last message preview per channel
-    const lastMessages = await prisma.team_mesaj.findMany({
-      where: { kanal_id: { in: channelIds }, silindi: false },
-      orderBy: { yaradildi: "desc" },
-      distinct: ["kanal_id"],
-      include: { gonderici: { select: { ad_soyad: true } } },
-    });
     const lastMap = new Map<number, (typeof lastMessages)[number]>();
     for (const m of lastMessages) lastMap.set(m.kanal_id, m);
-
-    // For DM channels, fetch the other member's name to display
-    const dmChannelIds = memberships.filter((m) => m.kanal.novu === "direct").map((m) => m.kanal_id);
-    const dmOtherMembers = dmChannelIds.length
-      ? await prisma.team_uzv.findMany({
-          where: { kanal_id: { in: dmChannelIds }, istifadeci_id: { not: istifadeciId } },
-          include: { istifadeci: { select: { id: true, ad_soyad: true, email: true } } },
-        })
-      : [];
     const dmOtherByChannel = new Map<number, (typeof dmOtherMembers)[number]>();
     for (const m of dmOtherMembers) dmOtherByChannel.set(m.kanal_id, m);
 

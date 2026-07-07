@@ -261,10 +261,10 @@ export async function startDripCampaign(input: FormData): Promise<ActionResult> 
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
       const now = new Date();
-      const createdIds: string[] = [];
-      for (const m of messages) {
+      // QA-perf: mesaj başına ardıcıl create (N+1) → Promise.all (paralel; id-lər saxlanır).
+      const camps = await Promise.all(messages.map((m) => {
         const sched = new Date(now.getTime() + m.gun * 86400000);
-        const camp = await prisma.broadcast_kampaniyalari.create({
+        return prisma.broadcast_kampaniyalari.create({
           data: {
             sahibkar_id: sahibkarId,
             yaradan_id: istifadeciId,
@@ -279,9 +279,10 @@ export async function startDripCampaign(input: FormData): Promise<ActionResult> 
             ugurlu_say: 0,
             xeta_say: 0,
           },
+          select: { id: true },
         });
-        createdIds.push(camp.id);
-      }
+      }));
+      const createdIds = camps.map((c) => c.id);
 
       // Audit — outbox-safe
       await safeAuditLog({
