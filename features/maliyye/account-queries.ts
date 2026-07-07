@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { silentFallback } from "@/lib/safe-query";
@@ -23,7 +24,8 @@ export type AccountRow = {
   yenilendi: Date | null;
 };
 
-export async function getAccounts(): Promise<AccountRow[]> {
+// QA-perf: React cache() — per-request dedup (getAccountStats də daxildən çağırır → əvvəl 2 dəfə işləyirdi).
+export const getAccounts = cache(async (): Promise<AccountRow[]> => {
   return withTenant(async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -115,7 +117,7 @@ export async function getAccounts(): Promise<AccountRow[]> {
 
     return out;
   });
-}
+});
 
 // ─── Hesab detail — balans tarixçəsi + son əməliyyatlar ──────────────
 export type AccountOpRow = {

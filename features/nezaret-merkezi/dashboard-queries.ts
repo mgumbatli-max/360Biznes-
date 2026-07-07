@@ -140,21 +140,22 @@ const fetchRiskDashboardCached = (sahibkarId: string) =>
         prismaUnscoped.avto_log.count({ where: { sahibkar_id: sahibkarId, yaradildi: { gte: day }, status: { not: "ok" } } }),
       ]);
 
-      // alert_categories — global table, tenant-siz
+      // QA-perf: catRows/ruleExamples ilk Promise.all-dan asılıdır, amma bir-birindən müstəqil → paralel.
       const catCodes = top_cats_raw.map((c) => c.kateqoriya_kod);
-      const catRows = catCodes.length > 0
-        ? await prismaUnscoped.alert_categories.findMany({ where: { kod: { in: catCodes } }, select: { kod: true, ad: true, emoji: true } })
-        : [];
-      const catMap = new Map(catRows.map((c) => [c.kod, c]));
-
       const ruleKods = recurring_raw.map((r) => r.rule_kod).filter((k): k is string => !!k);
-      const ruleExamples = ruleKods.length > 0
-        ? await prismaUnscoped.alerts.findMany({
-            where: { sahibkar_id: sahibkarId, rule_kod: { in: ruleKods } },
-            distinct: ["rule_kod"],
-            select: { rule_kod: true, basliq: true },
-          })
-        : [];
+      const [catRows, ruleExamples] = await Promise.all([
+        catCodes.length > 0
+          ? prismaUnscoped.alert_categories.findMany({ where: { kod: { in: catCodes } }, select: { kod: true, ad: true, emoji: true } })
+          : Promise.resolve([] as { kod: string; ad: string; emoji: string | null }[]),
+        ruleKods.length > 0
+          ? prismaUnscoped.alerts.findMany({
+              where: { sahibkar_id: sahibkarId, rule_kod: { in: ruleKods } },
+              distinct: ["rule_kod"],
+              select: { rule_kod: true, basliq: true },
+            })
+          : Promise.resolve([] as { rule_kod: string | null; basliq: string }[]),
+      ]);
+      const catMap = new Map(catRows.map((c) => [c.kod, c]));
       const ruleExMap = new Map(ruleExamples.map((r) => [r.rule_kod!, r.basliq]));
 
       // Borclu müştərilərdən 30+ gündür hərəkət olmayanlar.

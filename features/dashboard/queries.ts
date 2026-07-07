@@ -657,7 +657,11 @@ async function fetchCriticalAlertsForDashRaw(sahibkarId: string, limit: number):
     },
     orderBy: [{ seviyye: "desc" }, { first_seen_at: "desc" }],
     take: limit,
-    include: { alert_categories: { select: { ad: true } } },
+    // QA-perf: include → select (map yalnız bu sahələri işlədir).
+    select: {
+      id: true, basliq: true, seviyye: true,
+      alert_categories: { select: { ad: true } },
+    },
   });
   return rows.map((r) => ({
     id: r.id,
