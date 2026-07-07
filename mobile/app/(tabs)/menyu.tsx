@@ -53,7 +53,7 @@ export default function ModullarScreen() {
     { label: "Anbar", Icon: Package, fg: "#d97706", onPress: () => router.push("/mehsullar"), seg: "anbar" },
     { label: "Maliyyə", Icon: Wallet, fg: "#7c3aed", onPress: () => router.push("/maliyye"), seg: "maliyye" },
     { label: "Əlaqələr", Icon: Users, fg: "#0891b2", onPress: () => router.push("/musteri"), seg: "elaqe" },
-    { label: "Servis", Icon: Wrench, fg: "#ea580c", onPress: () => soon("Servis"), seg: "servis" },
+    { label: "Servis", Icon: Wrench, fg: "#ea580c", onPress: () => router.push("/servis"), seg: "servis" },
     { label: "Əməkdaşlar", Icon: UserCog, fg: "#0d9488", onPress: () => soon("Əməkdaşlar"), seg: "iscilier" },
     { label: "Tapşırıqlar", Icon: ListTodo, fg: "#4f46e5", onPress: () => router.push("/tapshiriq"), seg: "tapshiriq" },
     { label: "Team / Söhbət", Icon: MessageSquare, fg: "#4f46e5", onPress: () => router.push("/team") },
