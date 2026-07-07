@@ -1,5 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db/prisma";
+import { unstable_cache } from "next/cache";
+import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import type { DateRange } from "./shared";
@@ -65,7 +66,8 @@ export async function getDeadStock90(limit = 50): Promise<DeadStockRow[]> {
     const { sahibkarId } = requireTenant();
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 90);
-    const rows = await prisma.$queryRaw<DeadStockRow[]>`
+    // QA-perf: ölü-stok (90g) yavaş dəyişir → cache 5dəq (redundant MAX subquery-ni yenidən yazmaqdansa təhlükəsiz).
+    const rows = await unstable_cache(() => prismaUnscoped.$queryRaw<DeadStockRow[]>`
       SELECT m.id::text AS mehsul_id, m.ad, m.kod,
              COALESCE((SELECT SUM(s.miqdar) FROM stok s WHERE s.mehsul_id = m.id), 0)::float AS stok,
              COALESCE((SELECT SUM(s.miqdar * COALESCE(s.son_qiymet, m.alish_qiymeti, 0)) FROM stok s WHERE s.mehsul_id = m.id), 0)::float AS deyer,
@@ -86,7 +88,10 @@ export async function getDeadStock90(limit = 50): Promise<DeadStockRow[]> {
          )
        ORDER BY deyer DESC
        LIMIT ${limit}
-    `;
+    `,
+      ["dead-stock-90", sahibkarId, String(limit)],
+      { revalidate: 300, tags: [`stok:${sahibkarId}`] },
+    )();
     return rows.map((r) => ({
       ...r,
       stok: Number(r.stok),
