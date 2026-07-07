@@ -7,6 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { queryClient } from "../src/lib/query";
 import { useAuth } from "../src/lib/auth-store";
+import { api } from "../src/lib/api";
 import { useAppModeStore } from "../src/lib/app-mode-store";
 import { useThemeStore, C } from "../src/theme";
 import { SplashScreen } from "../src/components/SplashScreen";
@@ -14,6 +15,8 @@ import { SplashScreen } from "../src/components/SplashScreen";
 export default function RootLayout() {
   const ready = useAuth((s) => s.ready);
   const access = useAuth((s) => s.access);
+  const user = useAuth((s) => s.user);
+  const setUser = useAuth((s) => s.setUser);
   const load = useAuth((s) => s.load);
   const loadMode = useAppModeStore((s) => s.load);
   const themeMode = useThemeStore((s) => s.mode);
@@ -25,6 +28,27 @@ export default function RootLayout() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadMode(); }, [loadMode]);
   useEffect(() => { loadTheme(); }, [loadTheme]);
+
+  // QA-mobil: restart-da token bərpa olunur, amma user yox → /me-dən hidratlaşdır (profil/salamlama boş qalmasın).
+  useEffect(() => {
+    if (!ready || !access || user) return;
+    let alive = true;
+    api.get("/me")
+      .then((r) => {
+        const d = r.data as { user?: { id: string; ad_soyad: string; email: string; sahibkar_ad?: string | null }; rol_ad?: string };
+        if (alive && d?.user) {
+          setUser({
+            id: d.user.id,
+            ad_soyad: d.user.ad_soyad,
+            email: d.user.email,
+            sahibkar_ad: d.user.sahibkar_ad ?? undefined,
+            rol_ad: d.rol_ad,
+          });
+        }
+      })
+      .catch(() => { /* 401 → interceptor refresh/logout idarə edir */ });
+    return () => { alive = false; };
+  }, [ready, access, user, setUser]);
 
   useEffect(() => {
     if (!ready) return;

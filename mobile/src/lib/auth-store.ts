@@ -20,6 +20,7 @@ type AuthState = {
   load: () => Promise<void>;
   setSession: (a: string, r: string, u: AuthUser) => Promise<void>;
   setAccess: (a: string) => Promise<void>;
+  setUser: (u: AuthUser) => void;
   clear: () => Promise<void>;
 };
 
@@ -46,6 +47,8 @@ export const useAuth = create<AuthState>((set) => ({
     await SecureStore.setItemAsync(ACCESS, a);
     set({ access: a });
   },
+  // QA-mobil: restart-da /me-dən user hidratlaşdırmaq üçün (SecureStore yalnız token saxlayır).
+  setUser: (u) => set({ user: u }),
   clear: async () => {
     await Promise.all([
       SecureStore.deleteItemAsync(ACCESS),

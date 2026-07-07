@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withMobile, mobilePerm } from "@/lib/mobile/session";
 import { getContacts } from "@/features/elaqe/queries";
@@ -10,7 +10,8 @@ import { normalizePhone } from "@/lib/utils/normalize-phone";
 export async function GET(req: NextRequest) {
   return withMobile(req, async (ctx) => {
     if (!mobilePerm(ctx, "musteri.oxu", "elaqe.oxu", "musteri.idare")) {
-      return { error: "İcazə yoxdur", items: [], total: 0 };
+      // QA-mobil: icazə-yox → 403 (əvvəl plain-object 200 → mobil boş siyahı göstərirdi, error yox).
+      return NextResponse.json({ error: "İcazə yoxdur" }, { status: 403 });
     }
     const sp = req.nextUrl.searchParams;
     const page = Math.max(1, Number(sp.get("page")) || 1);
@@ -37,7 +38,7 @@ const CreateSchema = z.object({
 export async function POST(req: NextRequest) {
   return withMobile(req, async (ctx) => {
     if (!mobilePerm(ctx, "musteri.yarat", "musteri.idare")) {
-      return { error: "İcazə yoxdur" };
+      return NextResponse.json({ error: "İcazə yoxdur" }, { status: 403 });
     }
     const body = await req.json().catch(() => ({}));
     const parsed = CreateSchema.safeParse(body);

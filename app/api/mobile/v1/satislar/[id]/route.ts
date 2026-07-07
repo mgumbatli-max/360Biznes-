@@ -14,7 +14,7 @@ export async function GET(
       return NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
     }
     if (!mobilePerm(ctx, "satis.oxu", "ticaret.oxu", "satis.idare")) {
-      return { error: "İcazə yoxdur" };
+      return NextResponse.json({ error: "İcazə yoxdur" }, { status: 403 });
     }
     const { id } = await params;
     const sale = await getSaleDetail(id);

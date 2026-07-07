@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Bu modul şirkətiniz üçün aktiv deyil" }, { status: 403 });
     }
     if (!mobilePerm(ctx, "maliyye.oxu", "maliyye.gor", "maliyye.idare")) {
-      return { error: "İcazə yoxdur", kpis: null, debtors: [], creditors: [] };
+      // QA-mobil: icazə-yox → 403 (əvvəl plain-object 200 → mobil boş göstərirdi).
+      return NextResponse.json({ error: "İcazə yoxdur" }, { status: 403 });
     }
     const [kpis, debtors, creditors] = await Promise.all([
       getDashboardKpis().catch(() => null),

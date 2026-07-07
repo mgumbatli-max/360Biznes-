@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   return withMobile(req, async (ctx) => {
     if (!(await assertModuleAccess(ctx.sahibkarId, "satis"))) return MODUL_BAGLI();
     if (!mobilePerm(ctx, "satis.oxu", "ticaret.oxu", "satis.idare")) {
-      return { error: "İcazə yoxdur", items: [], total: 0 };
+      // QA-mobil: icazə-yox → 403 (əvvəl plain-object 200 → mobil boş siyahı, error yox).
+      return NextResponse.json({ error: "İcazə yoxdur" }, { status: 403 });
     }
     const sp = req.nextUrl.searchParams;
     const page = Math.max(1, Number(sp.get("page")) || 1);
