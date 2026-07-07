@@ -59,7 +59,7 @@ export default function ModullarScreen() {
     { label: "Team / Söhbət", Icon: MessageSquare, fg: "#4f46e5", onPress: () => router.push("/team") },
     { label: "CRM / Mesaj", Icon: Contact, fg: "#0284c7", onPress: () => soon("CRM / Mesaj Mərkəzi"), seg: "crm" },
     { label: "Kampaniyalar", Icon: Megaphone, fg: "#db2777", onPress: () => soon("Kampaniyalar") },
-    { label: "Marketplace", Icon: Store, fg: "#475569", onPress: () => soon("Marketplace & Webhook"), seg: "marketplace" },
+    { label: "Marketplace", Icon: Store, fg: "#475569", onPress: () => router.push("/marketplace"), seg: "marketplace" },
     { label: "360 LAB", Icon: FlaskConical, fg: "#c026d3", onPress: () => soon("360 LAB") },
     { label: "Hesabatlar", Icon: BarChart3, fg: "#0284c7", onPress: () => router.push("/maliyye"), seg: "hesabatlar" },
     { label: "Nəzarət Mərkəzi", Icon: ShieldAlert, fg: "#dc2626", onPress: () => soon("Nəzarət Mərkəzi") },
