@@ -168,9 +168,8 @@ export const TENANT_MODELS = new Set<string>([
   "reqib_qiymet",
   "rezerv_satirlari",
   "rezervler",
-  // "roles" — INTENTIONALLY EXCLUDED: roles.sahibkar_id is nullable; system
-  // roles (sistem=true) have NULL tenant. Query roles manually with
-  // `where: { OR: [{ sahibkar_id: tenantId }, { sistem: true }] }`.
+  // "roles" — burada DEYİL: sahibkar_id nullable-dır (sistem rolları NULL).
+  // Açıq şəkildə MANUAL_SCOPE_MODELS siyahısındadır (faylın sonuna bax).
   "sahibkar_alici",
   "sahibkar_audit",
   "sahibkar_ayar",
@@ -323,4 +322,34 @@ export function isGlobalModel(modelName: string | undefined): boolean {
   if (!modelName) return false;
   const normalized = modelName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
   return GLOBAL_MODELS.has(normalized);
+}
+
+/**
+ * MANUAL_SCOPE_MODELS — sahibkar_id sütunu VAR, lakin NULL ola bilər.
+ *
+ * `roles` iki növ sətir saxlayır:
+ *   • sistem rolları — `sistem = true`, `sahibkar_id IS NULL` (bütün kirayəçilər üçün şablon);
+ *   • kirayəçi rolları — `sahibkar_id = <tenant>` (qeydiyyatda sistem rollarından klonlanır).
+ *
+ * Avtomatik `where.sahibkar_id = tenantId` inyeksiyası sistem rollarını gizlədir,
+ * yəni qeydiyyat (`signup-action.ts` sistem rollarını klonlayır) və rol idarəetməsi
+ * sınır. Ona görə bu modellər guard-dan filtrsiz keçir.
+ *
+ * ⚠️ ÇAĞIRICININ ÖHDƏLİYİ: filtr ƏL İLƏ yazılmalıdır —
+ *    `where: { OR: [{ sahibkar_id: tenantId }, { sistem: true }] }`
+ *    və ya yalnız kirayəçi sətirləri üçün `where: { sahibkar_id: tenantId }`.
+ *
+ * Bu siyahı AÇIQ elandır: fail-closed guard (lib/db/prisma.ts) yalnız burada,
+ * TENANT_MODELS-də və ya GLOBAL_MODELS-də olan modelləri buraxır. Yeni model
+ * əlavə edən şəxs üç siyahıdan birini seçməyə məcburdur.
+ */
+export const MANUAL_SCOPE_MODELS = new Set<string>([
+  "roles",
+]);
+
+/** Model əl ilə filtrlənən (nullable sahibkar_id) siyahıdadırmı? */
+export function isManualScopeModel(modelName: string | undefined): boolean {
+  if (!modelName) return false;
+  const normalized = modelName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
+  return MANUAL_SCOPE_MODELS.has(normalized);
 }

@@ -157,6 +157,42 @@ async function main() {
   }
   ok("tenant konteksti olmadan sorğu bloklanır (fail-closed)", threw);
 
+  /* ── MANUAL_SCOPE: `roles` guard tərəfindən BLOKLANMAMALIDIR ──
+   *
+   * REQRESSİYA 2026-09-02: `roles` nə TENANT_MODELS, nə GLOBAL_MODELS
+   * siyahısında idi; fail-closed guard onu atırdı və POS səhifəsi,
+   * qeydiyyat (sistem rollarının klonlanması), rol idarəetməsi və
+   * əməkdaşlar modulu sınırdı. Statik örtük testi kommentdəki `"roles"`
+   * sözünü saydığı üçün bunu görmürdü. Bu, RUNTIME sübutudur.
+   */
+  const manualCtx = mkCtx(tenants[0].id);
+  let rolesErr: string | null = null;
+  let rolesCount = -1;
+  try {
+    rolesCount = await runWithTenant(manualCtx, () => prisma.roles.count());
+  } catch (e) {
+    rolesErr = e instanceof Error ? e.message : String(e);
+  }
+  ok(
+    "`roles` sorğusu tenant kontekstində guard tərəfindən bloklanmır",
+    rolesErr === null,
+    rolesErr ? rolesErr.slice(0, 120) : `count=${rolesCount}`,
+  );
+
+  // Sistem rolları (sahibkar_id IS NULL) görünməlidir — avtomatik filtr
+  // tətbiq olunsaydı, bunlar itərdi və qeydiyyat klonlaya bilməzdi.
+  let sistemRoles = -1;
+  try {
+    sistemRoles = await runWithTenant(manualCtx, () =>
+      prisma.roles.count({ where: { sistem: true } }),
+    );
+  } catch { /* yuxarıdakı yoxlama xətanı artıq bildirir */ }
+  ok(
+    "sistem rolları (sahibkar_id NULL) tenant kontekstində görünür",
+    sistemRoles > 0,
+    `sistem rolu: ${sistemRoles}`,
+  );
+
   console.log(`  ─── ${pass} keçdi, ${fail} uğursuz`);
   await prisma.$disconnect();
   await prismaUnscoped.$disconnect();

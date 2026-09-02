@@ -1,6 +1,6 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { currentTenantId } from "./tenant-context";
-import { isTenantModel, isGlobalModel } from "./tenant-models";
+import { isTenantModel, isGlobalModel, isManualScopeModel } from "./tenant-models";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof createPrismaClient> | undefined;
@@ -79,14 +79,24 @@ function createPrismaClient() {
             // qorumasız qalmışdı: bir kirayəçi digərinin sətirlərini oxuya,
             // dəyişə və silə bilirdi (r2b regression testi ilə sübut edilib).
             //
-            // İndi model AÇIQ ŞƏKİLDƏ ya tenant-scoped, ya da qlobal elan
-            // edilməlidir; heç birində deyilsə sorğu icra olunmur.
-            if (!model || isGlobalModel(model)) return query(args);
+            // İndi model AÇIQ ŞƏKİLDƏ üç siyahıdan birində elan edilməlidir;
+            // heç birində deyilsə sorğu icra olunmur.
+            //
+            // MANUAL_SCOPE (regression fix 2026-09-02): `roles` modelinin
+            // sahibkar_id sütunu nullable-dır — sistem rolları NULL tenant ilə
+            // saxlanılır. Heç bir siyahıda olmadığı üçün bu guard onu bloklayır,
+            // nəticədə qeydiyyat (sistem rollarının klonlanması), rol
+            // idarəetməsi, POS qiymət-icazəsi və əməkdaşlar modulu sınırdı.
+            // Filtr çağırıcı tərəfindən əl ilə yazılır (tenant-models.ts-ə bax).
+            if (!model || isGlobalModel(model) || isManualScopeModel(model)) {
+              return query(args);
+            }
             throw new Error(
-              `[tenant-guard] "${model}" modeli nə TENANT_MODELS, nə də GLOBAL_MODELS ` +
-                `siyahısındadır. Sorğu təhlükəsizlik üçün bloklandı. ` +
-                `Modeli lib/db/tenant-models.ts-də qeydiyyatdan keçirin: ` +
-                `sahibkar_id sütunu varsa TENANT_MODELS-ə, yoxdursa GLOBAL_MODELS-ə.`,
+              `[tenant-guard] "${model}" modeli nə TENANT_MODELS, nə GLOBAL_MODELS, ` +
+                `nə də MANUAL_SCOPE_MODELS siyahısındadır. Sorğu təhlükəsizlik üçün ` +
+                `bloklandı. Modeli lib/db/tenant-models.ts-də qeydiyyatdan keçirin: ` +
+                `sahibkar_id sütunu varsa TENANT_MODELS-ə, yoxdursa GLOBAL_MODELS-ə, ` +
+                `nullable sahibkar_id üçün MANUAL_SCOPE_MODELS-ə.`,
             );
           }
 
