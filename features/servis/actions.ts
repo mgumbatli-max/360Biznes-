@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma, prismaUnscoped } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { parseLocalDate } from "@/lib/utils/date-parse";
 import { formatDate } from "@/lib/utils";
 import { safeAuditLog } from "@/lib/audit/safe-log";
@@ -50,20 +51,13 @@ const STATUSES = [
 type Status = (typeof STATUSES)[number];
 type ActionResult<T = undefined> = { ok: true; id?: string; data?: T; warning?: string } | { ok: false; error: string };
 
-const SERVIS_PREFIX = "SR";
-
 /* ---------- Helpers ---------- */
 
-async function nextNomre(): Promise<string> {
-  const year = new Date().getFullYear();
-  const last = await prisma.servis_qeydleri.findFirst({
-    where: { nomre: { startsWith: `${SERVIS_PREFIX}-${year}-` } },
-    orderBy: { nomre: "desc" },
-    select: { nomre: true },
-  });
-  const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-  return `${SERVIS_PREFIX}-${year}-${String(lastNum + 1).padStart(5, "0")}`;
-}
+// Servis nömrəsi mərkəzi `nextDocNumber`-dən gəlir (lib/db/sened-nomre.ts).
+// Əvvəlki lokal generator `findFirst(orderBy nomre desc) + 1` işlədirdi:
+// race-safe deyildi (iki paralel qeyd eyni nömrəni alırdı) və leksikoqrafik
+// `desc` sıralaması rəqəm sıralaması ilə üst-üstə düşmürdü. Görünən format
+// (`SR-YYYY-NNNNN`) DISPLAY map ilə olduğu kimi qorunur.
 
 function setPriorityTag(existing: string | null | undefined, prio: string | undefined): string {
   const clean = (existing ?? "").replace(/\bprioritet:(asagi|orta|yuksek|tecili)\b/gi, "").trim();
@@ -120,7 +114,7 @@ export async function createServisRequest(input: FormData): Promise<ActionResult
         return { ok: false, error: "Servis işçisi bu hesaba aid deyil" };
       }
 
-      const nomre = await nextNomre();
+      const nomre = await nextDocNumber(prisma, sahibkarId, "servis");
       // Free-form daxili note + inline priority tag (legacy convention)
       const noteSeed = d.daxili_qeyd?.trim() || null;
       const daxili = setPriorityTag(noteSeed, d.prioritet);
@@ -906,16 +900,11 @@ export async function recordPayment(input: FormData): Promise<ActionResult> {
         // 5) satis_sifarisleri sətri yarat (xidmət kimi)
         let satisId: string | null = servis.satis_id;
         if (d.satis_kimi_qeyd_et) {
-          // Generate unique nomre
-          const PREFIX = "S";
-          const year = new Date().getFullYear();
-          const last = await tx.satis_sifarisleri.findFirst({
-            where: { nomre: { startsWith: `${PREFIX}-${year}-` } },
-            orderBy: { nomre: "desc" },
-            select: { nomre: true },
-          });
-          const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-          const nomre = `${PREFIX}-${year}-${String(lastNum + 1).padStart(5, "0")}`;
+          // Sənəd nömrəsi mərkəzi generatordan. Əvvəl burada ayrıca `S-YYYY-NNNNN`
+          // sxemi ilə `findFirst + max+1` işlədilirdi — race-safe deyildi və
+          // eyni cədvəldə (`satis_sifarisleri`) əsas `SATIS-` sxemindən ayrı
+          // sayğac saxlayırdı. İndi hər iki yol eyni tenant-scoped sayğacı bölüşür.
+          const nomre = await nextDocNumber(tx, sahibkarId, "satis");
 
           const sale = await tx.satis_sifarisleri.create({
             data: {

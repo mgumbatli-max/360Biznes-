@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { permGate } from "@/lib/auth/role-check";
 
 type ActionResult = { ok: true; nomre?: string; sifaris_id?: string } | { ok: false; error: string };
@@ -34,7 +35,11 @@ export async function autoCreatePurchaseOrders(): Promise<{ ok: true; count: num
       let count = 0;
       for (const [supplierKey, list] of groups) {
         const sup = supplierKey === "__no_supplier__" ? null : supplierKey;
-        const nomre = `AS-${Date.now()}-${count}`;
+        // Mərkəzi atomik generator (audit 2026-09-01).
+        // Əvvəl `AS-${Date.now()}-${count}` idi — heç bir standart formata
+        // uyğun gəlmirdi (parse olunmurdu), sayğacdan kənarda qalırdı və
+        // eyni millisaniyədə iki sorğu gəlsə toqquşa bilirdi.
+        const nomre = await nextDocNumber(prisma, sahibkarId, "alis");
         const sif = await prisma.alis_sifarisleri.create({
           data: {
             nomre,

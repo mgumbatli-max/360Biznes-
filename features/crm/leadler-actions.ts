@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { safeAuditLog } from "@/lib/audit/safe-log";
 import { audit } from "@/lib/audit/log";
 import { requireCrmActionPerm, bustCrmCache, getCrmScopeFilter } from "./access-guard";
@@ -328,11 +329,15 @@ export async function convertLeadToSale(id: string): Promise<{ ok: true; saleId:
         musteriId = k.id;
       }
 
-      const stamp = new Date();
-      const yy = String(stamp.getFullYear()).slice(2);
-      const mm = String(stamp.getMonth() + 1).padStart(2, "0");
-      const rand = Math.floor(Math.random() * 9000 + 1000);
-      const nomre = `LEAD-${yy}${mm}-${rand}`;
+      // Sənəd nömrəsi mərkəzi, atomik generatordan (audit 2026-09-01).
+      //
+      // Əvvəl `LEAD-${yy}${mm}-${rand}` idi — 4 rəqəmli TƏSADÜFİ komponent.
+      // Ayda 100+ lead çevrilməsində doğum-günü paradoksu ilə toqquşma
+      // ehtimalı ~%40-a çatırdı və qlobal UNIQUE(nomre) altında bu, birbaşa
+      // P2002 xətası demək idi. Lead→satış çevrilməsi adi satış sənədi
+      // yaradır → `satis` namespace-i (marketplace/kredit kimi ayrıca
+      // biznes mənası daşımır).
+      const nomre = await nextDocNumber(prisma, sahibkarId, "satis");
 
       const sale = await prisma.satis_sifarisleri.create({
         data: {

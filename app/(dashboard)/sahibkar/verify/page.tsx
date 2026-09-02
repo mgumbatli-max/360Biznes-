@@ -14,7 +14,9 @@ export default async function PinVerifyPage() {
   if (!session?.user) redirect("/login");
   if (session.user.rol_ad !== "sahibkar") redirect("/dashboard");
 
-  const cfg = await withTenant(async () => prisma.sahibkar_ayar.findFirst());
+  const cfg = await withTenant(async () =>
+    prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } }),
+  );
   if (!cfg?.sifre_hash) redirect("/sahibkar/setup");
 
   // Already verified?

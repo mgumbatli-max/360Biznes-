@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 
 type ActionResult<T = unknown> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -397,15 +398,16 @@ export async function convertProposalToPurchaseOrder(
       // Use first supplier from lines (assume single supplier per proposal)
       const supplierId = teklif.satirlar.find((s) => s.techizatci_id)?.techizatci_id ?? null;
 
-      // Find next purchase number
-      const last = await prisma.alis_sifarisleri.findFirst({
-        where: { sahibkar_id: sahibkarId },
-        orderBy: { yaradildi: "desc" },
-        select: { nomre: true },
-      });
-      const lastNum = last?.nomre?.match(/(\d+)$/)?.[1];
-      const n = lastNum ? Number(lastNum) + 1 : 1;
-      const nomre = `AS-${new Date().getFullYear()}-${String(n).padStart(5, "0")}`;
+      // Sənəd nömrəsi mərkəzi, atomik generatordan (audit 2026-09-01).
+      //
+      // Əvvəl burada `findFirst(orderBy yaradildi desc) + regex + 1` vardı:
+      //   • race-unsafe — iki paralel çevirmə eyni `AS-YYYY-NNNNN` alırdı;
+      //   • ən son YARADILAN sənədin nömrəsindən artırırdı, ən böyük
+      //     NÖMRƏDƏN yox — qarışıq prefikslərdə (ALIS/ALS/AS) səhv nəticə;
+      //   • `AS-` prefiksi mərkəzi sayğacdan kənarda idi.
+      // Satınalma sifarişi `alis_sifarisleri` cədvəlinə yazılır, yəni biznes
+      // mənası alış sənədidir → `alis` namespace-i.
+      const nomre = await nextDocNumber(prisma, sahibkarId, "alis");
 
       // Get default anbar
       const anbar = await prisma.anbarlar.findFirst({

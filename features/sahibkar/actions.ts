@@ -35,7 +35,7 @@ export async function setupPin(input: FormData): Promise<ActionResult> {
 
     // Upsert sahibkar_ayar row. Setup zamanı sessiya_muddet boşdursa standart 15
     // dəqiqə yazılır — sonra sahibkar/ayarlar bölməsindən dəyişdirilə bilər.
-    const existing = await prisma.sahibkar_ayar.findFirst();
+    const existing = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
     if (existing) {
       await prisma.sahibkar_ayar.update({
         where: { id: existing.id },
@@ -92,7 +92,7 @@ export async function verifyPin(input: FormData): Promise<ActionResult> {
       return { ok: false, error: `Çox sayda yanlış cəhd. ${min}:${String(sec).padStart(2, "0")} sonra yenidən cəhd edin.` };
     }
 
-    const cfg = await prisma.sahibkar_ayar.findFirst();
+    const cfg = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
     if (!cfg?.sifre_hash) return { ok: false, error: "PIN qurulmayıb" };
 
     const ok = await bcrypt.compare(pin, cfg.sifre_hash);

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { audit } from "@/lib/audit/log";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { safeUserMessage } from "@/lib/error/user-message";
 
 type ActionResult<T = undefined> =
@@ -33,13 +34,10 @@ const CreateSchema = z.object({
   qeyd: z.string().max(1000).optional().nullable(),
 });
 
-async function nextInventarNo(sahibkarId: string): Promise<string> {
-  const year = new Date().getFullYear();
-  const count = await prisma.inventarizasiyalar.count({
-    where: { sahibkar_id: sahibkarId, tarix: { gte: new Date(`${year}-01-01`) } },
-  });
-  return `INV-${year}-${String(count + 1).padStart(5, "0")}`;
-}
+// Nömrə generatoru mərkəzi `nextDocNumber`-dədir (lib/db/sened-nomre.ts).
+// Əvvəlki `nextInventarNo` tenant-daxili `count()+1` işlədirdi — race-safe
+// deyildi və silinmiş sətir olduqda nömrəni təkrarlayırdı. Görünən format
+// (`INV-YYYY-NNNNN`) DISPLAY map ilə olduğu kimi qorunur.
 
 const TIP_LABEL: Record<string, string> = {
   tam: "Tam sayım",
@@ -66,7 +64,7 @@ export async function createInventar(formData: FormData): Promise<ActionResult<{
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const nomre = await nextInventarNo(sahibkarId);
+      const nomre = await nextDocNumber(prisma, sahibkarId, "sayim");
 
       // ───── Snapshot tipinə görə filter qurulur ─────
       const mehsulWhere: Record<string, unknown> = { aktiv: true };

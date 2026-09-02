@@ -14,7 +14,10 @@ export const metadata: Metadata = { title: "Sahibkar ayarları" };
 
 async function loadConfig() {
   return withTenant(async () => {
-    const cfg = await prisma.sahibkar_ayar.findFirst();
+    // omit override: yalnız PIN-in MÖVCUDLUĞU lazımdır (has_pin), dəyəri
+    // heç vaxt UI-a ötürülmür — credential sahələri qlobal gizlidir
+    // (lib/db/prisma.ts → CREDENTIAL_OMIT).
+    const cfg = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
     return {
       sidebar_gorunsun: cfg?.sidebar_gorunsun !== false,
       qoruma_aktiv: cfg?.qoruma_aktiv !== false,

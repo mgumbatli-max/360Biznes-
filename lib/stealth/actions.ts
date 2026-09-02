@@ -61,6 +61,7 @@ async function verifySahibkarPin(pin: string): Promise<boolean> {
   return withTenant(async () => {
     const cfg = await prisma.sahibkar_ayar.findFirst({
       select: { sifre_hash: true },
+      omit: { sifre_hash: false },
     });
     if (!cfg?.sifre_hash) return false;
     // bcryptjs hash müqayisəsi

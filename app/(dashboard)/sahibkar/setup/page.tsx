@@ -18,7 +18,7 @@ export default async function PinSetupPage() {
 
   // If already set, send to verify instead
   const hasPin = await withTenant(async () => {
-    const cfg = await prisma.sahibkar_ayar.findFirst();
+    const cfg = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
     return !!cfg?.sifre_hash;
   });
   if (hasPin) redirect("/sahibkar/verify");

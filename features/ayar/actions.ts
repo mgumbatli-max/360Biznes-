@@ -120,7 +120,12 @@ export async function changePassword(input: FormData): Promise<ActionResult> {
   }
   return withTenant(async () => {
     const { istifadeciId } = requireTenant();
-    const user = await prisma.istifadeciler.findUnique({ where: { id: istifadeciId } });
+    // omit override: köhnə şifrənin yoxlanması üçün hash lazımdır (credential
+    // sahələri qlobal olaraq gizlidir — bax lib/db/prisma.ts CREDENTIAL_OMIT).
+    const user = await prisma.istifadeciler.findUnique({
+      where: { id: istifadeciId },
+      omit: { sifre_hash: false },
+    });
     if (!user) return { ok: false, error: "İstifadəçi tapılmadı" };
     const ok = await verifyPassword(parsed.data.kohne, user.sifre_hash);
     if (!ok) return { ok: false, error: "Köhnə şifrə səhvdir" };

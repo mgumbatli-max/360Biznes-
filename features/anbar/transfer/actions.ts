@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
 import { createApprovalRequest, shouldRequireDocApproval } from "@/features/tesdiq/create";
 import { safeStockDecrement } from "@/lib/db/stock-guards";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { safeUserMessage } from "@/lib/error/user-message";
 
 const LineSchema = z.object({
@@ -23,13 +24,12 @@ const CreateTransferSchema = z.object({
 
 type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
-async function nextTransferNo(sahibkarId: string): Promise<string> {
-  const year = new Date().getFullYear();
-  const count = await prisma.anbar_transferleri.count({
-    where: { sahibkar_id: sahibkarId, tarix: { gte: new Date(`${year}-01-01`) } },
-  });
-  return `TR-${year}-${String(count + 1).padStart(5, "0")}`;
-}
+// Nömrə generatoru mərkəzi `nextDocNumber`-dədir (lib/db/sened-nomre.ts).
+// Əvvəlki `nextTransferNo` tenant-daxili `count()+1` işlədirdi — iki qüsurla:
+//   1) race-safe deyildi (paralel iki transfer eyni nömrəni alırdı),
+//   2) silinmiş sətir sayı azaltdığı üçün nömrə təkrarlanırdı.
+// `nextDocNumber` atomik `sened_nomre_counter` UPSERT-i işlədir və görünən
+// format (`TR-YYYY-NNNNN`) DISPLAY map ilə olduğu kimi qorunur.
 
 export async function createTransfer(input: z.input<typeof CreateTransferSchema>): Promise<ActionResult<{ id: string }>> {
   const { requireAnbarActionPerm } = await import("../access-guard");
@@ -44,7 +44,7 @@ export async function createTransfer(input: z.input<typeof CreateTransferSchema>
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const nomre = await nextTransferNo(sahibkarId);
+      const nomre = await nextDocNumber(prisma, sahibkarId, "transfer");
       const transfer = await prisma.anbar_transferleri.create({
         data: {
           sahibkar_id: sahibkarId,

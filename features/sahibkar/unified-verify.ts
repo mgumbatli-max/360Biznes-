@@ -31,7 +31,7 @@ export async function verifyPinOrCode(input: FormData): Promise<Result> {
       return { ok: false, error: `Çox sayda yanlış cəhd. ${min}:${String(sec).padStart(2, "0")} sonra yenidən` };
     }
 
-    const cfg = await prisma.sahibkar_ayar.findFirst();
+    const cfg = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
     if (!cfg) return { ok: false, error: "Sahibkar bölməsi qurulmayıb. /sahibkar/setup-a keçin." };
 
     // Try PIN first (4-8 digits expected for PIN)

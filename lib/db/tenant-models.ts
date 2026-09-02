@@ -225,6 +225,21 @@ export const TENANT_MODELS = new Set<string>([
   "xercl_r",
   "zemanet_sablonlari",
   "zemanetler",
+
+  // ── 2026-09-01 audit fix: sahibkar_id daşıyırdılar, lakin siyahıda yox idilər.
+  // Prisma extension tanınmayan model üçün FİLTRSİZ keçirdi (fail-open) →
+  // cross-tenant oxu/dəyişmə/silmə mümkün idi (r2b regression testi ilə sübut edilib).
+  "team_kanal",
+  "team_mesaj_log",
+  "team_ayar",
+  "satinalma_teklif",
+  "filial_mesaj",
+  "filial_gorunush",
+  "sened_nomre_counter",
+  "audit_log_outbox",
+  "vezifeler",
+  "defekt_qeydleri",
+  "mobil_refresh_tokens",
 ]);
 
 export function isTenantModel(modelName: string | undefined): boolean {
@@ -233,4 +248,79 @@ export function isTenantModel(modelName: string | undefined): boolean {
   // version; we normalize to lowercase snake_case for the lookup.
   const normalized = modelName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
   return TENANT_MODELS.has(normalized);
+}
+
+/**
+ * Qəsdən tenant-scoped OLMAYAN modellər — açıq allowlist.
+ *
+ * `isTenantModel()` false qaytaranda Prisma extension artıq sorğunu SƏSSİZCƏ
+ * buraxmır (əvvəlki fail-open davranış). Model bu siyahıda da yoxdursa
+ * extension xəta atır — yəni sxemə yeni `sahibkar_id`-li model əlavə edən
+ * developer onu qeydiyyatdan keçirməyə MƏCBURDUR.
+ *
+ * Siyahı iki qrupdan ibarətdir:
+ *
+ * A) PLATFORMA SƏVİYYƏSİ — həqiqətən qlobaldır, tenant-a aid deyil:
+ *    abune_planlari, modullar, icazeler, schema_migrations, sahibkarlar,
+ *    kpi_metric_kataloqu, alert_categories, finance_operation_types,
+ *    lab_valyuta_kurs, landed_xerc_kateq, tapshiriq_tipleri
+ *
+ * B) VALİDEYN ÜZƏRİNDƏN BAĞLI — məntiqən tenant datasıdır, lakin cədvəldə
+ *    `sahibkar_id` sütunu YOXDUR, ona görə ORM qatında filtr tətbiq edilə
+ *    bilmir; izolyasiya valideyn sənədin yoxlanmasından asılıdır.
+ *    ⚠️ AÇIQ RİSK — audit 2026-09-01 bu modellərdə cross-tenant sızma
+ *    aşkarlayıb (məs. alert_comments, alert_escalations, tesdiq_log,
+ *    giris_cehdleri, team_uzv, team_mesaj). Struktur həll: həmin cədvəllərə
+ *    `sahibkar_id` sütunu əlavə edib bu siyahıdan TENANT_MODELS-ə köçürmək.
+ *    Bu iş bu düzəliş paketinin ƏHATƏSİNDƏN KƏNARDADIR və ayrıca aparılmalıdır.
+ */
+export const GLOBAL_MODELS = new Set<string>([
+  // A) platforma səviyyəsi
+  "abune_planlari",
+  "alert_categories",
+  "finance_operation_types",
+  "icazeler",
+  "kpi_metric_kataloqu",
+  "lab_valyuta_kurs",
+  "landed_xerc_kateq",
+  "modullar",
+  "sahibkarlar",
+  "schema_migrations",
+  "tapshiriq_tipleri",
+
+  // B) valideyn üzərindən bağlı (sahibkar_id sütunu yoxdur) — açıq risk
+  "alert_comments",
+  "alert_escalations",
+  "alert_status_history",
+  "alert_user_preferences",
+  "bildiris_kanal_log",
+  "contact_tag_links",
+  "finance_operation_items",
+  "giris_cehdleri",
+  "istifadeci_filial",
+  "lab_emergency_contact",
+  "owner_widget_konfig",
+  "rol_icazeleri",
+  "sahibkar_partiya_magaza",
+  "sahibkar_partiya_mehsul",
+  "sahibkar_partiya_sened",
+  "sahibkar_partiya_xerc",
+  "satinalma_teklif_satir",
+  "servis_fayllari",
+  "servis_status_tarixce",
+  "sohbet_kanallari",
+  "tapshiriq_iscilier",
+  "tapshiriq_status_tarixce",
+  "team_mesaj",
+  "team_uzv",
+  "teklif_satirlari",
+  "tesdiq_log",
+  "user_pos_preferences",
+]);
+
+/** Model qəsdən tenant-scoped olmayanlar siyahısındadırmı? */
+export function isGlobalModel(modelName: string | undefined): boolean {
+  if (!modelName) return false;
+  const normalized = modelName.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
+  return GLOBAL_MODELS.has(normalized);
 }

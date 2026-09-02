@@ -19,7 +19,7 @@ export async function getSahibkarState(): Promise<SahibkarSetupState> {
   if (session.user.rol_ad !== "sahibkar") return "wrong-role";
 
   const hasPin = await withTenant(async () => {
-    const cfg = await prisma.sahibkar_ayar.findFirst();
+    const cfg = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
     return !!cfg?.sifre_hash;
   });
   if (!hasPin) return "needs-setup";

@@ -282,7 +282,7 @@ model alis_sifaris_satirlari {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model alis_sifarisleri {
   id                                                        String                        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nomre                                                     String                        @unique @db.VarChar(50)
+  nomre                                                     String                        @db.VarChar(50)
   techiazatci_id                                            String?                       @db.Uuid
   anbar_id                                                  Int?
   tarix                                                     DateTime                      @default(dbgenerated("CURRENT_DATE")) @db.Date
@@ -324,6 +324,7 @@ model alis_sifarisleri {
   @@index([techiazatci_id], map: "idx_alis_techiaz")
   @@index([sahibkar_id, status, tarix(sort: Desc)], map: "idx_alis_sah_status_tarix")
   @@index([sahibkar_id, techiazatci_id, tarix(sort: Desc)], map: "idx_alis_sah_techiazatci_tarix")
+  @@unique([sahibkar_id, nomre], map: "alis_sifarisleri_sah_nomre_uniq")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -354,7 +355,7 @@ model anbar_hereketleri {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model anbar_transferleri {
   id                                                    String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nomre                                                 String               @unique @db.VarChar(50)
+  nomre                                                 String               @db.VarChar(50)
   kaynak_anbar_id                                       Int
   hedef_anbar_id                                        Int
   tarix                                                 DateTime             @default(dbgenerated("CURRENT_DATE")) @db.Date
@@ -380,6 +381,7 @@ model anbar_transferleri {
   @@index([kaynak_anbar_id], map: "idx_transfer_kaynak")
   @@index([status], map: "idx_transfer_status")
   @@index([tarix], map: "idx_transfer_tarix")
+  @@unique([sahibkar_id, nomre], map: "anbar_transferleri_sah_nomre_uniq")
 }
 
 model anbarlar {
@@ -928,7 +930,7 @@ model catdirmalar {
   id                String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   sahibkar_id       String             @db.Uuid
   filial_id         Int?
-  nomre             String             @unique @db.VarChar(50)
+  nomre             String             @db.VarChar(50)
   satis_id          String?            @db.Uuid
   musteri_id        String?            @db.Uuid
   musteri_ad        String?            @db.VarChar(200)
@@ -957,6 +959,7 @@ model catdirmalar {
   @@index([nomre(ops: raw("gin_trgm_ops"))], map: "idx_catdirma_nomre_trgm", type: Gin)
   @@index([sahibkar_id, status, yaradildi(sort: Desc)], map: "idx_catdirma_sahibkar")
   @@index([satis_id], map: "idx_catdirma_satis")
+  @@unique([sahibkar_id, nomre], map: "catdirmalar_sah_nomre_uniq")
 }
 
 model contact_communications {
@@ -2133,7 +2136,7 @@ model inventar_satirlari {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model inventarizasiyalar {
   id                                                            String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nomre                                                         String               @unique @db.VarChar(50)
+  nomre                                                         String               @db.VarChar(50)
   anbar_id                                                      Int
   tarix                                                         DateTime             @default(dbgenerated("CURRENT_DATE")) @db.Date
   status                                                        String?              @default("aktiv") @db.VarChar(30)
@@ -2157,6 +2160,7 @@ model inventarizasiyalar {
   @@index([anbar_id], map: "idx_inv_anbar")
   @@index([status], map: "idx_inv_status")
   @@index([sahibkar_id], map: "idx_inventarizasiyalar_sahibkar")
+  @@unique([sahibkar_id, nomre], map: "inventarizasiyalar_sah_nomre_uniq")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -4176,7 +4180,7 @@ model qaytarma_satirlari {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model qaytarma_sifarisleri {
   id                                                           String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nomre                                                        String               @unique @db.VarChar(50)
+  nomre                                                        String               @db.VarChar(50)
   nov                                                          String               @db.VarChar(20)
   original_id                                                  String?              @db.Uuid
   kontragent_id                                                String?              @db.Uuid
@@ -4208,6 +4212,7 @@ model qaytarma_sifarisleri {
   @@index([sahibkar_id], map: "idx_qaytarma_sifarisleri_sahibkar")
   @@index([status], map: "idx_qaytarma_status")
   @@index([tarix], map: "idx_qaytarma_tarix")
+  @@unique([sahibkar_id, nomre], map: "qaytarma_sifarisleri_sah_nomre_uniq")
 }
 
 model qeydler {
@@ -4415,7 +4420,7 @@ model rezerv_satirlari {
 model rezervler {
   id                String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   sahibkar_id       String             @db.Uuid
-  nomre             String             @unique @db.VarChar(50)
+  nomre             String             @db.VarChar(50)
   filial_id         Int?
   anbar_id          Int?
   musteri_id        String?            @db.Uuid
@@ -4439,6 +4444,7 @@ model rezervler {
   istifadeciler     istifadeciler?     @relation(fields: [yaradan_id], references: [id], onUpdate: NoAction)
 
   @@index([sahibkar_id, status], map: "idx_rezerv_status")
+  @@unique([sahibkar_id, nomre], map: "rezervler_sah_nomre_uniq")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -5174,7 +5180,7 @@ model satis_sifaris_satirlari {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model satis_sifarisleri {
   id                                                               String                        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nomre                                                            String                        @unique @db.VarChar(50)
+  nomre                                                            String                        @db.VarChar(50)
   client_op_id                                                     String?                       @db.VarChar(80)
   external_id                                                      String?                       @db.VarChar(120)
   musteri_id                                                       String?                       @db.Uuid
@@ -5266,6 +5272,7 @@ model satis_sifarisleri {
   @@index([sahibkar_id, status, tarix(sort: Desc)], map: "idx_satis_sah_status_tarix")
   @@index([sahibkar_id, status, qaralama, tarix(sort: Desc)], map: "idx_satis_sah_status_qaralama_tarix")
   @@index([sahibkar_id, yaradan_id, tarix(sort: Desc)], map: "idx_satis_sah_yaradan_tarix")
+  @@unique([sahibkar_id, nomre], map: "satis_sifarisleri_sah_nomre_uniq")
 }
 
 model schema_migrations {
@@ -5425,7 +5432,7 @@ model servis_fayllari {
 model servis_qeydleri {
   id                                                            String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   sahibkar_id                                                   String                  @db.Uuid
-  nomre                                                         String                  @unique @db.VarChar(50)
+  nomre                                                         String                  @db.VarChar(50)
   musteri_id                                                    String?                 @db.Uuid
   musteri_ad                                                    String                  @db.VarChar(200)
   musteri_telefon                                               String                  @db.VarChar(30)
@@ -5501,6 +5508,7 @@ model servis_qeydleri {
   @@index([musteri_telefon(ops: raw("gin_trgm_ops"))], map: "idx_servis_telefon_trgm", type: Gin)
   @@index([xidmet_geliri_op_id], map: "idx_servis_xidmet_op")
   @@index([yaradildi(sort: Desc)], map: "idx_servis_yaradildi")
+  @@unique([sahibkar_id, nomre], map: "servis_qeydleri_sah_nomre_uniq")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments

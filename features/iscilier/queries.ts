@@ -278,6 +278,19 @@ export async function getAllVezifeler(): Promise<VezifeRow[]> {
   });
 }
 
+/**
+ * Əməkdaş detalı — web səhifəsi və mobil REST (`/api/mobile/v1/emekdaslar/[id]`)
+ * bu funksiyanı bölüşür.
+ *
+ * TƏHLÜKƏSİZLİK (audit 2026-09-01): burada `include` istifadə olunur, yəni
+ * modelin bütün sütunları qayıdır. Əvvəl bu, mobil API cavabında bcrypt
+ * `sifre_hash` və TOTP `iki_fa_secret` sızmasına səbəb olurdu. İndi həmin
+ * sahələr ORM səviyyəsində qlobal `omit` ilə bloklanır
+ * (lib/db/prisma.ts → CREDENTIAL_OMIT) — yəni `select` allowlist-i olmayan
+ * hər oxu yolu, o cümlədən gələcəkdə əlavə olunacaq yeni kanallar, avtomatik
+ * qorunur. Bu funksiyaya yeni credential sahəsi əlavə edilərsə, onu həmin
+ * siyahıya da yazmaq lazımdır.
+ */
 export async function getEmployeeDetail(id: string) {
   return withTenant(async () => {
     return prisma.istifadeciler.findUnique({

@@ -26,7 +26,7 @@ export async function verifySearchCode(code: string): Promise<SearchCodeResult> 
     const { sahibkarId, istifadeciId, rolAd } = requireTenant();
     if (rolAd !== "sahibkar") return { ok: false, reason: "not-owner" } as const;
 
-    const cfg = await prisma.sahibkar_ayar.findFirst();
+    const cfg = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
 
     // No config row at all — default code unlocks setup flow
     if (!cfg) {

@@ -144,7 +144,7 @@ export async function testWebhook(id: string): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId } = requireTenant();
     try {
-      const ep = await prisma.webhook_endpoints.findUnique({ where: { id } });
+      const ep = await prisma.webhook_endpoints.findUnique({ where: { id }, omit: { secret: false } });
       if (!ep) return { ok: false, error: "Endpoint tapılmadı" };
 
       const payload = {
@@ -250,6 +250,7 @@ export async function retryFailedDelivery(deliveryId: string): Promise<ActionRes
       if (!delivery.endpoint_id) return { ok: false, error: "Endpoint id yoxdur" };
       const ep = await prisma.webhook_endpoints.findUnique({
         where: { id: delivery.endpoint_id },
+        omit: { secret: false },
       });
       if (!ep) return { ok: false, error: "Endpoint tapılmadı" };
       if (!ep.aktiv) return { ok: false, error: "Endpoint passivdir" };

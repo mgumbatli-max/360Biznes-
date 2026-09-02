@@ -1,6 +1,6 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { currentTenantId } from "./tenant-context";
-import { isTenantModel } from "./tenant-models";
+import { isTenantModel, isGlobalModel } from "./tenant-models";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: ReturnType<typeof createPrismaClient> | undefined;
@@ -33,9 +33,35 @@ const WRITE_OPS = new Set([
   "upsert",
 ]);
 
+/**
+ * Sahə-səviyyəli credential qorunması (audit 2026-09-01).
+ *
+ * Bu sahələr tenant-scoped client-in HEÇ BİR oxu sorğusunda qaytarılmır —
+ * `select`/`include` ilə açıq şəkildə tələb edilsə belə. Səbəb: oxu
+ * funksiyaları allowlist əvəzinə `include` işlədəndə (məs. `getEmployeeDetail`)
+ * bütün sütunlar cavaba düşürdü və mobil REST kanalı onları birbaşa JSON kimi
+ * qaytarırdı — bcrypt `sifre_hash` və TOTP `iki_fa_secret` daxil.
+ *
+ * Yazma (`create`/`update`) `omit`-dən TƏSİRLƏNMİR — parol təyini işləməyə
+ * davam edir. Autentifikasiya `prismaUnscoped` işlədir (aşağıda), ona görə
+ * login axını da toxunulmamış qalır.
+ *
+ * Leqitim oxu tələbi olan yer sahəni AÇIQ ŞƏKİLDƏ geri açmalıdır:
+ *   prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false }, … })
+ */
+const CREDENTIAL_OMIT = {
+  istifadeciler: { sifre_hash: true, iki_fa_secret: true },
+  sahibkar_ayar: { sifre_hash: true },
+  mobil_refresh_tokens: { token_hash: true },
+  webhook_endpoints: { secret: true },
+  marketplace_hesablari: { webhook_secret: true },
+  lab_public_dash: { sifre_hash: true },
+} as const;
+
 function createPrismaClient() {
   const base = new PrismaClient({
     log: ["warn", "error"],
+    omit: CREDENTIAL_OMIT,
   });
 
   return base.$extends({
@@ -43,7 +69,26 @@ function createPrismaClient() {
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
-          if (!isTenantModel(model)) return query(args);
+          if (!isTenantModel(model)) {
+            // FAIL-CLOSED (audit 2026-09-01).
+            //
+            // Əvvəl burada `return query(args)` vardı — yəni TENANT_MODELS
+            // siyahısında olmayan model üçün nə sahibkar_id filtri, nə də xəta.
+            // Sxemə əlavə olunmuş, lakin siyahıya salınmamış 11 model
+            // (team_kanal, satinalma_teklif, mobil_refresh_tokens, …) tamamilə
+            // qorumasız qalmışdı: bir kirayəçi digərinin sətirlərini oxuya,
+            // dəyişə və silə bilirdi (r2b regression testi ilə sübut edilib).
+            //
+            // İndi model AÇIQ ŞƏKİLDƏ ya tenant-scoped, ya da qlobal elan
+            // edilməlidir; heç birində deyilsə sorğu icra olunmur.
+            if (!model || isGlobalModel(model)) return query(args);
+            throw new Error(
+              `[tenant-guard] "${model}" modeli nə TENANT_MODELS, nə də GLOBAL_MODELS ` +
+                `siyahısındadır. Sorğu təhlükəsizlik üçün bloklandı. ` +
+                `Modeli lib/db/tenant-models.ts-də qeydiyyatdan keçirin: ` +
+                `sahibkar_id sütunu varsa TENANT_MODELS-ə, yoxdursa GLOBAL_MODELS-ə.`,
+            );
+          }
 
           const tenantId = currentTenantId();
           if (!tenantId) {

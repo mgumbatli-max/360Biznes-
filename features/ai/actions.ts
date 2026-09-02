@@ -92,7 +92,16 @@ TƏSDİQ PROTOKOLU (MƏCBURİ): yazma alətini ƏVVƏLCƏ tesdiq parametrsiz ça
         ? await chatWithTools(history, {
             system,
             tools: [...READ_TOOLS, ...WRITE_TOOLS],
-            executeTool: (name, input) => executeAgentTool(name, input, { allowWrite: true }),
+            // TƏSDİQ KONTEKSTİ (audit 2026-09-01): istifadəçinin bu növbədəki
+            // FAKTİKİ mesajı server tərəfdən ötürülür. `needConfirm` təsdiqi
+            // məhz bundan yoxlayır — modelin göndərdiyi `tesdiq` sahəsindən
+            // yox. Beləliklə model özbaşına (halüsinasiya və ya prompt
+            // injection nəticəsində) təsdiq uydura bilmir.
+            executeTool: (name, input) =>
+              executeAgentTool(name, input, {
+                allowWrite: true,
+                confirm: { lastUserMessage: parsed.data.message },
+              }),
           })
         : await chatCompletion(history, { system });
     } catch (e) {

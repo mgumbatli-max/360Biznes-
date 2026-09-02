@@ -27,6 +27,25 @@ type ReconResult = {
 export async function processBankStatement(
   input: FormData
 ): Promise<{ ok: true; data: ReconResult } | { ok: false; error: string }> {
+  // ── SERVER-SIDE AUTHORIZATION (audit 2026-09-01) ────────────────────────
+  // Bu action bank çıxarışını emal edir: müştəri borclarını bağlayır və
+  // `finance_operations` mədaxili yaradır. Əvvəl heç bir icazə yoxlaması
+  // yox idi — yeganə maneə `/ayarlar/bank-inteqrasiya` səhifəsinin layout
+  // route-gate-i idi. Lakin Server Action POST-u layout render-indən ƏVVƏL
+  // icra olunur, ona görə səhifə qorunması bu axına heç bir təsir etmirdi:
+  // istənilən autentifikasiya olunmuş istifadəçi (kassir, anbardar) action-ı
+  // birbaşa çağırıb saxta Excel ilə borc bağlaya bilirdi.
+  //
+  // Guard funksiyanın İLK addımıdır — fayl oxunmasından, parse-dan və hər
+  // hansı DB toxunuşundan əvvəl.
+  const { requireMaliyyeActionPerm } = await import("@/features/maliyye/access-guard");
+  const permCheck = await requireMaliyyeActionPerm([
+    "bank.import",
+    "bank.emeliyyat",
+    "maliyye.idare",
+  ]);
+  if (!permCheck.ok) return { ok: false, error: permCheck.error };
+
   const file = input.get("fayl");
   if (!(file instanceof Blob)) return { ok: false, error: "Fayl seçilməyib" };
   if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Fayl 10 MB-dan böyükdür" };

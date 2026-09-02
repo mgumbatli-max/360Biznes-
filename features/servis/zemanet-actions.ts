@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { withTenant } from "@/lib/db/with-tenant";
 import { requireTenant } from "@/lib/db/tenant-context";
+import { nextDocNumber } from "@/lib/db/sened-nomre";
 import { safeAuditLog } from "@/lib/audit/safe-log";
 import { requireServisActionPerm, bustServisCache } from "./access-guard";
 
@@ -164,15 +165,19 @@ export async function createServisFromZemanet(zemanetId: string, problem: string
         return { ok: false, error: "Zəmanət müddəti bitib" };
       }
 
-      const year = new Date().getFullYear();
       const result = await prisma.$transaction(async (tx) => {
-        const last = await tx.servis_qeydleri.findFirst({
-          where: { nomre: { startsWith: `SR-${year}-` } },
-          orderBy: { nomre: "desc" },
-          select: { nomre: true },
-        });
-        const lastNum = last ? Number(last.nomre.split("-").pop()) || 0 : 0;
-        const nomre = `SR-${year}-${String(lastNum + 1).padStart(5, "0")}`;
+        // Servis nömrəsi mərkəzi, atomik generatordan (audit 2026-09-01, release gate).
+        //
+        // Əvvəl burada `findFirst(startsWith SR-) + orderBy nomre desc + 1` vardı.
+        // Üç qüsur:
+        //   1) race-unsafe — iki paralel zəmanət→servis çevrilməsi eyni nömrəni alırdı;
+        //   2) leksikoqrafik `desc` rəqəm sıralaması ilə üst-üstə düşmürdü;
+        //   3) ƏN VACİBİ — `sened_nomre_counter` sayğacından XƏBƏRSİZ idi.
+        //      `features/servis/actions.ts` artıq `nextDocNumber("servis")`
+        //      işlədir; iki generator eyni cədvələ yazıb eyni nömrəni verə
+        //      bilirdi və composite UNIQUE(sahibkar_id, nomre) altında bu,
+        //      birbaşa P2002 demək idi.
+        const nomre = await nextDocNumber(tx, sahibkarId, "servis");
 
         const created = await tx.servis_qeydleri.create({
           data: {

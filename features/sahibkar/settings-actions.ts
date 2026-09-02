@@ -161,7 +161,7 @@ export async function changePin(input: FormData): Promise<ActionResult> {
     const { rolAd } = requireTenant();
     if (rolAd !== "sahibkar") return { ok: false, error: "Yalnız sahibkar dəyişə bilər" };
 
-    const cfg = await prisma.sahibkar_ayar.findFirst();
+    const cfg = await prisma.sahibkar_ayar.findFirst({ omit: { sifre_hash: false } });
     if (!cfg?.sifre_hash) return { ok: false, error: "PIN qurulmayıb" };
     const ok = await bcrypt.compare(parsed.data.kohne_pin, cfg.sifre_hash);
     if (!ok) return { ok: false, error: "Köhnə PIN səhvdir" };
