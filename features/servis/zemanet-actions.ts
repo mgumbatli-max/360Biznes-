@@ -26,16 +26,17 @@ const ZemanetSchema = z.object({
   qeyd: z.string().optional(),
 });
 
-async function nextUnikalKod(): Promise<string> {
-  const year = new Date().getFullYear();
-  const last = await prisma.zemanetler.findFirst({
-    where: { unikal_kod: { startsWith: `Z-${year}-` } },
-    orderBy: { unikal_kod: "desc" },
-    select: { unikal_kod: true },
-  });
-  const lastNum = last ? Number(last.unikal_kod.split("-").pop()) || 0 : 0;
-  return `Z-${year}-${String(lastNum + 1).padStart(5, "0")}`;
-}
+// Zəmanət kodu mərkəzi, atomik `nextDocNumber("zemanet")`-dən gəlir.
+//
+// Əvvəlki `nextUnikalKod()` iki qüsur daşıyırdı (audit 2026-09-02 ilə ölçülüb):
+//   1) RACE — `findFirst + max+1`: 20 paralel çağırışda 20-si də eyni
+//      `Z-YYYY-00001` kodunu alırdı (1/20 unikal).
+//   2) LEKSİKOQRAFİK KİLİD — `orderBy: { unikal_kod: "desc" }` string
+//      müqayisəsidir: POS-un random kodu (`Z-2026-ZZZZZZ`) ardıcıl koddan
+//      (`Z-2026-00042`) "böyük" sayılırdı, `Number("ZZZZZZ")` isə NaN → 0.
+//      Yəni bazada bir dənə random kod olan kimi generator həmişəlik
+//      `Z-YYYY-00001` qaytarırdı.
+// Görünən format (`Z-YYYY-NNNNN`) DISPLAY map ilə olduğu kimi qorunur.
 
 /**
  * UTC-əsaslı tarix əlavə etmə — yerli timezone-dan asılı deyil.
@@ -60,7 +61,7 @@ export async function createZemanet(input: FormData): Promise<ActionResult> {
   return withTenant(async () => {
     const { sahibkarId, istifadeciId } = requireTenant();
     try {
-      const unikal_kod = await nextUnikalKod();
+      const unikal_kod = await nextDocNumber(prisma, sahibkarId, "zemanet");
       const qr_token = crypto.randomBytes(24).toString("hex");
       const { baslama, bitme } = addMonthsUtc(d.baslama_tarixi, d.ay_sayi);
 

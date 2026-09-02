@@ -24,6 +24,7 @@ const TESTS = [
   ["R5b AI təsdiq davranışı (adversarial)", "tsx", "r5b-ai-confirm-runtime.ts"],
   ["R6  sənəd nömrəsi parseri (unit)", "tsx", "r6-doc-number-parser.ts"],
   ["R7  nömrə generatoru concurrency", "tsx", "r7-concurrency.ts"],
+  ["R8  zəmanət tenant-scoped + race", "tsx", "r8-zemanet-tenant-scoped.ts"],
 ];
 
 const results = [];

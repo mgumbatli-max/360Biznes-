@@ -6314,7 +6314,7 @@ model zemanetler {
   id                   String                @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   sahibkar_id          String                @db.Uuid
   filial_id            Int?
-  unikal_kod           String                @unique @db.VarChar(50)
+  unikal_kod           String                @db.VarChar(50)
   qr_token             String                @unique @db.VarChar(64)
   satis_id             String?               @db.Uuid
   satis_satir_id       BigInt?
@@ -6354,6 +6354,7 @@ model zemanetler {
   @@index([sahibkar_id], map: "idx_zemanet_sahibkar")
   @@index([satis_id], map: "idx_zemanet_satis")
   @@index([status], map: "idx_zemanet_status")
+  @@unique([sahibkar_id, unikal_kod], map: "zemanetler_sah_unikal_kod_uniq")
 }
 
 model sened_nomre_counter {

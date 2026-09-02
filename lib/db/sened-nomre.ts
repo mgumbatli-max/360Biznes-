@@ -29,7 +29,8 @@ export type DocPrefix =
   | "transfer"
   | "mexaric"
   | "sayim"
-  | "servis";
+  | "servis"
+  | "zemanet";
 
 const TABLE_MAP: Partial<Record<DocPrefix, { table: string; field: string }>> = {
   satis: { table: "satis_sifarisleri", field: "nomre" },
@@ -40,6 +41,8 @@ const TABLE_MAP: Partial<Record<DocPrefix, { table: string; field: string }>> = 
   transfer: { table: "anbar_transferleri", field: "nomre" },
   sayim: { table: "inventarizasiyalar", field: "nomre" },
   servis: { table: "servis_qeydleri", field: "nomre" },
+  // Zəmanət nömrəsi `zemanetler.unikal_kod` sütununda saxlanılır (nomre deyil).
+  zemanet: { table: "zemanetler", field: "unikal_kod" },
 };
 
 /**
@@ -58,6 +61,7 @@ const DISPLAY: Partial<Record<DocPrefix, { label: string; pad: number }>> = {
   transfer: { label: "TR", pad: 5 },
   sayim: { label: "INV", pad: 5 },
   servis: { label: "SR", pad: 5 },
+  zemanet: { label: "Z", pad: 5 },
 };
 
 /* ══════════════════ Sənəd nömrəsi parseri və sinifləri ══════════════════ */
@@ -112,6 +116,8 @@ const SEQUENTIAL_PREFIX_MAP: Record<string, DocPrefix> = {
   SAYIM: "sayim",
   SR: "servis",
   SERVIS: "servis",
+  // ── zəmanət ──
+  Z: "zemanet",
   TEKLIF: "teklif",
   MEXARIC: "mexaric",
 };
